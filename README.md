@@ -117,7 +117,7 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
   and run `make clean` first to remove any existing skills.
 
 > [!WARNING]
-> Running `make clean` will delete all existing skills in the target skills folder.
+> Running `make clean` may delete pre-existing skills in the target skills folder.
 
 
 ## Bugs and pull requests

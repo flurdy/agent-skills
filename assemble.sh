@@ -26,8 +26,8 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 usage() {
   cat <<'EOF'
 Usage:
-  assemble.sh apply [--profile NAME] [--machine NAME] [--clients "a b c"] [--dry-run]
-  assemble.sh clean
+  assemble.sh apply [--profile NAME] [--machine NAME] [--clients "a b c"] [--dry-run] [--force]
+  assemble.sh clean [--dry-run] [--force]
   assemble.sh doctor
   assemble.sh list
 
@@ -56,12 +56,65 @@ load_profile() {
   set +a
 }
 
+# Check if ACTIVE_DIR contains any non-symlink files (user content we shouldn't delete)
+check_for_user_content() {
+  [[ -d "$ACTIVE_DIR" ]] || return 0
+  local non_symlinks
+  non_symlinks="$(find "$ACTIVE_DIR" -maxdepth 1 -mindepth 1 ! -type l 2>/dev/null || true)"
+  if [[ -n "$non_symlinks" ]]; then
+    echo "$non_symlinks"
+    return 1
+  fi
+  return 0
+}
+
 clean_out_dir() {
+  local dry_run="${1:-0}"
+
+  if [[ "$dry_run" -eq 1 ]]; then
+    [[ -d "$ACTIVE_DIR" ]] && log "DRY: rm -rf '$ACTIVE_DIR'"
+    [[ -L "$SKILLS_DIR" ]] && log "DRY: rm -f '$SKILLS_DIR'"
+    return 0
+  fi
+
   if [[ -d "$ACTIVE_DIR" ]]; then
     rm -rf "$ACTIVE_DIR"
   else
     rm -f "$ACTIVE_DIR"
   fi
+  # Also remove the skills symlink
+  if [[ -L "$SKILLS_DIR" ]]; then
+    rm -f "$SKILLS_DIR"
+  fi
+}
+
+cmd_clean() {
+  local dry_run=0
+  local force=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --dry-run) dry_run=1; shift;;
+      --force) force=1; shift;;
+      -h|--help) usage; exit 0;;
+      *) err "Unknown arg: $1";;
+    esac
+  done
+
+  # Safety check: warn if ACTIVE_DIR contains non-symlinks (user content)
+  if [[ -d "$ACTIVE_DIR" ]] && [[ "$force" -eq 0 ]]; then
+    local user_content
+    if ! user_content="$(check_for_user_content)"; then
+      log "WARNING: ACTIVE_DIR contains non-symlink files (possibly user content):"
+      echo "$user_content" | while read -r f; do log "  $f"; done
+      log ""
+      log "Use --force to delete anyway, or move these files first."
+      exit 1
+    fi
+  fi
+
+  clean_out_dir "$dry_run"
+  [[ "$dry_run" -eq 0 ]] && log "Cleaned: $ACTIVE_DIR and $SKILLS_DIR"
 }
 
 ensure_live_link() {
@@ -153,6 +206,7 @@ cmd_apply() {
   local machine=""
   local clients=""
   local dry_run=0
+  local force=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -160,6 +214,7 @@ cmd_apply() {
       --machine) machine="${2:-}"; shift 2;;
       --clients) clients="${2:-}"; shift 2;;
       --dry-run) dry_run=1; shift;;
+      --force) force=1; shift;;
       -h|--help) usage; exit 0;;
       *) err "Unknown arg: $1";;
     esac
@@ -176,10 +231,22 @@ cmd_apply() {
     machine="$(hostname -s 2>/dev/null || hostname)"
   fi
 
+  # Safety check: warn if ACTIVE_DIR contains non-symlinks (user content)
+  if [[ -d "$ACTIVE_DIR" ]] && [[ "$force" -eq 0 ]] && [[ "$dry_run" -eq 0 ]]; then
+    local user_content
+    if ! user_content="$(check_for_user_content)"; then
+      log "WARNING: ACTIVE_DIR contains non-symlink files (possibly user content):"
+      echo "$user_content" | while read -r f; do log "  $f"; done
+      log ""
+      log "Use --force to delete anyway, or move these files first."
+      exit 1
+    fi
+  fi
+
   if [[ "$dry_run" -eq 1 ]]; then
     log "DRY: would rebuild ACTIVE_DIR '$ACTIVE_DIR'"
   else
-    clean_out_dir
+    clean_out_dir 0
     mkdir -p "$ACTIVE_DIR"
   fi
 
@@ -238,7 +305,7 @@ main() {
   shift || true
   case "$cmd" in
     apply)  cmd_apply "$@";;
-    clean)  clean_out_dir; log "Cleaned: $ACTIVE_DIR";;
+    clean)  cmd_clean "$@";;
     doctor) cmd_doctor;;
     list)   cmd_list;;
     ""|-h|--help) usage;;
