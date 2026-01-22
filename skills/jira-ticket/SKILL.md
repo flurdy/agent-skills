@@ -7,6 +7,10 @@ description: Look up Jira ticket details including summary, type, and descriptio
 
 Fetch details about a Jira ticket.
 
+## Requirements
+
+This skill requires the [mcp-server-atlassian-jira](https://github.com/aashari/mcp-server-atlassian-jira) MCP server configured with the name `jira`.
+
 ## Usage
 
 ```
