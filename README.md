@@ -95,8 +95,8 @@ Path to optional private repo:
 
 Path to active skills and target skills directory, can be Codex or Claude:
 
-- `ACTIVE_DIR=~/.claude/skills.active`
-- `SKILLS_DIR=~/.claude/skills`
+- `ACTIVE_DIR=$HOME/.claude/skills.active`
+- `SKILLS_DIR=$HOME/.claude/skills`
 
 There is example in `.env.example` you can use,
 and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
