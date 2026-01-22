@@ -1,0 +1,4 @@
+source_up
+
+dotenv_if_exists .env
+source_env_if_exists .envrc.local
