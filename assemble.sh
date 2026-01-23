@@ -6,16 +6,16 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 SHARED_REPO="${SHARED_REPO:-$SCRIPT_DIR}"
 PRIVATE_REPO="${PRIVATE_REPO:-$SCRIPT_DIR/../agent-skills-private}"
 
+# Resolve to absolute paths for reliable symlink target matching
+SHARED_REPO="$(cd "$SHARED_REPO" 2>/dev/null && pwd || echo "$SHARED_REPO")"
+[[ -d "$PRIVATE_REPO" ]] && PRIVATE_REPO="$(cd "$PRIVATE_REPO" && pwd)"
+
 SHARED_SKILLS_DIR="${SHARED_SKILLS_DIR:-$SHARED_REPO/skills}"
 PRIVATE_MACHINES_DIR="${PRIVATE_MACHINES_DIR:-$PRIVATE_REPO/machines}"
 PRIVATE_CLIENTS_DIR="${PRIVATE_CLIENTS_DIR:-$PRIVATE_REPO/clients}"
 PROFILES_DIR="${PROFILES_DIR:-$PRIVATE_REPO/profiles}"
 
-ACTIVE_DIR="${ACTIVE_DIR:-$HOME/.claude/skills.active}"
 SKILLS_DIR="${SKILLS_DIR:-$HOME/.claude/skills}"
-
-# warn | fail | allow
-COLLISION_MODE="${COLLISION_MODE:-warn}"
 
 # shared machine clients (later overrides earlier)
 LAYERS_ORDER="${LAYERS_ORDER:-shared machine clients}"
@@ -26,22 +26,20 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 usage() {
   cat <<'EOF'
 Usage:
-  assemble.sh apply [--profile NAME] [--machine NAME] [--clients "a b c"] [--dry-run] [--force]
-  assemble.sh clean [--dry-run] [--force]
+  assemble.sh apply [--profile NAME] [--machine NAME] [--clients "a b c"] [--dry-run]
+  assemble.sh clean [--dry-run]
   assemble.sh doctor
   assemble.sh list
 
 Notes:
-- This assembler links "skill units": immediate children under each skills/ directory.
-  Example: skills/create-pr/ -> ~/.claude/skills.active/create-pr (symlink)
+- This assembler links "skill units" directly into ~/.claude/skills/
+  Example: skills/create-pr/ -> ~/.claude/skills/create-pr (symlink)
+- Symlinks are created directly in SKILLS_DIR, coexisting with user's own skills.
+- Pre-existing skills (not managed by us) are never overwritten - apply will error.
+- Clean only removes symlinks pointing to our repos, preserving user skills.
 
 Env:
-  SHARED_REPO, PRIVATE_REPO, ACTIVE_DIR, SKILLS_DIR, COLLISION_MODE, LAYERS_ORDER
-
-Collision modes:
-  warn  : warn; later layer wins (default)
-  fail  : stop if a skill name already exists from earlier layer
-  allow : silently override
+  SHARED_REPO, PRIVATE_REPO, SKILLS_DIR, LAYERS_ORDER
 EOF
 }
 
@@ -56,86 +54,87 @@ load_profile() {
   set +a
 }
 
-# Check if ACTIVE_DIR contains any non-symlink files (user content we shouldn't delete)
-check_for_user_content() {
-  [[ -d "$ACTIVE_DIR" ]] || return 0
-  local non_symlinks
-  non_symlinks="$(find "$ACTIVE_DIR" -maxdepth 1 -mindepth 1 ! -type l 2>/dev/null || true)"
-  if [[ -n "$non_symlinks" ]]; then
-    echo "$non_symlinks"
-    return 1
-  fi
-  return 0
+# Check if a symlink target is managed by us (points into SHARED_REPO or PRIVATE_REPO)
+is_managed_symlink() {
+  local link="$1"
+  [[ -L "$link" ]] || return 1
+  local target
+  target="$(readlink -f "$link" 2>/dev/null || true)"
+  [[ -z "$target" ]] && return 1
+  [[ "$target" == "$SHARED_REPO"/* || "$target" == "$PRIVATE_REPO"/* ]]
 }
 
-clean_out_dir() {
+# Remove only symlinks managed by us (pointing to our repos)
+clean_managed_symlinks() {
   local dry_run="${1:-0}"
+  local removed=0
 
-  if [[ "$dry_run" -eq 1 ]]; then
-    [[ -d "$ACTIVE_DIR" ]] && log "DRY: rm -rf '$ACTIVE_DIR'"
-    [[ -L "$SKILLS_DIR" ]] && log "DRY: rm -f '$SKILLS_DIR'"
-    return 0
-  fi
+  [[ -d "$SKILLS_DIR" ]] || return 0
 
-  if [[ -d "$ACTIVE_DIR" ]]; then
-    rm -rf "$ACTIVE_DIR"
-  else
-    rm -f "$ACTIVE_DIR"
-  fi
-  # Also remove the skills symlink
-  if [[ -L "$SKILLS_DIR" ]]; then
-    rm -f "$SKILLS_DIR"
-  fi
+  shopt -s nullglob dotglob
+  local item
+  for item in "$SKILLS_DIR"/*; do
+    if is_managed_symlink "$item"; then
+      if [[ "$dry_run" -eq 1 ]]; then
+        log "DRY: rm '$item' -> $(readlink "$item")"
+      else
+        rm -f "$item"
+      fi
+      ((removed++)) || true
+    fi
+  done
+  shopt -u nullglob dotglob
+
+  echo "$removed"
 }
 
 cmd_clean() {
   local dry_run=0
-  local force=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --dry-run) dry_run=1; shift;;
-      --force) force=1; shift;;
       -h|--help) usage; exit 0;;
       *) err "Unknown arg: $1";;
     esac
   done
 
-  # Safety check: warn if ACTIVE_DIR contains non-symlinks (user content)
-  if [[ -d "$ACTIVE_DIR" ]] && [[ "$force" -eq 0 ]]; then
-    local user_content
-    if ! user_content="$(check_for_user_content)"; then
-      log "WARNING: ACTIVE_DIR contains non-symlink files (possibly user content):"
-      echo "$user_content" | while read -r f; do log "  $f"; done
-      log ""
-      log "Use --force to delete anyway, or move these files first."
-      exit 1
-    fi
-  fi
+  local removed
+  removed="$(clean_managed_symlinks "$dry_run")"
 
-  clean_out_dir "$dry_run"
-  [[ "$dry_run" -eq 0 ]] && log "Cleaned: $ACTIVE_DIR and $SKILLS_DIR"
+  if [[ "$dry_run" -eq 0 ]]; then
+    log "Cleaned $removed managed skill symlink(s) from $SKILLS_DIR"
+    log "User skills (non-symlinks or symlinks to other locations) were preserved."
+  fi
 }
 
-ensure_live_link() {
+ensure_skills_dir() {
   local dry_run="$1"
-  mkdir -p "$(dirname "$SKILLS_DIR")"
 
   if [[ -L "$SKILLS_DIR" ]]; then
-    local target
-    target="$(readlink "$SKILLS_DIR")"
-    if [[ "$target" != "$ACTIVE_DIR" ]]; then
-      [[ "$dry_run" -eq 1 ]] && log "DRY: ln -snf '$ACTIVE_DIR' '$SKILLS_DIR'" || ln -snf "$ACTIVE_DIR" "$SKILLS_DIR"
+    # SKILLS_DIR is a symlink - this is the old setup, convert it
+    log "NOTE: $SKILLS_DIR is a symlink (old setup). Converting to directory."
+    if [[ "$dry_run" -eq 0 ]]; then
+      rm -f "$SKILLS_DIR"
+      mkdir -p "$SKILLS_DIR"
+    else
+      log "DRY: rm -f '$SKILLS_DIR' && mkdir -p '$SKILLS_DIR'"
     fi
-  elif [[ -e "$SKILLS_DIR" ]]; then
-    err "SKILLS_DIR exists and is not a symlink: $SKILLS_DIR (move it out of the way first)"
+  elif [[ -d "$SKILLS_DIR" ]]; then
+    : # Already a directory, good
   else
-    [[ "$dry_run" -eq 1 ]] && log "DRY: ln -s '$ACTIVE_DIR' '$SKILLS_DIR'" || ln -s "$ACTIVE_DIR" "$SKILLS_DIR"
+    if [[ "$dry_run" -eq 0 ]]; then
+      mkdir -p "$SKILLS_DIR"
+    else
+      log "DRY: mkdir -p '$SKILLS_DIR'"
+    fi
   fi
 }
 
-# Link each immediate child under src_skills_dir into ACTIVE_DIR
+# Link each immediate child under src_skills_dir into SKILLS_DIR
 # Children can be directories (preferred) or files.
+# - If skill already exists and is managed by us: update the symlink (layer override)
+# - If skill already exists and is NOT managed by us: error (pre-existing wins)
 link_skill_units() {
   local src_skills_dir="$1"  # .../skills
   local label="$2"           # shared | machine:xxx | client:yyy
@@ -148,20 +147,24 @@ link_skill_units() {
   for child in "$src_skills_dir"/*; do
     local name
     name="$(basename "$child")"
-    local dst="$ACTIVE_DIR/$name"
+    local dst="$SKILLS_DIR/$name"
 
     if [[ -e "$dst" || -L "$dst" ]]; then
-      case "$COLLISION_MODE" in
-        fail) err "Collision on skill '$name' while applying '$label' (already exists)";;
-        warn) log "WARN: collision on skill '$name' (layer '$label' overrides existing)";;
-        allow) :;;
-        *) err "Unknown COLLISION_MODE: $COLLISION_MODE";;
-      esac
-      [[ "$dry_run" -eq 1 ]] || rm -rf "$dst"
+      if is_managed_symlink "$dst"; then
+        # It's our symlink from an earlier layer - override it
+        log "  Override: $name (layer '$label' replaces earlier layer)"
+        [[ "$dry_run" -eq 1 ]] || rm -f "$dst"
+      else
+        # Pre-existing skill not managed by us - error out, let it win
+        err "Collision: skill '$name' already exists and is not managed by us.
+  Existing: $dst
+  Attempted: $child (from $label)
+Pre-existing skill wins. Remove it manually if you want to use the managed version."
+      fi
     fi
 
     if [[ "$dry_run" -eq 1 ]]; then
-      log "DRY: ln -s '$child' -> '$dst'"
+      log "  DRY: ln -s '$child' -> '$dst'"
     else
       ln -s "$child" "$dst"
     fi
@@ -184,20 +187,32 @@ cmd_doctor() {
   log "Shared repo:   $SHARED_REPO"
   log "Private repo:  $PRIVATE_REPO"
   log "Shared skills: $SHARED_SKILLS_DIR"
-  log "Active dir:    $ACTIVE_DIR"
-  log "Skills link:   $SKILLS_DIR"
-  log "Collision:     $COLLISION_MODE"
-  log "Order:         $LAYERS_ORDER"
+  log "Skills dir:    $SKILLS_DIR"
+  log "Layer order:   $LAYERS_ORDER"
   log ""
 
   [[ -d "$SHARED_SKILLS_DIR" ]] || log "WARN: shared skills dir missing: $SHARED_SKILLS_DIR"
 
   if [[ -L "$SKILLS_DIR" ]]; then
-    log "Skills link -> $(readlink "$SKILLS_DIR")"
-  elif [[ -e "$SKILLS_DIR" ]]; then
-    log "WARN: Skills link path exists but is not a symlink."
+    log "WARN: Skills dir is a symlink (old setup): $(readlink "$SKILLS_DIR")"
+    log "      Run 'apply' to convert to new direct-symlink setup."
+  elif [[ -d "$SKILLS_DIR" ]]; then
+    log "Skills dir exists (good)"
+    # Count managed vs unmanaged skills
+    local managed=0 unmanaged=0
+    shopt -s nullglob dotglob
+    for item in "$SKILLS_DIR"/*; do
+      if is_managed_symlink "$item"; then
+        ((managed++)) || true
+      else
+        ((unmanaged++)) || true
+      fi
+    done
+    shopt -u nullglob dotglob
+    log "  Managed skills:   $managed"
+    log "  Unmanaged skills: $unmanaged"
   else
-    log "Skills link not present yet."
+    log "Skills dir not present yet."
   fi
 }
 
@@ -206,7 +221,6 @@ cmd_apply() {
   local machine=""
   local clients=""
   local dry_run=0
-  local force=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -214,7 +228,6 @@ cmd_apply() {
       --machine) machine="${2:-}"; shift 2;;
       --clients) clients="${2:-}"; shift 2;;
       --dry-run) dry_run=1; shift;;
-      --force) force=1; shift;;
       -h|--help) usage; exit 0;;
       *) err "Unknown arg: $1";;
     esac
@@ -231,24 +244,13 @@ cmd_apply() {
     machine="$(hostname -s 2>/dev/null || hostname)"
   fi
 
-  # Safety check: warn if ACTIVE_DIR contains non-symlinks (user content)
-  if [[ -d "$ACTIVE_DIR" ]] && [[ "$force" -eq 0 ]] && [[ "$dry_run" -eq 0 ]]; then
-    local user_content
-    if ! user_content="$(check_for_user_content)"; then
-      log "WARNING: ACTIVE_DIR contains non-symlink files (possibly user content):"
-      echo "$user_content" | while read -r f; do log "  $f"; done
-      log ""
-      log "Use --force to delete anyway, or move these files first."
-      exit 1
-    fi
-  fi
+  # First, clean any existing managed symlinks (from previous apply)
+  # This ensures layer ordering is correct on re-apply
+  log "Cleaning existing managed symlinks..."
+  clean_managed_symlinks "$dry_run" > /dev/null
 
-  if [[ "$dry_run" -eq 1 ]]; then
-    log "DRY: would rebuild ACTIVE_DIR '$ACTIVE_DIR'"
-  else
-    clean_out_dir 0
-    mkdir -p "$ACTIVE_DIR"
-  fi
+  # Ensure SKILLS_DIR exists as a directory (not a symlink)
+  ensure_skills_dir "$dry_run"
 
   local layer
   for layer in $LAYERS_ORDER; do
@@ -290,14 +292,11 @@ cmd_apply() {
     esac
   done
 
-  ensure_live_link "$dry_run"
-
   log ""
   log "Done."
   log "Machine: $machine"
   log "Clients: ${clients:-<none>}"
-  log "Assembled: $ACTIVE_DIR"
-  log "Live: $SKILLS_DIR -> $ACTIVE_DIR"
+  log "Skills:  $SKILLS_DIR"
 }
 
 main() {

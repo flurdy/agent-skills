@@ -10,10 +10,12 @@ blocks that get assembled into active AI agent skill sets for Claude or Codex, a
    `git clone https://github.com/flurdy/agent-skills.git`
 
 2. Apply the changes from the `agent-skills/` folder.
-   
+
    `make apply`
 
-3. Verify skills are in `~/.claude/skills` (symlinked to `~/.claude/skills.active`).
+3. Verify skills are in `~/.claude/skills`.
+
+Skills are symlinked directly into `~/.claude/skills/`, coexisting with any skills you already have there.
 
 ## Layout
 
@@ -83,7 +85,7 @@ When applying skills, if a skill exists in multiple places, the layering order i
 
 ## Common vars
 
-Set these in as environment variables, or accept the defaults.
+Set these as environment variables, or accept the defaults.
 
 Path to shared repo (this repo):
 
@@ -93,12 +95,11 @@ Path to optional private repo:
 
 - `PRIVATE_REPO=/path/to/agent-skills-private`
 
-Path to active skills and target skills directory, can be Codex or Claude:
+Path to skills directory (can be Codex or Claude):
 
-- `ACTIVE_DIR=$HOME/.claude/skills.active`
 - `SKILLS_DIR=$HOME/.claude/skills`
 
-There is example in `.env.example` you can use,
+There is an example in `.env.example` you can use,
 and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 
 ## Adding a new skill
@@ -109,15 +110,13 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 4. If you need supporting material, add it inside the skill folder
 5. Test by running `make apply` and verifying it appears in `~/.claude/skills`
 
-## Known Issues
+## Coexisting with existing skills
 
-- Caveat: this assumes the target skills folder is empty or not there.
+This tool is designed to coexist with skills you already have in `~/.claude/skills/`:
 
-  Workaround: Move skills to the private repo 
-  and run `make clean` first to remove any existing skills.
-
-> [!WARNING]
-> Running `make clean` may delete pre-existing skills in the target skills folder.
+- __Apply__ creates symlinks directly in your skills folder, alongside existing skills
+- __Clean__ only removes symlinks that point to our repos, leaving your own skills untouched
+- __Collision handling__: If a skill name already exists and isn't managed by us, `apply` will error out and the pre-existing skill wins. Remove it manually if you want to use the managed version instead.
 
 
 ## Bugs and pull requests
