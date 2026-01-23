@@ -118,6 +118,18 @@ This tool is designed to coexist with skills you already have in `~/.claude/skil
 - __Clean__ only removes symlinks that point to our repos, leaving your own skills untouched
 - __Collision handling__: If a skill name already exists and isn't managed by us, `apply` will error out and the pre-existing skill wins. Remove it manually if you want to use the managed version instead.
 
+After running `make apply`, your skills folder might look like this:
+
+```plaintext
+~/.claude/skills/
+  create-pr/       -> /path/to/agent-skills/skills/create-pr       (managed symlink)
+  jira-ticket/     -> /path/to/agent-skills/skills/jira-ticket     (managed symlink)
+  rebase-main/     -> /path/to/agent-skills/skills/rebase-main     (managed symlink)
+  my-custom-skill/                                                  (your own skill)
+  another-skill/   -> /some/other/path/skill                        (your own symlink)
+```
+
+Running `make clean` will only remove the symlinks pointing to `agent-skills/` or `agent-skills-private/`, leaving `my-custom-skill/` and `another-skill/` untouched.
 
 ## Bugs and pull requests
 
