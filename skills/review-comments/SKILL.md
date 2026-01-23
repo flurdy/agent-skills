@@ -65,7 +65,7 @@ For each unresolved comment:
 1. Read the comment and understand what's being asked
 2. Check the file and line being referenced
 3. Either:
-   - Make the suggested change if appropriate
+   - Make the suggested change if appropriate, including an initially failing test if needed
    - Explain why the current code is correct
    - Ask the user for guidance on ambiguous feedback
 
@@ -73,7 +73,7 @@ For each unresolved comment:
 
 ```bash
 # Stage and commit fixes
-git add -A
+git add {files_changed}
 git commit -m "address review feedback"
 
 # Push updates
