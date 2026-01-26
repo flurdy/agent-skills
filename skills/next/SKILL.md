@@ -88,9 +88,9 @@ Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
 
 When invoked:
 
-1. Check for current in-progress work:
+1. Check for current open, not in-progress elsewhere, work:
    ```bash
-   bd list --status=in_progress
+   bd list --status=open
    ```
 
 2. Get ready (unblocked) beads:

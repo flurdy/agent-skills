@@ -129,6 +129,8 @@ After running `make apply`, your skills folder might look like this:
   another-skill/   -> /some/other/path/skill                        (your own symlink)
 ```
 
+### Cleaning up
+
 Running `make clean` will only remove the symlinks pointing to `agent-skills/` or `agent-skills-private/`, leaving `my-custom-skill/` and `another-skill/` untouched.
 
 ## Bugs and pull requests
