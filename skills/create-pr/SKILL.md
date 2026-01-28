@@ -36,9 +36,10 @@ git diff main...HEAD --stat
 ### 2. Extract Jira Ticket from Branch Name
 
 Parse the branch name to find the ticket number:
+
 - Pattern: `{type}/{TICKET-NUMBER}-{description}`
-- Example: `feat/GE-866-sanitize-portable-text` → `GE-866`
-- Ticket format: 2-4 uppercase letters, dash, numbers (e.g., `GE-123`, `SSP-456`)
+- Example: `feat/AB-123-sanitize-input` → `AB-123`
+- Ticket format: 2-4 uppercase letters, dash, numbers (e.g., `AB-123`, `SSP-456`)
 
 If no ticket found, ask the user.
 

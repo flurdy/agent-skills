@@ -14,7 +14,7 @@ This skill requires the [mcp-server-atlassian-jira](https://github.com/aashari/m
 ## Usage
 
 ```
-/jira-ticket GE-123
+/jira-ticket SP-123
 ```
 
 ## Instructions
@@ -48,7 +48,7 @@ Map the Jira issue type to a conventional commit prefix:
 ### 3. Return Ticket Info
 
 Provide the user with:
-- Ticket key (e.g., `GE-123`)
+- Ticket key (e.g., `SP-123`)
 - Summary
 - Issue type
 - Suggested branch prefix based on type
@@ -57,9 +57,9 @@ Provide the user with:
 ### Example Output
 
 ```
-Ticket: GE-123
+Ticket: SP-123
 Summary: Add user authentication
 Type: Story
 Suggested prefix: feat
-Branch name: feat/GE-123-add-user-authentication
+Branch name: feat/SP-123-add-user-authentication
 ```

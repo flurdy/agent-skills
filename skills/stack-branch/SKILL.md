@@ -10,8 +10,8 @@ Create a new branch based on an existing PR branch (not main) for dependent work
 ## Usage
 
 ```
-/stack-branch GE-456
-/stack-branch GE-456 feature/parent-branch    # Explicit parent
+/stack-branch AB-456
+/stack-branch AB-456 feature/parent-branch    # Explicit parent
 ```
 
 ## Instructions
@@ -69,7 +69,7 @@ Create branch name:
 {prefix}/{TICKET}-{summary-in-kebab-case}
 ```
 
-Example: `feat/GE-456-add-caching-layer`
+Example: `feat/AB-456-add-caching-layer`
 
 ### 5. Create the Branch
 
@@ -94,21 +94,13 @@ Tell the user:
 
 Ask if the user wants to create a draft PR now:
 
+Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
+
+#### Create the PR targeting parent branch
+
 ```bash
 gh pr create --draft --base {parent-branch} --title "{type}({scope}): {description}" --body "$(cat <<'EOF'
-## What does this PR do?
-
-WIP - Stacked on #{parent-pr-number}
-
-## Jira ticket number?
-
-{TICKET}
-
-## Checklist before merging
-
-- [ ] I have performed a self-review of my own code
-- [ ] I have added tests for my changes (if applicable)
-- [ ] I have updated documentation (if applicable)
+{body}
 EOF
 )"
 ```

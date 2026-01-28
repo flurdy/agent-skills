@@ -10,7 +10,7 @@ Initialize work on a Jira ticket by looking up the ticket details and creating a
 ## Usage
 
 ```
-/start-ticket GE-123
+/start-ticket AB-123
 ```
 
 ## Instructions
@@ -51,9 +51,9 @@ Rules:
 - Truncate to reasonable length (max ~50 chars for the summary portion)
 - Keep the ticket number uppercase
 
-Example: For ticket `GE-866` with summary "Sanitize Portable Text":
+Example: For ticket `AB-123` with summary "Sanitize Input":
 ```
-feat/GE-866-sanitize-portable-text
+feat/AB-123-sanitize-input
 ```
 
 ### 4. Create the Branch
