@@ -25,15 +25,16 @@ Help select the next bead to work on based on readiness and user preferences.
 /next                    # Show ready beads, ranked by suitability
 /next task               # Auto-pick the next most suitable task and start it
 /next quick              # Auto-pick an easy win task and start it
+/next bug                # Auto-pick the next most important bug and fix it
 /next <bead-id>          # Start working on specific bead
 ```
 
 ## What This Skill Does
 
 1. **Find Ready Work**
-   - Run `bd ready` to get unblocked tasks
-   - Filter out beads that are blocked by others
-   - Show current in-progress work if any
+   - Run `bd list --ready` to get open, unblocked tasks
+   - Excludes `in_progress` beads (another session may be working on them)
+   - Show current in-progress work if any (for awareness, not selection)
 
 2. **Rank by Suitability**
    - Apply priority ranking algorithm (see below)
@@ -61,6 +62,9 @@ Help select the next bead to work on based on readiness and user preferences.
 
 # Auto-pick an easy win (quick task)
 /next quick
+
+# Auto-pick the next most important bug and start fixing
+/next bug
 
 # Start a specific bead
 /next gauge-abc
@@ -93,15 +97,19 @@ When invoked:
    bd list --status=open
    ```
 
-2. Get ready (unblocked) beads:
+2. Get ready (unblocked) beads with open status only:
    ```bash
-   bd ready
+   bd list --ready
    ```
+
+   **Important**: Use `bd list --ready` (not `bd ready`) to exclude `in_progress` beads.
+   Another session may be working on in_progress items - picking them up causes conflicts.
 
 3. Parse command argument:
    - (none): Show ranked list, ask user to pick
    - `task`: Auto-select top-ranked bead and start it
    - `quick`: Auto-select an easy win task and start it
+   - `bug`: Auto-select top-ranked bug and start it (see Bug Mode below)
    - `<bead-id>`: Start that specific bead
 
 4. If specific bead ID provided:
@@ -120,7 +128,8 @@ When invoked:
 ## Handling Edge Cases
 
 - **No ready beads**: Show blocked beads and what's blocking them
-- **All in progress**: Warn about context switching, show current work
+- **All open beads in progress**: Warn that another session may be working on them; ask user if they want to see in_progress beads anyway (may cause conflicts)
+- **User picks in_progress bead**: Warn that another session may be working on it; require explicit confirmation before starting
 - **Invalid ID**: Show error and list valid options
 - **User says "skip"**: Show next 5 options
 
@@ -150,3 +159,48 @@ When `/next quick` is used, prefer:
 2. Priority: P3 > P2 > P1 (lower priority = less complex)
 3. Exclude epics (too large for quick wins)
 4. Title keywords: "fix", "update", "add" > "implement", "refactor", "redesign"
+
+## Bug Mode
+
+When `/next bug` is used:
+
+1. **Filter to open bugs only**:
+
+   ```bash
+   bd list --ready --type=bug
+   ```
+
+2. **Rank by priority**: P0 > P1 > P2 > P3 (highest priority bug first)
+
+3. **Auto-select and start** the top-ranked bug
+
+4. **Continue fixing bugs** if the completed bug was minor:
+   - After completing a bug fix, assess if it was minor (small change, localized fix)
+   - If minor AND there's remaining context (related code still fresh), auto-pick the next bug
+   - Continue this loop until:
+     - A bug requires significant work (not minor)
+     - No more ready bugs remain
+     - Context would be lost (unrelated area of codebase)
+
+### Minor Bug Criteria
+
+A bug is considered **minor** if:
+
+- Fix touches ≤ 3 files
+- Change is ≤ 50 lines total
+- No architectural changes required
+- Fix is localized (single component/module)
+
+### Context Continuity
+
+Continue to next bug automatically when:
+
+- Next bug is in same or adjacent files
+- Next bug is in same module/component
+- Fix for previous bug provides context for next bug
+
+Stop and ask user when:
+
+- Next bug is in completely different area of codebase
+- Next bug appears complex (P0/P1 with unclear scope)
+- 3+ bugs have been fixed in sequence (natural checkpoint)
