@@ -97,13 +97,15 @@ When invoked:
    bd list --status=open
    ```
 
-2. Get ready (unblocked) beads with open status only:
+2. Get ready (unblocked) beads with open status only, excluding P4 backlog:
    ```bash
-   bd list --ready
+   bd list --ready --priority-max=3
    ```
 
-   **Important**: Use `bd list --ready` (not `bd ready`) to exclude `in_progress` beads.
-   Another session may be working on in_progress items - picking them up causes conflicts.
+   **Important**:
+   - Use `bd list --ready` (not `bd ready`) to exclude `in_progress` beads
+   - Use `--priority-max=3` to exclude P4 backlog items (P4 = future/someday, never auto-pick)
+   - Another session may be working on in_progress items - picking them up causes conflicts
 
 3. Parse command argument:
    - (none): Show ranked list, ask user to pick
@@ -127,7 +129,7 @@ When invoked:
 
 ## Handling Edge Cases
 
-- **No ready beads**: Show blocked beads and what's blocking them
+- **No ready beads (P0-P3)**: Show blocked beads and what's blocking them; mention P4 backlog exists if any, but don't auto-pick
 - **All open beads in progress**: Warn that another session may be working on them; ask user if they want to see in_progress beads anyway (may cause conflicts)
 - **User picks in_progress bead**: Warn that another session may be working on it; require explicit confirmation before starting
 - **Invalid ID**: Show error and list valid options
@@ -150,7 +152,7 @@ Rank ready beads in this order (first match wins):
 | 9    | P3 epic                         |
 | 10   | Any other non-P4 issue          |
 
-**Note**: P4 items are backlog and not shown by default.
+**Important**: P4 items are backlog/future work and must NEVER be auto-picked. Always use `--priority-max=3` to exclude them. Only show P4 items if user explicitly requests them.
 
 ## Quick Task Heuristics
 
@@ -164,13 +166,13 @@ When `/next quick` is used, prefer:
 
 When `/next bug` is used:
 
-1. **Filter to open bugs only**:
+1. **Filter to open bugs only** (excluding P4 backlog):
 
    ```bash
-   bd list --ready --type=bug
+   bd list --ready --type=bug --priority-max=3
    ```
 
-2. **Rank by priority**: P0 > P1 > P2 > P3 (highest priority bug first)
+2. **Rank by priority**: P0 > P1 > P2 > P3 (highest priority bug first, P4 excluded)
 
 3. **Auto-select and start** the top-ranked bug
 
