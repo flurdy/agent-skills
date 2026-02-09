@@ -44,7 +44,7 @@ If no PR number provided:
 gh pr view --json number
 ```
 
-### 2. Extract Jira Ticket
+### 2. Extract Jira Ticket (Optional)
 
 Find the Jira ticket from (in order of preference):
 
@@ -54,7 +54,9 @@ Find the Jira ticket from (in order of preference):
 
 Ticket pattern: 2-4 uppercase letters, dash, numbers (e.g., `AB-23`, `SSP-456`, `MAMA-89`)
 
-### 3. Fetch Jira Ticket Details
+**If no ticket found:** Continue with the review without Jira comparison. Skip step 3 and 5, and note in the output that no Jira ticket was linked.
+
+### 3. Fetch Jira Ticket Details (If Ticket Found)
 
 Use the Jira MCP tools to get ticket requirements:
 
@@ -94,13 +96,15 @@ grep -r "from.*{deleted-module}" --include="*.ts" --include="*.tsx"
 grep -r "import.*{deleted-module}" --include="*.ts" --include="*.tsx"
 ```
 
-### 5. Compare PR Against Jira ACs
+### 5. Compare PR Against Jira ACs (If Ticket Found)
 
 Create a checklist comparing each acceptance criterion against the implementation:
 
 | AC | Status | Implementation |
 |----|--------|----------------|
 | {AC from ticket} | {pass/fail/partial} | {How it's implemented or why it fails} |
+
+**If no ticket found:** Skip this step. The review will focus on code quality, CI status, and potential concerns without AC validation.
 
 ### 6. Check CI Status
 
@@ -128,20 +132,21 @@ Output a structured review:
 ## PR #{number} Review
 
 **Title:** {title}
-**Jira:** {ticket} - {summary}
+**Jira:** {ticket} - {summary}  (or "No Jira ticket linked" if none found)
 **Status:** {CI status}
 
 ### Changes Overview
 - {additions} additions, {deletions} deletions across {changedFiles} files
 - {Brief summary of what changed}
 
-### AC Checklist
+### AC Checklist (if Jira ticket found)
 | AC | Status | Implementation |
 |----|--------|----------------|
 | ... | ... | ... |
 
 ### Concerns
 - {List any concerns or none}
+- {If no Jira ticket: flag "No Jira ticket linked - cannot verify requirements"}
 
 ### Verdict
 {Safe to merge / Needs changes / Needs discussion}
@@ -176,4 +181,31 @@ Output a structured review:
 
 ### Verdict
 Safe to merge. PR fully implements all acceptance criteria.
+```
+
+## Example Output (No Jira Ticket)
+
+```markdown
+## PR #5801 Review
+
+**Title:** chore: update dependencies
+**Jira:** No Jira ticket linked
+**Status:** All checks passing
+
+### Changes Overview
+- 45 additions, 32 deletions across 3 files
+- Updates npm dependencies to latest versions
+- Updates lock file
+
+### Code Review
+- package.json: Minor version bumps for react, typescript
+- No breaking changes detected
+- No new dependencies added
+
+### Concerns
+- No Jira ticket linked - cannot verify against requirements
+- Consider adding a ticket reference for traceability
+
+### Verdict
+Looks safe to merge. Routine dependency update with passing CI. Recommend linking a Jira ticket for audit trail.
 ```
