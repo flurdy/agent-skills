@@ -1,11 +1,8 @@
 ---
 name: triage
-description: >
-  Create bead(s) from a user prompt. Investigates relevance, checks for duplicates,
-  and may split complex requests into multiple focused beads. Use when given a
-  feature request, bug report, or task description that should be tracked.
+description: "Create bead(s) from a user prompt or Jira ticket. Investigates relevance, checks for duplicates, and may split complex requests into multiple focused beads."
 allowed-tools: "Read,Bash(bd:*),Grep,Glob,Task"
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -16,6 +13,7 @@ Analyze user requests and create appropriate beads with intelligent investigatio
 ## When to Use
 
 - User describes a feature, bug, or task to track
+- User provides a Jira ticket to convert into bead(s)
 - Raw idea needs analysis before becoming actionable work
 - Need to check if work is already tracked or duplicated
 - Complex request might need to be split into multiple beads
@@ -24,6 +22,8 @@ Analyze user requests and create appropriate beads with intelligent investigatio
 
 ```
 /triage <description of feature, bug, or task>
+/triage ABC-123                          # Create bead(s) from a Jira ticket
+/triage ABC-123 break into subtasks      # Jira ticket with additional instructions
 ```
 
 ## What This Skill Does
@@ -65,6 +65,12 @@ Analyze user requests and create appropriate beads with intelligent investigatio
 
 # Complex request (may split)
 /triage Implement user authentication with OAuth, session management, and password reset
+
+# From a Jira ticket
+/triage SP-123
+
+# Jira ticket broken into subtasks
+/triage SP-123 break into subtasks
 ```
 
 ## Output Format
@@ -80,36 +86,69 @@ After triage, provide:
 
 When invoked:
 
-1. Parse the user's description to understand intent (feature/bug/task)
+1. Parse the input to determine the source:
+   - **Jira ticket**: Input matches pattern `[A-Z]{2,4}-\d+` (e.g., `SP-123`, `ABC-45`)
+   - **Free text**: Everything else — a description of a feature, bug, or task
 
-2. Quick codebase investigation:
+2. **If Jira ticket detected**, look up the ticket:
+   ```
+   mcp__jira__jira_get with:
+     path: /rest/api/3/issue/{ticketNumber}
+     jq: "{key: key, summary: fields.summary, type: fields.issuetype.name, description: fields.description}"
+   ```
+
+   Map the Jira issue type to bead type:
+
+   | Jira Issue Type | Bead Type |
+   |-----------------|-----------|
+   | Story           | feature   |
+   | Task            | task      |
+   | Bug             | bug       |
+   | Sub-task        | task      |
+   | Improvement     | feature   |
+   | Spike           | task      |
+   | Technical Debt  | task      |
+   | Default         | task      |
+
+   Use the ticket summary and description to populate the bead title and description. Any additional text after the ticket ID in the prompt is treated as extra instructions (e.g., "break into subtasks").
+
+3. Quick codebase investigation:
    ```bash
    # Search for related code/files
    # Check if area of code exists
    ```
 
-3. Check for duplicates:
+4. Check for duplicates:
    ```bash
    bd list --status=open
    bd search "<keywords from description>"
    ```
 
-4. Decide on bead structure:
+5. Decide on bead structure:
    - Single focused task → one bead
    - Multi-part work → multiple beads with dependencies
    - Vague request → ask clarifying questions first
 
-5. Create bead(s):
+6. Create bead(s):
    ```bash
+   # For Jira-sourced beads, include --external-ref and --labels
+   bd create --title="..." --type=feature|bug|task --priority=2 \
+     --description="..." \
+     --external-ref "jira-SP-123" \
+     --labels "jira"
+
+   # For free-text beads (no Jira reference)
    bd create --title="..." --type=feature|bug|task --priority=2 --description="..."
    ```
 
-6. If multiple beads, set dependencies:
+7. If multiple beads, set dependencies:
    ```bash
    bd dep add <dependent> <dependency>
    ```
 
-7. Report results with summary of open beads
+   When creating multiple beads from a single Jira ticket, all beads get the same `--external-ref` and `jira` label so they can be traced back to the source ticket.
+
+8. Report results with summary of open beads
 
 ## Priority Guidelines
 
