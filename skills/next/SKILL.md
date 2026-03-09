@@ -21,7 +21,7 @@ Help select the next bead to work on based on readiness and user preferences.
 
 ## Usage
 
-```
+```bash
 /next                    # Show ready beads, ranked by suitability
 /next task               # Auto-pick the next most suitable task and start it
 /next quick              # Auto-pick an easy win task and start it
@@ -72,7 +72,7 @@ Help select the next bead to work on based on readiness and user preferences.
 
 ## Output Format
 
-```
+```plaintext
 ## Ready to Work (5 of 12 open)
 
 | # | ID        | Pri | Type    | Parent/Subs | Title                          |
@@ -93,11 +93,13 @@ Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
 When invoked:
 
 1. Check for current open, not in-progress elsewhere, work:
+
    ```bash
    bd list --status=open
    ```
 
 2. Get ready (unblocked) beads with open status only, excluding P4 backlog:
+
    ```bash
    bd list --ready --priority-max=3
    ```
@@ -115,6 +117,7 @@ When invoked:
    - `<bead-id>`: Start that specific bead
 
 4. If specific bead ID provided:
+
    ```bash
    bd show <id>
    bd update <id> --status=in_progress
