@@ -1,0 +1,26 @@
+{
+  "allow": [
+    "Bash(./scripts/gitc status:*)",
+    "Bash(./scripts/gitc diff:*)",
+    "Bash(./scripts/gitc log:*)",
+    "Bash(./scripts/gitc add:*)",
+    "Bash(./scripts/gitc commit:*)",
+    "Bash(./scripts/gitc fetch:*)",
+    "Bash(./scripts/gitc stash:*)",
+    "Bash(./scripts/gitc show:*)",
+    "Bash(./scripts/gitc check-ignore:*)",
+    "Bash(./scripts/gitc ls-files:*)",
+    "Bash(./scripts/gitc ls-tree:*)"
+  ],
+  "ask": [
+    "Bash(./scripts/gitc branch:*)",
+    "Bash(./scripts/gitc worktree:*)",
+    "Bash(./scripts/gitc push:*)",
+    "Bash(./scripts/gitc checkout:*)",
+    "Bash(./scripts/gitc reset:*)",
+    "Bash(./scripts/gitc rebase:*)",
+    "Bash(./scripts/gitc merge:*)",
+    "Bash(./scripts/gitc clean:*)",
+    "Bash(./scripts/gitc pull:*)"
+  ]
+}

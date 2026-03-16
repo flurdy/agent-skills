@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+# gitc - Git wrapper for multi-repo workspace operations
+# Reorders args so subcommand comes first, service path last.
+# This enables Claude Code permission patterns like: Bash(./scripts/gitc status:*)
+#
+# Usage: gitc <subcommand> <service> [args...]
+# Example: gitc status my-service --short
+# Runs:    git -C <project-root>/my-service status --short
+#
+# Root detection: walks up from $PWD to find .gitc.conf, or uses GITC_ROOT env var.
+
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+  echo "Usage: gitc <subcommand> <service> [args...]" >&2
+  echo "Example: gitc status my-service --short" >&2
+  exit 1
+fi
+
+subcommand="$1"
+service="$2"
+shift 2
+
+# Resolve service path - if it's already absolute, use as-is
+if [[ "$service" = /* ]]; then
+  service_path="$service"
+else
+  # Find project root: GITC_ROOT env var, or walk up from CWD to find .gitc.conf
+  if [[ -n "${GITC_ROOT:-}" ]]; then
+    root="$GITC_ROOT"
+  else
+    root="$PWD"
+    while [[ "$root" != "/" ]]; do
+      [[ -f "$root/.gitc.conf" ]] && break
+      root="$(dirname "$root")"
+    done
+    if [[ "$root" == "/" ]]; then
+      echo "gitc: no .gitc.conf found in parent directories." >&2
+      echo "Create a .gitc.conf in your project root, or set GITC_ROOT." >&2
+      exit 1
+    fi
+  fi
+
+  # Validate service name against .gitc.conf if services are listed
+  if [[ -f "$root/.gitc.conf" ]]; then
+    services_line=$(grep -E '^services=' "$root/.gitc.conf" 2>/dev/null || true)
+    if [[ -n "$services_line" ]]; then
+      services="${services_line#services=}"
+      IFS=',' read -ra service_list <<< "$services"
+      found=false
+      for s in "${service_list[@]}"; do
+        s="$(echo "$s" | xargs)"  # trim whitespace
+        if [[ "$s" == "$service" ]]; then
+          found=true
+          break
+        fi
+      done
+      if [[ "$found" == "false" ]]; then
+        echo "gitc: unknown service '$service'." >&2
+        echo "Valid services: ${services}" >&2
+        exit 1
+      fi
+    fi
+  fi
+
+  service_path="${root}/${service}"
+fi
+
+exec git -C "$service_path" "$subcommand" "$@"
