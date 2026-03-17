@@ -132,6 +132,60 @@ cmd_labels() {
     | column -t -s $'\t'
 }
 
+# Ensure a label exists on the board (by name), return its ID
+ensure_label() {
+  local label_name="$1"
+  local label_color="${2:-}"
+  require_board
+
+  # Check if label already exists
+  local label_id
+  label_id=$(curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/labels?$(auth_params)" \
+    | jq -r --arg name "$label_name" '.[] | select(.name == $name) | .id' | head -1)
+
+  if [[ -n "$label_id" ]]; then
+    echo "$label_id"
+    return
+  fi
+
+  # Create the label
+  local payload
+  payload=$(jq -n --arg name "$label_name" --arg color "$label_color" '{name: $name, color: $color}')
+  curl -sf -X POST "${BASE_URL}/boards/${TRELLO_BOARD_ID}/labels?$(auth_params)" \
+    -H "Content-Type: application/json" \
+    -d "$payload" \
+    | jq -r '.id'
+}
+
+cmd_add_label() {
+  local card_id="$1"
+  local label_name="$2"
+  local label_color="${3:-}"
+  [[ -n "$card_id" ]] || die "Usage: trello-api.sh add-label <card-id> <label-name> [color]"
+  [[ -n "$label_name" ]] || die "Usage: trello-api.sh add-label <card-id> <label-name> [color]"
+
+  local label_id
+  label_id=$(ensure_label "$label_name" "$label_color")
+  [[ -n "$label_id" ]] || die "Could not find or create label: $label_name"
+
+  curl -sf -X POST "${BASE_URL}/cards/${card_id}/idLabels?$(auth_params)" \
+    -H "Content-Type: application/json" \
+    -d "\"${label_id}\"" >/dev/null
+  echo "Added label '$label_name' to card"
+}
+
+cmd_comment() {
+  local card_id="$1"
+  local text="$2"
+  [[ -n "$card_id" ]] || die "Usage: trello-api.sh comment <card-id> <text>"
+  [[ -n "$text" ]] || die "Usage: trello-api.sh comment <card-id> <text>"
+
+  curl -sf -X POST "${BASE_URL}/cards/${card_id}/actions/comments?$(auth_params)" \
+    -H "Content-Type: application/json" \
+    -d "$(jq -n --arg text "$text" '{text: $text}')" \
+    | jq '{id, type: .type, text: .data.text}'
+}
+
 cmd_help() {
   cat <<'USAGE'
 Usage: trello-api.sh <command> [args...]
@@ -144,6 +198,8 @@ Commands:
   card <card-id>              Show a single card detail
   move <card-id> <list-name>  Move a card to a different list
   create <list> <title> [desc] Create a new card in a list
+  add-label <card-id> <name> [color]  Add a label to a card (creates if needed)
+  comment <card-id> <text>    Add a comment to a card
   labels                      List labels on the board
   list-id <list-name>         Resolve a list name to its ID
 
@@ -172,6 +228,8 @@ case "$command" in
   card)          cmd_card "${1:-}" ;;
   move)          cmd_move "${1:-}" "${2:-}" ;;
   create)        cmd_create "${1:-}" "${2:-}" "${3:-}" ;;
+  add-label)     cmd_add_label "${1:-}" "${2:-}" "${3:-}" ;;
+  comment)       cmd_comment "${1:-}" "${2:-}" ;;
   labels)        cmd_labels ;;
   list-id)       resolve_list_id "${1:-}" ;;
   *)             die "Unknown command: $command. Run with 'help' for usage." ;;

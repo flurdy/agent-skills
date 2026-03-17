@@ -9,6 +9,8 @@ TRELLO_API="$SCRIPT_DIR/trello-api.sh"
 
 TRIAGE_LIST="${TRELLO_LIST_TRIAGE:-Triage}"
 BUGS_LIST="${TRELLO_LIST_BUGS:-Bugs}"
+BACKLOG_LIST="${TRELLO_LIST_BACKLOG:-Backlog}"
+BEAD_LABEL="${TRELLO_BEAD_LABEL:-bead}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
@@ -64,8 +66,11 @@ ${card_desc}"
 
   # Check for existing bead with same title and trello label
   if bd list --status=open --label=trello 2>/dev/null | grep -qF "$card_name"; then
-    echo "SKIP: Bead already exists for card: $card_name"
-    return 0
+    echo "SKIP: Bead already exists for: $card_name"
+    echo "  Card remains in $TRIAGE_LIST — move manually or use:"
+    echo "    ./scripts/trello-api move $card_id Shredder"
+    echo "    ./scripts/trello-api move $card_id $BACKLOG_LIST"
+    return 1
   fi
 
   # Create the bead
@@ -80,11 +85,18 @@ ${card_desc}"
 
   echo "$result"
 
-  # Move card if requested
-  if [[ -n "$move_after" ]]; then
-    "$TRELLO_API" move "$card_id" "$move_after" >/dev/null 2>&1
-    echo "  Moved Trello card to: $move_after"
+  # Extract bead ID from creation output
+  local bead_id
+  bead_id=$(echo "$result" | grep -oP 'letterbox-\w+' | head -1 || true)
+
+  # Add 'bead' label, comment with bead ID, then move card
+  "$TRELLO_API" add-label "$card_id" "$BEAD_LABEL" "sky" 2>/dev/null || true
+  if [[ -n "$bead_id" ]]; then
+    "$TRELLO_API" comment "$card_id" "Bead created: $bead_id" >/dev/null 2>&1 || true
   fi
+  local dest="${move_after:-$BACKLOG_LIST}"
+  "$TRELLO_API" move "$card_id" "$dest" >/dev/null 2>&1
+  echo "  Labelled '$BEAD_LABEL', commented, and moved to: $dest"
 }
 
 cmd_list() {
@@ -128,7 +140,7 @@ cmd_pull() {
       continue
     fi
 
-    pull_card "$id" "$name" "$desc" "$url" "$label_colors" "$list_name" "$move_after"
+    pull_card "$id" "$name" "$desc" "$url" "$label_colors" "$list_name" "$move_after" || true
     echo ""
   done
 }
@@ -140,20 +152,24 @@ Usage: trello-pull.sh <command> [args...]
 Commands:
   list [list-name]           Show cards in triage list (default: $TRELLO_LIST_TRIAGE)
   pull [card-id] [move-to]   Pull triage cards into beads
+                              - Creates bead, adds 'bead' label to card, moves to Backlog
+                              - Skipped cards stay in Triage with move suggestions
                               card-id: optional, pull only this card
-                              move-to: optional, move card to this list after pull
+                              move-to: optional, override destination (default: Backlog)
   pull-all [move-to]         Pull all triage cards (shorthand)
   help                       Show this help
 
 Environment variables:
   TRELLO_LIST_TRIAGE   Triage column name (default: "Triage")
   TRELLO_LIST_BUGS     Bugs column name (default: "Bugs")
+  TRELLO_LIST_BACKLOG  Backlog column name (default: "Backlog")
+  TRELLO_BEAD_LABEL    Label added to pulled cards (default: "bead")
 
 Examples:
   trello-pull.sh list                          # Show triage cards
-  trello-pull.sh pull                          # Pull all, don't move
-  trello-pull.sh pull "" "Backlog"             # Pull all, move to Backlog
-  trello-pull.sh pull 69b8b8d7... "Backlog"   # Pull one card, move to Backlog
+  trello-pull.sh pull                          # Pull all → label + move to Backlog
+  trello-pull.sh pull "" "Icebox"              # Pull all → label + move to Icebox
+  trello-pull.sh pull 69b8b8d7...             # Pull one card
 USAGE
 }
 
