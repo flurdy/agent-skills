@@ -1,9 +1,9 @@
 ---
-name: trello
-description: "Interact with Trello boards — list cards, show board overview, pull triage cards into beads, and sync status back. Use for project management integration between Trello and Beads."
+name: trello-beads
+description: "Integrate Trello boards with Beads — pull triage cards into beads, sync closed beads back to Trello. Use for project management bridging between Trello and Beads."
 ---
 
-# Trello — Board Integration for Beads Workflow
+# Trello-Beads — Board Integration for Beads Workflow
 
 Interact with Trello boards and integrate with Beads project management.
 
@@ -20,14 +20,15 @@ Interact with Trello boards and integrate with Beads project management.
 
 ## Setup
 
-When invoked as `/trello setup`, or when setting up a new project:
+When invoked as `/trello-beads setup`, or when setting up a new project:
 
 ### Step 1: Symlink scripts
 
 ```bash
 mkdir -p scripts
-ln -sf ~/.claude/skills/trello/resources/trello-api.sh scripts/trello-api
-ln -sf ~/.claude/skills/trello/resources/trello-pull.sh scripts/trello-pull
+ln -sf ~/.claude/skills/trello-beads/resources/trello-api.sh scripts/trello-api
+ln -sf ~/.claude/skills/trello-beads/resources/trello-pull.sh scripts/trello-pull
+ln -sf ~/.claude/skills/trello-beads/resources/trello-sync.sh scripts/trello-sync
 ```
 
 Verify:
@@ -69,13 +70,13 @@ direnv allow
 ## Usage
 
 ```
-/trello                          # Show board overview
-/trello setup                    # Set up symlinks and config for a project
-/trello triage                   # List cards in the triage column
-/trello pull                     # Pull all triage cards into beads
-/trello pull <card-id>           # Pull a specific card into a bead
-/trello cards <list-name>        # List cards in any column
-/trello sync                     # Update Trello cards from closed beads
+/trello-beads                          # Show board overview
+/trello-beads setup                    # Set up symlinks and config for a project
+/trello-beads triage                   # List cards in the triage column
+/trello-beads pull                     # Pull all triage cards into beads
+/trello-beads pull <card-id>           # Pull a specific card into a bead
+/trello-beads cards <list-name>        # List cards in any column
+/trello-beads sync                     # Update Trello cards from closed beads
 ```
 
 ## Commands
