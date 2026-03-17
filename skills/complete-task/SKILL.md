@@ -107,13 +107,7 @@ After closing:
 - If implementation revealed new issues or TODOs, mention them to the user
 - Suggest creating follow-up beads if appropriate (but don't auto-create)
 
-### 7. Sync
-
-```bash
-bd sync
-```
-
-### 8. Report
+### 7. Report
 
 Summarize what was done:
 

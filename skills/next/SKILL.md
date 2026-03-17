@@ -109,23 +109,31 @@ When invoked:
    - Use `--priority-max=3` to exclude P4 backlog items (P4 = future/someday, never auto-pick)
    - Another session may be working on in_progress items - picking them up causes conflicts
 
-3. Parse command argument:
+3. **Filter out beads with unresolved dependencies** (critical — `--ready` may not filter these):
+
+   ```bash
+   bd blocked
+   ```
+
+   Cross-reference the ready list against `bd blocked` output. Remove any bead that appears in the blocked list. The `bd blocked` command is the authoritative source for which beads have unresolved dependencies. Only beads that are NOT in the blocked list should be presented to the user.
+
+4. Parse command argument:
    - (none): Show ranked list, ask user to pick
    - `task`: Auto-select top-ranked bead and start it
    - `quick`: Auto-select an easy win task and start it
    - `bug`: Auto-select top-ranked bug and start it (see Bug Mode below)
    - `<bead-id>`: Start that specific bead
 
-4. If specific bead ID provided:
+5. If specific bead ID provided:
 
    ```bash
    bd show <id>
    bd update <id> --status=in_progress
    ```
 
-5. Otherwise, present top 5 options and ask user to choose
+6. Otherwise, present top 5 options and ask user to choose
 
-6. On selection:
+7. On selection:
    - Mark as in_progress
    - Show full details with `bd show`
    - If bead has description with steps, highlight first step
