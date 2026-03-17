@@ -1,0 +1,166 @@
+---
+name: trello
+description: "Interact with Trello boards — list cards, show board overview, pull triage cards into beads, and sync status back. Use for project management integration between Trello and Beads."
+---
+
+# Trello — Board Integration for Beads Workflow
+
+Interact with Trello boards and integrate with Beads project management.
+
+## Prerequisites
+
+- Environment variables set (via direnv `.env.local`):
+  - `TRELLO_API_KEY` — from https://trello.com/power-ups/admin
+  - `TRELLO_TOKEN` — generated from the same page
+  - `TRELLO_BOARD_ID` — your board ID
+  - `TRELLO_LIST_TRIAGE` — column name for cards to pull into beads (default: "Triage")
+  - `TRELLO_LIST_BUGS` — bug column name (default: "Bugs")
+  - `TRELLO_LIST_DONE` — done column name (default: "Done")
+- Scripts symlinked into project `scripts/` directory (see Setup below)
+
+## Setup
+
+When invoked as `/trello setup`, or when setting up a new project:
+
+### Step 1: Symlink scripts
+
+```bash
+mkdir -p scripts
+ln -sf ~/.claude/skills/trello/resources/trello-api.sh scripts/trello-api
+ln -sf ~/.claude/skills/trello/resources/trello-pull.sh scripts/trello-pull
+```
+
+Verify:
+```bash
+./scripts/trello-api help
+./scripts/trello-pull help
+```
+
+### Step 2: Create .env.local from template
+
+Copy `.env.local.dist` if it exists, or create `.env.local` with:
+
+```
+TRELLO_API_KEY=<your-api-key>
+TRELLO_TOKEN=<your-token>
+TRELLO_BOARD_ID=<your-board-id>
+TRELLO_LIST_TRIAGE=Triage
+TRELLO_LIST_BUGS=Bugs
+TRELLO_LIST_DONE=Done
+```
+
+Find your board ID with:
+```bash
+./scripts/trello-api boards
+```
+
+### Step 3: Ensure .env.local is gitignored
+
+Check `.gitignore` contains `.env.local` to avoid committing secrets.
+
+### Step 4: Verify
+
+```bash
+direnv allow
+./scripts/trello-api lists
+./scripts/trello-pull list
+```
+
+## Usage
+
+```
+/trello                          # Show board overview
+/trello setup                    # Set up symlinks and config for a project
+/trello triage                   # List cards in the triage column
+/trello pull                     # Pull all triage cards into beads
+/trello pull <card-id>           # Pull a specific card into a bead
+/trello cards <list-name>        # List cards in any column
+/trello sync                     # Update Trello cards from closed beads
+```
+
+## Commands
+
+### Board Overview (default)
+
+Show all lists and card counts:
+
+```bash
+./scripts/trello-api lists
+```
+
+Then for each list with cards, show a summary:
+
+```bash
+./scripts/trello-api cards-summary "<list-name>"
+```
+
+Present as a formatted board overview to the user.
+
+### Triage — List Cards Ready to Pull
+
+```bash
+./scripts/trello-pull list
+```
+
+Show the cards with their titles, labels, and Trello URLs.
+
+### Pull — Create Beads from Trello Cards
+
+Use the pull script directly:
+
+```bash
+# Pull all triage cards into beads
+./scripts/trello-pull pull
+
+# Pull a specific card
+./scripts/trello-pull pull <card-id>
+
+# Pull all and move processed cards to Backlog
+./scripts/trello-pull pull-all Backlog
+```
+
+The script handles:
+- Mapping Trello labels to bead type/priority
+- Duplicate detection (won't create if bead with same title + trello label exists)
+- Adding `trello-<card-id>` as external-ref and `trello` label to beads
+- Optional card movement after pull
+
+**Label-to-bead mapping:**
+
+| Trello Label/Color | Bead Type | Bead Priority |
+|---------------------|-----------|---------------|
+| bug, red            | bug       | P2            |
+| feature, green      | feature   | P2            |
+| minor, yellow       | task      | P3            |
+| (no label)          | task      | P2            |
+
+Cards from the Bugs column are always type=bug regardless of labels.
+
+### Cards — View Any Column
+
+```bash
+./scripts/trello-api cards-summary "<list-name>"
+./scripts/trello-api cards "<list-name>"     # Full JSON
+```
+
+### Sync — Update Trello from Closed Beads (future)
+
+Find beads with trello external refs that are closed:
+
+```bash
+bd list --status=closed --label=trello
+```
+
+For each closed bead with an external-ref matching `trello-<card-id>`:
+- Move the corresponding Trello card to the Done list
+
+```bash
+DONE_LIST="${TRELLO_LIST_DONE:-Done}"
+./scripts/trello-api move <card-id> "$DONE_LIST"
+```
+
+## Notes
+
+- Always confirm before moving/modifying Trello cards
+- Scripts require `curl` and `jq`
+- Rate limits: 300 requests per 10 seconds per API key
