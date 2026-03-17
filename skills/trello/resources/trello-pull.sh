@@ -4,7 +4,7 @@
 # Optional: TRELLO_LIST_TRIAGE (default: "Triage")
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 TRELLO_API="$SCRIPT_DIR/trello-api.sh"
 
 TRIAGE_LIST="${TRELLO_LIST_TRIAGE:-Triage}"
