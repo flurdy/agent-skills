@@ -10,6 +10,7 @@ TRELLO_API="$SCRIPT_DIR/trello-api.sh"
 TRIAGE_LIST="${TRELLO_LIST_TRIAGE:-Triage}"
 BUGS_LIST="${TRELLO_LIST_BUGS:-Bugs}"
 BACKLOG_LIST="${TRELLO_LIST_BACKLOG:-Backlog}"
+ICEBOX_LIST="${TRELLO_LIST_ICEBOX:-Icebox}"
 BEAD_LABEL="${TRELLO_BEAD_LABEL:-bead}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -94,7 +95,11 @@ ${card_desc}"
   if [[ -n "$bead_id" ]]; then
     "$TRELLO_API" comment "$card_id" "Bead created: $bead_id" >/dev/null 2>&1 || true
   fi
+  # Route card based on type: bugs→Bugs, rest→Backlog
   local dest="${move_after:-$BACKLOG_LIST}"
+  if [[ -z "$move_after" && "$bead_type" == "bug" ]]; then
+    dest="$BUGS_LIST"
+  fi
   "$TRELLO_API" move "$card_id" "$dest" >/dev/null 2>&1
   echo "  Labelled '$BEAD_LABEL', commented, and moved to: $dest"
 }
