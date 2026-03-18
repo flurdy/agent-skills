@@ -4,7 +4,7 @@ description: >
   Pick the next bead to work on. Shows ready tasks (no blockers), applies user
   preferences for ordering (priority, type, recency), and helps select work.
 allowed-tools: "Read,Bash(bd:*),AskUserQuestion"
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -43,7 +43,7 @@ Help select the next bead to work on based on readiness and user preferences.
 
 3. **Present Options**
    - Show top 5 candidates with key details
-   - Include: ID, title, priority, type, age
+   - Include: ID, title, priority, type, labels (services/tags), age
    - Ask user to pick or provide different criteria
 
 4. **Start Work**
@@ -67,7 +67,7 @@ Help select the next bead to work on based on readiness and user preferences.
 /next bug
 
 # Start a specific bead
-/next gauge-abc
+/next mycode-abc
 ```
 
 ## Output Format
@@ -75,15 +75,15 @@ Help select the next bead to work on based on readiness and user preferences.
 ```plaintext
 ## Ready to Work (5 of 12 open)
 
-| # | ID        | Pri | Type    | Parent/Subs | Title                          |
-|---|-----------|-----|---------|-------------|--------------------------------|
-| 1 | gauge-abc | P1  | bug     | -           | Fix login timeout issue        |
-| 2 | gauge-def | P2  | feature | 3 subtasks  | Add export to CSV              |
-| 3 | gauge-ghi | P2  | task    | gauge-def   | Update dependencies            |
-| 4 | gauge-jkl | P3  | feature | -           | Dark mode toggle               |
-| 5 | gauge-mno | P3  | task    | 2 subtasks  | Refactor auth service          |
+| # | ID         | Pri | Type    | Labels              | Title                          |
+|---|------------|-----|---------|---------------------|--------------------------------|
+| 1 | mycode-abc | P1  | bug     | frontend            | Fix login timeout issue        |
+| 2 | mycode-def | P2  | feature | backend, orders     | Add export to CSV              |
+| 3 | mycode-ghi | P2  | task    | auth                | Update dependencies            |
+| 4 | mycode-jkl | P3  | feature | frontend, css       | Dark mode toggle               |
+| 5 | mycode-mno | P3  | task    | events, auth        | Refactor auth service          |
 
-Currently in progress: gauge-xyz "Implement caching layer"
+Currently in progress: mycode-xyz "Implement caching layer"
 
 Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
 ```
@@ -131,9 +131,17 @@ When invoked:
    bd update <id> --status=in_progress
    ```
 
-6. Otherwise, present top 5 options and ask user to choose
+6. **Fetch labels** for each candidate bead to populate the Labels column:
 
-7. On selection:
+   ```bash
+   bd show <id>
+   ```
+
+   Extract the `LABELS:` line from the output. If a bead has no labels, show `-` in the Labels column. Labels provide context about which services, components, or areas are affected — useful in both multi-service and single-service projects.
+
+7. Otherwise, present top 5 options (with Labels column) and ask user to choose
+
+8. On selection:
    - Mark as in_progress
    - Show full details with `bd show`
    - If bead has description with steps, highlight first step
