@@ -18,11 +18,16 @@ const viewport = process.env.SCREENSHOT_ARG_VIEWPORT || 'desktop';
 const outputPath = process.env.SCREENSHOT_ARG_OUTPUT || `/tmp/screenshot-${Date.now()}.png`;
 
 const viewports = {
-  desktop: { width: 1280, height: 800 },
+  desktop: { width: 1280, height: 900 },
+  tablet: { width: 768, height: 1024 },
   mobile: { width: 375, height: 812 },
 };
 
-const selected = viewports[viewport] || viewports.desktop;
+// Support custom dimensions: "1024x768"
+const customMatch = viewport.match(/^(\d+)x(\d+)$/);
+const selected = customMatch
+  ? { width: parseInt(customMatch[1]), height: parseInt(customMatch[2]) }
+  : viewports[viewport] || viewports.desktop;
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: selected });
@@ -31,7 +36,7 @@ const page = await context.newPage();
 try {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
   const fullPath = resolve(outputPath);
-  await page.screenshot({ path: fullPath, fullPage: true });
+  await page.screenshot({ path: fullPath, fullPage: false });
   console.log(fullPath);
 } catch (err) {
   console.error(`Error: ${err.message}`);
