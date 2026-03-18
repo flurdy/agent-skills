@@ -6,6 +6,7 @@
 | beads-migrate-to-dolt | Migrate a beads installation from classic format (SQLite/JSONL) to the new Dolt-based format |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
 | complete-task | Complete an in-progress task by running clean-code, staging, committing, and closing the bead |
+| confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker) |
 | create-pr | Create a pull request from the current branch following project conventions |
 | eas-build-error | Show the status and errors from the latest EAS build |
