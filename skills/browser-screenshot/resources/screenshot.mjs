@@ -13,7 +13,11 @@ const viewports = {
   mobile: { width: 375, height: 812 },
 };
 
-const selected = viewports[viewport] || viewports.desktop;
+// Support custom dimensions: "1024x768"
+const customMatch = viewport.match(/^(\d+)x(\d+)$/);
+const selected = customMatch
+  ? { width: parseInt(customMatch[1]), height: parseInt(customMatch[2]) }
+  : viewports[viewport] || viewports.desktop;
 
 const browser = await chromium.launch({ headless: true });
 const context = await browser.newContext({ viewport: selected });

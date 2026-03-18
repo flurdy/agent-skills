@@ -40,8 +40,10 @@ ln -sfn ~/.claude/skills/browser-screenshot/resources/screenshot.sh scripts/scre
 2. Determine the viewport:
    - If `$ARGUMENTS` contains `mobile`, use mobile viewport (375x812)
    - If `$ARGUMENTS` contains `tablet`, use tablet viewport (768x1024)
+   - If `$ARGUMENTS` contains a custom size like `1024x768`, use those dimensions
    - Default: desktop viewport (1280x900)
    - If `$ARGUMENTS` contains `both`, take two screenshots (desktop and mobile)
+   - Keep both dimensions under 2000px to avoid image limit errors
 
 3. Run the screenshot script via the project symlink:
 
