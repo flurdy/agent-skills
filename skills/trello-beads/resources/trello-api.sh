@@ -168,9 +168,7 @@ cmd_add_label() {
   label_id=$(ensure_label "$label_name" "$label_color")
   [[ -n "$label_id" ]] || die "Could not find or create label: $label_name"
 
-  curl -sf -X POST "${BASE_URL}/cards/${card_id}/idLabels?$(auth_params)" \
-    -H "Content-Type: application/json" \
-    -d "\"${label_id}\"" >/dev/null
+  curl -sf -X POST "${BASE_URL}/cards/${card_id}/idLabels?$(auth_params)&value=${label_id}" >/dev/null
   echo "Added label '$label_name' to card"
 }
 
