@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+
+import { chromium } from 'playwright';
+import { resolve } from 'path';
+
+const url = process.argv[2] || process.env.SCREENSHOT_URL || 'http://localhost:3000';
+const viewport = process.argv[3] || 'desktop';
+const outputPath = process.argv[4] || `screenshot-${Date.now()}.png`;
+
+const viewports = {
+  desktop: { width: 1280, height: 800 },
+  mobile: { width: 375, height: 812 },
+};
+
+const selected = viewports[viewport] || viewports.desktop;
+
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ viewport: selected });
+const page = await context.newPage();
+
+try {
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
+  const fullPath = resolve(outputPath);
+  await page.screenshot({ path: fullPath, fullPage: true });
+  console.log(fullPath);
+} catch (err) {
+  console.error(`Error: ${err.message}`);
+  process.exit(1);
+} finally {
+  await browser.close();
+}
