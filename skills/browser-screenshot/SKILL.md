@@ -39,7 +39,8 @@ ln -sfn ~/.claude/skills/browser-screenshot/resources/screenshot.sh scripts/scre
 
 2. Determine the viewport:
    - If `$ARGUMENTS` contains `mobile`, use mobile viewport (375x812)
-   - Default: desktop viewport (1280x800)
+   - If `$ARGUMENTS` contains `tablet`, use tablet viewport (768x1024)
+   - Default: desktop viewport (1280x900)
    - If `$ARGUMENTS` contains `both`, take two screenshots (desktop and mobile)
 
 3. Run the screenshot script via the project symlink:
@@ -65,5 +66,5 @@ Screenshots are saved to `/tmp/claude-screenshots/screenshot-<viewport>.png` by 
 ## Notes
 
 - The script uses `waitUntil: 'networkidle'` with a 15s timeout — if the page loads async content, the screenshot will wait for it.
-- Screenshots are full-page (scrollable content captured).
+- Screenshots capture the viewport only (not full-page scroll) to stay within the 2000px image dimension limit.
 - For rapid iteration: make the CSS change, then run `/browser-screenshot` to verify, repeat.

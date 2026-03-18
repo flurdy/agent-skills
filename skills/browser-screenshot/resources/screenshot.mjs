@@ -8,7 +8,8 @@ const viewport = process.argv[3] || 'desktop';
 const outputPath = process.argv[4] || `screenshot-${Date.now()}.png`;
 
 const viewports = {
-  desktop: { width: 1280, height: 800 },
+  desktop: { width: 1280, height: 900 },
+  tablet: { width: 768, height: 1024 },
   mobile: { width: 375, height: 812 },
 };
 
@@ -21,7 +22,7 @@ const page = await context.newPage();
 try {
   await page.goto(url, { waitUntil: 'networkidle', timeout: 15000 });
   const fullPath = resolve(outputPath);
-  await page.screenshot({ path: fullPath, fullPage: true });
+  await page.screenshot({ path: fullPath, fullPage: false });
   console.log(fullPath);
 } catch (err) {
   console.error(`Error: ${err.message}`);
