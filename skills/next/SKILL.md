@@ -92,56 +92,37 @@ Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
 
 When invoked:
 
-1. Check for current open, not in-progress elsewhere, work:
+1. **Get the ranked table** using the `next-bd` script (handles ready list, blocked filtering, label fetching, and ranking in one command):
 
    ```bash
-   bd list --status=open
+   # Preferred — if symlinked into the project's scripts/
+   ./scripts/next-bd --in-progress
    ```
 
-2. Get ready (unblocked) beads with open status only, excluding P4 backlog:
-
+   Fallback if not available in the project's scripts/:
    ```bash
-   bd list --ready --priority-max=3
+   $HOME/.claude/skills/next/resources/next-bd --in-progress
    ```
 
-   **Important**:
-   - Use `bd list --ready` (not `bd ready`) to exclude `in_progress` beads
-   - Use `--priority-max=3` to exclude P4 backlog items (P4 = future/someday, never auto-pick)
-   - Another session may be working on in_progress items - picking them up causes conflicts
+   This outputs a markdown table ranked by the priority algorithm, with labels included, blocked beads filtered out, and in-progress beads shown for awareness.
 
-3. **Filter out beads with unresolved dependencies** (critical — `--ready` may not filter these):
-
-   ```bash
-   bd blocked
-   ```
-
-   Cross-reference the ready list against `bd blocked` output. Remove any bead that appears in the blocked list. The `bd blocked` command is the authoritative source for which beads have unresolved dependencies. Only beads that are NOT in the blocked list should be presented to the user.
-
-4. Parse command argument:
-   - (none): Show ranked list, ask user to pick
+2. Parse command argument:
+   - (none): Show the script output, ask user to pick
    - `task`: Auto-select top-ranked bead and start it
    - `quick`: Auto-select an easy win task and start it
    - `bug`: Auto-select top-ranked bug and start it (see Bug Mode below)
    - `<bead-id>`: Start that specific bead
 
-5. If specific bead ID provided:
+3. If specific bead ID provided:
 
    ```bash
    bd show <id>
    bd update <id> --status=in_progress
    ```
 
-6. **Fetch labels** for each candidate bead to populate the Labels column:
+4. Otherwise, present the script output and ask user to choose
 
-   ```bash
-   bd show <id>
-   ```
-
-   Extract the `LABELS:` line from the output. If a bead has no labels, show `-` in the Labels column. Labels provide context about which services, components, or areas are affected — useful in both multi-service and single-service projects.
-
-7. Otherwise, present top 5 options (with Labels column) and ask user to choose
-
-8. On selection:
+5. On selection:
    - Mark as in_progress
    - Show full details with `bd show`
    - If bead has description with steps, highlight first step
