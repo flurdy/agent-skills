@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# mgit - Git wrapper for multi-repo workspace operations
+# Reorders args so subcommand comes first, service path last.
+# This enables Claude Code permission patterns like: Bash(./scripts/mgit status:*)
+#
+# Usage: mgit <subcommand> <service> [args...]
+# Example: mgit status my-service --short
+# Runs:    git -C <project-root>/my-service status --short
+#
+# Special: mgit <subcommand> root [args...]   (or "." instead of "root")
+# Runs:    git -C <project-root> <subcommand> [args...]
+#
+# Root detection: walks up from $PWD to find .mgit.conf, or uses MGIT_ROOT env var.
+
+set -euo pipefail
+
+if [ $# -lt 2 ]; then
+  echo "Usage: mgit <subcommand> <service> [args...]" >&2
+  echo "Example: mgit status my-service --short" >&2
+  echo "Use 'root' or '.' as service name for the root repo." >&2
+  exit 1
+fi
+
+subcommand="$1"
+service="$2"
+shift 2
+
+# Resolve service path - if it's already absolute, use as-is
+if [[ "$service" = /* ]]; then
+  service_path="$service"
+else
+  # Find project root: MGIT_ROOT env var, or walk up from CWD to find .mgit.conf
+  if [[ -n "${MGIT_ROOT:-}" ]]; then
+    root="$MGIT_ROOT"
+  else
+    root="$PWD"
+    while [[ "$root" != "/" ]]; do
+      [[ -f "$root/.mgit.conf" ]] && break
+      root="$(dirname "$root")"
+    done
+    if [[ "$root" == "/" ]]; then
+      echo "mgit: no .mgit.conf found in parent directories." >&2
+      echo "Create a .mgit.conf in your project root, or set MGIT_ROOT." >&2
+      exit 1
+    fi
+  fi
+
+  # Handle root repo aliases
+  if [[ "$service" == "root" || "$service" == "." ]]; then
+    service_path="$root"
+  else
+    # Validate service name against .mgit.conf if services are listed
+    if [[ -f "$root/.mgit.conf" ]]; then
+      services_line=$(grep -E '^services=' "$root/.mgit.conf" 2>/dev/null || true)
+      if [[ -n "$services_line" ]]; then
+        services="${services_line#services=}"
+        IFS=',' read -ra service_list <<< "$services"
+        found=false
+        for s in "${service_list[@]}"; do
+          s="$(echo "$s" | xargs)"  # trim whitespace
+          if [[ "$s" == "$service" ]]; then
+            found=true
+            break
+          fi
+        done
+        if [[ "$found" == "false" ]]; then
+          echo "mgit: unknown service '$service'." >&2
+          echo "Valid services: ${services}" >&2
+          echo "Use 'root' or '.' for the root repo." >&2
+          exit 1
+        fi
+      fi
+    fi
+
+    service_path="${root}/${service}"
+  fi
+fi
+
+exec git -C "$service_path" "$subcommand" "$@"

@@ -1,6 +1,6 @@
 ---
 name: setup-multirepo-git
-description: Multi-repo git workflow rules and setup. Provides gitc wrapper for safe permission patterns across independent service repositories. Use when setting up a new multi-repo workspace or when working with multi-repo git operations.
+description: Multi-repo git workflow rules and setup. Provides mgit wrapper for safe permission patterns across independent service repositories. Use when setting up a new multi-repo workspace or when working with multi-repo git operations.
 ---
 
 # Multi-Repo Git Workflow
@@ -9,21 +9,29 @@ This skill provides rules for working with multi-repo workspaces (multiple indep
 
 ## Multi-Repo Git Rules
 
-These rules apply whenever working in a project that has a `.gitc.conf` file in its root.
+These rules apply whenever working in a project that has a `.mgit.conf` file in its root.
 
-### Always use gitc for service git operations
+### Always use mgit for service git operations
 
-**Rule: Use `./scripts/gitc <subcommand> <service>` for all git operations on service repositories.** This wrapper runs `git -C` under the hood but puts the subcommand first and service last, enabling permission patterns to distinguish safe vs dangerous operations.
+**Rule: Use `./scripts/mgit <subcommand> <service>` for all git operations on service repositories.** This wrapper runs `git -C` under the hood but puts the subcommand first and service last, enabling permission patterns to distinguish safe vs dangerous operations.
+
+Use `root` or `.` as the service name for the root repo.
 
 Never use `cd <service> && git ...` (breaks auto-approval). Never run bare `git add/status/commit` expecting it to pick up service files — that targets the root repo.
 
 ```bash
 # CORRECT — works from project root, auto-approvable for safe operations
-./scripts/gitc status my-service --short
-./scripts/gitc diff my-service
-./scripts/gitc add my-service src/main/MyFile.scala
-./scripts/gitc commit my-service -m "fix: something"
-./scripts/gitc log my-service --oneline -5
+./scripts/mgit status my-service --short
+./scripts/mgit diff my-service
+./scripts/mgit add my-service src/main/MyFile.scala
+./scripts/mgit commit my-service -m "fix: something"
+./scripts/mgit log my-service --oneline -5
+
+# CORRECT — root repo operations
+./scripts/mgit status root --short
+./scripts/mgit diff .
+./scripts/mgit add root AGENTS.md
+./scripts/mgit commit . -m "docs: update agents"
 
 # WRONG — requires manual approval (permission wildcards don't match mid-string)
 git -C my-service status --short
@@ -39,12 +47,12 @@ git status  # only shows root repo changes
 ### Which repo does a file belong to?
 
 Check the first path component after the project root:
-- If it matches a service name listed in `.gitc.conf` → use `./scripts/gitc <subcommand> <service>`
-- If it's a root-level file (AGENTS.md, docs/, scripts/, etc.) → use the root repo directly
+- If it matches a service name listed in `.mgit.conf` → use `./scripts/mgit <subcommand> <service>`
+- If it's a root-level file (AGENTS.md, docs/, scripts/, etc.) → use `./scripts/mgit <subcommand> root` (or `.`)
 
 ### Multiple services in one session
 
-When committing changes across multiple services, run separate gitc commands for each service. Each service gets its own commit.
+When committing changes across multiple services, run separate mgit commands for each service. Each service gets its own commit.
 
 ### Git best practices
 
@@ -70,28 +78,29 @@ done
 
 Present the discovered list to the user for confirmation. They may want to add or remove entries.
 
-### Step 2: Create .gitc.conf
+### Step 2: Create .mgit.conf
 
-Create a `.gitc.conf` file in the project root with the confirmed service list:
+Create a `.mgit.conf` file in the project root with the confirmed service list:
 
 ```ini
 # Multi-repo workspace configuration
-# Presence of this file marks the project root for gitc
+# Presence of this file marks the project root for mgit
 services=service-a,service-b,service-c
 ```
 
-### Step 3: Symlink the gitc script
+### Step 3: Symlink the mgit script
 
 Ensure a `scripts/` directory exists, then create the symlink:
 
 ```bash
 mkdir -p scripts
-ln -sf ~/.claude/skills/setup-multirepo-git/resources/gitc scripts/gitc
+ln -sf ~/.claude/skills/setup-multirepo-git/resources/mgit scripts/mgit
 ```
 
 Verify the symlink works:
 ```bash
-./scripts/gitc status <first-service> --short
+./scripts/mgit status <first-service> --short
+./scripts/mgit status root --short
 ```
 
 ### Step 4: Output permission patterns
@@ -109,7 +118,7 @@ Tell the user to merge these patterns into their `.claude/settings.local.json` f
 Read the AGENTS template from the skill resources and output it:
 
 ```bash
-cat ~/.claude/skills/setup-multirepo-git/resources/AGENTS-GITC.md
+cat ~/.claude/skills/setup-multirepo-git/resources/AGENTS-MGIT.md
 ```
 
 Tell the user to include this block in their project's `AGENTS.md` file, customizing the service names and any project-specific details.
@@ -117,6 +126,7 @@ Tell the user to include this block in their project's `AGENTS.md` file, customi
 ### Step 6: Confirm setup
 
 Verify everything works:
-1. `readlink scripts/gitc` — should show the symlink target
-2. `./scripts/gitc status <service>` — should show git status for a service
-3. `./scripts/gitc status invalid-name` — should error with valid service list
+1. `readlink scripts/mgit` — should show the symlink target
+2. `./scripts/mgit status <service>` — should show git status for a service
+3. `./scripts/mgit status root` — should show git status for the root repo
+4. `./scripts/mgit status invalid-name` — should error with valid service list
