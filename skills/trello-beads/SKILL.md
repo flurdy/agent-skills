@@ -144,21 +144,24 @@ Cards from the Bugs column are always type=bug regardless of labels.
 ./scripts/trello-api cards "<list-name>"     # Full JSON
 ```
 
-### Sync — Update Trello from Closed Beads (future)
+### Sync — Update Trello from Closed Beads
 
-Find beads with trello external refs that are closed:
-
-```bash
-bd list --status=closed --label=trello
-```
-
-For each closed bead with an external-ref matching `trello-<card-id>`:
-- Move the corresponding Trello card to the Done list
+Use the sync script:
 
 ```bash
-DONE_LIST="${TRELLO_LIST_DONE:-Done}"
-./scripts/trello-api move <card-id> "$DONE_LIST"
+./scripts/trello-sync sync              # Move cards for closed beads to Done
+./scripts/trello-sync sync --dry-run    # Preview what would be moved
 ```
+
+The script:
+1. Batch-fetches all card IDs in Done (including archived) in a single API call
+2. Finds closed beads with `bd list --status=closed --label=trello`
+3. For each bead with a `trello-<card-id>` external ref:
+   - **Already in Done** (active or archived): skipped silently (no API call)
+   - **Archived in another list**: skipped with a warning (won't unarchive)
+   - **Active in another list**: moved to Done (or previewed with `--dry-run`)
+
+This avoids per-card API calls for cards already in Done and prevents accidentally unarchiving cards that were archived in other columns.
 
 ## Notes
 

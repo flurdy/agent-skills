@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 TRELLO_API="$SCRIPT_DIR/trello-api.sh"
+BASE_URL="https://api.trello.com/1"
 
 DONE_LIST="${TRELLO_LIST_DONE:-Done}"
 
@@ -34,6 +35,11 @@ cmd_sync() {
   done_list_id=$(get_done_list_id)
   [[ -n "$done_list_id" ]] || die "Could not find '$DONE_LIST' list on board"
 
+  # Batch-fetch all card IDs already in Done (including archived) — single API call
+  local done_card_ids
+  done_card_ids=$(curl -sf "${BASE_URL}/lists/${done_list_id}/cards?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&filter=all&fields=id" \
+    | jq -r '.[].id')
+
   # Get closed beads with trello label
   local closed_beads
   closed_beads=$(bd list --status=closed --label=trello 2>/dev/null || true)
@@ -54,6 +60,7 @@ cmd_sync() {
 
   local synced=0
   local skipped=0
+  local archived=0
   local failed=0
 
   while read -r bead_id; do
@@ -75,12 +82,30 @@ cmd_sync() {
     local bead_title
     bead_title=$(echo "$bead_info" | head -1 | sed 's/^[^·]*· //' | sed 's/   .*//')
 
-    # Check if card is already in Done
-    local current_list
-    current_list=$(get_card_list "$card_id" 2>/dev/null || true)
-
-    if [[ "$current_list" == "$done_list_id" ]]; then
+    # Fast check: is this card already in Done? (no API call needed)
+    if echo "$done_card_ids" | grep -qF "$card_id"; then
       skipped=$((skipped + 1))
+      continue
+    fi
+
+    # Card is NOT in Done — fetch its state to check if archived
+    local card_info
+    card_info=$(curl -sf "${BASE_URL}/cards/${card_id}?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=closed,idList,name" 2>/dev/null || true)
+
+    if [[ -z "$card_info" ]]; then
+      echo "FAILED: Could not fetch card for $bead_title (card: $card_id)"
+      failed=$((failed + 1))
+      continue
+    fi
+
+    local is_archived
+    is_archived=$(echo "$card_info" | jq -r '.closed')
+
+    if [[ "$is_archived" == "true" ]]; then
+      local card_name
+      card_name=$(echo "$card_info" | jq -r '.name')
+      echo "SKIPPED (archived in another list): $bead_title — Trello: \"$card_name\" (card: $card_id)"
+      archived=$((archived + 1))
       continue
     fi
 
@@ -99,7 +124,7 @@ cmd_sync() {
   done <<< "$bead_ids"
 
   echo ""
-  echo "Sync complete: $synced moved, $skipped already done, $failed failed"
+  echo "Sync complete: $synced moved, $skipped already done, $archived archived elsewhere, $failed failed"
 }
 
 cmd_help() {
