@@ -23,8 +23,9 @@ Help select the next bead to work on based on readiness and user preferences.
 
 ```bash
 /next                    # Show ready beads, ranked by suitability
+/next safe               # Same but exclude services with in-progress beads
 /next task               # Auto-pick the next most suitable task and start it
-/next quick              # Auto-pick an easy win task and start it
+/next quick              # Auto-pick an easy win (excludes busy services)
 /next bug                # Auto-pick the next most important bug and fix it
 /next <bead-id>          # Start working on specific bead
 ```
@@ -57,10 +58,13 @@ Help select the next bead to work on based on readiness and user preferences.
 # Show ready work ranked by suitability
 /next
 
+# Show ready work, excluding services with in-progress beads
+/next safe
+
 # Auto-pick and start the next most suitable task
 /next task
 
-# Auto-pick an easy win (quick task)
+# Auto-pick an easy win (excludes busy services)
 /next quick
 
 # Auto-pick the next most important bug and start fixing
@@ -104,12 +108,18 @@ When invoked:
    $HOME/.claude/skills/next/resources/next-bd --in-progress
    ```
 
+   For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:
+   ```bash
+   ./scripts/next-bd --in-progress --avoid-busy
+   ```
+
    This outputs a markdown table ranked by the priority algorithm, with labels included, blocked beads filtered out, and in-progress beads shown for awareness.
 
 2. Parse command argument:
    - (none): Show the script output, ask user to pick
+   - `safe`: Show the script output with `--avoid-busy`, ask user to pick
    - `task`: Auto-select top-ranked bead and start it
-   - `quick`: Auto-select an easy win task and start it
+   - `quick`: Auto-select an easy win task and start it (uses `--avoid-busy`)
    - `bug`: Auto-select top-ranked bug and start it (see Bug Mode below)
    - `<bead-id>`: Start that specific bead
 
