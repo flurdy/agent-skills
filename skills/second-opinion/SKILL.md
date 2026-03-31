@@ -1,7 +1,7 @@
 ---
 name: second-opinion
 description: Query an alternative AI CLI (Codex or Gemini) for a second opinion on plans, PRs, bugs, or code.
-allowed-tools: "Read,Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Bash(cat:*),Bash(mktemp:*),Bash(rm:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Grep,Glob,AskUserQuestion"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -127,14 +127,8 @@ Given the codebase in the current directory, answer this question:
 
 ### 3. Invoke the Agent CLI
 
-Write the gathered prompt to a temp file to avoid shell quoting issues:
-
-```bash
-PROMPT_FILE=$(mktemp /tmp/second-opinion-XXXXXX.txt)
-cat <<'PROMPT_EOF' > "$PROMPT_FILE"
-{assembled_prompt}
-PROMPT_EOF
-```
+Pass the assembled prompt directly as a positional argument to ensure commands match
+auto-approve permission patterns like `Bash(codex:*)` and `Bash(gemini:*)`.
 
 #### For Codex
 
@@ -147,17 +141,18 @@ codex review --base {base_branch}
 codex review --uncommitted
 ```
 
-For all other modes:
+For all other modes, pass the prompt as a positional argument:
 ```bash
-codex exec "$(cat "$PROMPT_FILE")"
+codex exec "{assembled_prompt}"
 ```
 
 **Timeout**: Set a 3-minute timeout. Codex can be slow on large prompts.
 
 #### For Gemini
 
+Pass the prompt via the `-p` flag:
 ```bash
-gemini -p "$(cat "$PROMPT_FILE")" --sandbox -o text
+gemini -p "{assembled_prompt}" --sandbox -o text
 ```
 
 The `--sandbox` flag prevents Gemini from modifying files. The `-o text` flag gives clean text output.
@@ -167,12 +162,6 @@ The `--sandbox` flag prevents Gemini from modifying files. The `-o text` flag gi
 #### For Both
 
 Run both agents in parallel (use parallel Bash tool calls). Present both results.
-
-### 4. Clean Up
-
-```bash
-rm -f "$PROMPT_FILE"
-```
 
 ### 5. Present Results
 
