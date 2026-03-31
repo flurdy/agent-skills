@@ -140,8 +140,11 @@ PROMPT_EOF
 
 For `review-pr` mode, prefer the built-in review command:
 ```bash
-# PR review using codex's native review
-codex review --base {base_branch} "Focus on correctness, security, performance, and missing edge cases"
+# PR review using codex's native review (--base and positional prompt are mutually exclusive)
+codex review --base {base_branch}
+
+# Or for uncommitted changes:
+codex review --uncommitted
 ```
 
 For all other modes:
