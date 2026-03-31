@@ -4,6 +4,7 @@
 |-------|-------------|
 | beads-check-dolt-migration | Detect whether a beads installation needs migration from classic format (SQLite/JSONL) to Dolt |
 | beads-migrate-to-dolt | Migrate a beads installation from classic format (SQLite/JSONL) to the new Dolt-based format |
+| browser-screenshot | Take a screenshot of the running web application for visual verification of UI/CSS changes |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
 | complete-task | Complete an in-progress task by running clean-code, staging, committing, and closing the bead |
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
@@ -18,7 +19,8 @@
 | reply-comments | Reply to PR review comments after addressing them |
 | review-comments | Address PR review comments from reviewers |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
-| setup-multirepo-git | Multi-repo git workflow rules and setup with gitc wrapper |
+| second-opinion | Query an alternative AI CLI (Codex or Gemini) for a second opinion on plans, PRs, bugs, or code |
+| setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
 | trello-beads | Integrate Trello boards with Beads for project management bridging |

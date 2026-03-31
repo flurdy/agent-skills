@@ -17,6 +17,10 @@ blocks that get assembled into active AI agent skill sets for Claude or Codex, a
 
 Skills are symlinked directly into `~/.claude/skills/`, coexisting with any skills you already have there.
 
+## Available Skills
+
+See [skills/README.md](skills/README.md) for the full list of available skills.
+
 ## Layout
 
 - `skills/`: each skill lives in its own folder with a `SKILL.md`
