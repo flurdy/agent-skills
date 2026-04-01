@@ -1,14 +1,14 @@
 ---
 name: second-opinion
-description: Query an alternative AI CLI (Codex or Gemini) for a second opinion on plans, PRs, bugs, or code.
-allowed-tools: "Read,Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Grep,Glob,AskUserQuestion"
+description: Query an alternative AI CLI (Claude, Codex, or Gemini) for a second opinion on plans, PRs, bugs, or code.
+allowed-tools: "Read,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Grep,Glob,AskUserQuestion"
 version: "1.0.0"
 author: "flurdy"
 ---
 
 # Second Opinion
 
-Query Codex or Gemini CLI for an independent review of plans, PRs, code, or bugs.
+Query Claude, Codex, or Gemini CLI for an independent review of plans, PRs, code, or bugs.
 
 ## When to Use
 
@@ -26,13 +26,15 @@ Query Codex or Gemini CLI for an independent review of plans, PRs, code, or bugs
 /second-opinion validate-plan "<plan>"   # Validate a plan/approach
 /second-opinion triage-bug "<description>"  # Get bug triage input
 /second-opinion ask "<question>"         # Freeform question with repo context
-/second-opinion ask "<question>" --agent codex   # Force a specific agent
+/second-opinion ask "<question>" --agent claude   # Force a specific agent
+/second-opinion ask "<question>" --agent codex
 /second-opinion ask "<question>" --agent gemini
-/second-opinion ask "<question>" --agent both     # Query both in parallel
+/second-opinion ask "<question>" --agent all      # Query all agents in parallel
 ```
 
 ## Requirements
 
+- `claude` CLI installed and authenticated (part of Claude Code)
 - `codex` CLI installed and authenticated (`codex login`)
 - `gemini` CLI installed and authenticated
 - `gh` CLI for PR operations
@@ -44,7 +46,7 @@ Query Codex or Gemini CLI for an independent review of plans, PRs, code, or bugs
 Extract from the arguments:
 - **mode**: one of `review-pr`, `validate-plan`, `triage-bug`, `ask` (default: ask user)
 - **target**: PR number, plan text, bug description, or freeform question
-- **agent**: `codex`, `gemini`, or `both` (default: `codex`)
+- **agent**: `claude`, `codex`, `gemini`, or `all` (default: `codex`)
 
 Look for `--agent <name>` anywhere in the arguments. If not specified, default to `codex`.
 
@@ -128,7 +130,18 @@ Given the codebase in the current directory, answer this question:
 ### 3. Invoke the Agent CLI
 
 Pass the assembled prompt directly as a positional argument to ensure commands match
-auto-approve permission patterns like `Bash(codex:*)` and `Bash(gemini:*)`.
+auto-approve permission patterns like `Bash(claude:*)`, `Bash(codex:*)`, and `Bash(gemini:*)`.
+
+#### For Claude
+
+Pass the prompt via the `-p` flag:
+```bash
+claude -p "{assembled_prompt}" --no-input
+```
+
+The `--no-input` flag prevents Claude from asking interactive questions. Claude runs in read-only mode by default when using `-p`.
+
+**Timeout**: Set a 3-minute timeout.
 
 #### For Codex
 
@@ -159,9 +172,9 @@ The `--sandbox` flag prevents Gemini from modifying files. The `-o text` flag gi
 
 **Timeout**: Set a 3-minute timeout.
 
-#### For Both
+#### For All
 
-Run both agents in parallel (use parallel Bash tool calls). Present both results.
+Run all available agents in parallel (use parallel Bash tool calls). Present all results.
 
 ### 5. Present Results
 
@@ -176,9 +189,13 @@ Format the response clearly:
 *Source: {agent_name} CLI, mode: {mode}*
 ```
 
-If both agents were queried:
+If multiple agents were queried, present each under its own heading:
 
 ```markdown
+## Claude Opinion
+
+{claude_response}
+
 ## Codex Opinion
 
 {codex_response}
@@ -196,15 +213,15 @@ After presenting, offer: "Want me to act on any of these suggestions?"
 
 ## Error Handling
 
-- If a CLI is not installed or not authenticated, tell the user and suggest the other agent
-- If a CLI times out (>3 min), report partial output if any and suggest trying the other agent
+- If a CLI is not installed or not authenticated, tell the user and suggest another available agent
+- If a CLI times out (>3 min), report partial output if any and suggest trying another agent
 - If the prompt is too large, summarize the diff/context before sending
 - If both agents fail, report the errors and suggest the user try manually
 
 ## Rules
 
 - Never let the external agent modify files — use read-only/sandbox modes
-- Always use `--sandbox` for Gemini and default (no write) permissions for Codex
+- Always use `--no-input` for Claude, `--sandbox` for Gemini, and default (no write) permissions for Codex
 - Do not send sensitive data (env vars, secrets, credentials) to external CLIs
 - Present the external agent's response faithfully — do not editorialize or filter it
 - Make clear which agent provided which opinion

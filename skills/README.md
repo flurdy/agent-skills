@@ -19,7 +19,7 @@
 | reply-comments | Reply to PR review comments after addressing them |
 | review-comments | Address PR review comments from reviewers |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
-| second-opinion | Query an alternative AI CLI (Codex or Gemini) for a second opinion on plans, PRs, bugs, or code |
+| second-opinion | Query an alternative AI CLI (Claude, Codex, or Gemini) for a second opinion on plans, PRs, bugs, or code |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
