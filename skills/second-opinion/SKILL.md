@@ -30,6 +30,7 @@ Query Claude, Codex, or Gemini CLI for an independent review of plans, PRs, code
 /second-opinion ask "<question>" --agent codex
 /second-opinion ask "<question>" --agent gemini
 /second-opinion ask "<question>" --agent all      # Query all agents in parallel
+/second-opinion review-pr --timeout 5             # Allow 5 minutes (default: 3, max: 10)
 ```
 
 ## Requirements
@@ -47,8 +48,10 @@ Extract from the arguments:
 - **mode**: one of `review-pr`, `validate-plan`, `triage-bug`, `ask` (default: ask user)
 - **target**: PR number, plan text, bug description, or freeform question
 - **agent**: `claude`, `codex`, `gemini`, or `all` (default: `codex`)
+- **timeout**: timeout in minutes (default: `3`, max: `10`)
 
 Look for `--agent <name>` anywhere in the arguments. If not specified, default to `codex`.
+Look for `--timeout <minutes>` anywhere in the arguments. If not specified, default to `3`.
 
 If no mode is provided, ask the user what they'd like a second opinion on.
 
@@ -141,7 +144,7 @@ claude -p "{assembled_prompt}" --no-input
 
 The `--no-input` flag prevents Claude from asking interactive questions. Claude runs in read-only mode by default when using `-p`.
 
-**Timeout**: Set a 3-minute timeout.
+**Timeout**: Use the parsed timeout value (default 3 min, converted to milliseconds).
 
 #### For Codex
 
@@ -159,7 +162,7 @@ For all other modes, pass the prompt as a positional argument:
 codex exec "{assembled_prompt}"
 ```
 
-**Timeout**: Set a 3-minute timeout. Codex can be slow on large prompts.
+**Timeout**: Use the parsed timeout value. Codex is slow on large prompts — consider `--timeout 5` or higher for PR reviews in large repos.
 
 #### For Gemini
 
@@ -170,7 +173,7 @@ gemini -p "{assembled_prompt}" --sandbox -o text
 
 The `--sandbox` flag prevents Gemini from modifying files. The `-o text` flag gives clean text output.
 
-**Timeout**: Set a 3-minute timeout.
+**Timeout**: Use the parsed timeout value (default 3 min, converted to milliseconds).
 
 #### For All
 
