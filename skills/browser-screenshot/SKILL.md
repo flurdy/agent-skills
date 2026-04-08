@@ -22,7 +22,11 @@ npx playwright install chromium
 2. Symlink the screenshot script into the project's `scripts/` directory:
 
 ```bash
-ln -sfn ~/.claude/skills/browser-screenshot/resources/screenshot.sh scripts/screenshot
+SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
+if [[ ! -d "$SKILLS_DIR" ]]; then
+  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+fi
+ln -sfn "$SKILLS_DIR/browser-screenshot/resources/screenshot.sh" scripts/screenshot
 ```
 
 ## Usage
@@ -58,7 +62,7 @@ If the symlink doesn't exist yet, create it first (see Setup above).
 
 Screenshots are saved to `/tmp/claude-screenshots/screenshot-<viewport>.png` by default (e.g. `screenshot-desktop.png`, `screenshot-mobile.png`). Each run overwrites the previous screenshot for that viewport.
 
-4. **Read the screenshot** using the Read tool to view the captured image. This is the critical step — you are a multimodal model and can see images.
+4. **Read the screenshot** using the available image-reading tool to view the captured image. This is the critical step because the model can inspect the captured UI directly.
 
 5. Analyze the screenshot and report what you see, especially:
    - Layout issues (overlapping elements, alignment problems)

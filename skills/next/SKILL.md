@@ -105,7 +105,11 @@ When invoked:
 
    Fallback if not available in the project's scripts/:
    ```bash
-   $HOME/.claude/skills/next/resources/next-bd --in-progress
+   SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
+   if [[ ! -x "$SKILLS_DIR/next/resources/next-bd" ]]; then
+     SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+   fi
+   "$SKILLS_DIR/next/resources/next-bd" --in-progress
    ```
 
    For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:

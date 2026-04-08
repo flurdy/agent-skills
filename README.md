@@ -1,7 +1,7 @@
 # Agent Skills
 
 AI agent skills shared across clients and machines. These are the common building
-blocks that get assembled into active AI agent skill sets for Claude or Codex, and other AI agents.
+blocks that get assembled into active AI agent skill sets for Claude, Codex, and other AI agents.
 
 ## Using the skills
 
@@ -13,9 +13,16 @@ blocks that get assembled into active AI agent skill sets for Claude or Codex, a
 
    `make apply`
 
-3. Verify skills are in `~/.claude/skills`.
+   For Codex, use:
 
-Skills are symlinked directly into `~/.claude/skills/`, coexisting with any skills you already have there.
+   `make apply-codex`
+
+3. Verify skills are in your active skills directory:
+
+   - Claude: `~/.claude/skills`
+   - Codex: `~/.codex/skills`
+
+Skills are symlinked directly into your active skills directory, coexisting with any skills you already have there.
 
 ## Available Skills
 
@@ -99,9 +106,10 @@ Path to optional private repo:
 
 - `PRIVATE_REPO=/path/to/agent-skills-private`
 
-Path to skills directory (can be Codex or Claude):
+Path to skills directory:
 
-- `SKILLS_DIR=$HOME/.claude/skills`
+- Claude: `SKILLS_DIR=$HOME/.claude/skills`
+- Codex: `SKILLS_DIR=$HOME/.codex/skills`
 
 There is an example in `.env.example` you can use,
 and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
@@ -112,20 +120,20 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 2. Add a `SKILL.md` with the skill's instructions and triggers
 3. Keep it focused and general-purpose
 4. If you need supporting material, add it inside the skill folder
-5. Test by running `make apply` and verifying it appears in `~/.claude/skills`
+5. Test by running `make apply` or `make apply-codex` and verifying it appears in the target skills directory
 
 ## Coexisting with existing skills
 
-This tool is designed to coexist with skills you already have in `~/.claude/skills/`:
+This tool is designed to coexist with skills you already have in your target skills directory:
 
 - __Apply__ creates symlinks directly in your skills folder, alongside existing skills
 - __Clean__ only removes symlinks that point to our repos, leaving your own skills untouched
 - __Collision handling__: If a skill name already exists and isn't managed by us, `apply` will error out and the pre-existing skill wins. Remove it manually if you want to use the managed version instead.
 
-After running `make apply`, your skills folder might look like this:
+After running `make apply` or `make apply-codex`, your skills folder might look like this:
 
 ```plaintext
-~/.claude/skills/
+~/.claude/skills/   # or ~/.codex/skills/
   create-pr/       -> /path/to/agent-skills/skills/create-pr       (managed symlink)
   jira-ticket/     -> /path/to/agent-skills/skills/jira-ticket     (managed symlink)
   rebase-main/     -> /path/to/agent-skills/skills/rebase-main     (managed symlink)

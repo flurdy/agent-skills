@@ -97,7 +97,11 @@ Ensure a `scripts/` directory exists, then create the symlink:
 
 ```bash
 mkdir -p scripts
-ln -sf ~/.claude/skills/setup-multirepo-git/resources/mgit scripts/mgit
+SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
+if [[ ! -d "$SKILLS_DIR" ]]; then
+  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+fi
+ln -sf "$SKILLS_DIR/setup-multirepo-git/resources/mgit" scripts/mgit
 ```
 
 Verify the symlink works:
@@ -111,17 +115,25 @@ Verify the symlink works:
 Read the permission template from the skill resources and output it for the user:
 
 ```bash
-cat ~/.claude/skills/setup-multirepo-git/resources/permissions.json
+SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
+if [[ ! -d "$SKILLS_DIR" ]]; then
+  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+fi
+cat "$SKILLS_DIR/setup-multirepo-git/resources/permissions.json"
 ```
 
-Tell the user to merge these patterns into their `.claude/settings.local.json` file. The `allow` patterns enable auto-approval for safe read-only operations. The `ask` patterns require confirmation for dangerous operations.
+Tell the user to merge these patterns into their agent-specific local settings file. The `allow` patterns enable auto-approval for safe read-only operations. The `ask` patterns require confirmation for dangerous operations.
 
 ### Step 5: Output AGENTS.md block
 
 Read the AGENTS template from the skill resources and output it:
 
 ```bash
-cat ~/.claude/skills/setup-multirepo-git/resources/AGENTS-MGIT.md
+SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
+if [[ ! -d "$SKILLS_DIR" ]]; then
+  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+fi
+cat "$SKILLS_DIR/setup-multirepo-git/resources/AGENTS-MGIT.md"
 ```
 
 Tell the user to include this block in their project's `AGENTS.md` file, customizing the service names and any project-specific details.

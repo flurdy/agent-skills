@@ -15,15 +15,18 @@ LAYERS_ORDER ?= shared machine clients
 
 ASSEMBLE := ./assemble.sh
 
-.PHONY: help list doctor clean clean-dry-run apply dry-run
+.PHONY: help list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make list"
 	@echo "make doctor"
+	@echo "make doctor-codex"
 	@echo "make apply PROFILE=my-machine"
 	@echo "make apply MACHINE=my-machine CLIENTS='my-client my-other-client'"
+	@echo "make apply-codex PROFILE=my-machine"
 	@echo "make apply FORCE=1    # skip safety check for non-symlinks"
 	@echo "make dry-run PROFILE=my-machine"
+	@echo "make dry-run-codex PROFILE=my-machine"
 	@echo "make clean"
 	@echo "make clean FORCE=1    # skip safety check for non-symlinks"
 	@echo "make clean-dry-run"
@@ -42,6 +45,12 @@ list:
 doctor:
 	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
+	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
+	  $(ASSEMBLE) doctor
+
+doctor-codex:
+	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
+	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
 	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
 	  $(ASSEMBLE) doctor
 
@@ -67,9 +76,29 @@ apply:
 	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \
 	    $(if $(FORCE),--force,)
 
+apply-codex:
+	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
+	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
+	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
+	  $(ASSEMBLE) apply \
+	    $(if $(PROFILE),--profile "$(PROFILE)",) \
+	    $(if $(MACHINE),--machine "$(MACHINE)",) \
+	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \
+	    $(if $(FORCE),--force,)
+
 dry-run:
 	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
+	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
+	  $(ASSEMBLE) apply --dry-run \
+	    $(if $(PROFILE),--profile "$(PROFILE)",) \
+	    $(if $(MACHINE),--machine "$(MACHINE)",) \
+	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \
+	    $(if $(FORCE),--force,)
+
+dry-run-codex:
+	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
+	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
 	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
 	  $(ASSEMBLE) apply --dry-run \
 	    $(if $(PROFILE),--profile "$(PROFILE)",) \

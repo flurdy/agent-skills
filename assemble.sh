@@ -32,8 +32,8 @@ Usage:
   assemble.sh list
 
 Notes:
-- This assembler links "skill units" directly into ~/.claude/skills/
-  Example: skills/create-pr/ -> ~/.claude/skills/create-pr (symlink)
+- This assembler links "skill units" directly into SKILLS_DIR
+  Example: skills/create-pr/ -> $SKILLS_DIR/create-pr (symlink)
 - Symlinks are created directly in SKILLS_DIR, coexisting with user's own skills.
 - Pre-existing skills (not managed by us) are never overwritten - apply will error.
 - Clean only removes symlinks pointing to our repos, preserving user skills.
@@ -131,8 +131,8 @@ ensure_skills_dir() {
   fi
 }
 
-# Link each immediate child under src_skills_dir into SKILLS_DIR
-# Children can be directories (preferred) or files.
+# Link each immediate child under src_skills_dir into SKILLS_DIR.
+# Only directories containing SKILL.md are considered valid skills.
 # - If skill already exists and is managed by us: update the symlink (layer override)
 # - If skill already exists and is NOT managed by us: error (pre-existing wins)
 link_skill_units() {
@@ -145,6 +145,8 @@ link_skill_units() {
   shopt -s nullglob dotglob
   local child
   for child in "$src_skills_dir"/*; do
+    [[ -d "$child" && -f "$child/SKILL.md" ]] || continue
+
     local name
     name="$(basename "$child")"
     local dst="$SKILLS_DIR/$name"
