@@ -162,6 +162,60 @@ cat .beads/metadata.json
 
 Confirm metadata shows `"backend": "dolt"`.
 
+### 6a. Repair Husky Integration (if applicable)
+
+**Known bd bug, not fixed in 0.63.3 (latest as of 2026-03-30).** When a repo uses [husky](https://typicode.github.io/husky/) for git hooks, `bd init` sets `core.hooksPath` to `.beads/hooks/` and copies hook content into it — but it mishandles husky's helper layout. The copied hook silently fails or no-ops unless repaired.
+
+Skip this section if the repo does not have a `.husky/` directory.
+
+Detect the husky version by looking at the first line of `.husky/pre-commit`:
+
+```bash
+cat .husky/pre-commit
+```
+
+**Husky v8 style** (hook sources `_/husky.sh` at the top):
+
+```sh
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+npx lint-staged
+```
+
+bd copies this content into `.beads/hooks/pre-commit` but does NOT copy `.husky/_/` into `.beads/hooks/_/`, so the source line fails at runtime. Fix by symlinking the helper dir:
+
+```bash
+ln -s ../../.husky/_ .beads/hooks/_
+```
+
+Verify: `ls -la .beads/hooks/_/husky.sh` should resolve to an existing file.
+
+**Husky v9 style** (hook is just the command list, no sourcing):
+
+```sh
+#!/usr/bin/env sh
+npx lint-staged
+```
+
+bd installs its own `h` dispatcher at `.beads/hooks/h` and writes a `.beads/hooks/<name>` that sources it with `. "$(dirname "$0")/h"`. The dispatcher then looks for the real hook at `$(dirname "$(dirname "$0")")/<name>`, which resolves to `.beads/<name>` instead of `.husky/<name>`. That file doesn't exist, so `h` silently exits 0 and **none of your husky checks run**.
+
+Fix by inlining the `.husky/<name>` commands directly into `.beads/hooks/<name>`, replacing the broken `h` source line. Example for `.beads/hooks/pre-commit`:
+
+```sh
+#!/usr/bin/env sh
+# Inlined from .husky/pre-commit (bd's 'h' dispatcher resolves wrong path at this depth)
+export PATH="node_modules/.bin:$PATH"
+<commands from .husky/pre-commit>
+
+# --- BEGIN BEADS INTEGRATION v0.62.0 ---
+# ... existing beads block preserved unchanged
+```
+
+Repeat for every hook the repo uses (`pre-commit`, `pre-push`, `commit-msg`, etc.). Check `sh -n <hookfile>` for syntax validity afterwards.
+
+Note the `export PATH="node_modules/.bin:$PATH"` — husky's v9 `h` dispatcher normally adds this so `lint-staged` and friends resolve; when inlining, preserve it.
+
 ### 7. Restore Data
 
 **Preferred path** (works if step 4's `bd backup` succeeded, which it won't on classic data):
@@ -331,6 +385,9 @@ Summarize the migration:
 - **Config.yaml missing**: Proceed without sync branch setup. After migration, suggest `bd config set sync.branch <name>` if needed.
 - **Daemon binary already deleted but process still running**: `brew uninstall` removes the on-disk binary but a running daemon keeps it mmap'd. `kill -TERM <pid>` still works; the daemon shuts down cleanly from the in-memory code.
 - **Multiple repos to migrate**: Each workspace needs its own run (daemon stop → backup → remove → init → import → export → verify). The `~/.beads/registry.json` cleanup in step 10 only needs to happen once at the end.
+- **Husky integration broken after `bd init`**: See step 6a. bd 0.62.0 and 0.63.3 both mishandle husky helper layout — v8 needs a symlink fix, v9 needs the dispatcher inlined. Silently breaks commits if not repaired.
+- **Unwanted `AGENTS.md` and `.gitignore` changes from `bd init`**: If the user runs beads in stealth mode (personal tool, team doesn't use it), they'll want to revert `.gitignore` (`git checkout -- .gitignore`) and delete the generated `AGENTS.md`. The Dolt-related patterns bd adds (`*.db`, `.dolt/`, `.beads-credential-key`) are already covered by the user's stealth `.git/info/exclude` entries. Ask the user whether to keep or revert.
+- **`.beads-migration-backup/` showing as untracked**: Add it to `.git/info/exclude` (not `.gitignore`) for stealth-mode users, alongside their existing `.beads/` entry.
 
 ## Rules
 
