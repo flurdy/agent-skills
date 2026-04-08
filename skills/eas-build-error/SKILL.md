@@ -1,3 +1,11 @@
+---
+name: eas-build-error
+description: View the latest EAS build status and errors. Fetches build details, extracts failure logs, and suggests fixes for common iOS/Android build issues.
+allowed-tools: "Read,WebFetch,Bash(npx:*)"
+version: "1.0.0"
+author: "flurdy"
+---
+
 # EAS Build Error - View latest build status and errors
 
 Show the status and errors from the latest EAS build.

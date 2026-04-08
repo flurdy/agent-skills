@@ -1,6 +1,9 @@
 ---
 name: trello-beads
 description: "Integrate Trello boards with Beads — pull triage cards into beads, sync closed beads back to Trello. Use for project management bridging between Trello and Beads."
+allowed-tools: "Read,Write,Bash(bd:*),Bash(./scripts/trello-api:*),Bash(./scripts/trello-pull:*),Bash(./scripts/trello-sync:*),Bash(ln:*),Bash(mkdir:*),Bash(direnv:*),AskUserQuestion"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Trello-Beads — Board Integration for Beads Workflow

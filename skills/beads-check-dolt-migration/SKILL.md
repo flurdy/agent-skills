@@ -1,6 +1,9 @@
 ---
 name: beads-check-dolt-migration
 description: "Detect whether a beads installation needs migration from classic format (SQLite/JSONL) to Dolt."
+allowed-tools: "Read,Bash(bd:*),Bash(git:*),Bash(ls:*),Bash(test:*),Bash(cat:*)"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Beads Migration Check

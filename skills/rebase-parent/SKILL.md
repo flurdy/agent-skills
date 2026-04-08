@@ -1,6 +1,9 @@
 ---
 name: rebase-parent
 description: Rebase the current branch onto an updated parent PR branch. Use when you have stacked PRs and the parent branch has been updated (force-pushed after its own rebase or new commits added).
+allowed-tools: "Read,Edit,Bash(git:*),Bash(gh:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Rebase onto Updated Parent Branch
@@ -91,13 +94,33 @@ If conflicts occur:
 
 If stuck, abort and ask for guidance: `git rebase --abort`
 
-### 7. Force Push
+### 7. Verify With Tests
+
+After the rebase completes (especially if conflicts were resolved), run the project's tests to confirm nothing was broken by the rebase or conflict resolution.
+
+Try the project's standard test command in this order:
+
+```bash
+# Prefer Makefile target if present
+make test
+
+# Otherwise the project's package manager
+npm test
+# or
+npx <test-runner>
+# or
+sbt test
+```
+
+If tests fail, **stop and report to the user** before pushing. Do not force-push a broken rebase.
+
+### 8. Force Push
 
 ```bash
 git push --force-with-lease
 ```
 
-### 8. Update PR Base (if needed)
+### 9. Update PR Base (if needed)
 
 If the PR base branch needs updating:
 
@@ -105,7 +128,7 @@ If the PR base branch needs updating:
 gh pr edit --base {parent-branch}
 ```
 
-### 9. Report Result
+### 10. Report Result
 
 Inform the user:
 - Successfully rebased X commits onto {parent-branch}

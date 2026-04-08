@@ -3,7 +3,7 @@ name: confluence
 description: >
   Read Confluence pages and comments. Use to fetch design docs, ADRs, runbooks,
   or any wiki content for context when working on tasks.
-allowed-tools: "Read,Bash(echo *),AskUserQuestion"
+allowed-tools: "Read,AskUserQuestion,mcp__confluence__*"
 version: "1.0.0"
 author: "flurdy"
 ---

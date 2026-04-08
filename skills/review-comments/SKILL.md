@@ -1,6 +1,9 @@
 ---
 name: review-comments
 description: Address PR review comments from reviewers (amazon-q-developer, copilot, humans). Use when the user wants to see and respond to feedback on their pull request.
+allowed-tools: "Read,Edit,Grep,Glob,Bash(gh:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Address Review Comments

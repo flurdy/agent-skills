@@ -1,6 +1,9 @@
 ---
 name: reply-comments
 description: Reply to PR review comments after addressing them. Resolves conversations where changes were made. Uses polite tone for humans, terse factual responses for AI bots.
+allowed-tools: "Read,Bash(gh:*),Bash(git:*)"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Reply to Review Comments

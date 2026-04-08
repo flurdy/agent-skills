@@ -1,6 +1,9 @@
 ---
 name: beads-migrate-to-dolt
 description: "Migrate a beads installation from classic format (SQLite/JSONL on beads-sync worktree branch) to the new Dolt-based format."
+allowed-tools: "Read,Grep,Glob,Bash(bd:*),Bash(git:*),Bash(cp:*),Bash(rm:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(wc:*),AskUserQuestion"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Beads Migration: Classic to Dolt

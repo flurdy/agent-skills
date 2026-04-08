@@ -1,6 +1,9 @@
 ---
 name: rebase-main
 description: Rebase the current branch onto an updated main branch. Use when main has been updated and you need to incorporate those changes into your feature branch.
+allowed-tools: "Read,Edit,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Rebase onto Main
@@ -75,7 +78,27 @@ If conflicts occur:
    git rebase --abort
    ```
 
-### 6. Force Push (if branch was already pushed)
+### 6. Verify With Tests
+
+After the rebase completes (especially if conflicts were resolved), run the project's tests to confirm nothing was broken by the rebase or the conflict resolution.
+
+Try the project's standard test command in this order:
+
+```bash
+# Prefer Makefile target if present
+make test
+
+# Otherwise the project's package manager
+npm test
+# or
+npx <test-runner>
+# or
+sbt test
+```
+
+If tests fail, **stop and report to the user** before pushing. Do not force-push a broken rebase. If the rebase was trivial (no conflicts) and the user wants to skip testing, they can say so — but default to running them.
+
+### 7. Force Push (if branch was already pushed)
 
 ```bash
 # Check if branch has upstream
@@ -85,7 +108,7 @@ git rev-parse --abbrev-ref @{upstream} 2>/dev/null
 git push --force-with-lease
 ```
 
-### 7. Report Result
+### 8. Report Result
 
 Tell the user:
 - How many commits were rebased

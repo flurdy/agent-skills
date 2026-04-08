@@ -1,6 +1,9 @@
 ---
 name: rebase-merged-parent
 description: Rebase after a parent PR has been merged to main. Use when your branch was stacked on another PR that has now been merged, and you need to rebase onto main while keeping only your commits.
+allowed-tools: "Read,Edit,Bash(git:*),Bash(gh:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Rebase After Parent Merged to Main
@@ -82,19 +85,39 @@ If real conflicts:
 2. `git add {file}`
 3. `git rebase --continue`
 
-### 8. Force Push
+### 8. Verify With Tests
+
+After the rebase completes (especially if conflicts were resolved or commits were skipped as already-applied), run the project's tests to confirm nothing was broken.
+
+Try the project's standard test command in this order:
+
+```bash
+# Prefer Makefile target if present
+make test
+
+# Otherwise the project's package manager
+npm test
+# or
+npx <test-runner>
+# or
+sbt test
+```
+
+If tests fail, **stop and report to the user** before pushing. Do not force-push a broken rebase.
+
+### 9. Force Push
 
 ```bash
 git push --force-with-lease
 ```
 
-### 9. Update PR Base to Main
+### 10. Update PR Base to Main
 
 ```bash
 gh pr edit --base main
 ```
 
-### 10. Report Result
+### 11. Report Result
 
 Inform the user:
 - Rebased onto main (parent was merged)

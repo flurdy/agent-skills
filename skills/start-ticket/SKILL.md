@@ -1,6 +1,9 @@
 ---
 name: start-ticket
 description: Initialize work on a Jira ticket. Creates a new branch with conventional commit prefix based on the ticket type. Use when starting work on a new ticket.
+allowed-tools: "Bash(git:*),Skill,mcp__jira__*"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Start Ticket

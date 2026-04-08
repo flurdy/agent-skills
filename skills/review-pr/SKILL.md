@@ -1,6 +1,9 @@
 ---
 name: review-pr
 description: Review a pull request by checking the code changes, PR description, and CI status against the linked Jira ticket requirements. Produces an AC checklist and flags concerns.
+allowed-tools: "Read,Grep,Glob,Bash(gh:*),Bash(git:*),mcp__jira__*"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Review Pull Request

@@ -1,6 +1,8 @@
 ---
 name: contract-test
 description: Run consumer-driven contract tests (pact-lite, no broker). Guides through generating, syncing, and verifying contracts between services.
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Contract Test (Pact-Lite)

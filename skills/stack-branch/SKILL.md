@@ -1,6 +1,9 @@
 ---
 name: stack-branch
 description: Create a new branch stacked on another PR. Use when you want to start work that depends on an existing PR that hasn't been merged yet.
+allowed-tools: "Read,Bash(git:*),Bash(gh:*),Skill,AskUserQuestion,mcp__jira__*"
+version: "1.0.0"
+author: "flurdy"
 ---
 
 # Create Stacked Branch
