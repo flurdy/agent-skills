@@ -1,7 +1,7 @@
 ---
 name: review-comments
 description: Address PR review comments from reviewers (amazon-q-developer, copilot, humans). Use when the user wants to see and respond to feedback on their pull request.
-allowed-tools: "Read,Edit,Grep,Glob,Bash(gh:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.claude/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.claude/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.claude/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(~/.claude/skills/review-comments/scripts/gh-pr-reply-comment.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -24,7 +24,13 @@ Fetch and address review comments on the current PR.
 If no PR number provided, get it from the current branch:
 
 ```bash
-gh pr view --json number,url,title --jq '{number, url, title}'
+SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-current-info.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT"
+else
+  gh pr view --json number,url,title,headRepositoryOwner,headRepository \
+    --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
+fi
 ```
 
 ### 2. Fetch Review Comments
@@ -33,10 +39,20 @@ Get all review comments on the PR:
 
 ```bash
 # Get PR reviews and comments
-gh pr view {pr_number} --json reviews,comments
+SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-view-reviews.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {pr_number}
+else
+  gh pr view {pr_number} --json reviews,comments
+fi
 
 # Get inline code review comments
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments
+SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-comments.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {owner} {repo} {pr_number}
+else
+  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments"
+fi
 ```
 
 ### 3. Categorize Comments
@@ -88,6 +104,11 @@ git push
 If the user wants to reply to comments:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
-  -f body="Done - fixed in latest commit"
+SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-reply-comment.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {owner} {repo} {pr_number} {comment_id} "Done - fixed in latest commit"
+else
+  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
+    -f body="Done - fixed in latest commit"
+fi
 ```
