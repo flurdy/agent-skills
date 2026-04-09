@@ -1,8 +1,8 @@
 ---
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table.
-allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*)"
-version: "1.0.0"
+allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*)"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -31,15 +31,43 @@ else
 fi
 ```
 
-### 2. For each PR, fetch in parallel:
+### 2. Fetch PR details
+
+Group the PRs by `owner/repo`. For each group, prefer the batch script which fetches all data in a single GraphQL call:
+
+```bash
+SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-details.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {owner} {repo} {number1} {number2} ...
+fi
+```
+
+Output is a JSON array, one object per PR:
+
+```json
+[
+  {
+    "number": 123,
+    "base": "main",
+    "mergeState": "CLEAN",
+    "approvers": ["alice"],
+    "unresolvedThreads": 2,
+    "checksState": "SUCCESS"
+  }
+]
+```
+
+Map `checksState` values: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PENDING` or `EXPECTED` → ⏳ / null → `—`
+
+#### Fallback (if batch script unavailable): fetch per PR in parallel
 
 **CI status** (pass / failing / pending):
 ```bash
 SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-checks.sh
 if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" <number>
+  "$SCRIPT" {number}
 else
-  gh pr checks <number> 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
+  gh pr checks {number} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
 fi
 ```
 
