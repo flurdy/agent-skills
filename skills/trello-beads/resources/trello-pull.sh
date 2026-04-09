@@ -65,6 +65,25 @@ pull_card() {
 ${card_desc}"
   fi
 
+  # Append card comments if any
+  local comments_json
+  comments_json=$("$TRELLO_API" comments "$card_id" 2>/dev/null || echo "[]")
+  local comment_count
+  comment_count=$(echo "$comments_json" | jq 'length')
+  if [[ "$comment_count" -gt 0 ]]; then
+    bead_desc="${bead_desc}
+
+## Trello Comments"
+    while IFS= read -r comment; do
+      local author text
+      author=$(echo "$comment" | jq -r '.author')
+      text=$(echo "$comment" | jq -r '.text')
+      bead_desc="${bead_desc}
+
+**${author}:** ${text}"
+    done < <(echo "$comments_json" | jq -c '.[]')
+  fi
+
   # Check for existing bead with same title and trello label
   if bd list --status=open --label=trello 2>/dev/null | grep -qF "$card_name"; then
     echo "SKIP: Bead already exists for: $card_name"

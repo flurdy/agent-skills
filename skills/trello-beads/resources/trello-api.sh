@@ -184,6 +184,13 @@ cmd_comment() {
     | jq '{id, type: .type, text: .data.text}'
 }
 
+cmd_comments() {
+  local card_id="$1"
+  [[ -n "$card_id" ]] || die "Usage: trello-api.sh comments <card-id>"
+  curl -sf "${BASE_URL}/cards/${card_id}/actions?$(auth_params)&filter=commentCard&fields=data,memberCreator" \
+    | jq '[.[] | {author: .memberCreator.fullName, text: .data.text}]'
+}
+
 cmd_help() {
   cat <<'USAGE'
 Usage: trello-api.sh <command> [args...]
@@ -198,6 +205,7 @@ Commands:
   create <list> <title> [desc] Create a new card in a list
   add-label <card-id> <name> [color]  Add a label to a card (creates if needed)
   comment <card-id> <text>    Add a comment to a card
+  comments <card-id>          List all comments on a card
   labels                      List labels on the board
   list-id <list-name>         Resolve a list name to its ID
 
@@ -228,6 +236,7 @@ case "$command" in
   create)        cmd_create "${1:-}" "${2:-}" "${3:-}" ;;
   add-label)     cmd_add_label "${1:-}" "${2:-}" "${3:-}" ;;
   comment)       cmd_comment "${1:-}" "${2:-}" ;;
+  comments)      cmd_comments "${1:-}" ;;
   labels)        cmd_labels ;;
   list-id)       resolve_list_id "${1:-}" ;;
   *)             die "Unknown command: $command. Run with 'help' for usage." ;;
