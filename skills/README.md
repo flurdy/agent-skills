@@ -13,6 +13,7 @@
 | eas-build-error | Show the status and errors from the latest EAS build |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | next | Pick the next bead to work on based on priority, type, and recency |
+| pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
 | rebase-main | Rebase the current branch onto an updated main branch |
 | rebase-merged-parent | Rebase after a parent PR has been merged to main |
 | rebase-parent | Rebase the current branch onto an updated parent PR branch |
