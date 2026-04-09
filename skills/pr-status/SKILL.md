@@ -120,6 +120,8 @@ gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeSt
 
 ### 3. Render as a table
 
+Before the table, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
+
 Output a markdown table with columns:
 
 | PR | Title | Target | Sync | CI | Approved by | Unresolved threads |
