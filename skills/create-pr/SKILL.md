@@ -1,7 +1,7 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, and pushes to origin.
-allowed-tools: "Read,Bash(git:*),Bash(gh:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.claude/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -83,8 +83,20 @@ Check for a repo-specific PR template at `.github/pull-request-template.md` or `
 ```bash
 # Push branch with upstream tracking
 git push -u origin {branch-name}
+```
 
-# Create the PR targeting main
+Create the PR targeting main:
+
+```bash
+~/.claude/skills/create-pr/scripts/gh-pr-create.sh --base main --title "{title}" --body "$(cat <<'EOF'
+{body}
+EOF
+)"
+```
+
+If the script is unavailable, fall back to:
+
+```bash
 gh pr create --base main --title "{title}" --body "$(cat <<'EOF'
 {body}
 EOF

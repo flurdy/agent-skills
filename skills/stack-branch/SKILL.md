@@ -1,7 +1,7 @@
 ---
 name: stack-branch
 description: Create a new branch stacked on another PR. Use when you want to start work that depends on an existing PR that hasn't been merged yet.
-allowed-tools: "Read,Bash(git:*),Bash(gh:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.claude/skills/stack-branch/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -100,6 +100,15 @@ Ask if the user wants to create a draft PR now:
 Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
 
 #### Create the PR targeting parent branch
+
+```bash
+~/.claude/skills/stack-branch/scripts/gh-pr-create.sh --draft --base {parent-branch} --title "{type}({scope}): {description}" --body "$(cat <<'EOF'
+{body}
+EOF
+)"
+```
+
+If the script is unavailable, fall back to:
 
 ```bash
 gh pr create --draft --base {parent-branch} --title "{type}({scope}): {description}" --body "$(cat <<'EOF'

@@ -1,7 +1,7 @@
 ---
 name: rebase-parent
 description: Rebase the current branch onto an updated parent PR branch. Use when you have stacked PRs and the parent branch has been updated (force-pushed after its own rebase or new commits added).
-allowed-tools: "Read,Edit,Bash(git:*),Bash(gh:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.claude/skills/rebase-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -26,8 +26,17 @@ If not provided, try to determine the parent:
 ```bash
 # Get current branch
 git branch --show-current
+```
 
-# Check PR base branch
+Check PR base branch:
+
+```bash
+~/.claude/skills/rebase-parent/scripts/gh-pr-base-branch.sh
+```
+
+If the script is unavailable, fall back to:
+
+```bash
 gh pr view --json baseRefName --jq '.baseRefName'
 ```
 
@@ -123,6 +132,12 @@ git push --force-with-lease
 ### 9. Update PR Base (if needed)
 
 If the PR base branch needs updating:
+
+```bash
+~/.claude/skills/rebase-parent/scripts/gh-pr-edit-base.sh {parent-branch}
+```
+
+If the script is unavailable, fall back to:
 
 ```bash
 gh pr edit --base {parent-branch}
