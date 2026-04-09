@@ -39,7 +39,7 @@ SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-checks.sh
 if [ -x "$SCRIPT" ]; then
   "$SCRIPT" <number>
 else
-  gh pr checks <number> 2>/dev/null | awk '{print $2}' | sort | uniq -c
+  gh pr checks <number> 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
 fi
 ```
 
