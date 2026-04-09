@@ -1,7 +1,7 @@
 ---
 name: reply-comments
 description: Reply to PR review comments after addressing them. Resolves conversations where changes were made. Uses polite tone for humans, terse factual responses for AI bots.
-allowed-tools: "Read,Bash(gh:*),Bash(git:*)"
+allowed-tools: "Read,Bash(~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -24,8 +24,13 @@ Reply to PR review comments after addressing the feedback. Use this after `/revi
 If no PR number provided, get it from the current branch:
 
 ```bash
-gh pr view --json number,url,title,headRepositoryOwner,headRepository \
-  --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
+SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT"
+else
+  gh pr view --json number,url,title,headRepositoryOwner,headRepository \
+    --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
+fi
 ```
 
 ### 2. Fetch Review Comments
@@ -33,9 +38,13 @@ gh pr view --json number,url,title,headRepositoryOwner,headRepository \
 Get all review comments with their thread/resolution status:
 
 ```bash
-# Get inline code review comments
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments \
-  --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id, created_at}'
+SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {owner} {repo} {pr_number}
+else
+  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" \
+    --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id, created_at}'
+fi
 ```
 
 ### 3. Get Recent Commits
@@ -88,8 +97,13 @@ For comments NOT addressed (intentionally skipped):
 Reply to each comment:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
-  -f body="{reply_text}"
+SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {owner} {repo} {pr_number} {comment_id} "{reply_text}"
+else
+  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
+    -f body="{reply_text}"
+fi
 ```
 
 ### 7. Resolve Threads (if addressed)
@@ -97,38 +111,41 @@ gh api repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies \
 Use GraphQL to resolve review threads where changes were made:
 
 ```bash
-# First, get the thread ID for the comment
-gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviewThreads(first: 100) {
-          nodes {
-            id
-            isResolved
-            comments(first: 1) {
-              nodes {
-                databaseId
-                body
-              }
+# First, get the thread IDs
+SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {owner} {repo} {pr_number}
+else
+  gh api graphql -f query='
+    query($owner: String!, $repo: String!, $pr: Int!) {
+      repository(owner: $owner, name: $repo) {
+        pullRequest(number: $pr) {
+          reviewThreads(first: 100) {
+            nodes {
+              id
+              isResolved
+              comments(first: 1) { nodes { databaseId body } }
             }
           }
         }
       }
     }
-  }
-' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
+  ' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
+fi
 
 # Then resolve each thread that was addressed
-gh api graphql -f query='
-  mutation($threadId: ID!) {
-    resolveReviewThread(input: {threadId: $threadId}) {
-      thread {
-        isResolved
+SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh
+if [ -x "$SCRIPT" ]; then
+  "$SCRIPT" {thread_id}
+else
+  gh api graphql -f query='
+    mutation($threadId: ID!) {
+      resolveReviewThread(input: {threadId: $threadId}) {
+        thread { isResolved }
       }
     }
-  }
-' -f threadId="{thread_id}"
+  ' -f threadId="{thread_id}"
+fi
 ```
 
 ### 8. Summary
