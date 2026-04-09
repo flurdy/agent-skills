@@ -21,25 +21,23 @@ Show enriched status for all open PRs created by you: CI checks, approvals, and 
 ### 1. Get open PRs
 
 ```bash
-SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT"
-else
-  gh pr list --author "@me" --state open \
-    --json number,title,headRefName,baseRefName,headRepositoryOwner,headRepository \
-    --jq '.[] | {number, title, branch: .headRefName, base: .baseRefName, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
-fi
+~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr list --author "@me" --state open \
+  --json number,title,headRefName,baseRefName,headRepositoryOwner,headRepository \
+  --jq '.[] | {number, title, branch: .headRefName, base: .baseRefName, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
 ```
 
 ### 2. Fetch PR details
 
-Group the PRs by `owner/repo`. For each group, prefer the batch script which fetches all data in a single GraphQL call:
+Group the PRs by `owner/repo`. For each group, fetch all data in a single GraphQL call:
 
 ```bash
-SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-details.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {number1} {number2} ...
-fi
+~/.claude/skills/pr-status/scripts/gh-pr-details.sh {owner} {repo} {number1} {number2} ...
 ```
 
 Output is a JSON array, one object per PR:
@@ -62,54 +60,62 @@ Map `checksState` values: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PE
 #### Fallback (if batch script unavailable): fetch per PR in parallel
 
 **CI status** (pass / failing / pending):
+
 ```bash
-SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-checks.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {number}
-else
-  gh pr checks {number} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
-fi
+~/.claude/skills/pr-status/scripts/gh-pr-checks.sh {number}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr checks {number} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
 ```
 
 **Approvals** (count + who):
+
 ```bash
-SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {number}
-else
-  gh api "repos/{owner}/{repo}/pulls/{number}/reviews" \
-    --jq '[.[] | select(.state == "APPROVED") | .user.login] | unique | join(", ")'
-fi
+~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh {owner} {repo} {number}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api "repos/{owner}/{repo}/pulls/{number}/reviews" \
+  --jq '[.[] | select(.state == "APPROVED") | .user.login] | unique | join(", ")'
 ```
 
 **Unresolved review threads** (count):
+
 ```bash
-SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-threads.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {number}
-else
-  gh api graphql -f query='
-  query($owner:String!,$repo:String!,$pr:Int!){
-    repository(owner:$owner,name:$repo){
-      pullRequest(number:$pr){
-        reviewThreads(first:100){
-          nodes{ isResolved }
-        }
+~/.claude/skills/pr-status/scripts/gh-pr-threads.sh {owner} {repo} {number}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api graphql -f query='
+query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviewThreads(first:100){
+        nodes{ isResolved }
       }
     }
-  }' -f owner="{owner}" -f repo="{repo}" -F pr={number} \
-    --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length'
-fi
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F pr={number} \
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length'
 ```
 
 **Merge state** (behind / conflict / clean):
+
 ```bash
-SCRIPT=~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {number} {owner} {repo}
-else
-  gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeStateStatus'
-fi
+~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh {number} {owner} {repo}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeStateStatus'
 ```
 
 ### 3. Render as a table

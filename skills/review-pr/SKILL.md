@@ -31,40 +31,49 @@ If no PR number provided, use the current branch's PR.
 If no PR number provided, resolve it first:
 
 ```bash
-SCRIPT=~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT"
-else
-  gh pr view --json number --jq '.number'
-fi
+~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr view --json number --jq '.number'
 ```
 
 Fetch comprehensive PR information:
 
 ```bash
-# Get PR metadata
-SCRIPT=~/.claude/skills/review-pr/scripts/gh-pr-view.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {PR_NUMBER}
-else
-  gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,files,state,author,baseRefName,headRefName
-fi
+~/.claude/skills/review-pr/scripts/gh-pr-view.sh {PR_NUMBER}
+```
 
-# Get the full diff
-SCRIPT=~/.claude/skills/review-pr/scripts/gh-pr-diff.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {PR_NUMBER}
-else
-  gh pr diff {PR_NUMBER}
-fi
+If the script is unavailable, fall back to:
 
-# Get CI status
-SCRIPT=~/.claude/skills/review-pr/scripts/gh-pr-checks.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {PR_NUMBER}
-else
-  gh pr checks {PR_NUMBER} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
-fi
+```bash
+gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,files,state,author,baseRefName,headRefName
+```
+
+Get the full diff:
+
+```bash
+~/.claude/skills/review-pr/scripts/gh-pr-diff.sh {PR_NUMBER}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr diff {PR_NUMBER}
+```
+
+Get CI status:
+
+```bash
+~/.claude/skills/review-pr/scripts/gh-pr-checks.sh {PR_NUMBER}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr checks {PR_NUMBER} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
 ```
 
 ### 2. Extract Jira Ticket (Optional)

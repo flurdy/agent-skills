@@ -24,35 +24,40 @@ Fetch and address review comments on the current PR.
 If no PR number provided, get it from the current branch:
 
 ```bash
-SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-current-info.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT"
-else
-  gh pr view --json number,url,title,headRepositoryOwner,headRepository \
-    --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
-fi
+~/.claude/skills/review-comments/scripts/gh-pr-current-info.sh
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr view --json number,url,title,headRepositoryOwner,headRepository \
+  --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
 ```
 
 ### 2. Fetch Review Comments
 
-Get all review comments on the PR:
+Get PR reviews and comments:
 
 ```bash
-# Get PR reviews and comments
-SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-view-reviews.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {pr_number}
-else
-  gh pr view {pr_number} --json reviews,comments
-fi
+~/.claude/skills/review-comments/scripts/gh-pr-view-reviews.sh {pr_number}
+```
 
-# Get inline code review comments
-SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-comments.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {pr_number}
-else
-  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments"
-fi
+If the script is unavailable, fall back to:
+
+```bash
+gh pr view {pr_number} --json reviews,comments
+```
+
+Get inline code review comments:
+
+```bash
+~/.claude/skills/review-comments/scripts/gh-pr-comments.sh {owner} {repo} {pr_number}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments"
 ```
 
 ### 3. Categorize Comments
@@ -104,11 +109,12 @@ git push
 If the user wants to reply to comments:
 
 ```bash
-SCRIPT=~/.claude/skills/review-comments/scripts/gh-pr-reply-comment.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {pr_number} {comment_id} "Done - fixed in latest commit"
-else
-  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
-    -f body="Done - fixed in latest commit"
-fi
+~/.claude/skills/review-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "Done - fixed in latest commit"
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
+  -f body="Done - fixed in latest commit"
 ```

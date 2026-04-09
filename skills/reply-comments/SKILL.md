@@ -24,13 +24,14 @@ Reply to PR review comments after addressing the feedback. Use this after `/revi
 If no PR number provided, get it from the current branch:
 
 ```bash
-SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT"
-else
-  gh pr view --json number,url,title,headRepositoryOwner,headRepository \
-    --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
-fi
+~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr view --json number,url,title,headRepositoryOwner,headRepository \
+  --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
 ```
 
 ### 2. Fetch Review Comments
@@ -38,13 +39,14 @@ fi
 Get all review comments with their thread/resolution status:
 
 ```bash
-SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {pr_number}
-else
-  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" \
-    --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id, created_at}'
-fi
+~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh {owner} {repo} {pr_number}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" \
+  --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id, created_at}'
 ```
 
 ### 3. Get Recent Commits
@@ -97,55 +99,60 @@ For comments NOT addressed (intentionally skipped):
 Reply to each comment:
 
 ```bash
-SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {pr_number} {comment_id} "{reply_text}"
-else
-  gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
-    -f body="{reply_text}"
-fi
+~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "{reply_text}"
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
+  -f body="{reply_text}"
 ```
 
 ### 7. Resolve Threads (if addressed)
 
-Use GraphQL to resolve review threads where changes were made:
+First, get the thread IDs:
 
 ```bash
-# First, get the thread IDs
-SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {owner} {repo} {pr_number}
-else
-  gh api graphql -f query='
-    query($owner: String!, $repo: String!, $pr: Int!) {
-      repository(owner: $owner, name: $repo) {
-        pullRequest(number: $pr) {
-          reviewThreads(first: 100) {
-            nodes {
-              id
-              isResolved
-              comments(first: 1) { nodes { databaseId body } }
-            }
+~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh {owner} {repo} {pr_number}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api graphql -f query='
+  query($owner: String!, $repo: String!, $pr: Int!) {
+    repository(owner: $owner, name: $repo) {
+      pullRequest(number: $pr) {
+        reviewThreads(first: 100) {
+          nodes {
+            id
+            isResolved
+            comments(first: 1) { nodes { databaseId body } }
           }
         }
       }
     }
-  ' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
-fi
+  }
+' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
+```
 
-# Then resolve each thread that was addressed
-SCRIPT=~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh
-if [ -x "$SCRIPT" ]; then
-  "$SCRIPT" {thread_id}
-else
-  gh api graphql -f query='
-    mutation($threadId: ID!) {
-      resolveReviewThread(input: {threadId: $threadId}) {
-        thread { isResolved }
-      }
+Then resolve each thread that was addressed:
+
+```bash
+~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh {thread_id}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api graphql -f query='
+  mutation($threadId: ID!) {
+    resolveReviewThread(input: {threadId: $threadId}) {
+      thread { isResolved }
     }
-  ' -f threadId="{thread_id}"
-fi
+  }
+' -f threadId="{thread_id}"
 ```
 
 ### 8. Summary
