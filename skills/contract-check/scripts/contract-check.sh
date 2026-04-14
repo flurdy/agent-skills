@@ -140,6 +140,9 @@ check_uncommitted() {
 
     if [[ "$uncommitted" -eq 0 ]]; then
         echo "CLEAN  All pact files are committed across $services_checked provider services"
+    else
+        echo ""
+        echo "HINT  Some diffs may be UUID/date noise. Run 'make normalize-pacts' first to reduce noise."
     fi
 
     echo ""

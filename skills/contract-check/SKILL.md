@@ -64,6 +64,12 @@ Parse the user's argument:
 - `<service>` → Run all checks scoped to that service
 - `matrix` → Run `./scripts/contract-check matrix`
 
+### Step 1b: Normalize Before Checking (recommended)
+
+Before running the `uncommitted` check (or `all`/`full`), suggest running `make normalize-pacts` first. Pact libraries regenerate random UUIDs, dates, and strings on every test run, causing noisy git diffs that aren't real contract changes. The normalizer replaces these with deterministic placeholders.
+
+**Note:** `normalize-pacts.py` currently only normalizes values referenced by `generators.body` metadata. UUIDs in `providerStates.params`, `request.path`, `request.headers`, and `response.headers` are NOT yet normalized — those may still show as noise in uncommitted diffs. Flag these as noise in the report when the diff is UUID-only.
+
 ### Step 2: Mechanical Checks (via script)
 
 Run the appropriate script subcommand:
