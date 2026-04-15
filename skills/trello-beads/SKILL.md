@@ -33,9 +33,9 @@ SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 if [[ ! -d "$SKILLS_DIR" ]]; then
   SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
 fi
-ln -sf "$SKILLS_DIR/trello-beads/resources/trello-api.sh" scripts/trello-api
-ln -sf "$SKILLS_DIR/trello-beads/resources/trello-pull.sh" scripts/trello-pull
-ln -sf "$SKILLS_DIR/trello-beads/resources/trello-sync.sh" scripts/trello-sync
+ln -sf "$SKILLS_DIR/trello-beads/scripts/trello-api.sh" scripts/trello-api
+ln -sf "$SKILLS_DIR/trello-beads/scripts/trello-pull.sh" scripts/trello-pull
+ln -sf "$SKILLS_DIR/trello-beads/scripts/trello-sync.sh" scripts/trello-sync
 ```
 
 Verify:

@@ -106,10 +106,10 @@ When invoked:
    Fallback if not available in the project's scripts/:
    ```bash
    SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-   if [[ ! -x "$SKILLS_DIR/next/resources/next-bd" ]]; then
+   if [[ ! -x "$SKILLS_DIR/next/scripts/next-bd" ]]; then
      SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
    fi
-   "$SKILLS_DIR/next/resources/next-bd" --in-progress
+   "$SKILLS_DIR/next/scripts/next-bd" --in-progress
    ```
 
    For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:

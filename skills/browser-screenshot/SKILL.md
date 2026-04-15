@@ -26,7 +26,7 @@ SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
 if [[ ! -d "$SKILLS_DIR" ]]; then
   SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
 fi
-ln -sfn "$SKILLS_DIR/browser-screenshot/resources/screenshot.sh" scripts/screenshot
+ln -sfn "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" scripts/screenshot
 ```
 
 ## Usage
