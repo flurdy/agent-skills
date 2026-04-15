@@ -82,9 +82,20 @@ Reviews:
 Unresolved comments: 6
 ```
 
-### 5. Address Comments
+### 5. Ask the User
 
-For each unresolved comment:
+After presenting the summary, ask the user how they'd like to proceed:
+
+- **Address** — make code changes to fix the feedback
+- **Reply only** — just reply to the comments without code changes
+- **Skip** — dismiss specific comments
+- Or the user may give specific instructions per comment
+
+Do NOT start making changes or replying without user confirmation.
+
+### 6. Address Comments (if requested)
+
+For each unresolved comment the user wants addressed:
 
 1. Read the comment and understand what's being asked
 2. Check the file and line being referenced
@@ -93,7 +104,7 @@ For each unresolved comment:
    - Explain why the current code is correct
    - Ask the user for guidance on ambiguous feedback
 
-### 6. After Making Changes
+### 7. After Making Changes
 
 ```bash
 # Stage and commit fixes
@@ -104,17 +115,6 @@ git commit -m "address review feedback"
 git push
 ```
 
-### 7. Respond to Comments (Optional)
+### 8. Reply to Comments
 
-If the user wants to reply to comments:
-
-```bash
-~/.claude/skills/review-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "Done - fixed in latest commit"
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
-  -f body="Done - fixed in latest commit"
-```
+After addressing and pushing, ask the user if they'd like to reply. If yes, use `/reply-comments` to post replies and resolve threads.
