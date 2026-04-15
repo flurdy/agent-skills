@@ -137,6 +137,7 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 | PR | Repo | Ticket | Title | Status | Ready | Wait | Closed |
 |----|------|--------|-------|--------|-------|------|--------|
 
+- **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Repo**: repository name
 - **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Show as plain text or `—`
 - **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
@@ -149,6 +150,7 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 | PR | Ticket | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads |
 |----|--------|-------|--------|--------|-------|------|------|----|----------|---------|
 
+- **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
 - **Branch**: the head branch name (truncate long prefixes, e.g. `feat/GE-1107-cta-clicked-event` → `GE-1107-cta-clicked-event`)
 - **Target**: base branch name. If not `main` or `master`, prefix with 🔗 to indicate the PR is stacked on another branch and should not be merged directly
