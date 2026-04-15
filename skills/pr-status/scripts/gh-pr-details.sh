@@ -13,6 +13,7 @@ for PR in "$@"; do
   ALIASES="${ALIASES}
     pr${PR}: pullRequest(number: ${PR}) {
       number
+      headRefName
       baseRefName
       mergeStateStatus
       reviews(first: 50, states: [APPROVED]) {
@@ -22,7 +23,7 @@ for PR in "$@"; do
         nodes { isResolved }
       }
       commits(last: 1) {
-        nodes { commit { statusCheckRollup { state } } }
+        nodes { commit { committedDate, statusCheckRollup { state } } }
       }
     }"
 done
@@ -39,9 +40,11 @@ gh api graphql \
   -f repo="$REPO" \
   --jq '[.data.repository | to_entries[] | .value | {
     number: .number,
+    branch: .headRefName,
     base: .baseRefName,
     mergeState: .mergeStateStatus,
     approvers: ([.reviews.nodes[].author.login] | unique),
     unresolvedThreads: ([.reviewThreads.nodes[] | select(.isResolved == false)] | length),
-    checksState: .commits.nodes[0].commit.statusCheckRollup.state
+    checksState: .commits.nodes[0].commit.statusCheckRollup.state,
+    lastPush: .commits.nodes[0].commit.committedDate
   }]'

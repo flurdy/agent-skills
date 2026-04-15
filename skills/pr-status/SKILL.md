@@ -1,14 +1,16 @@
 ---
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table.
-allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*)"
-version: "1.1.0"
+allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*)"
+version: "1.2.0"
 author: "flurdy"
 ---
 
 # PR Status
 
-Show enriched status for all open PRs created by you: CI checks, approvals, and unresolved review threads.
+Show enriched status for all open PRs created by you across your GitHub org: CI checks, approvals, and unresolved review threads. Also shows recently closed PRs.
+
+The GitHub org is auto-detected from the current repo's `origin` remote, or can be overridden via `PR_STATUS_ORG` env var.
 
 ## Usage
 
@@ -18,19 +20,23 @@ Show enriched status for all open PRs created by you: CI checks, approvals, and 
 
 ## Instructions
 
-### 1. Get open PRs
+### 1. Get open PRs (org-wide)
 
 ```bash
 ~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh
 ```
 
-If the script is unavailable, fall back to:
+Output is one JSON object per line: `{number, title, owner, repo}`.
+
+The script searches across the GitHub org — not just the current repo. Org is resolved in order: `PR_STATUS_ORG` env var, or extracted from the current repo's `origin` remote URL.
+
+### 1b. Get recently closed PRs (last 7 days)
 
 ```bash
-gh pr list --author "@me" --state open \
-  --json number,title,headRefName,baseRefName,headRepositoryOwner,headRepository \
-  --jq '.[] | {number, title, branch: .headRefName, base: .baseRefName, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
+~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh
 ```
+
+Output is one JSON object per line: `{number, title, owner, repo, closedAt}`.
 
 ### 2. Fetch PR details
 
@@ -50,7 +56,8 @@ Output is a JSON array, one object per PR:
     "mergeState": "CLEAN",
     "approvers": ["alice"],
     "unresolvedThreads": 2,
-    "checksState": "SUCCESS"
+    "checksState": "SUCCESS",
+    "lastPush": "2026-04-15T09:30:00Z"
   }
 ]
 ```
@@ -118,23 +125,53 @@ If the script is unavailable, fall back to:
 gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeStateStatus'
 ```
 
-### 3. Render as a table
+### 3. Render as tables
 
-Before the table, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
+Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
+
+Group open PRs by repo. For each repo that has open PRs, output a heading `#### {repo}` followed by a table. Only show repos that have PRs — don't list empty repos.
 
 Output a markdown table with columns:
 
-| PR | Title | Target | Sync | CI | Approved by | Unresolved threads |
-|----|-------|--------|------|----|-------------|--------------------|
+| PR | Ticket | Title | Branch | Target | Pushed | Sync | CI | Approved | Threads |
+|----|--------|-------|--------|--------|--------|------|----|----------|---------|
 
+- **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
+- **Branch**: the head branch name (truncate long prefixes, e.g. `feat/GE-1107-cta-clicked-event` → `GE-1107-cta-clicked-event`)
 - **Target**: base branch name. If not `main` or `master`, prefix with 🔗 to indicate the PR is stacked on another branch and should not be merged directly
 - **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / ❌ conflict
   - `CLEAN` or `UNSTABLE` → ✅
   - `BEHIND` → ⚠️ behind
   - `DIRTY` → ❌ conflict
   - other → `—`
-- **CI**: ✅ passing / ❌ failing (N) / ⏳ pending
-- **Approved by**: list of approver logins, or `—` if none
-- **Unresolved threads**: count, or `—` if zero
+- **CI**: ✅ / ❌ / ⏳ — emoji only, no text
+- **Pushed**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
+- **Approved**: list of approver logins, or `—` if none
+- **Threads**: count, or `—` if zero
 
 Keep PR titles truncated to ~50 chars.
+
+### 4. Summarise changes
+
+After the table, if anything changed since the last check in this session, list the deltas as a bullet list, e.g.:
+
+- #6142 CI: ❌ → ✅
+- #6138 closed/merged (removed from list)
+- #6141 new unresolved thread (0 → 1)
+
+If nothing changed, say "No changes."
+
+### 5. Recently closed (last 7 days)
+
+After the changes summary, show recently closed/merged PRs grouped by repo in a table, same as open PRs.
+
+#### Recently closed — {repo}
+
+| PR | Ticket | Title | Status | Closed |
+|----|--------|-------|--------|--------|
+
+- **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Render as a Jira link or `—`
+- **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
+- **Closed**: relative time since close, e.g. `2h`, `1d`, `5d`
+
+Skip this section entirely if no PRs were closed in the last 7 days. Only show repos that have closed PRs.
