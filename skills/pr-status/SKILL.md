@@ -129,7 +129,7 @@ gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeSt
 
 Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
 
-Group open PRs by repo. For each repo that has open PRs, output a heading `#### {repo}` followed by a table. Only show repos that have PRs — don't list empty repos.
+Group open PRs by repo. For each repo that has open PRs, output a heading `#### Open — {repo}` followed by a table. Only show repos that have PRs — don't list empty repos.
 
 Output a markdown table with columns:
 
@@ -151,27 +151,26 @@ Output a markdown table with columns:
 
 Keep PR titles truncated to ~50 chars.
 
-### 4. Summarise changes
+### 4. Recently closed (last 7 days)
 
-After the table, if anything changed since the last check in this session, list the deltas as a bullet list, e.g.:
+Show recently closed/merged PRs in a single table with a **Repo** column. Skip this section entirely if no PRs were closed in the last 7 days.
+
+#### Recently closed
+
+| PR | Repo | Ticket | Title | Status | Closed |
+|----|------|--------|-------|--------|--------|
+
+- **Repo**: repository name
+- **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Show as plain text or `—`
+- **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
+- **Closed**: relative time since close, e.g. `2h`, `1d`, `5d`
+
+### 5. Summarise changes
+
+After the tables, if anything changed since the last check in this session, list the deltas as a bullet list, e.g.:
 
 - #6142 CI: ❌ → ✅
 - #6138 closed/merged (removed from list)
 - #6141 new unresolved thread (0 → 1)
 
 If nothing changed, say "No changes."
-
-### 5. Recently closed (last 7 days)
-
-After the changes summary, show recently closed/merged PRs grouped by repo in a table, same as open PRs.
-
-#### Recently closed — {repo}
-
-| PR | Ticket | Title | Status | Closed |
-|----|--------|-------|--------|--------|
-
-- **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Render as a Jira link or `—`
-- **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
-- **Closed**: relative time since close, e.g. `2h`, `1d`, `5d`
-
-Skip this section entirely if no PRs were closed in the last 7 days. Only show repos that have closed PRs.
