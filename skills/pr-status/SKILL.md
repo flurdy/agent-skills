@@ -57,7 +57,8 @@ Output is a JSON array, one object per PR:
     "approvers": ["alice"],
     "unresolvedThreads": 2,
     "checksState": "SUCCESS",
-    "lastPush": "2026-04-15T09:30:00Z"
+    "lastPush": "2026-04-15T09:30:00Z",
+    "readyAt": "2026-04-14T15:32:11Z"
   }
 ]
 ```
@@ -129,22 +130,24 @@ gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeSt
 
 Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
 
-**Recently closed (last 7 days)** — render first. Show in a single table with a **Repo** column. Skip this section entirely if no PRs were closed in the last 7 days.
+**Recently closed (last 7 days)** — render first. Show in a single table with a **Repo** column. Skip this section entirely if no PRs were closed in the last 7 days. Fetch details for closed PRs too (same `gh-pr-details.sh` script) to get `readyAt`.
 
 #### Recently closed
 
-| PR | Repo | Ticket | Title | Status | Closed |
-|----|------|--------|-------|--------|--------|
+| PR | Repo | Ticket | Title | Status | Ready | Wait | Closed |
+|----|------|--------|-------|--------|-------|------|--------|
 
 - **Repo**: repository name
 - **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Show as plain text or `—`
 - **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
+- **Ready**: relative time since PR became ready for review (from `readyAt`). Same short units
+- **Wait**: time between ready and closed (`closedAt - readyAt`). Shows how long the PR waited for review/merge
 - **Closed**: relative time since close, e.g. `2h`, `1d`, `5d`
 
 **Open PRs** — render after closed. Group by repo. For each repo that has open PRs, output a heading `#### Open — {repo}` followed by a table. Only show repos that have PRs — don't list empty repos.
 
-| PR | Ticket | Title | Branch | Target | Pushed | Sync | CI | Approved | Threads |
-|----|--------|-------|--------|--------|--------|------|----|----------|---------|
+| PR | Ticket | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads |
+|----|--------|-------|--------|--------|-------|------|------|----|----------|---------|
 
 - **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
 - **Branch**: the head branch name (truncate long prefixes, e.g. `feat/GE-1107-cta-clicked-event` → `GE-1107-cta-clicked-event`)
@@ -155,7 +158,8 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
   - `DIRTY` → ❌ conflict
   - other → `—`
 - **CI**: ✅ / ❌ / ⏳ — emoji only, no text
-- **Pushed**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
+- **Ready**: relative time since PR became ready for review (from `readyAt` — uses `ReadyForReviewEvent` or PR `createdAt` as fallback). Same short units
+- **Push**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
 - **Approved**: list of approver logins, or `—` if none
 - **Threads**: count, or `—` if zero
 

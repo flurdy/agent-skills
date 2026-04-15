@@ -22,8 +22,14 @@ for PR in "$@"; do
       reviewThreads(first: 100) {
         nodes { isResolved }
       }
+      createdAt
       commits(last: 1) {
         nodes { commit { committedDate, statusCheckRollup { state } } }
+      }
+      timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) {
+        nodes {
+          ... on ReadyForReviewEvent { createdAt }
+        }
       }
     }"
 done
@@ -46,5 +52,6 @@ gh api graphql \
     approvers: ([.reviews.nodes[].author.login] | unique),
     unresolvedThreads: ([.reviewThreads.nodes[] | select(.isResolved == false)] | length),
     checksState: .commits.nodes[0].commit.statusCheckRollup.state,
-    lastPush: .commits.nodes[0].commit.committedDate
+    lastPush: .commits.nodes[0].commit.committedDate,
+    readyAt: (.timelineItems.nodes[0].createdAt // .createdAt)
   }]'
