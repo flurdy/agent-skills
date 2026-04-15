@@ -8,7 +8,8 @@
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
 | complete-task | Complete an in-progress task by running clean-code, staging, committing, and closing the bead |
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
-| contract-test | Run consumer-driven contract tests (pact-lite, no broker) |
+| contract-check | Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests |
+| contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
 | create-pr | Create a pull request from the current branch following project conventions |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
