@@ -212,7 +212,47 @@ If multiple agents were queried, present each under its own heading:
 {brief comparison of where they agree/disagree}
 ```
 
-After presenting, offer: "Want me to act on any of these suggestions?"
+After presenting the raw results, add your own assessment (see step 6).
+
+### 6. Your Assessment
+
+Critically review the external agent's findings against the actual codebase. For each finding, verify
+whether it is correct by reading the relevant code — do not take the agent's claims at face value.
+
+#### Single PR
+
+```markdown
+### My Assessment
+
+| # | Finding | Verdict | Rationale |
+|---|---------|---------|-----------|
+| 1 | {short description} | Valid / Non-issue / Already handled | {one-line reason} |
+| 2 | ... | ... | ... |
+
+**Actionable items:** {list only the valid findings worth acting on, or "None."}
+```
+
+#### Batch (multiple PRs)
+
+When reviewing several PRs in one session, present a summary table after all individual reviews:
+
+```markdown
+### Batch Summary
+
+| PR | Title | Findings | Actionable |
+|----|-------|----------|------------|
+| #123 | feat: add caching | 4 | 1 — readCookie split bug |
+| #124 | fix: session init | 3 | 0 |
+| ... | ... | ... | ... |
+```
+
+Then list only the genuinely actionable items across all PRs, grouped by severity.
+
+#### Follow-up
+
+After the assessment, offer:
+- "Want me to create beads for the actionable items?"
+- Or, if nothing is actionable: "Nothing worth following up — want me to act on anything else?"
 
 ## Error Handling
 
@@ -226,6 +266,6 @@ After presenting, offer: "Want me to act on any of these suggestions?"
 - Never let the external agent modify files — use read-only/sandbox modes
 - Always use `--no-input` for Claude, `--sandbox` for Gemini, and default (no write) permissions for Codex
 - Do not send sensitive data (env vars, secrets, credentials) to external CLIs
-- Present the external agent's response faithfully — do not editorialize or filter it
+- Present the external agent's response faithfully in step 5 — save your own judgement for step 6
 - Make clear which agent provided which opinion
 - The temp file approach avoids shell injection from prompt content
