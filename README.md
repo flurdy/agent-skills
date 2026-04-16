@@ -116,11 +116,62 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 
 ## Adding a new skill
 
-1. Create a folder under `skills/`
-2. Add a `SKILL.md` with the skill's instructions and triggers
-3. Keep it focused and general-purpose
-4. If you need supporting material, add it inside the skill folder
+1. Create a folder under `skills/` with a descriptive kebab-case name
+2. Add a `SKILL.md` with frontmatter and instructions (see below)
+3. Add the skill to the table in [`skills/README.md`](skills/README.md)
+4. Keep it focused and general-purpose
 5. Test by running `make apply` or `make apply-codex` and verifying it appears in the target skills directory
+
+### SKILL.md format
+
+Every skill needs a `SKILL.md` with YAML frontmatter:
+
+```markdown
+---
+name: my-skill
+description: One-line description shown in skill listings
+version: "1.0.0"
+author: "yourname"
+---
+
+# My Skill
+
+Instructions for the agent go here.
+```
+
+### Helper scripts and `allowed-tools`
+
+If your skill runs shell commands (API calls, `gh` commands, build tools, etc.), wrap them in scripts under a `scripts/` subfolder. This lets you grant auto-approval for specific commands via the `allowed-tools` frontmatter field, so the user isn't prompted on every invocation:
+
+```plaintext
+skills/
+  my-skill/
+    SKILL.md
+    scripts/
+      fetch-data.sh
+```
+
+```yaml
+---
+name: my-skill
+description: Fetch and display data from the API
+allowed-tools: "Bash(~/.claude/skills/my-skill/scripts/fetch-data.sh:*)"
+---
+```
+
+Without `allowed-tools`, the user will be prompted to approve each tool call. Multiple patterns are comma-separated. Glob patterns match against the full command string.
+
+### Skill folder structure
+
+```plaintext
+skills/
+  my-skill/
+    SKILL.md              # Required — instructions and frontmatter
+    scripts/              # Optional — shell scripts for auto-approval
+      fetch-data.sh
+    templates/            # Optional — text templates the skill reads at runtime
+      body.md
+```
 
 ## Coexisting with existing skills
 

@@ -28,3 +28,4 @@
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
+| watch-prs | Start a recurring PR status dashboard — polls every 5m until 18:00 (shortcut for `/loop 5m /pr-status`) |
