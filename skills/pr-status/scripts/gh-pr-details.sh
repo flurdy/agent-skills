@@ -16,6 +16,7 @@ for PR in "$@"; do
       headRefName
       baseRefName
       mergeStateStatus
+      reviewDecision
       reviews(first: 50, states: [APPROVED]) {
         nodes { author { login } }
       }
@@ -49,6 +50,7 @@ gh api graphql \
     branch: .headRefName,
     base: .baseRefName,
     mergeState: .mergeStateStatus,
+    reviewDecision: .reviewDecision,
     approvers: ([.reviews.nodes[].author.login] | unique),
     unresolvedThreads: ([.reviewThreads.nodes[] | select(.isResolved == false)] | length),
     checksState: .commits.nodes[0].commit.statusCheckRollup.state,

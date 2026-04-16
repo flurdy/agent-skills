@@ -54,6 +54,7 @@ Output is a JSON array, one object per PR:
     "number": 123,
     "base": "main",
     "mergeState": "CLEAN",
+    "reviewDecision": "APPROVED",
     "approvers": ["alice"],
     "unresolvedThreads": 2,
     "checksState": "SUCCESS",
@@ -162,7 +163,7 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 - **CI**: ✅ / ❌ / ⏳ — emoji only, no text
 - **Ready**: relative time since PR became ready for review (from `readyAt` — uses `ReadyForReviewEvent` or PR `createdAt` as fallback). Same short units
 - **Push**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
-- **Approved**: list of approver logins, or `—` if none
+- **Approved**: list of approver logins, or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render each name with strikethrough (`~~name~~`). If `reviewDecision` is `CHANGES_REQUESTED`, show `—` (ignore stale approvals). Only show plain names when `reviewDecision` is `APPROVED`.
 - **Threads**: count, or `—` if zero
 
 Keep PR titles truncated to ~50 chars.
