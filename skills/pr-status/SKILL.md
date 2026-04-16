@@ -148,8 +148,8 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 
 **Open PRs** — render after closed. Group by repo. For each repo that has open PRs, output a heading `#### Open — {repo}` followed by a table. Only show repos that have PRs — don't list empty repos.
 
-| PR | Ticket | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads |
-|----|--------|-------|--------|--------|-------|------|------|----|----------|---------|
+| PR | Ticket | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads | LGTM |
+|----|--------|-------|--------|--------|-------|------|------|----|----------|---------|------|
 
 - **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
@@ -165,6 +165,7 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 - **Push**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
 - **Approved**: list of approver logins, or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render each name with strikethrough (`~~name~~`). If `reviewDecision` is `CHANGES_REQUESTED`, show `—` (ignore stale approvals). Only show plain names when `reviewDecision` is `APPROVED`.
 - **Threads**: count, or `—` if zero
+- **LGTM**: 🚀 if all of: `reviewDecision` is `APPROVED`, CI is `SUCCESS`, sync is `CLEAN` or `UNSTABLE`, threads is 0, and `mergeState` is `CLEAN`. Otherwise `—`
 
 Keep PR titles truncated to ~50 chars.
 
