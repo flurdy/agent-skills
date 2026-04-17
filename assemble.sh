@@ -11,14 +11,15 @@ SHARED_REPO="$(cd "$SHARED_REPO" 2>/dev/null && pwd || echo "$SHARED_REPO")"
 [[ -d "$PRIVATE_REPO" ]] && PRIVATE_REPO="$(cd "$PRIVATE_REPO" && pwd)"
 
 SHARED_SKILLS_DIR="${SHARED_SKILLS_DIR:-$SHARED_REPO/skills}"
+PRIVATE_SKILLS_DIR="${PRIVATE_SKILLS_DIR:-$PRIVATE_REPO/skills}"
 PRIVATE_MACHINES_DIR="${PRIVATE_MACHINES_DIR:-$PRIVATE_REPO/machines}"
 PRIVATE_CLIENTS_DIR="${PRIVATE_CLIENTS_DIR:-$PRIVATE_REPO/clients}"
 PROFILES_DIR="${PROFILES_DIR:-$PRIVATE_REPO/profiles}"
 
 SKILLS_DIR="${SKILLS_DIR:-$HOME/.claude/skills}"
 
-# shared machine clients (later overrides earlier)
-LAYERS_ORDER="${LAYERS_ORDER:-shared machine clients}"
+# shared private machine clients (later overrides earlier)
+LAYERS_ORDER="${LAYERS_ORDER:-shared private machine clients}"
 
 log() { printf '%s\n' "$*"; }
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -263,6 +264,14 @@ cmd_apply() {
           link_skill_units "$SHARED_SKILLS_DIR" "shared" "$dry_run"
         else
           log "Skipping shared: missing $SHARED_SKILLS_DIR"
+        fi
+        ;;
+      private)
+        if [[ -d "$PRIVATE_SKILLS_DIR" ]]; then
+          log "Applying: private ($PRIVATE_SKILLS_DIR)"
+          link_skill_units "$PRIVATE_SKILLS_DIR" "private" "$dry_run"
+        else
+          log "Skipping private: missing $PRIVATE_SKILLS_DIR"
         fi
         ;;
       machine)

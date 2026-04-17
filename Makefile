@@ -10,8 +10,8 @@ SKILLS_DIR  ?= $(HOME)/.claude/skills
 # warn | fail | allow
 COLLISION_MODE ?= warn
 
-# shared machine clients
-LAYERS_ORDER ?= shared machine clients
+# shared private machine clients
+LAYERS_ORDER ?= shared private machine clients
 
 ASSEMBLE := ./assemble.sh
 
