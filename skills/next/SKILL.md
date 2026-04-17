@@ -96,25 +96,17 @@ Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
 
 When invoked:
 
-1. **Get the ranked table** using the `next-bd` script (handles ready list, blocked filtering, label fetching, and ranking in one command):
+1. **Get the ranked table** using the `next-bd` script (handles ready list, blocked filtering, label fetching, and ranking in one command). Always invoke it by its full install path so the command prefix is stable and allowlistable in `.claude/settings.json`. For Claude Code:
 
    ```bash
-   # Preferred — if symlinked into the project's scripts/
-   ./scripts/next-bd --in-progress
+   ~/.claude/skills/next/scripts/next-bd --in-progress
    ```
 
-   Fallback if not available in the project's scripts/:
-   ```bash
-   SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-   if [[ ! -x "$SKILLS_DIR/next/scripts/next-bd" ]]; then
-     SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
-   fi
-   "$SKILLS_DIR/next/scripts/next-bd" --in-progress
-   ```
+   For Codex, substitute `$HOME/.codex/skills/...` — pick one path per harness; do not combine with a conditional, as compound shell expressions cannot be granted a stable permission prefix.
 
    For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:
    ```bash
-   ./scripts/next-bd --in-progress --avoid-busy
+   ~/.claude/skills/next/scripts/next-bd --in-progress --avoid-busy
    ```
 
    This outputs a markdown table ranked by the priority algorithm, with labels included, blocked beads filtered out, and in-progress beads shown for awareness.
