@@ -3,7 +3,7 @@ name: next
 description: >
   Pick the next bead to work on. Shows ready tasks (no blockers), applies user
   preferences for ordering (priority, type, recency), and helps select work.
-allowed-tools: "Read,Bash(bd:*),AskUserQuestion"
+allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),AskUserQuestion"
 version: "1.1.0"
 author: "flurdy"
 ---
@@ -102,7 +102,11 @@ When invoked:
    ~/.claude/skills/next/scripts/next-bd --in-progress
    ```
 
-   For Codex, substitute `$HOME/.codex/skills/...` — pick one path per harness; do not combine with a conditional, as compound shell expressions cannot be granted a stable permission prefix.
+   For Codex, substitute the Codex skills path — pick one path per harness; do not combine with a conditional or env-var expansion, as compound shell expressions cannot be granted a stable permission prefix:
+
+   ```bash
+   ~/.codex/skills/next/scripts/next-bd --in-progress
+   ```
 
    For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:
    ```bash
