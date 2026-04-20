@@ -6,6 +6,7 @@ PRIVATE_REPO ?= $(ROOT_DIR)/../agent-skills-private
 
 ACTIVE_DIR  ?= $(HOME)/.claude/skills.active
 SKILLS_DIR  ?= $(HOME)/.claude/skills
+AGENTS_DIR  ?= $(HOME)/.claude/agents
 
 # warn | fail | allow
 COLLISION_MODE ?= warn
@@ -14,6 +15,17 @@ COLLISION_MODE ?= warn
 LAYERS_ORDER ?= shared private machine clients
 
 ASSEMBLE := ./assemble.sh
+
+# Common env for Claude targets (skills + agents)
+CLAUDE_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
+  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" AGENTS_DIR="$(AGENTS_DIR)" \
+  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)"
+
+# Codex has no sub-agent concept — skip the agents layer
+CODEX_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
+  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
+  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
+  SKIP_AGENTS=1
 
 .PHONY: help list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
@@ -37,70 +49,43 @@ help:
 	@echo "  FORCE=1  (skip safety check for user content in ACTIVE_DIR)"
 
 list:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) list
+	@$(CLAUDE_ENV) $(ASSEMBLE) list
 
 doctor:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) doctor
+	@$(CLAUDE_ENV) $(ASSEMBLE) doctor
 
 doctor-codex:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) doctor
+	@$(CODEX_ENV) $(ASSEMBLE) doctor
 
 clean:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) clean $(if $(FORCE),--force,)
+	@$(CLAUDE_ENV) $(ASSEMBLE) clean $(if $(FORCE),--force,)
 
 clean-dry-run:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) clean --dry-run
+	@$(CLAUDE_ENV) $(ASSEMBLE) clean --dry-run
 
 apply:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) apply \
+	@$(CLAUDE_ENV) $(ASSEMBLE) apply \
 	    $(if $(PROFILE),--profile "$(PROFILE)",) \
 	    $(if $(MACHINE),--machine "$(MACHINE)",) \
 	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \
 	    $(if $(FORCE),--force,)
 
 apply-codex:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) apply \
+	@$(CODEX_ENV) $(ASSEMBLE) apply \
 	    $(if $(PROFILE),--profile "$(PROFILE)",) \
 	    $(if $(MACHINE),--machine "$(MACHINE)",) \
 	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \
 	    $(if $(FORCE),--force,)
 
 dry-run:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) apply --dry-run \
+	@$(CLAUDE_ENV) $(ASSEMBLE) apply --dry-run \
 	    $(if $(PROFILE),--profile "$(PROFILE)",) \
 	    $(if $(MACHINE),--machine "$(MACHINE)",) \
 	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \
 	    $(if $(FORCE),--force,)
 
 dry-run-codex:
-	@SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
-	  ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
-	  COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
-	  $(ASSEMBLE) apply --dry-run \
+	@$(CODEX_ENV) $(ASSEMBLE) apply --dry-run \
 	    $(if $(PROFILE),--profile "$(PROFILE)",) \
 	    $(if $(MACHINE),--machine "$(MACHINE)",) \
 	    $(if $(CLIENTS),--clients "$(CLIENTS)",) \

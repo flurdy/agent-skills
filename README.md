@@ -1,7 +1,13 @@
 # Agent Skills
 
-AI agent skills shared across clients and machines. These are the common building
-blocks that get assembled into active AI agent skill sets for Claude, Codex, and other AI agents.
+AI agent skills and sub-agents shared across clients and machines. These are the
+common building blocks that get assembled into active skill sets for Claude,
+Codex, and other AI agents.
+
+Two kinds of units are managed:
+
+- __Skills__ — folders with a `SKILL.md`, linked into `~/.claude/skills/` (and `~/.codex/skills/` for Codex).
+- __Agents__ — single `*.md` files defining Claude Code sub-agents, linked into `~/.claude/agents/`. Codex has no sub-agent concept, so agents are skipped for Codex targets.
 
 ## Using the skills
 
@@ -17,12 +23,13 @@ blocks that get assembled into active AI agent skill sets for Claude, Codex, and
 
    `make apply-codex`
 
-3. Verify skills are in your active skills directory:
+3. Verify units are in your active directories:
 
-   - Claude: `~/.claude/skills`
-   - Codex: `~/.codex/skills`
+   - Claude skills: `~/.claude/skills`
+   - Claude agents: `~/.claude/agents` (skipped for Codex)
+   - Codex skills:  `~/.codex/skills`
 
-Skills are symlinked directly into your active skills directory, coexisting with any skills you already have there.
+Units are symlinked directly into their active directories, coexisting with any skills or agents you already have there.
 
 ## Available Skills
 
@@ -31,6 +38,7 @@ See [skills/README.md](skills/README.md) for the full list of available skills.
 ## Layout
 
 - `skills/`: each skill lives in its own folder with a `SKILL.md`
+- `agents/`: each sub-agent is a single `*.md` file with frontmatter
 - Optional: `assets/`, `scripts/`, or `references/` inside a skill folder if needed
 
 ```plaintext
@@ -38,6 +46,8 @@ agent-skills/
   skills/
     common-skill/
       SKILL.md
+  agents/
+    my-agent.md
   assemble.sh
   Makefile
 ```
@@ -56,21 +66,32 @@ agent-skills/
   skills/
     common-skill/
       SKILL.md
+  agents/
+    common-agent.md
   assemble.sh
   Makefile
 agent-skills-private/
+  skills/
+    my-private-skill/
+      SKILL.md
+  agents/
+    my-private-agent.md
   clients/
     my-client/
       skills/
          my-private-skill/
            SKILL.md
-   machines/
-     my-machine/
-       skills/
-         my-machine-skill/
-           SKILL.md
-   profiles/
-     my-machine-profile.env
+      agents/
+         my-client-agent.md
+  machines/
+    my-machine/
+      skills/
+        my-machine-skill/
+          SKILL.md
+      agents/
+        my-machine-agent.md
+  profiles/
+    my-machine-profile.env
 ```
 
 You can then specify machine or clients specific skills to use:
@@ -88,11 +109,12 @@ CLIENTS="my-client my-other-client"
 
 ### Layering order
 
-When applying skills, if a skill exists in multiple places, the layering order is:
+Skills and agents use the same layering. If a unit exists in multiple layers, later layers override earlier ones:
 
-1. Shared skills from `agent-skills/skills/`
-2. Private machine skills from `agent-skills-private/machines/<machine>/skills/`
-3. Private client skills from `agent-skills-private/clients/<client>/skills/`
+1. Shared: `agent-skills/{skills,agents}/`
+2. Private shared: `agent-skills-private/{skills,agents}/`
+3. Private machine: `agent-skills-private/machines/<machine>/{skills,agents}/`
+4. Private client(s): `agent-skills-private/clients/<client>/{skills,agents}/`
 
 ## Common vars
 
@@ -111,6 +133,12 @@ Path to skills directory:
 - Claude: `SKILLS_DIR=$HOME/.claude/skills`
 - Codex: `SKILLS_DIR=$HOME/.codex/skills`
 
+Path to agents directory (Claude only):
+
+- `AGENTS_DIR=$HOME/.claude/agents`
+
+To skip the agents layer (e.g. for Codex targets), set `SKIP_AGENTS=1`.
+
 There is an example in `.env.example` you can use,
 and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 
@@ -121,6 +149,16 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 3. Add the skill to the table in [`skills/README.md`](skills/README.md)
 4. Keep it focused and general-purpose
 5. Test by running `make apply` or `make apply-codex` and verifying it appears in the target skills directory
+
+## Adding a new agent
+
+Sub-agents are single markdown files with frontmatter — see the [Claude Code sub-agents docs](https://docs.claude.com/en/docs/claude-code/sub-agents) for the schema.
+
+1. Create `agents/<name>.md` with YAML frontmatter (`name`, `description`, optional `tools`, `model`, `color`) and the agent's system prompt below
+2. Keep agents general-purpose; put machine- or client-specific ones in the private repo under `agents/`, `machines/<m>/agents/`, or `clients/<c>/agents/`
+3. Run `make apply` and confirm the symlink in `~/.claude/agents/`
+
+Agents are not applied for Codex (`make apply-codex` sets `SKIP_AGENTS=1`).
 
 ### SKILL.md format
 
@@ -173,13 +211,13 @@ skills/
       body.md
 ```
 
-## Coexisting with existing skills
+## Coexisting with existing skills and agents
 
-This tool is designed to coexist with skills you already have in your target skills directory:
+This tool is designed to coexist with skills and agents you already have:
 
-- __Apply__ creates symlinks directly in your skills folder, alongside existing skills
-- __Clean__ only removes symlinks that point to our repos, leaving your own skills untouched
-- __Collision handling__: If a skill name already exists and isn't managed by us, `apply` will error out and the pre-existing skill wins. Remove it manually if you want to use the managed version instead.
+- __Apply__ creates symlinks directly in `SKILLS_DIR` and `AGENTS_DIR`, alongside existing entries
+- __Clean__ only removes symlinks that point to our repos, leaving your own skills and agents untouched
+- __Collision handling__: If a skill or agent name already exists and isn't managed by us, `apply` will error out and the pre-existing one wins. Remove it manually if you want to use the managed version instead.
 
 After running `make apply` or `make apply-codex`, your skills folder might look like this:
 
@@ -194,7 +232,7 @@ After running `make apply` or `make apply-codex`, your skills folder might look 
 
 ### Cleaning up
 
-Running `make clean` will only remove the symlinks pointing to `agent-skills/` or `agent-skills-private/`, leaving `my-custom-skill/` and `another-skill/` untouched.
+Running `make clean` will only remove the symlinks pointing to `agent-skills/` or `agent-skills-private/` — in both `~/.claude/skills/` and `~/.claude/agents/` — leaving user-owned entries untouched.
 
 ## Bugs and pull requests
 
