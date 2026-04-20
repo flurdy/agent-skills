@@ -13,6 +13,7 @@
 | create-pr | Create a pull request from the current branch following project conventions |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
+| landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | next | Pick the next bead to work on based on priority, type, and recency |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
 | rebase-main | Rebase the current branch onto an updated main branch |
