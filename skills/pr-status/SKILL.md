@@ -59,6 +59,9 @@ Output is a JSON array, one object per PR:
     "unresolvedThreads": 2,
     "checksState": "SUCCESS",
     "lastPush": "2026-04-15T09:30:00Z",
+    "mergeCommitSha": "abc123...",
+    "mergeCommitAt": "2026-04-15T10:00:00Z",
+    "mainChecksState": "SUCCESS",
     "readyAt": "2026-04-14T15:32:11Z"
   }
 ]
@@ -135,13 +138,14 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 
 #### Recently closed
 
-| PR | Repo | Ticket | Title | Status | Ready | Wait | Closed |
-|----|------|--------|-------|--------|-------|------|--------|
+| PR | Repo | Ticket | Title | Status | CI | Ready | Wait | Closed |
+|----|------|--------|-------|--------|----|-------|------|--------|
 
 - **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Repo**: repository name
 - **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Show as plain text or `—`
 - **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
+- **CI**: post-merge check status on the merge commit (from `mainChecksState`). Only check if merged and `mergeCommitAt` is within the last 2 days — otherwise show `—`. Map: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PENDING` or `EXPECTED` → ⏳ / null or unmerged → `—`
 - **Ready**: relative time since PR became ready for review (from `readyAt`). Same short units
 - **Wait**: time between ready and closed (`closedAt - readyAt`). Shows how long the PR waited for review/merge
 - **Closed**: relative time since close, e.g. `2h`, `1d`, `5d`
@@ -153,9 +157,10 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 
 - **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
-- **Branch**: the head branch name (truncate long prefixes, e.g. `feat/GE-1107-cta-clicked-event` → `GE-1107-cta-clicked-event`)
+- **Branch**: the head branch name. Strip both the conventional-commit prefix (`feat/`, `fix/`, etc.) and the Jira ticket prefix (already shown in the Ticket column), e.g. `feat/GE-1107-cta-clicked-event` → `cta-clicked-event`. If still over ~30 chars after stripping, truncate with `…`.
 - **Target**: base branch name. If not `main` or `master`, prefix with 🔗 to indicate the PR is stacked on another branch and should not be merged directly
-- **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / ❌ conflict
+- **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / ❌ conflict. Only meaningful when base is `main`/`master`; for stacked PRs (base is another branch, i.e. Target has 🔗) show `—` since the PR can't merge directly anyway.
+  - base not `main`/`master` → `—`
   - `CLEAN` or `UNSTABLE` → ✅
   - `BEHIND` → ⚠️ behind
   - `DIRTY` → ❌ conflict
@@ -163,11 +168,13 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 - **CI**: ✅ / ❌ / ⏳ — emoji only, no text
 - **Ready**: relative time since PR became ready for review (from `readyAt` — uses `ReadyForReviewEvent` or PR `createdAt` as fallback). Same short units
 - **Push**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
-- **Approved**: list of approver logins, or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render each name with strikethrough (`~~name~~`). If `reviewDecision` is `CHANGES_REQUESTED`, show `—` (ignore stale approvals). Only show plain names when `reviewDecision` is `APPROVED`.
+- **Approved**: one ✅ per approver when `reviewDecision` is `APPROVED` (e.g. two approvers → `✅✅`), or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render one `☑️` per stale approver. If `reviewDecision` is `CHANGES_REQUESTED`, show `—` (ignore stale approvals).
 - **Threads**: count, or `—` if zero
 - **LGTM**: 🚀 if all of: `reviewDecision` is `APPROVED`, CI is `SUCCESS`, sync is `CLEAN` or `UNSTABLE`, threads is 0, and `mergeState` is `CLEAN`. Otherwise `—`
 
-Keep PR titles truncated to ~50 chars.
+Keep PR titles truncated:
+- Closed table: ~50 chars
+- Open table: ~30 chars (the open table has 12 columns — wide rows cause Claude Code's renderer to fall back to a key-value list instead of a table, so trim aggressively up front)
 
 ### 4. Summarise changes
 

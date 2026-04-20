@@ -27,6 +27,11 @@ for PR in "$@"; do
       commits(last: 1) {
         nodes { commit { committedDate, statusCheckRollup { state } } }
       }
+      mergeCommit {
+        oid
+        committedDate
+        statusCheckRollup { state }
+      }
       timelineItems(itemTypes: [READY_FOR_REVIEW_EVENT], last: 1) {
         nodes {
           ... on ReadyForReviewEvent { createdAt }
@@ -55,5 +60,8 @@ gh api graphql \
     unresolvedThreads: ([.reviewThreads.nodes[] | select(.isResolved == false)] | length),
     checksState: .commits.nodes[0].commit.statusCheckRollup.state,
     lastPush: .commits.nodes[0].commit.committedDate,
+    mergeCommitSha: .mergeCommit.oid,
+    mergeCommitAt: .mergeCommit.committedDate,
+    mainChecksState: .mergeCommit.statusCheckRollup.state,
     readyAt: (.timelineItems.nodes[0].createdAt // .createdAt)
   }]'
