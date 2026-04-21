@@ -1,6 +1,6 @@
 ---
 name: landscape
-description: Morning catch-up view — assigned Jira tickets, open PRs, in-progress and ready beads, and current working copy state in one glance. Run at session start to orient.
+description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
 allowed-tools: "Bash(git:*), Bash(bd:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(~/.claude/skills/next/scripts/next-bd:*), mcp__jira__jira_get, mcp__jira__jira_post"
 version: "0.2.0"
 author: "flurdy"
@@ -14,7 +14,7 @@ Show a consolidated landscape of where you are and what to do next, pulling from
 
 ```bash
 /landscape          # Full landscape
-/landscape quick    # Skip PR details (faster, Jira + beads + working-copy only)
+/landscape quick    # Skip PR details (faster, Jira + working-copy + beads-if-present only)
 ```
 
 ## What It Shows
@@ -23,7 +23,7 @@ Separate blocks, rendered from broadest context to most immediate. Order matters
 
 1. **📋 Jira** — tickets assigned to you, not Done (with sprint)
 2. **🔀 PRs** — org-wide open PRs, recently closed, unresolved threads
-3. **🎯 Beads** — in-progress and top ready beads in this repo
+3. **🎯 Beads** — in-progress and top ready beads in this repo (skipped if `bd` not installed)
 4. **📍 Working copy** — current branch, uncommitted/unpushed work
 5. **Next** — single-sentence suggestion for the most load-bearing action
 
@@ -102,6 +102,14 @@ Head this section `### 🔀 PRs` instead of pr-status's own headings.
 
 ### 3. 🎯 Beads — in-progress + ready work
 
+First probe for `bd`. If it is not installed, skip the whole block and render `_Beads not installed — skipping._`:
+
+```bash
+command -v bd >/dev/null 2>&1 || echo "NO_BD"
+```
+
+If the probe printed `NO_BD`, stop here for this block. Otherwise:
+
 ```bash
 bd list --status=in_progress
 ~/.claude/skills/next/scripts/next-bd 2>/dev/null || bd list --ready
@@ -130,17 +138,13 @@ Render:
 
 Rendered LAST because it's the most immediate context — the branch you're sitting on right now, what needs committing/pushing, and whether it's in sync.
 
-Run these in parallel (single Bash call with a brief script, or parallel tool calls):
+Run the `working-copy.sh` helper, which emits delimited sections for branch, dirty status, ahead/behind, last commit, and on-branch stash count:
 
 ```bash
-git rev-parse --abbrev-ref HEAD                              # current branch
-git status --porcelain                                       # uncommitted changes
-git rev-list --left-right --count @{u}...HEAD 2>/dev/null    # ahead/behind upstream
-git log -1 --format='%h %s (%ar)'                            # last commit
-# Stashes on THIS branch only (global stash count is noise):
-BR=$(git rev-parse --abbrev-ref HEAD)
-git stash list --format='%gs' | grep -c "on ${BR}:" || true
+~/.claude/skills/landscape/scripts/working-copy.sh
 ```
+
+Output is grouped by `---SECTION---` markers. Parse and render from that.
 
 Render:
 
