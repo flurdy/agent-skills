@@ -72,26 +72,44 @@ bd stale                                        # >14d no activity
 bd orphans                                      # broken dependencies
 ```
 
-### 3. Fetch PRs
+### 3. Fetch PRs (hybrid — org-wide + per-ticket)
 
-Reuse pr-status scripts (don't re-implement):
+Two PR queries serve different purposes. Run both.
+
+**3a — Org-wide list (catches orphans, recent context):**
+
+Reuse `pr-status` scripts (don't re-implement). The closed-list window is **28 days** — long enough that infrequently-touched tickets aren't artificially zeroed, short enough that the orphan-detection pass stays fast:
 
 ```bash
 ~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh
-~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh "" 14   # last 14 days
+~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh "" 28   # last 28 days
 ```
 
-In `quick` mode, skip per-PR detail fetches.
+These return PRs across all repos in the org (the script uses `gh search prs --owner $ORG`, so e.g. `bluelightcard/auth0` PRs come back alongside `bluelightcard/BlueLightCard-2.0`). This list feeds **orphan-PR detection** (Rule B) and the recent-PR context.
+
+**3b — Per-ticket targeted search (accurate PR counts in the table):**
+
+The 28-day window can still miss older PRs that shipped against tickets still in flight (e.g. a PR merged 6 weeks ago for a ticket still in Code Review awaiting verification). For **every Jira ticket from step 1** (your assigned set, status != Done), do a targeted search by key — no time limit, all repos in the org:
+
+```bash
+gh search prs --owner "$ORG" "$KEY" --limit 10 --json number,title,state,closedAt,repository,url
+```
+
+Each ticket → list of PRs ever filed against it. Use this to populate the **PRs (open/merged)** column in the table accurately. State values: `open`, `merged`, `closed` (closed-without-merge → ignore for the count).
+
+Cost: one search per non-Done assigned ticket. ~9 calls in a typical sweep, ~5–10s total. Worth it for accuracy.
+
+In `quick` mode, **skip 3b** — fall back to whatever's in 3a's 28-day window. Counts may under-report; warn in the report header.
 
 ### 4. Extract ticket keys
 
-For each PR (title + branch name) and each bead (title + description), extract Jira keys with regex `[A-Z]+-[0-9]+`. Build three maps:
+For each PR from step 3a (title + branch name where available) and each bead (title + description), extract Jira keys with regex `[A-Z]+-[0-9]+`. Build three maps:
 
-- `pr_by_key`: ticket-key → list of PRs (open + recently merged)
+- `pr_by_key`: ticket-key → list of PRs. **Merge** the per-ticket results from 3b (authoritative for counts) with any extra PRs from 3a not yet captured.
 - `bead_by_key`: ticket-key → list of beads
 - `jira_by_key`: ticket-key → ticket (your assigned set + sibling-epic children fetched in step 1)
 
-Beads or PRs with no extractable key go into `orphans`.
+PRs from 3a with no extractable key go into `orphans` (used by Rule B). Beads with no extractable key likewise.
 
 ### 5. Read parking notes
 
@@ -147,7 +165,7 @@ Always render the **assigned-tickets reference table first**, then the drift sec
 ```markdown
 ## Tracking Sweep — {YYYY-MM-DD HH:MM}
 
-**Scope:** {N} Jira tickets · {M} beads (in_progress/open) · {K} PRs (open + last 14d)
+**Scope:** {N} Jira tickets · {M} beads (in_progress/open) · {K} PRs (open + last 28d, plus per-ticket history in full mode)
 
 ### 📋 Assigned Jira tickets
 
@@ -167,7 +185,7 @@ Table rules:
 - **Type**: Jira issuetype name (Task / Story / Bug / Sub-task).
 - **Pri**: shortened — `P1 Critical` → `P1`, `P2 High` → `P2`, etc.
 - **Updated**: relative time (`2h`, `4d`).
-- **PRs (open/merged)**: PRs whose title or branch references this key (open PRs + merged in last 14d).
+- **PRs (open/merged)**: all PRs filed against this ticket key across the org (per-ticket search in step 3b — no time limit; in `quick` mode falls back to the 28-day window).
 - **Beads (in_p/open)**: beads referencing this key.
 - **Summary**: truncated to ~50 chars.
 - Rows whose counts are all zero are still listed — often where drift hides.
