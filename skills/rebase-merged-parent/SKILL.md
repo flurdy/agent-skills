@@ -2,7 +2,7 @@
 name: rebase-merged-parent
 description: Rebase after a parent PR has been merged to main. Use when your branch was stacked on another PR that has now been merged, and you need to rebase onto main while keeping only your commits.
 allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-merged-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.claude/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -69,23 +69,33 @@ git log origin/main..HEAD --oneline
 # If you see parent's commits too, we need to be more selective
 ```
 
-### 6. Rebase onto Main
+### 6. Rebase onto Main with --onto
 
-Since the parent is now in main, rebasing onto main should work cleanly:
+Use `git rebase --onto` to take only the commits between the old parent tip and HEAD, and replay them onto main. This is robust to squash-merges (where patch-id dedup fails because the squashed commit on main doesn't match the original parent commits).
+
+Pick the ref for the old parent's tip, in this order of preference:
 
 ```bash
-git rebase origin/main
+# If the local parent branch still exists
+git rebase --onto origin/main <old-parent>
+
+# Otherwise, if origin still has it
+git rebase --onto origin/main origin/<old-parent>
 ```
 
-If there are duplicate commits (your commits that conflict with the parent's merged version), git may skip them automatically or you may need to resolve conflicts.
+If both are gone (branch was deleted after merge), find the old parent tip from the reflog or the PR's merge commit on main:
 
-### 7. Handle Conflicts or Duplicates
+```bash
+# Inspect the merge commit on main for the parent PR to find its tip SHA
+gh pr view <parent-pr-number> --json mergeCommit --jq '.mergeCommit.oid'
+# Then use that SHA as the upstream
+git rebase --onto origin/main <sha>
+```
 
-If git reports "already applied" commits:
-- These are likely parent commits that are now in main
-- They'll be skipped automatically
+### 7. Handle Conflicts
 
-If real conflicts:
+`--onto` only replays your commits, so "already applied" skips should be rare. If you do hit conflicts:
+
 1. Resolve each conflict
 2. `git add {file}`
 3. `git rebase --continue`
