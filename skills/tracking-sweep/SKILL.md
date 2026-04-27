@@ -37,17 +37,19 @@ Run sections 1–3 in parallel (independent data fetches). Sections 4+ are seque
 
 ### 1. Fetch Jira tickets
 
-Tickets assigned to current user, not Done:
+Tickets assigned to current user, not Done. Include the sprint custom field (`customfield_10020`) — the table both displays it and orders by it:
 
 ```
 mcp__jira__jira_get
   path: /rest/api/3/search/jql
   queryParams:
     jql: assignee = currentUser() AND statusCategory != Done ORDER BY updated DESC
-    fields: summary,status,issuetype,priority,updated,parent,resolution
+    fields: summary,status,issuetype,priority,updated,parent,resolution,customfield_10020
     maxResults: 50
-  jq: issues[*].{key: key, summary: fields.summary, status: fields.status.name, type: fields.issuetype.name, priority: fields.priority.name, updated: fields.updated, parent: fields.parent.key}
+  jq: issues[*].{key: key, summary: fields.summary, status: fields.status.name, type: fields.issuetype.name, priority: fields.priority.name, updated: fields.updated, parent: fields.parent.key, sprint: fields.customfield_10020}
 ```
+
+The `sprint` field is an array of sprint objects. For each ticket extract the **active** sprint's name (first entry where `state == "active"`), else the most recent. Empty/null → `—` (no sprint — usually backlog).
 
 If the result mentions a parent epic (e.g. `GE-280`), **also fetch its other children** so beads referencing sibling tickets can be resolved:
 
@@ -140,11 +142,47 @@ Be conservative: only suppress if the parking note clearly names the ticket. If 
 
 Keep it tight. Skip empty sections. Order by severity.
 
+Always render the **assigned-tickets reference table first**, then the drift sections. The table is a baseline so the user can sanity-check what was scoped and visually correlate drift findings against their full ticket list.
+
 ```markdown
 ## Tracking Sweep — {YYYY-MM-DD HH:MM}
 
-**Scope:** {N} Jira tickets · {M} beads (in_progress/ready/open) · {K} PRs (open + last 14d)
+**Scope:** {N} Jira tickets · {M} beads (in_progress/open) · {K} PRs (open + last 14d)
 
+### 📋 Assigned Jira tickets
+
+Mirror the column style of `/landscape`'s Jira table, extended with two cross-reference columns — **PRs** and **Beads** — which are the unique value of this skill.
+
+| Sprint | Key | Type | Pri | Status | Updated | PRs (open/merged) | Beads (in_p/open) | Summary |
+|--------|-----|------|-----|--------|---------|-------------------|-------------------|---------|
+| Sprint 42 | [GE-649](…) | Task | P3 | Code Review | 2h | 1 / 9 | 0 / 0 | FE \| Ensure Session Id… |
+| Sprint 42 | [GE-1107](…) | Task | P1 | In Progress | 3h | 0 / 3 | 0 / 0 | FE \| Add Amplitude events… |
+| Sprint 41 | [GE-1121](…) | Task | P2 | Code Review | 7d | 0 / 0 | 0 / 0 | FE \| Send Device ID & Session ID… |
+| — | [GE-678](…) | Task | P2 | Ready to Work | 4d | 0 / 0 | 0 / 0 | BE \| Update API Headers |
+```
+
+Table rules:
+- **Sprint**: active sprint name. Truncate purely-numeric names to `S{N}` if the column gets wide. `—` if none.
+- **Key**: markdown link to Jira (e.g. `https://bluelightcard.atlassian.net/browse/{key}`).
+- **Type**: Jira issuetype name (Task / Story / Bug / Sub-task).
+- **Pri**: shortened — `P1 Critical` → `P1`, `P2 High` → `P2`, etc.
+- **Updated**: relative time (`2h`, `4d`).
+- **PRs (open/merged)**: PRs whose title or branch references this key (open PRs + merged in last 14d).
+- **Beads (in_p/open)**: beads referencing this key.
+- **Summary**: truncated to ~50 chars.
+- Rows whose counts are all zero are still listed — often where drift hides.
+
+**Ordering** (primary → secondary):
+
+1. **Sprint group**: current/active sprint first, then older sprints in descending order, then `—` (no sprint) last. Older-sprint rows are themselves a drift signal — carryover work.
+2. **Within each sprint, by status group**: In Progress → Code Review → Test/Review → Backlog → Ready to Work.
+3. **Within status, by priority** (P0 → P4), then by `updated` descending.
+
+After the table, add a one-line sprint summary like `/landscape` does: `_All 6 in Sprint 42._` or `_Spans 2 sprints: Sprint 42 (4), Sprint 41 (2), no-sprint (1)._` — answers "is this portfolio focused or scattered?" at a glance.
+
+After the table, render drift findings:
+
+```markdown
 ---
 
 ### ❌ Blockers ({count})
@@ -177,6 +215,8 @@ Group by category if more than 3 items:
 **Summary:** {N drift items} · {N blockers} · {N parked correctly}
 **Suggested next step:** {one concrete action — usually the highest-severity item or a /tracking-auditor invocation for a suspicious branch}
 ```
+
+Drift findings should reference the table by key (e.g. "GE-1121"), letting the user glance up to see the full row rather than restating context.
 
 If there's no drift at all:
 
