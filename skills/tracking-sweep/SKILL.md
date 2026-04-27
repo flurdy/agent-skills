@@ -1,7 +1,7 @@
 ---
 name: tracking-sweep
 description: Portfolio-wide drift sweep across Jira, beads, and GitHub PRs. Cross-references your assigned Jira tickets, in_progress/ready beads, and recent PRs to flag status drift, orphan work, parent-moved beads, and stale items. Read-only — produces recommendations only. Use ad-hoc when you want a "where is everything" reconciliation, separate from /landscape's passive snapshot.
-allowed-tools: "Bash(git:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(gh:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), mcp__jira__jira_get"
+allowed-tools: "Bash(git:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
 model: sonnet
 effort: medium
 version: "0.1.0"
@@ -92,12 +92,12 @@ These return PRs across all repos in the org (the script uses `gh search prs --o
 The 28-day window can still miss older PRs that shipped against tickets still in flight (e.g. a PR merged 6 weeks ago for a ticket still in Code Review awaiting verification). For **every Jira ticket from step 1** (your assigned set, status != Done), do a targeted search by key — no time limit, all repos in the org:
 
 ```bash
-gh search prs --owner "$ORG" "$KEY" --limit 10 --json number,title,state,closedAt,repository,url
+~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh GE-649 GE-1107 GE-1121 ...
 ```
 
-Each ticket → list of PRs ever filed against it. Use this to populate the **PRs (open/merged)** column in the table accurately. State values: `open`, `merged`, `closed` (closed-without-merge → ignore for the count).
+Pass all non-Done Jira ticket keys as arguments. The script searches each key across the org with no time limit and outputs one JSON line per key: `{"key":"GE-649","open":1,"merged":7,"prs":[...]}`. Use `open` and `merged` counts directly for the table column.
 
-Cost: one search per non-Done assigned ticket. ~9 calls in a typical sweep, ~5–10s total. Worth it for accuracy.
+Cost: one `gh search prs` per ticket. ~9 calls in a typical sweep, ~5–10s total. Worth it for accuracy.
 
 In `quick` mode, **skip 3b** — fall back to whatever's in 3a's 28-day window. Counts may under-report; warn in the report header.
 
