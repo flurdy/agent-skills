@@ -4,7 +4,7 @@ description: Show enriched status of your open PRs — CI checks, approvals, and
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*)"
 model: haiku
 effort: low
-version: "1.3.0"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -55,6 +55,7 @@ Output is a JSON array, one object per PR:
   {
     "number": 123,
     "base": "main",
+    "isDraft": false,
     "mergeState": "CLEAN",
     "reviewDecision": "APPROVED",
     "approvers": ["alice"],
@@ -146,7 +147,7 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 - **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Repo**: repository name
 - **Ticket**: extract Jira ticket ID by matching `/[A-Z]+-\d+/` against the PR title. Show as plain text or `—`
-- **Status**: 🔀 or ❌ — emoji only, no text (from `merged` field in closed list output)
+- **Status**: 🔀 (merged) or 🗑️ (closed unmerged) — emoji only, no text (from `merged` field in closed list output)
 - **CI**: post-merge check status on the merge commit (from `mainChecksState`). Only check if merged and `mergeCommitAt` is within the last 2 days — otherwise show `—`. Map: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PENDING` or `EXPECTED` → ⏳ / null or unmerged → `—`
 - **Ready**: relative time since PR became ready for review (from `readyAt`). Same short units
 - **Wait**: time between ready and closed (`closedAt - readyAt`). Shows how long the PR waited for review/merge
@@ -161,18 +162,18 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 - **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
 - **Branch**: the head branch name. Strip both the conventional-commit prefix (`feat/`, `fix/`, etc.) and the Jira ticket prefix (already shown in the Ticket column), e.g. `feat/GE-1107-cta-clicked-event` → `cta-clicked-event`. If still over ~30 chars after stripping, truncate with `…`.
 - **Target**: base branch name. If not `main` or `master`, prefix with 🔗 to indicate the PR is stacked on another branch and should not be merged directly
-- **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / ❌ conflict. Only meaningful when base is `main`/`master`; for stacked PRs (base is another branch, i.e. Target has 🔗) show `—` since the PR can't merge directly anyway.
+- **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / 💥 conflict. Only meaningful when base is `main`/`master`; for stacked PRs (base is another branch, i.e. Target has 🔗) show `—` since the PR can't merge directly anyway.
   - base not `main`/`master` → `—`
   - `CLEAN` or `UNSTABLE` → ✅
   - `BEHIND` → ⚠️ behind
-  - `DIRTY` → ❌ conflict
+  - `DIRTY` → 💥 conflict
   - other → `—`
 - **CI**: ✅ / ❌ / ⏳ — emoji only, no text
-- **Ready**: relative time since PR became ready for review (from `readyAt` — uses `ReadyForReviewEvent` or PR `createdAt` as fallback). Same short units
+- **Ready**: 🚧 if `isDraft` is true (PR is in draft, not yet ready for review). Otherwise relative time since PR became ready for review (from `readyAt` — uses `ReadyForReviewEvent` or PR `createdAt` as fallback). Same short units
 - **Push**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
-- **Approved**: one ✅ per approver when `reviewDecision` is `APPROVED` (e.g. two approvers → `✅✅`), or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render one `☑️` per stale approver. If `reviewDecision` is `CHANGES_REQUESTED`, show `—` (ignore stale approvals).
-- **Threads**: count, or `—` if zero
-- **LGTM**: 🚀 if all of: `reviewDecision` is `APPROVED`, CI is `SUCCESS`, sync is `CLEAN` or `UNSTABLE`, threads is 0, and `mergeState` is `CLEAN`. Otherwise `—`
+- **Approved**: one ✅ per approver when `reviewDecision` is `APPROVED` (e.g. two approvers → `✅✅`), or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render one `☑️` per stale approver. If `reviewDecision` is `CHANGES_REQUESTED`, show 👎 (ignore stale approvals).
+- **Threads**: `💬 N` if N > 0, or `—` if zero
+- **LGTM**: 🚀 if all of: `isDraft` is false, `reviewDecision` is `APPROVED`, CI is `SUCCESS`, sync is `CLEAN` or `UNSTABLE`, threads is 0, and `mergeState` is `CLEAN`. Otherwise `—`
 
 Keep PR titles truncated:
 - Closed table: ~50 chars

@@ -15,6 +15,7 @@ for PR in "$@"; do
       number
       headRefName
       baseRefName
+      isDraft
       mergeStateStatus
       reviewDecision
       reviews(first: 50, states: [APPROVED]) {
@@ -54,6 +55,7 @@ gh api graphql \
     number: .number,
     branch: .headRefName,
     base: .baseRefName,
+    isDraft: .isDraft,
     mergeState: .mergeStateStatus,
     reviewDecision: .reviewDecision,
     approvers: ([.reviews.nodes[].author.login] | unique),
