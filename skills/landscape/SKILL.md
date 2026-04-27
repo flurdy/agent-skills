@@ -2,7 +2,9 @@
 name: landscape
 description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
 allowed-tools: "Bash(git:*), Bash(bd:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(~/.claude/skills/next/scripts/next-bd:*), mcp__jira__jira_get, mcp__jira__jira_post"
-version: "0.3.0"
+model: haiku
+effort: low
+version: "0.4.0"
 author: "flurdy"
 ---
 

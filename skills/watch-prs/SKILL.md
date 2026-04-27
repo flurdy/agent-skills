@@ -1,7 +1,9 @@
 ---
 name: watch-prs
 description: Start a recurring PR status dashboard — polls every 5 minutes until end of day. Shortcut for `/loop 5m /pr-status`.
-version: "1.0.0"
+model: haiku
+effort: low
+version: "1.1.0"
 author: "flurdy"
 ---
 

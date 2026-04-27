@@ -2,7 +2,9 @@
 name: jira-ticket
 description: Look up Jira ticket details including summary, type, and description. Use this to fetch ticket context for branch naming, PR creation, or understanding requirements.
 allowed-tools: "mcp__jira__*"
-version: "1.0.0"
+model: haiku
+effort: low
+version: "1.1.0"
 author: "flurdy"
 ---
 
