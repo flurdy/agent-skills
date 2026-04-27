@@ -2,7 +2,7 @@
 name: second-opinion
 description: Query an alternative AI CLI (Claude, Codex, or Gemini) for a second opinion on plans, PRs, bugs, or code.
 allowed-tools: "Read,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Grep,Glob,AskUserQuestion"
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -31,6 +31,8 @@ Query Claude, Codex, or Gemini CLI for an independent review of plans, PRs, code
 /second-opinion ask "<question>" --agent gemini
 /second-opinion ask "<question>" --agent all      # Query all agents in parallel
 /second-opinion review-pr --timeout 5             # Allow 5 minutes (default: 3, max: 10)
+/second-opinion ask "..." --model fast            # Use the fast tier instead of smart
+/second-opinion ask "..." --model gemini-3-pro    # Pass an explicit model ID through
 ```
 
 ## Requirements
@@ -39,6 +41,27 @@ Query Claude, Codex, or Gemini CLI for an independent review of plans, PRs, code
 - `codex` CLI installed and authenticated (`codex login`)
 - `gemini` CLI installed and authenticated
 - `gh` CLI for PR operations
+
+## Model Selection
+
+Default is `smart` — no flag passed, so each CLI uses whatever model it's configured
+to default to (typically the top reasoning model). Configure those in each CLI's own
+settings (`~/.codex/config.toml`, etc.) rather than here, so new models like Gemini 3
+Pro or GPT-5.x flow through without editing this skill.
+
+Overrides:
+
+- `--model fast` — cheap/quick tier (table below)
+- `--model <id>` — any other value is treated as a literal model ID and passed through
+
+| CLI    | `fast` maps to    |
+|--------|-------------------|
+| claude | claude-haiku-4-5  |
+| codex  | gpt-5-mini        |
+| gemini | gemini-2.5-flash  |
+
+Refresh the `fast` table when cheaper/newer models ship. The `smart` default requires
+no maintenance here — it's whatever each CLI picks.
 
 ## Instructions
 
@@ -49,9 +72,11 @@ Extract from the arguments:
 - **target**: PR number, plan text, bug description, or freeform question
 - **agent**: `claude`, `codex`, `gemini`, or `all` (default: `codex`)
 - **timeout**: timeout in minutes (default: `3`, max: `10`)
+- **model**: `smart` (default), `fast`, or an explicit model ID — see Model Selection
 
 Look for `--agent <name>` anywhere in the arguments. If not specified, default to `codex`.
 Look for `--timeout <minutes>` anywhere in the arguments. If not specified, default to `3`.
+Look for `--model <value>` anywhere in the arguments. If not specified, default to `smart`.
 
 If no mode is provided, ask the user what they'd like a second opinion on.
 
@@ -135,12 +160,24 @@ Given the codebase in the current directory, answer this question:
 Pass the assembled prompt directly as a positional argument to ensure commands match
 auto-approve permission patterns like `Bash(claude:*)`, `Bash(codex:*)`, and `Bash(gemini:*)`.
 
+**Resolve the model flag** before building the command. Given the parsed `--model` value:
+
+- `smart` (default) → omit the model flag entirely; let the CLI use its configured default
+- `fast` → look up the `fast` row in the table under Model Selection for the current agent
+- anything else → treat as a literal model ID, pass through unchanged
+
+In the snippets below, `{model_flag}` expands to the relevant CLI's flag + value (e.g.
+`--model claude-haiku-4-5`, `-m gpt-5-mini`, `-m gemini-2.5-flash`) when a model was
+resolved, and to an empty string when `smart` is in effect.
+
 #### For Claude
 
 Pass the prompt via the `-p` flag:
 ```bash
-claude -p "{assembled_prompt}" --no-input
+claude -p "{assembled_prompt}" --no-input {model_flag}
 ```
+
+Where `{model_flag}` is `--model <id>` when resolved, or empty for `smart`.
 
 The `--no-input` flag prevents Claude from asking interactive questions. Claude runs in read-only mode by default when using `-p`.
 
@@ -151,16 +188,19 @@ The `--no-input` flag prevents Claude from asking interactive questions. Claude 
 For `review-pr` mode, prefer the built-in review command:
 ```bash
 # PR review using codex's native review (--base and positional prompt are mutually exclusive)
-codex review --base {base_branch}
+codex review --base {base_branch} {model_flag}
 
 # Or for uncommitted changes:
-codex review --uncommitted
+codex review --uncommitted {model_flag}
 ```
 
 For all other modes, pass the prompt as a positional argument:
 ```bash
-codex exec "{assembled_prompt}"
+codex exec {model_flag} "{assembled_prompt}"
 ```
+
+Where `{model_flag}` is `-m <id>` when resolved, or empty for `smart` (which lets
+`~/.codex/config.toml` decide the model and reasoning effort).
 
 **Timeout**: Use the parsed timeout value. Codex is slow on large prompts — consider `--timeout 5` or higher for PR reviews in large repos.
 
@@ -168,8 +208,10 @@ codex exec "{assembled_prompt}"
 
 Pass the prompt via the `-p` flag:
 ```bash
-gemini -p "{assembled_prompt}" --sandbox -o text
+gemini -p "{assembled_prompt}" --sandbox -o text {model_flag}
 ```
+
+Where `{model_flag}` is `-m <id>` when resolved, or empty for `smart`.
 
 The `--sandbox` flag prevents Gemini from modifying files. The `-o text` flag gives clean text output.
 
