@@ -163,11 +163,11 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time,
 - **PR**: render as a markdown link: `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Ticket**: extract Jira ticket ID (e.g. `GE-1107`) by matching `/[A-Z]+-\d+/` against the branch name first, then the PR title. Show as plain text. If no match, show `—`
 - **Branch**: the head branch name. Strip both the conventional-commit prefix (`feat/`, `fix/`, etc.) and the Jira ticket prefix (already shown in the Ticket column), e.g. `feat/GE-1107-cta-clicked-event` → `cta-clicked-event`. If still over ~30 chars after stripping, truncate with `…`.
-- **Target**: base branch name. **Both `main` AND `master` are default branches** — render them as plain text with no prefix. Only prefix with 🔗 when the base is something other than `main`/`master`, indicating the PR is stacked on another branch and should not be merged directly.
-  - `main` → `main` (no 🔗)
-  - `master` → `master` (no 🔗)
-  - `feat/parent-pr` → `🔗 feat/parent-pr`
-- **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / 💥 conflict. Only meaningful when base is `main` or `master` (both are default branches); for stacked PRs (base is something else, i.e. Target has 🔗) show `—` since the PR can't merge directly anyway.
+- **Target**: base branch name. **Both `main` AND `master` are default branches** — render them as plain text with no prefix. Only prefix with 📌 when the base is something other than `main`/`master`, indicating the PR is stacked on another branch and should not be merged directly.
+  - `main` → `main` (no 📌)
+  - `master` → `master` (no 📌)
+  - `feat/parent-pr` → `📌 feat/parent-pr`
+- **Sync**: ✅ clean / ⚠️ behind (needs rebase onto base branch) / 💥 conflict. Only meaningful when base is `main` or `master` (both are default branches); for stacked PRs (base is something else, i.e. Target has 📌) show `—` since the PR can't merge directly anyway.
   - base is `main` or `master` → use mergeState below
   - base is anything else → `—`
   - `CLEAN` or `UNSTABLE` → ✅
