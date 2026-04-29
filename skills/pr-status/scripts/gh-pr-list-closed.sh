@@ -12,7 +12,17 @@ else
   ORG=$(git remote get-url origin 2>/dev/null | sed -E 's#.*(github\.com[:/])##; s#/.*##')
 fi
 
-DAYS="${2:-7}"
+if [ -n "${2:-}" ]; then
+  DAYS="$2"
+else
+  # Weekday-aware default: keep the window tight, but extend across the
+  # weekend on Mon/Tue so Friday's closed PRs are still visible.
+  case "$(date +%u)" in
+    1) DAYS=3 ;;  # Mon → covers Fri+weekend
+    2) DAYS=4 ;;  # Tue → covers Fri+weekend+Mon
+    *) DAYS=3 ;;
+  esac
+fi
 SINCE=$(date -u -d "${DAYS} days ago" +%Y-%m-%d 2>/dev/null || date -u -v-${DAYS}d +%Y-%m-%d)
 
 # Get closed PRs from search API

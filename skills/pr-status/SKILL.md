@@ -4,7 +4,7 @@ description: Show enriched status of your open PRs — CI checks, approvals, and
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*)"
 model: haiku
 effort: low
-version: "1.5.1"
+version: "1.6.0"
 author: "flurdy"
 ---
 
@@ -32,7 +32,9 @@ Output is one JSON object per line: `{number, title, owner, repo}`.
 
 The script searches across the GitHub org — not just the current repo. Org is resolved in order: `PR_STATUS_ORG` env var, or extracted from the current repo's `origin` remote URL.
 
-### 1b. Get recently closed PRs (last 7 days)
+### 1b. Get recently closed PRs (recent window)
+
+Default lookback is 3 days, extended to 4 on Tuesdays and kept at 3 on Mondays so the previous Friday's PRs stay visible across the weekend. Pass an explicit number of days as the second arg to override.
 
 ```bash
 ~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh
@@ -137,7 +139,7 @@ gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeSt
 
 Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
 
-**Recently closed (last 7 days)** — render first. Show in a single table with a **Repo** column. Skip this section entirely if no PRs were closed in the last 7 days. Fetch details for closed PRs too (same `gh-pr-details.sh` script) to get `readyAt`.
+**Recently closed** — render first. Show in a single table with a **Repo** column. Skip this section entirely if the closed list is empty. Fetch details for closed PRs too (same `gh-pr-details.sh` script) to get `readyAt`.
 
 #### Recently closed
 
