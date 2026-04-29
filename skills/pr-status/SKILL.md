@@ -1,7 +1,7 @@
 ---
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table.
-allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*)"
+allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
 model: haiku
 effort: low
 version: "1.6.0"
@@ -137,7 +137,7 @@ gh pr view {number} --repo {owner}/{repo} --json mergeStateStatus --jq '.mergeSt
 
 ### 3. Render as tables
 
-Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` (local time, 24h).
+Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local** time, 24h. Run `date '+%H:%M:%S'` (do NOT use `date -u` — that's UTC). Note: relative-time math against `lastPush` / `readyAt` / `closedAt` still works in UTC since those fields are `Z`-suffixed; only the displayed timestamp needs to be local.
 
 **Recently closed** — render first. Show in a single table with a **Repo** column. Skip this section entirely if the closed list is empty. Fetch details for closed PRs too (same `gh-pr-details.sh` script) to get `readyAt`.
 
