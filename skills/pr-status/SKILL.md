@@ -4,7 +4,7 @@ description: Show enriched status of your open PRs — CI checks, approvals, and
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*)"
 model: haiku
 effort: low
-version: "1.5.0"
+version: "1.5.1"
 author: "flurdy"
 ---
 
@@ -188,3 +188,5 @@ After the tables, if anything changed since the last check in this session, list
 - #6141 new unresolved thread (0 → 1)
 
 If nothing changed, say "No changes."
+
+**Always render both the Open and Recently closed tables in full**, even on unchanged ticks. The point of repeated checks (via `/watch-prs` or otherwise) is to see current state at a glance — collapsing to "No changes." or omitting the closed section forces scrolling back to find prior state, which defeats the glance. With the narrow closed-PR window (3–4 days) there's not much to render anyway.
