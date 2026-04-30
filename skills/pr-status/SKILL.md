@@ -4,7 +4,7 @@ description: Show enriched status of your open PRs — CI checks, approvals, and
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
 model: sonnet
 effort: medium
-version: "1.7.0"
+version: "1.8.0"
 author: "flurdy"
 ---
 
@@ -179,9 +179,9 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 - **CI**: ✅ / ❌ / ⏳ — emoji only, no text
 - **Ready**: 🚧 if `isDraft` is true (PR is in draft, not yet ready for review). Otherwise relative time since PR became ready for review (from `readyAt` — uses `ReadyForReviewEvent` or PR `createdAt` as fallback). Same short units
 - **Push**: relative time since last commit (from `lastPush` in details output), e.g. `2h`, `1d`, `3d`. Use short units: `Nm` for minutes, `Nh` for hours, `Nd` for days
-- **Approved**: one ✅ per approver when `reviewDecision` is `APPROVED` (e.g. two approvers → `✅✅`), or `—` if none. If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render one `☑️` per stale approver. If `reviewDecision` is `CHANGES_REQUESTED`, show 👎 (ignore stale approvals).
+- **Approved**: one ✅ per approver when `reviewDecision` is `APPROVED` (e.g. two approvers → `✅✅`). If `reviewDecision` is `REVIEW_REQUIRED` but approvers exist, the approvals are stale (invalidated by a newer push) — render one `☑️` per stale approver. If `reviewDecision` is `CHANGES_REQUESTED`, show 👎 (ignore stale approvals). If there are no approvers and no changes requested, show 🔔 to flag that the PR is awaiting review and needs pinging — unless `isDraft` is true, in which case show `—` (no point chasing a draft).
 - **Threads**: `💬 N` if N > 0, or `—` if zero
-- **LGTM**: 🚀 if all of: `isDraft` is false, `reviewDecision` is `APPROVED`, CI is `SUCCESS`, sync is `CLEAN` or `UNSTABLE`, threads is 0, and `mergeState` is `CLEAN`. Otherwise `—`
+- **LGTM**: 🚀 if all of: `isDraft` is false, `reviewDecision` is `APPROVED`, CI is `SUCCESS`, sync is `CLEAN` or `UNSTABLE`, threads is 0, and `mergeState` is `CLEAN`. Otherwise 🚧 (still under construction — something's blocking the merge).
 
 Keep PR titles truncated:
 - Closed table: ~50 chars
