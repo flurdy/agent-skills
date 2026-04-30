@@ -2,9 +2,9 @@
 name: landscape
 description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
 allowed-tools: "Bash(git:*), Bash(bd:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(~/.claude/skills/next/scripts/next-bd:*), mcp__jira__jira_get, mcp__jira__jira_post"
-model: haiku
-effort: low
-version: "0.4.0"
+model: sonnet
+effort: medium
+version: "0.5.0"
 author: "flurdy"
 ---
 
@@ -32,6 +32,8 @@ Separate blocks, rendered from broadest context to most immediate. Order matters
 Each block is independent — if one source fails, the others still render.
 
 ## Instructions
+
+> **MUST re-fetch on every invocation.** Each `/landscape` run MUST execute every fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `bd list`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
 
 Render the blocks in the order listed below. Some data fetches can run in parallel at the top.
 

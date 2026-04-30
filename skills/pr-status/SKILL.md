@@ -2,9 +2,9 @@
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table.
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
-model: haiku
-effort: low
-version: "1.6.0"
+model: sonnet
+effort: medium
+version: "1.7.0"
 author: "flurdy"
 ---
 
@@ -21,6 +21,8 @@ The GitHub org is auto-detected from the current repo's `origin` remote, or can 
 ```
 
 ## Instructions
+
+> **MUST re-fetch on every invocation.** Each `/pr-status` tick (including silent ones inside `/watch-prs`) MUST run all three fetch scripts (`gh-pr-list-open.sh`, `gh-pr-list-closed.sh`, `gh-pr-details.sh`) AND `date +%H:%M:%S` — even if the previous tick was seconds ago. NEVER reuse prior tool output and NEVER extrapolate the timestamp by adding the loop interval to the previous one. If the data looks identical, render "No changes" — but only after a real fetch confirms it. State changes (merges, approvals, CI flips) happen between ticks; reusing stale tables has caused real merges to be missed.
 
 ### 1. Get open PRs (org-wide)
 
