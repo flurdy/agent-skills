@@ -1,10 +1,10 @@
 ---
 name: landscape
 description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
-allowed-tools: "Bash(git:*), Bash(bd:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(~/.claude/skills/next/scripts/next-bd:*), mcp__jira__jira_get, mcp__jira__jira_post"
+allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model: sonnet
 effort: medium
-version: "0.5.0"
+version: "0.5.1"
 author: "flurdy"
 ---
 
@@ -33,7 +33,9 @@ Each block is independent — if one source fails, the others still render.
 
 ## Instructions
 
-> **MUST re-fetch on every invocation.** Each `/landscape` run MUST execute every fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `bd list`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
+> **MUST re-fetch on every invocation.** Each `/landscape` run MUST execute every fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `beads.sh`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
+>
+> **MUST use the dedicated helper scripts.** Never construct ad-hoc `bd …` or `git …` shell pipelines for this skill. Specifically: do NOT chain `command -v bd` probes with `bd list … && …` or `… || bd list --ready` inside a single Bash call. Always invoke `~/.claude/skills/landscape/scripts/beads.sh` instead — it handles probing, repo gating, and listing internally. Inline chaining bypasses the per-script permission allowlist and produces noisy permission prompts.
 
 Render the blocks in the order listed below. Some data fetches can run in parallel at the top.
 
@@ -106,18 +108,20 @@ Head this section `### 🔀 PRs` instead of pr-status's own headings.
 
 ### 3. 🎯 Beads — in-progress + ready work
 
-First probe for `bd`. If it is not installed, skip the whole block and render `_Beads not installed — skipping._`:
+Run the `beads.sh` helper. It probes for `bd`, checks for `.beads/` in the repo, and emits in-progress + ready listings as delimited sections. **Do not call `bd` directly from this skill** — always go through this script:
 
 ```bash
-command -v bd >/dev/null 2>&1 || echo "NO_BD"
+~/.claude/skills/landscape/scripts/beads.sh
 ```
 
-If the probe printed `NO_BD`, stop here for this block. Otherwise:
+Output sections (delimited by `---<NAME>---`):
+- `---STATUS---` — `OK`, `NO_BD` (bd not installed), or `NO_BEADS_IN_REPO` (no `.beads/` here)
+- `---IN-PROGRESS---` — output of `bd list --status=in_progress` (only if `STATUS=OK`)
+- `---READY---` — output of `next-bd` (or `bd list --ready` fallback) (only if `STATUS=OK`)
 
-```bash
-bd list --status=in_progress
-~/.claude/skills/next/scripts/next-bd 2>/dev/null || bd list --ready
-```
+If `STATUS` is `NO_BD`, render `_Beads not installed — skipping._` and stop.
+If `STATUS` is `NO_BEADS_IN_REPO`, render `_No beads in this repo._` and stop.
+Otherwise render the tables below.
 
 Render:
 
