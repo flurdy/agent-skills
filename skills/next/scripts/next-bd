@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # next-bd: Show ready beads ranked by priority, with labels, filtered against blocked.
-# Usage: next-bd [--in-progress] [--avoid-busy]
+# Usage: next-bd [--in-progress] [--avoid-busy] [--json]
 #   --in-progress  Also show in-progress beads (for awareness)
 #   --avoid-busy   Exclude beads whose labels overlap with in-progress beads
+#   --json         Emit ranked beads as JSON (with .rank field) instead of markdown
 set -euo pipefail
 
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
+JSON_OUTPUT=false
 for arg in "$@"; do
   case "$arg" in
     --in-progress) SHOW_IN_PROGRESS=true ;;
     --avoid-busy)  AVOID_BUSY=true ;;
+    --json)        JSON_OUTPUT=true ;;
   esac
 done
 
@@ -24,7 +27,7 @@ in_progress_json=$(bd list --status=in_progress --json --flat 2>/dev/null || ech
 # 2. Filter ready list against blocked
 # 3. Rank by priority algorithm
 # 4. Format as table
-jq -r --argjson blocked "$blocked_json" --argjson in_progress "$in_progress_json" --arg show_ip "$SHOW_IN_PROGRESS" --arg avoid_busy "$AVOID_BUSY" '
+jq -r --argjson blocked "$blocked_json" --argjson in_progress "$in_progress_json" --arg show_ip "$SHOW_IN_PROGRESS" --arg avoid_busy "$AVOID_BUSY" --arg json_output "$JSON_OUTPUT" '
   # Extract blocked IDs
   ($blocked | map(.id)) as $blocked_ids |
 
@@ -63,6 +66,9 @@ jq -r --argjson blocked "$blocked_json" --argjson in_progress "$in_progress_json
   # Sort by rank, then by created_at (older first)
   sort_by(.rank, .created_at) |
 
+  # JSON mode: emit the ranked array and stop (caller renders)
+  if $json_output == "true" then . else
+
   # Count totals
   length as $ready_count |
 
@@ -79,4 +85,6 @@ jq -r --argjson blocked "$blocked_json" --argjson in_progress "$in_progress_json
     "\n\nIn progress (other sessions):\n" +
     ($in_progress | map("- `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\"") | join("\n"))
   else "" end
+
+  end
 ' <<< "$ready_json"
