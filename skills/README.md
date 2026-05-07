@@ -14,8 +14,7 @@
 | eas-build-error | Show the status and errors from the latest EAS build |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
-| next | Pick the next bead to work on based on priority, type, and recency |
-| next-sprint | Pick the next bead with Jira sprint enrichment — same ranking as `next`, sorted by sprint bucket (active → future → no-sprint → no-Jira) |
+| next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
 | rebase-main | Rebase the current branch onto an updated main branch |

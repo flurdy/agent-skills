@@ -3,8 +3,8 @@ name: next
 description: >
   Pick the next bead to work on. Shows ready tasks (no blockers), applies user
   preferences for ordering (priority, type, recency), and helps select work.
-allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),AskUserQuestion"
-version: "1.1.0"
+allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),AskUserQuestion,mcp__jira__jira_get"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -24,6 +24,7 @@ Help select the next bead to work on based on readiness and user preferences.
 ```bash
 /next                    # Show ready beads, ranked by suitability
 /next safe               # Same but exclude services with in-progress beads
+/next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next task               # Auto-pick the next most suitable task and start it
 /next quick              # Auto-pick an easy win (excludes busy services)
 /next bug                # Auto-pick the next most important bug and fix it
@@ -60,6 +61,9 @@ Help select the next bead to work on based on readiness and user preferences.
 
 # Show ready work, excluding services with in-progress beads
 /next safe
+
+# Show ready work, sorted by Jira sprint (active → future → no-sprint → no-Jira)
+/next sprint
 
 # Auto-pick and start the next most suitable task
 /next task
@@ -118,6 +122,7 @@ When invoked:
 2. Parse command argument:
    - (none): Show the script output, ask user to pick
    - `safe`: Show the script output with `--avoid-busy`, ask user to pick
+   - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
    - `task`: Auto-select top-ranked bead and start it
    - `quick`: Auto-select an easy win task and start it (uses `--avoid-busy`)
    - `bug`: Auto-select top-ranked bug and start it (see Bug Mode below)
@@ -171,6 +176,77 @@ When `/next quick` is used, prefer:
 2. Priority: P3 > P2 > P1 (lower priority = less complex)
 3. Exclude epics (too large for quick wins)
 4. Title keywords: "fix", "update", "add" > "implement", "refactor", "redesign"
+
+## Sprint Mode
+
+When `/next sprint` is used, enrich each ready bead with its Jira ticket + sprint, then render one table sorted by sprint bucket.
+
+### Step 1 — Fetch ranked beads as JSON
+
+```bash
+~/.claude/skills/next/scripts/next-bd --json
+```
+
+Empty array `[]` means nothing ready — render `_No ready beads. Run /triage to add work._` and stop.
+
+### Step 2 — Extract Jira keys
+
+For each bead, scan `title` for the first match of `[A-Z]+-\d+`. If no match, the bead has no Jira link. Title-only is sufficient for the default flow.
+
+### Step 3 — Batch Jira lookup
+
+If any keys were found, single JQL call. `customfield_10020` is Jira Cloud's sprint field.
+
+```
+mcp__jira__jira_get
+  path: /rest/api/3/search/jql
+  queryParams:
+    jql: key in ({comma-separated keys})
+    fields: summary,status,issuetype,priority,customfield_10020
+    maxResults: 100
+  jq: issues[*].{key: key, status: fields.status.name, type: fields.issuetype.name, jiraPriority: fields.priority.name, sprint: fields.customfield_10020}
+```
+
+For each ticket's `sprint` array, pick the **active** sprint (first with `state=="active"`); else the earliest **future** sprint (lowest `startDate` with `state=="future"`); else treat as no-sprint.
+
+### Step 4 — Sort by bucket
+
+1. **Active sprint(s)** — `state=="active"`. Multiple active sprints (cross-team boards) sort by sprint name / ID ascending.
+2. **Future sprints** — `state=="future"`, ordered by `startDate` ascending.
+3. **No sprint (has Jira ticket)** — bead has a Jira key but the ticket has no sprint.
+4. **No Jira link** — no `[A-Z]+-\d+` in title.
+
+Within each bucket, preserve the `next-bd` rank order.
+
+### Step 5 — Render
+
+```markdown
+## Ready by Sprint ({total} beads)
+
+| # | ID | Pri | Type | Jira | Sprint | Status | Title |
+|---|----|-----|------|------|--------|--------|-------|
+| 1 | mycode-agf | P1 | task | [GE-1088](https://bluelightcard.atlassian.net/browse/GE-1088) | 31 (active) | In Progress | Replace autocapture.attribution... |
+| 2 | mycode-6ic | P2 | task | [GE-1424](https://bluelightcard.atlassian.net/browse/GE-1424) | 32 (future) | Backlog | Make Amplitude client stateless... |
+| 3 | mycode-y8p | P2 | bug | — | — | — | Auth0 postLogin race... |
+```
+
+- `#` is a continuous index for the picker.
+- `Jira` column: markdown link `[KEY](https://bluelightcard.atlassian.net/browse/KEY)`. `—` if no key.
+- `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`). Strip the project prefix from sprint names like `"GE Sprint 31"`. For descriptive sprint names without an obvious number, keep the full name. `—` for no-sprint and no-Jira beads.
+- `Status` column: Jira status. `—` for no-Jira beads.
+- If the Jira call fails: render the table without Sprint/Status columns and with no Jira links. Footnote: `_Jira unavailable: {error}. Showing beads in rank order without sprint info._`
+- If all beads end up in the same sprint, footnote: `_All ready beads in {sprint name}._`
+
+### Step 6 — Picker
+
+Same prompt as default mode (`1-N`, bead ID, or `task`/`bug`/`quick` to auto-pick). For `sprint task`/`sprint bug`/`sprint quick`, prefer the top-ranked match in the **active sprint**, falling back to the next bucket if empty.
+
+### Edge cases
+
+- **Multiple active sprints**: still one table — beads from each appear with their own sprint name. Active-sprint groups sort by sprint name / ID ascending so they cluster.
+- **Ticket key found but Jira returns nothing**: treat as no-sprint (key may have moved or been deleted).
+- **Sprint field not enabled on the project**: all tickets fall into no-sprint; the sort still works.
+- **Bead title has multiple Jira keys**: use the first match.
 
 ## Bug Mode
 
