@@ -117,30 +117,60 @@ Run the `beads.sh` helper. It probes for `bd`, checks for `.beads/` in the repo,
 Output sections (delimited by `---<NAME>---`):
 - `---STATUS---` — `OK`, `NO_BD` (bd not installed), or `NO_BEADS_IN_REPO` (no `.beads/` here)
 - `---IN-PROGRESS---` — output of `bd list --status=in_progress` (only if `STATUS=OK`)
-- `---READY---` — output of `next-bd` (or `bd list --ready` fallback) (only if `STATUS=OK`)
+- `---READY---` — JSON array from `next-bd --json` (or plain text from `bd list --ready` fallback) (only if `STATUS=OK`)
 
 If `STATUS` is `NO_BD`, render `_Beads not installed — skipping._` and stop.
 If `STATUS` is `NO_BEADS_IN_REPO`, render `_No beads in this repo._` and stop.
 Otherwise render the tables below.
 
-Render:
+#### In-progress beads
 
 ```markdown
-### 🎯 Beads
-
 **In progress ({count})**
-| ID | Pri | Type | Labels | Title |
-|----|-----|------|--------|-------|
-
-**Ready ({shown} of {total})**
 | ID | Pri | Type | Labels | Title |
 |----|-----|------|--------|-------|
 ```
 
-- Include a **Labels** column in both tables. Show `—` if none.
+- Include a **Labels** column. Show `—` if none.
 - If no in-progress beads: show `_No in-progress beads._`
-- Cap ready beads at 5. If more exist: `_+{N} more — run /next to see all._`
-- If no ready beads: `_No ready beads. Run /triage to add work._`
+
+#### Ready beads — sorted by sprint
+
+The `---READY---` section is a JSON array (from `next-bd --json`). Each item has `id`, `title`, `priority`, `issue_type`, and `rank`.
+
+**Step 1 — Extract Jira keys.** For each bead, scan `title` for the first match of `[A-Z]+-\d+`. If no match, the bead has no Jira link.
+
+**Step 2 — Batch Jira sprint lookup.** If any keys were found, call:
+
+```
+mcp__jira__jira_get
+  path: /rest/api/3/search/jql
+  queryParams:
+    jql: key in ({comma-separated keys})
+    fields: summary,status,issuetype,priority,customfield_10020
+    maxResults: 50
+  jq: issues[*].{key: key, status: fields.status.name, sprint: fields.customfield_10020}
+```
+
+For each ticket's `sprint` array, pick the **active** sprint (first with `state=="active"`). If none active, pick the earliest **future** sprint (lowest `startDate` with `state=="future"`). If neither, treat as no-sprint.
+
+**Step 3 — Sort and cap.** Bucket order: active sprint(s) → future sprints (by `startDate`) → no-sprint (has Jira key) → no Jira link. Within each bucket preserve the rank order from `next-bd`. Cap the total at **5 beads**. If more exist: `_+{N} more — run /next-sprint to see all._`
+
+**Step 4 — Render.** One table:
+
+```markdown
+**Ready ({shown} of {total})**
+| # | ID | Pri | Type | Jira | Sprint | Status | Title |
+|---|----|-----|------|------|--------|--------|-------|
+```
+
+- `#` is the picker index `1-N`.
+- `Jira` column: markdown link `[KEY](https://bluelightcard.atlassian.net/browse/KEY)`. Show `—` if no Jira key.
+- `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`) — strip the project prefix from sprint names like `"GE Sprint 31"`. Show `—` if no sprint or no Jira.
+- `Status` column: Jira status. Show `—` if no Jira.
+- If no ready beads at all: `_No ready beads. Run /triage to add work._`
+- If the `---READY---` section is not valid JSON (fallback plain text): render it as-is, capped at 5 lines.
+- If the Jira call fails: render the table without Jira/Sprint/Status columns; add a footnote `_Jira unavailable._`
 
 ### 4. 📍 Working copy — current branch
 

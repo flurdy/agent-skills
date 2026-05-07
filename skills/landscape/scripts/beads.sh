@@ -27,7 +27,7 @@ bd list --status=in_progress 2>/dev/null || true
 
 echo "---READY---"
 if [ -x "$HOME/.claude/skills/next/scripts/next-bd" ]; then
-    "$HOME/.claude/skills/next/scripts/next-bd" 2>/dev/null || bd list --ready 2>/dev/null || true
+    "$HOME/.claude/skills/next/scripts/next-bd" --json 2>/dev/null || bd list --ready 2>/dev/null || true
 else
     bd list --ready 2>/dev/null || true
 fi
