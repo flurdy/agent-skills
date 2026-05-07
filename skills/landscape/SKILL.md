@@ -154,7 +154,7 @@ mcp__jira__jira_get
 
 For each ticket's `sprint` array, pick the **active** sprint (first with `state=="active"`). If none active, pick the earliest **future** sprint (lowest `startDate` with `state=="future"`). If neither, treat as no-sprint.
 
-**Step 3 — Sort and cap.** Bucket order: active sprint(s) → future sprints (by `startDate`) → no-sprint (has Jira key) → no Jira link. Within each bucket preserve the rank order from `next-bd`. Cap the total at **5 beads**. If more exist: `_+{N} more — run /next-sprint to see all._`
+**Step 3 — Sort and cap.** Bucket order: active sprint(s) → future sprints (by `startDate`) → no-sprint (has Jira key) → no Jira link. Within each bucket preserve the rank order from `next-bd`. Cap the total at **5 beads**. If more exist: `_+{N} more — run /next sprint to see all._`
 
 **Step 4 — Render.** One table:
 
