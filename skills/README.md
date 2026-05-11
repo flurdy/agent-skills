@@ -17,6 +17,7 @@
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
+| ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
 | rebase-main | Rebase the current branch onto an updated main branch |
 | rebase-merged-parent | Rebase after a parent PR has been merged to main |
 | rebase-parent | Rebase the current branch onto an updated parent PR branch |
