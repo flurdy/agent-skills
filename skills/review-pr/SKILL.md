@@ -1,7 +1,7 @@
 ---
 name: review-pr
 description: Review a pull request by checking the code changes, PR description, and CI status against the linked Jira ticket requirements. Produces an AC checklist and flags concerns.
-allowed-tools: "Read,Grep,Glob,Bash(~/.claude/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-checks.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git:*),mcp__jira__*"
+allowed-tools: "Read,Grep,Glob,Bash(~/.claude/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-checks.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git:*),mcp__jira__*"
 version: "1.0.0"
 author: "flurdy"
 ---
@@ -76,7 +76,41 @@ If the script is unavailable, fall back to:
 gh pr checks {PR_NUMBER} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
 ```
 
-### 2. Extract Jira Ticket (Optional)
+### 2. Fetch Existing Reviews & Comments
+
+Before forming your own opinion, check what other reviewers (human and bot) have already said. Duplicating their work wastes context; missing their objections produces wrong verdicts.
+
+```bash
+~/.claude/skills/review-pr/scripts/gh-pr-comments.sh {PR_NUMBER}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr view {PR_NUMBER} --json reviews,comments
+gh api graphql -F owner={OWNER} -F repo={REPO} -F num={PR_NUMBER} -f query='
+query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$num){reviewThreads(first:100){nodes{isResolved isOutdated path line comments(first:20){nodes{author{login} body createdAt}}}}}}}'
+```
+
+What to extract:
+
+- **Review states**: `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED`. A `COMMENTED` review doesn't block merge but may still contain substantive objections — read the body.
+- **Unresolved inline threads**: `isResolved: false` on the GraphQL output. Each is a thread on a specific file/line. Read every comment in the thread to understand the conversation.
+- **Issue-level comments**: include any human feedback that wasn't attached to a review.
+
+Treat as noise (mention only if directly relevant):
+
+- Swarmia / Jira / Linear ticket-linker bots
+- CI sticky comments (e.g. `terraform-plan-summary`, coverage reports) — useful as data points, not as feedback
+- Auto-generated changelog / preview-deploy bots
+
+Treat as signal (must address in the review):
+
+- Human reviewer comments, especially `COMMENTED` reviews — these are often "I'm not blocking but you should know" notes that get missed
+- AI code-reviewer bot comments (e.g. `claude-reviewer`, `copilot`, `amazon-q-developer`) — weight them like a human reviewer's first-pass feedback
+- Any inline thread where `isResolved: false`
+
+### 3. Extract Jira Ticket (Optional)
 
 Find the Jira ticket from (in order of preference):
 
@@ -86,9 +120,9 @@ Find the Jira ticket from (in order of preference):
 
 Ticket pattern: 2-4 uppercase letters, dash, numbers (e.g., `AB-23`, `SSP-456`, `MAMA-89`)
 
-**If no ticket found:** Continue with the review without Jira comparison. Skip step 3 and 5, and note in the output that no Jira ticket was linked.
+**If no ticket found:** Continue with the review without Jira comparison. Skip steps 4 and 6, and note in the output that no Jira ticket was linked.
 
-### 3. Fetch Jira Ticket Details (If Ticket Found)
+### 4. Fetch Jira Ticket Details (If Ticket Found)
 
 Use the Jira MCP tools to get ticket requirements:
 
@@ -104,7 +138,7 @@ Parse the description to extract:
 - Acceptance criteria (look for "AC", "Acceptance Criteria", bullet points)
 - Any technical requirements
 
-### 4. Analyze the Code Changes
+### 5. Analyze the Code Changes
 
 For each changed file, understand:
 
@@ -128,7 +162,7 @@ grep -r "from.*{deleted-module}" --include="*.ts" --include="*.tsx"
 grep -r "import.*{deleted-module}" --include="*.ts" --include="*.tsx"
 ```
 
-### 5. Compare PR Against Jira ACs (If Ticket Found)
+### 6. Compare PR Against Jira ACs (If Ticket Found)
 
 Create a checklist comparing each acceptance criterion against the implementation:
 
@@ -138,17 +172,18 @@ Create a checklist comparing each acceptance criterion against the implementatio
 
 **If no ticket found:** Skip this step. The review will focus on code quality, CI status, and potential concerns without AC validation.
 
-### 6. Check CI Status
+### 7. Check CI Status
 
 Summarize the CI status:
 
 - All checks passing?
 - Any failures or warnings?
 
-### 7. Identify Concerns
+### 8. Identify Concerns
 
 Flag any issues:
 
+- **Unaddressed reviewer feedback**: Substantive comments from step 2 that haven't been resolved or replied to
 - **Scope creep**: Changes not related to the ticket
 - **Missing ACs**: Requirements not implemented
 - **Deleted code**: Large deletions that might break things
@@ -156,7 +191,7 @@ Flag any issues:
 - **Security**: Potential vulnerabilities
 - **Breaking changes**: API changes, removed exports
 
-### 8. Produce Review Summary
+### 9. Produce Review Summary
 
 Output a structured review:
 
@@ -166,10 +201,15 @@ Output a structured review:
 **Title:** {title}
 **Jira:** {ticket} - {summary}  (or "No Jira ticket linked" if none found)
 **Status:** {CI status}
+**Reviews:** {e.g. "1 approved, 1 commented (unresolved)" — derived from step 2}
 
 ### Changes Overview
 - {additions} additions, {deletions} deletions across {changedFiles} files
 - {Brief summary of what changed}
+
+### Reviewer Feedback
+- {Each substantive unresolved comment/review from step 2 — author, file:line, summary, your assessment of whether it's valid}
+- {Omit this section only if there is no human or AI reviewer feedback at all}
 
 ### AC Checklist (if Jira ticket found)
 | AC | Status | Implementation |
@@ -183,6 +223,12 @@ Output a structured review:
 ### Verdict
 {Safe to merge / Needs changes / Needs discussion}
 ```
+
+Verdict rules:
+
+- **Needs changes** if any reviewer has `CHANGES_REQUESTED`, or if any unresolved inline thread raises a valid architectural / correctness objection (even from a `COMMENTED` review or AI bot).
+- **Needs discussion** if reviewers disagree or a substantive comment lacks a clear resolution.
+- **Safe to merge** only when ACs are met, CI is green, and no unaddressed substantive feedback remains.
 
 ## Example Output
 
