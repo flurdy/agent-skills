@@ -121,12 +121,13 @@ Compute three buckets:
   - `reviewDecision != APPROVED`
   - CI checks not `SUCCESS`
   - unresolved threads > 0
-  - `mergeState` is `DIRTY` (conflict), `BLOCKED`, `BEHIND`, or `UNKNOWN`
+  - `mergeState` is `DIRTY` (conflict), `BLOCKED`, or `BEHIND`
   - base is not `main`/`master` (PR is stacked — should be merged via parent, not directly)
   - uncommitted or unpushed local changes (if PR matches current branch)
   - Jira status `Blocked`
 - **Warnings (⚠️)** — proceed-with-caution, don't auto-block:
   - any risk fired in Phase 4
+  - `mergeState: UNKNOWN` — GitHub hasn't computed mergeability yet; usually transient. Suggest a retry before merging.
   - stacked children exist (they'll need rebasing post-merge)
   - Jira status drift (`Backlog`, `Done`, missing)
   - bead still `in_progress` (will need closing post-merge)
@@ -170,7 +171,7 @@ Render compactly. Skip empty sections.
 | CI           | ✅ / ❌ / ⏳                         |
 | Approvals    | ✅✅ alice, bob (or 🔔 awaiting)      |
 | Threads      | ✅ 0 / 💬 N unresolved               |
-| Sync w/ base | ✅ clean / ⚠️ behind / 💥 conflict   |
+| Sync w/ base | ✅ clean / ❌ behind / 💥 conflict   |
 | Mergeable    | ✅ / ❌ {reason}                     |
 | Contracts    | ✅ / ⚠️ / —                          |
 | Tests        | ✅ N test files touched / ⚠️ none    |

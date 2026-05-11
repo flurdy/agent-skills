@@ -1,6 +1,6 @@
 ---
 name: total-review
-description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, simplify, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on security/test/p0 findings, emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
+description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, simplify, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on Must-Fix tier findings (failing tests, security, blocking-severity bugs), emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
 model: opus
 effort: high
@@ -53,17 +53,17 @@ This is a **synthesis layer**. It calls existing skills, it does not reimplement
 
 ## Critical Findings (Halt Criteria)
 
-A **critical finding** halts the gauntlet immediately: emit a P0/P1 bead, report, and stop. Do not proceed to later phases. The user can override and resume by re-invoking with `--continue` (note in the report).
+A **critical finding** halts the gauntlet immediately: emit a P0 bead, report, and stop. Do not proceed to later phases. Restart from Phase 1 after fixing the halt finding (re-run normally — there is no resume mode).
 
 Critical means **any** of:
 
 - Failing test (from `/verify-task` or `make test`)
 - Any finding from `/security-review` (no exceptions — every security finding halts)
-- Any P0 / P1 severity finding from `/pedantic-review`, `/review`, or `/second-opinion` (in pedantic terms: a **Must Fix** tier finding)
+- A **Must Fix** tier finding from `/pedantic-review`, or a **blocking-severity** finding from `/review` or `/second-opinion` (these phases label findings explicitly — only that top tier halts)
 - Secrets detected in the diff (`.env`, credentials, API keys grep)
 - Missing required behaviour from `/verify-task` (requirement not met, not just under-tested)
 
-Everything else — partial coverage, minor pedantic findings, style preferences, individual second-opinion suggestions — goes onto the **bead pile** for the final report.
+Everything else — including `Should Fix` (P1) pedantic findings, generic correctness bugs, partial coverage, style preferences, and individual second-opinion suggestions — goes onto the **bead pile** for the final report. P1 is heavy enough to track but not heavy enough to stop the gauntlet.
 
 ## Instructions
 
@@ -74,17 +74,28 @@ Extract from the arguments:
 - **scope**: `branch` (default), `uncommitted`, or `pr` (with PR number)
 - **--skip-external**: bool, default false
 - **--no-iterate**: bool, default false
-- **--continue**: bool, default false — resume past a halt, only if user explicitly passes it
+- **--inline-findings**: bool, default false — skip `bd create`, render all findings in the final report only
 
-Confirm context:
+Confirm context, then **snapshot the scope** so later phases compare against a fixed SHA even if new commits land mid-run:
 
 ```bash
 git status --porcelain
 git rev-parse --abbrev-ref HEAD
-git log --oneline @{u}..HEAD 2>/dev/null || git log --oneline main..HEAD
+SCOPE_HEAD=$(git rev-parse HEAD)
+SCOPE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo main)
+git log --oneline ${SCOPE_BASE}..${SCOPE_HEAD}
 ```
 
-If `--pr <N>`, fetch the PR diff via `gh pr view {N}` and `gh pr diff {N}` and treat that as the scope.
+Record `SCOPE_BASE` and `SCOPE_HEAD` once at Phase 0 and use `git diff ${SCOPE_BASE}..${SCOPE_HEAD}` for every subsequent phase. Do not re-read `HEAD` between phases — the gauntlet reviews a frozen scope, not a moving target.
+
+For `--uncommitted` scope, snapshot the staged+unstaged diff once into `/tmp/total-review-scope.patch` and re-use it across phases.
+
+If `--pr <N>`, set the scope to that PR. Phases 1–3 (`clean-code`, `verify-task`, `simplify`) mutate the working tree, so they require a checkout of the PR branch:
+
+- If the local working tree is clean (`git status --porcelain` empty) **and** no unrelated branch is checked out — run `gh pr checkout {N}` and proceed normally through all phases.
+- Otherwise — fall back to **diff-only mode**: skip Phases 1–3, fetch the PR diff via `gh pr diff {N}` and `gh pr view {N}`, and run Phases 4–9 against that diff. Note the skip in the final report.
+
+Never run Phases 1–3 against the current checkout when `--pr <N>` points at a different branch — that would mutate the wrong tree.
 
 If there are no changes in scope, stop with a friendly message.
 
@@ -97,6 +108,16 @@ Skill /clean-code
 `clean-code` auto-fixes mechanical issues and must exit zero warnings/errors. If it can't reach a clean state, halt — downstream tools assume a lint-clean tree.
 
 ### 2. Phase 2 — Verify Task (requirements + tests)
+
+First, check whether the scope contains any **code files** — files outside `*.md`, `*.txt`, `docs/`, `LICENSE`, and other pure-documentation paths:
+
+```bash
+git diff --name-only ${SCOPE_BASE}..${SCOPE_HEAD} | grep -vE '\.(md|txt|rst)$|^docs/|^LICENSE' | head -1
+```
+
+If empty (markdown / docs / config only) → **skip Phase 2 with a note**: "Phase 2 skipped — diff contains no code files." `verify-task` has nothing meaningful to verify against a docs-only diff.
+
+Otherwise:
 
 ```
 Skill /verify-task
@@ -115,6 +136,10 @@ Read the verification report carefully. Map outcomes:
 If halted, emit a P0 bead and stop.
 
 ### 3. Phase 3 — Simplify (cheap auto-fix)
+
+Apply the same code-files-in-scope check as Phase 2. If the diff is docs-only, **skip Phase 3 with a note**: "Phase 3 skipped — diff contains no code files." `/simplify` is a code reuse/quality scan and has no signal on prose.
+
+Otherwise:
 
 ```
 Skill /simplify
@@ -164,11 +189,27 @@ If `/security-review` returns clean, continue.
 
 If `--skip-external` is set, jump to Phase 9.
 
+First, check whether the scope has a reviewable PR:
+
+```bash
+gh pr view --json number 2>/dev/null
+```
+
+Branch with an open PR → invoke the review mode:
+
 ```
 Skill /second-opinion review-pr --agent codex
 ```
 
-The intent here is **another critic** at low cost — runs Codex alone, smaller context. Parse findings:
+No PR (test run on `main`, unpublished branch, `--uncommitted` scope) → fall back to ask mode, feeding the diff as the question body:
+
+```
+Skill /second-opinion ask "Review this diff as a critical PR reviewer. Focus on internal contradictions, under-specified behaviour, wrong commands or paths, and silent failure modes. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent codex
+```
+
+**Never call `codex exec` directly from this skill.** The `/second-opinion` skill handles CLI invocation, stdin, and quoting safely; bypassing it risks shell-quoting hangs (e.g. backtick-laden diffs in `$(cat patch)` substitutions).
+
+Parse findings either way:
 
 - "Bug" / "incorrect" / "missing handling" → P1 bead; if the reviewer flags blocking severity, halt
 - "Consider" / "suggest" → P2 bead
@@ -192,8 +233,16 @@ If not iterating, proceed to Phase 9.
 
 If `--skip-external` is set, jump to Phase 10.
 
+Same PR-detection as Phase 7. Branch with an open PR:
+
 ```
 Skill /second-opinion review-pr --agent all
+```
+
+No PR (fall back to ask mode):
+
+```
+Skill /second-opinion ask "Review this diff for consensus. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and a prior Codex pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent all
 ```
 
 This runs Claude + Codex + Gemini in parallel. The purpose is **consensus**, not new criticism — the code should already be clean. Treat any finding here as:
@@ -234,11 +283,11 @@ Recommended next steps by outcome:
 
 - **All clear, no beads** → "Run `/create-pr` to open the PR. Optionally `/ultrareview` for a deeper cloud-agent pass before requesting human review."
 - **Bead pile (no halts)** → "Address bead pile (`/next` to pick), then re-run `/total-review`. Or open PR now and address beads as follow-ups if the pile is low-priority only."
-- **Halted** → "Fix the halt finding (bead {id}), then re-run `/total-review --continue` to resume past the halt, or re-run normally to restart from Phase 1."
+- **Halted** → "Fix the halt finding (bead {id}), then re-run `/total-review` to restart from Phase 1. The full re-run is intentional — cheap phases stay cheap, and any new lint/test fallout from the fix gets caught."
 
 ## Bead Emission
 
-Use `bd create` for every finding that isn't fixed inline:
+Default behaviour: use `bd create` for every finding that isn't fixed inline:
 
 ```bash
 bd create --title="<short title>" \
@@ -254,7 +303,13 @@ Conventions:
 - **Description**: must include source phase, severity rationale, and file paths so future-you can act on it without re-running the gauntlet.
 - Capture each finding as its own bead — do NOT batch unrelated findings together.
 
-If `bd` is unavailable in the repo, fall back to listing findings in the final report under a "Findings (no beads created — `bd` not available)" section.
+**Skip bead emission entirely** in any of these cases — render findings inline in the final report instead, under a "Findings" section grouped by source phase:
+
+- `--inline-findings` flag was passed (e.g. utility / skills / docs repos where beads add noise)
+- `bd` is not available in the repo (`which bd` fails)
+- The repo has no beads configuration (`.beads/` missing and no `bd` initialised)
+
+In all three cases the final report grows a "Findings" section; halts still print but reference a finding number rather than a bead id.
 
 ## Auto-fix Policy
 
