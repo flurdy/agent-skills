@@ -1,10 +1,10 @@
 ---
 name: jira-ticket
 description: Look up Jira ticket details including summary, type, and description. Use this to fetch ticket context for branch naming, PR creation, or understanding requirements.
-allowed-tools: "mcp__jira__*"
+allowed-tools: "mcp__jira__*,ToolSearch"
 model: haiku
 effort: low
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -33,6 +33,16 @@ mcp__jira__jira_get with:
   path: /rest/api/3/issue/{ticketNumber}
   jq: "{key: key, summary: fields.summary, type: fields.issuetype.name, description: fields.description}"
 ```
+
+**If `mcp__jira__jira_get` is not yet loaded** (common on the first prompt of a session — MCP tools are deferred until first referenced), don't bail out. Instead:
+
+1. Call `ToolSearch` with `query: "select:mcp__jira__jira_get"` to load its schema.
+2. Retry the `mcp__jira__jira_get` call.
+3. If `ToolSearch` returns no match — the `jira` MCP server is not configured for this project, not just lazy-loaded. Tell the user, and either:
+   - Ask them to paste the ticket summary/description so you can still infer the branch prefix, or
+   - Point them at the parent project's `~/.claude.json` `mcpServers.jira` block if they want to copy it across (do not edit `~/.claude.json` without explicit consent).
+
+Treat a missing MCP server as "ask the user," not as a hard failure.
 
 ### 2. Determine Branch Prefix
 
