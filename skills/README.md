@@ -28,6 +28,7 @@
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
+| tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |
 | total-review | Full pre-PR quality gauntlet — chains clean-code, verify-task, simplify, pedantic-review, /review, /security-review, and tiered /second-opinion. Halts on critical findings, emits beads for the rest |
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create bead(s) from a user prompt or Jira ticket |
