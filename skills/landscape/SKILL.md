@@ -4,7 +4,7 @@ description: Morning catch-up view — assigned Jira tickets, open PRs, current 
 allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model: sonnet
 effort: medium
-version: "0.5.1"
+version: "0.5.2"
 author: "flurdy"
 ---
 
@@ -61,13 +61,21 @@ Query Jira for open tickets assigned to the current user, including sprint membe
 mcp__jira__jira_get
   path: /rest/api/3/search/jql
   queryParams:
-    jql: assignee = currentUser() AND statusCategory != Done ORDER BY priority DESC, updated DESC
+    jql: assignee = currentUser() AND statusCategory != Done ORDER BY cf[10020] ASC, priority DESC, updated DESC
     fields: summary,status,priority,issuetype,updated,customfield_10020
     maxResults: 20
   jq: issues[*].{key: key, summary: fields.summary, type: fields.issuetype.name, status: fields.status.name, priority: fields.priority.name, updated: fields.updated, sprint: fields.customfield_10020}
 ```
 
 The `sprint` field is an array of sprint objects. Extract the **active** sprint's name (first sprint where `state == "active"`), or the most recent if none are active. If the array is empty or null, show `—` (ticket not in a sprint — possibly backlog).
+
+**Sort the rows before rendering.** JQL's `cf[10020]` sort is unreliable across sprint states, so re-sort client-side:
+
+1. Bucket by sprint state: **active** sprints first, then **future** sprints (by `startDate` ascending), then **no-sprint / backlog** last.
+2. Within each bucket, sort by priority `P1 → P2 → P3 → P4 → P5` (treat missing/unknown priority as lowest).
+3. Within equal priority, preserve the JQL `updated DESC` order.
+
+Keep it as a single table — the Sprint column makes the group boundary visible without subheadings.
 
 Render:
 
