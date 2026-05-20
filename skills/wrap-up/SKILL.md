@@ -49,7 +49,7 @@ git rev-parse --git-common-dir 2>/dev/null
 git rev-parse --git-dir 2>/dev/null
 ```
 
-If `--git-common-dir` and `--git-dir` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3.
+If `--git-common-dir` and `--git-dir` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3. (String inequality is sufficient: the main checkout returns the same value for both — typically `.git` — while a linked worktree returns `/path/to/main/.git` for common-dir vs `/path/to/main/.git/worktrees/{name}` for git-dir.)
 
 Render:
 
