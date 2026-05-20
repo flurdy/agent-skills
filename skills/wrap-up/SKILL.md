@@ -173,6 +173,14 @@ Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSA
 
 A self-contained paste that, dropped into a fresh session tomorrow, lets the next instance pick up without re-discovering context. Fenced as markdown so it copies cleanly.
 
+**Before rendering the block, surface the topic slug on its own line** so the user sees what this session is being filed under:
+
+```markdown
+**Topic slug:** `{slug}` — used as the Resume title and the handoff filename. (Claude Code's session name itself isn't model-settable; this slug is the closest stand-in.)
+```
+
+This is the explicit "what should we call this session" cue — without it, the slug is buried inside the fenced block and easy to miss.
+
 ```markdown
 ### Resume block
 
