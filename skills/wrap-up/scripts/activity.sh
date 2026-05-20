@@ -77,6 +77,18 @@ else
     echo "OK"
 fi
 
+echo "---BEADS-IN-PROGRESS---"
+if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
+    bd list --status=in_progress --limit=50 --no-pager 2>/dev/null
+fi
+
+echo "---BEADS-CREATED-TODAY---"
+if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
+    # Default filter excludes closed — beads created and closed the same day
+    # already appear in CLOSED, so this lists only ones left open.
+    bd list --created-after="$TODAY" --limit=50 --no-pager 2>/dev/null
+fi
+
 echo "---BEADS-CLOSED---"
 if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
     bd list --status=closed --closed-after="$TODAY" --limit=50 --no-pager 2>/dev/null

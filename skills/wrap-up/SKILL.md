@@ -78,7 +78,9 @@ It emits delimited sections:
 - `---GH-STATUS---` — `OK` or `UNAVAILABLE` (gh missing or not authenticated).
 - `---PRS-CREATED---` / `---PRS-MERGED---` / `---PRS-CLOSED-UNMERGED---` — JSON arrays (always `[]` when empty) from `gh search prs --author=@me`.
 - `---BEADS-STATUS---` — `OK` / `NO_BD` / `NO_BEADS_IN_REPO`.
-- `---BEADS-CLOSED---` — output of `bd list --status=closed --closed-after=TODAY` (only when `BEADS-STATUS=OK`).
+- `---BEADS-IN-PROGRESS---` — output of `bd list --status=in_progress` (state being left for tomorrow).
+- `---BEADS-CREATED-TODAY---` — output of `bd list --created-after=TODAY` (open beads created today; closed-same-day beads appear in `BEADS-CLOSED` instead, no double-counting).
+- `---BEADS-CLOSED---` — output of `bd list --status=closed --closed-after=TODAY`.
 
 #### Commits
 
@@ -113,20 +115,62 @@ Otherwise, parse the three JSON arrays. De-duplicate (a PR may appear in created
 
 Skip the section entirely if all three arrays are empty.
 
-#### Beads closed today
+#### Jira tickets you touched today
 
-If `---BEADS-STATUS---` is `NO_BD` or `NO_BEADS_IN_REPO`, skip silently.
+Query for tickets the current user updated since midnight (status transitions, comments, edits):
 
-If `OK` and `---BEADS-CLOSED---` is non-empty, render:
+```
+mcp__jira__jira_get
+  path: /rest/api/3/search/jql
+  queryParams:
+    jql: updatedBy = currentUser() AND updated >= startOfDay() ORDER BY updated DESC
+    fields: summary,status,issuetype,updated
+    maxResults: 20
+  jq: issues[*].{key: key, summary: fields.summary, status: fields.status.name, type: fields.issuetype.name, updated: fields.updated}
+```
+
+Render as a table only if non-empty:
 
 ```markdown
-### 🎯 Beads closed today
+### 📋 Jira touched today
 
+| Key | Type | Status | Summary |
+|-----|------|--------|---------|
+```
+
+- **Key**: markdown link to the issue (`[KEY](https://.../browse/KEY)`).
+- Truncate Summary to ~50 chars.
+
+Skip the section entirely if the result is empty. If the Jira MCP errors or isn't configured, render `_Jira unavailable — skipped._` and move on (do not fail the skill).
+
+Note: `updatedBy` catches the obvious cases (status changes, comments, field edits). It won't catch tickets you only *read* during the session — that's intentional. The conversation chat in §2 captures what you *thought about* but didn't change.
+
+#### Beads — in-progress, created today, closed today
+
+If `---BEADS-STATUS---` is `NO_BD` or `NO_BEADS_IN_REPO`, skip the whole sub-section silently.
+
+Render each of the three lists only when non-empty. Combine into compact tables (the same column shape works for all three):
+
+```markdown
+### 🎯 Beads
+
+**In progress ({count})**
+| ID | Type | Pri | Title |
+|----|------|-----|-------|
+
+**Created today ({count})**
+| ID | Type | Pri | Title |
+|----|------|-----|-------|
+
+**Closed today ({count})**
 | ID | Type | Pri | Title |
 |----|------|-----|-------|
 ```
 
-Skip if empty.
+Notes:
+- The default `bd list` output already filters out closed beads, so `BEADS-CREATED-TODAY` naturally excludes ones that were closed the same day. Those appear under "Closed today" instead — no de-duplication needed.
+- **In-progress** is the most load-bearing for resume — it's the answer to "what was I in the middle of?" Always render it first when non-empty.
+- If all three are empty, skip the whole `### 🎯 Beads` heading. If only some are non-empty, render just the populated tables and skip the empty ones (don't show `_No created today._` placeholders — silence is shorter).
 
 ### 2. 🧠 Today's threads (model-summarised)
 
