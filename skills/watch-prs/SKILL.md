@@ -1,21 +1,21 @@
 ---
 name: watch-prs
-description: Start a recurring PR status dashboard — polls every 5 minutes until end of day. Shortcut for `/loop 5m /pr-status`.
+description: Start a recurring PR status dashboard — polls every 10 minutes until end of day. Shortcut for `/loop 10m /pr-status`.
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
 # Watch PRs
 
-Start a `/pr-status` loop that runs every 5 minutes until 18:00 local time.
+Start a `/pr-status` loop that runs every 10 minutes until 18:00 local time.
 
 ## Usage
 
 ```
-/watch-prs            # every 5m, stop at 18:00
-/watch-prs 10m        # every 10m, stop at 18:00
+/watch-prs            # every 10m, stop at 18:00
+/watch-prs 5m         # every 5m, stop at 18:00
 /watch-prs 3m 17      # every 3m, stop at 17:00
 ```
 
@@ -23,7 +23,7 @@ Start a `/pr-status` loop that runs every 5 minutes until 18:00 local time.
 
 Parse optional arguments:
 
-1. **Interval** — first arg matching `\d+m`. Default: `5m`.
+1. **Interval** — first arg matching `\d+m`. Default: `10m`.
 2. **Stop hour** — first arg matching `\d{1,2}` (not already consumed as interval). Default: `18`.
 
 Then invoke the `/loop` skill with:
