@@ -3,11 +3,11 @@
 # No time-window — captures old PRs that the 28-day org-wide list misses.
 #
 # Usage: gh-pr-per-ticket.sh KEY1 KEY2 ...
-#        echo -e "GE-649\nGE-1121" | gh-pr-per-ticket.sh
+#        echo -e "AB-649\nAB-1121" | gh-pr-per-ticket.sh
 #
 # Org resolution: $PR_STATUS_ORG > extracted from git remote origin
 #
-# Output: one JSON object per line: {"key":"GE-649","open":1,"merged":7,"prs":[...]}
+# Output: one JSON object per line: {"key":"AB-649","open":1,"merged":7,"prs":[...]}
 set -euo pipefail
 
 if [ -n "${PR_STATUS_ORG:-}" ]; then

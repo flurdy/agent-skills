@@ -256,7 +256,7 @@ This is the explicit "what should we call this session" cue — without it, the 
 Guidance for the model when filling this in:
 
 - Keep it short. A resume block longer than ~30 lines is a signal to split the work into multiple beads instead.
-- `{topic-slug}` is kebab-case, ≤4 words. Pick the most specific noun phrase — `ge-1107-cta-event` beats `cta-stuff`.
+- `{topic-slug}` is kebab-case, ≤4 words. Pick the most specific noun phrase — `ab-1107-cta-event` beats `cta-stuff`.
 - `{worktree-note}` is ` (worktree at {path})` for linked worktrees, else empty.
 - Prefer **paths and IDs** over prose summaries — they're greppable next session.
 - If the session was admin-only (no code), the resume block is *more* valuable, not less. Capture the Jira/bead context exchanged in chat.

@@ -28,7 +28,17 @@ If no PR number provided, use the current branch's PR.
 
 ## Instructions
 
-### 1. Get PR Details
+Fetch context in this fixed order. Do not skip ahead to analysis or verdict
+until every step that applies has been completed — unresolved reviewer
+feedback must be surfaced **before** you form an opinion.
+
+1. PR description
+2. Review threads (reviews + issue comments + GraphQL thread state)
+3. Inline comments per-file
+4. CI status
+5. Linked Jira ticket context (if a ticket is referenced)
+
+### 1. PR Description
 
 If no PR number provided, resolve it first:
 
@@ -42,7 +52,9 @@ If the script is unavailable, fall back to:
 gh pr view --json number --jq '.number'
 ```
 
-Fetch comprehensive PR information:
+Fetch the PR description and metadata (title, body, author, branches, file
+counts). Read the body in full — that is where the author explains intent,
+scope, and any caveats reviewers should already know about.
 
 ```bash
 ~/.claude/skills/review-pr/scripts/gh-pr-view.sh {PR_NUMBER}
@@ -54,33 +66,19 @@ If the script is unavailable, fall back to:
 gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,files,state,author,baseRefName,headRefName
 ```
 
-Get the full diff:
+Defer fetching the diff itself until step 6 (Analyze) — the description
+sets expectations the diff must then meet.
 
-```bash
-~/.claude/skills/review-pr/scripts/gh-pr-diff.sh {PR_NUMBER}
-```
+### 2. Review Threads (`gh api`)
 
-If the script is unavailable, fall back to:
+Before forming your own opinion, check what other reviewers (human and bot)
+have already said. Duplicating their work wastes context; missing their
+objections produces wrong verdicts.
 
-```bash
-gh pr diff {PR_NUMBER}
-```
-
-Get CI status:
-
-```bash
-~/.claude/skills/review-pr/scripts/gh-pr-checks.sh {PR_NUMBER}
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh pr checks {PR_NUMBER} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
-```
-
-### 2. Fetch Existing Reviews & Comments
-
-Before forming your own opinion, check what other reviewers (human and bot) have already said. Duplicating their work wastes context; missing their objections produces wrong verdicts.
+The comments script runs three queries in order: reviews + issue comments,
+then GraphQL review threads (with `isResolved` / `isOutdated`), then inline
+comments grouped per-file. Run it once and read the first two sections now;
+the per-file section is step 3.
 
 ```bash
 ~/.claude/skills/review-pr/scripts/gh-pr-comments.sh {PR_NUMBER}
@@ -112,7 +110,48 @@ Treat as signal (must address in the review):
 - AI code-reviewer bot comments (e.g. `claude-reviewer`, `copilot`, `amazon-q-developer`) — weight them like a human reviewer's first-pass feedback
 - Any inline thread where `isResolved: false`
 
-### 3. Extract Jira Ticket (Optional)
+### 3. Inline Comments Per-File
+
+The third section of `gh-pr-comments.sh` groups review comments by file path
+(via REST `/pulls/{num}/comments`). Reading per-file makes it easier to
+notice when multiple reviewers piled on the same file or when a file
+accumulated drive-by suggestions that never became formal threads.
+
+If the script is unavailable, fall back to:
+
+```bash
+gh api --paginate "/repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/comments" \
+  --jq 'group_by(.path) | map({path: .[0].path, comments: (sort_by(.created_at) | map({author: .user.login, line: (.line // .original_line), body: .body}))})'
+```
+
+For each file with comments, note:
+
+- Which reviewers commented and on which lines
+- Whether each comment was addressed in a later commit (cross-check against
+  the diff in step 6) or replied to
+- Repeated themes across files (e.g. "missing tests" raised on three files)
+
+Build a running list of **unresolved comments** (any thread with
+`isResolved: false`, plus any per-file comment without an addressing commit
+or reply). You will surface this list explicitly in step 8 before giving a
+verdict.
+
+### 4. CI Status
+
+```bash
+~/.claude/skills/review-pr/scripts/gh-pr-checks.sh {PR_NUMBER}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr checks {PR_NUMBER} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
+```
+
+Note pass/fail counts and any specific failing or pending checks worth
+calling out.
+
+### 5. Linked Jira Ticket Context (Optional)
 
 Find the Jira ticket from (in order of preference):
 
@@ -122,11 +161,9 @@ Find the Jira ticket from (in order of preference):
 
 Ticket pattern: 2-4 uppercase letters, dash, numbers (e.g., `AB-23`, `SSP-456`, `MAMA-89`)
 
-**If no ticket found:** Continue with the review without Jira comparison. Skip steps 4 and 6, and note in the output that no Jira ticket was linked.
+**If no ticket found:** Continue with the review without Jira comparison. Skip the AC checklist step, and note in the output that no Jira ticket was linked.
 
-### 4. Fetch Jira Ticket Details (If Ticket Found)
-
-Use the Jira MCP tools to get ticket requirements:
+If a ticket is found, fetch its details with the Jira MCP tool:
 
 ```
 mcp__jira__jira_get with:
@@ -140,12 +177,25 @@ Parse the description to extract:
 - Acceptance criteria (look for "AC", "Acceptance Criteria", bullet points)
 - Any technical requirements
 
-### 5. Analyze the Code Changes
+### 6. Analyze the Code Changes
+
+Now fetch the diff and read it against everything gathered above:
+
+```bash
+~/.claude/skills/review-pr/scripts/gh-pr-diff.sh {PR_NUMBER}
+```
+
+If the script is unavailable, fall back to:
+
+```bash
+gh pr diff {PR_NUMBER}
+```
 
 For each changed file, understand:
 
 - What was added/modified/deleted
 - Whether changes align with ticket requirements
+- Whether commits in the diff address the inline comments from steps 2 & 3
 
 For large diffs, save to a file and read in chunks if needed.
 
@@ -164,7 +214,7 @@ grep -r "from.*{deleted-module}" --include="*.ts" --include="*.tsx"
 grep -r "import.*{deleted-module}" --include="*.ts" --include="*.tsx"
 ```
 
-### 6. Compare PR Against Jira ACs (If Ticket Found)
+### 7. Compare PR Against Jira ACs (If Ticket Found)
 
 Create a checklist comparing each acceptance criterion against the implementation:
 
@@ -174,18 +224,32 @@ Create a checklist comparing each acceptance criterion against the implementatio
 
 **If no ticket found:** Skip this step. The review will focus on code quality, CI status, and potential concerns without AC validation.
 
-### 7. Check CI Status
+### 8. Surface Unresolved Comments — Before Any Verdict
 
-Summarize the CI status:
+**Do not write a verdict, an "overall assessment", or any opinion on the
+PR's mergeability until this section has been emitted.** It exists so that
+human and AI reviewer feedback is never silently overridden by your own
+analysis.
 
-- All checks passing?
-- Any failures or warnings?
+Output an `### Unresolved Reviewer Comments` block listing every item from
+the running list built in step 3:
 
-### 8. Identify Concerns
+- Each unresolved inline thread (`isResolved: false`) — author, file:line,
+  short summary, and your read of whether it is still valid given the
+  current diff.
+- Each per-file inline comment that lacks a reply or an addressing commit.
+- Each `CHANGES_REQUESTED` review or substantive `COMMENTED` review whose
+  ask has not been met.
 
-Flag any issues:
+If, after careful reading, the list is genuinely empty, state
+`### Unresolved Reviewer Comments\n\n- None.` explicitly. Silence is not an
+acceptable substitute — the section must always be present so it is
+obvious you actually checked.
 
-- **Unaddressed reviewer feedback**: Substantive comments from step 2 that haven't been resolved or replied to
+### 9. Identify Concerns
+
+Flag any issues beyond the unresolved-comments list:
+
 - **Scope creep**: Changes not related to the ticket
 - **Missing ACs**: Requirements not implemented
 - **Deleted code**: Large deletions that might break things
@@ -193,9 +257,10 @@ Flag any issues:
 - **Security**: Potential vulnerabilities
 - **Breaking changes**: API changes, removed exports
 
-### 9. Produce Review Summary
+### 10. Produce Review Summary
 
-Output a structured review:
+Output a structured review. **Order matters:** `Unresolved Reviewer
+Comments` must appear before `Verdict` — never the other way round.
 
 ```markdown
 ## PR #{number} Review
@@ -209,9 +274,9 @@ Output a structured review:
 - {additions} additions, {deletions} deletions across {changedFiles} files
 - {Brief summary of what changed}
 
-### Reviewer Feedback
-- {Each substantive unresolved comment/review from step 2 — author, file:line, summary, your assessment of whether it's valid}
-- {Omit this section only if there is no human or AI reviewer feedback at all}
+### Unresolved Reviewer Comments
+- {Each item from step 8 — author, file:line, summary, your assessment of whether it's still valid}
+- {Or "None." if there genuinely are no unresolved items}
 
 ### AC Checklist (if Jira ticket found)
 | AC | Status | Implementation |
@@ -230,30 +295,34 @@ Verdict rules:
 
 - **Needs changes** if any reviewer has `CHANGES_REQUESTED`, or if any unresolved inline thread raises a valid architectural / correctness objection (even from a `COMMENTED` review or AI bot).
 - **Needs discussion** if reviewers disagree or a substantive comment lacks a clear resolution.
-- **Safe to merge** only when ACs are met, CI is green, and no unaddressed substantive feedback remains.
+- **Safe to merge** only when ACs are met, CI is green, and the `Unresolved Reviewer Comments` section is `None.`.
 
 ## Example Output
 
 ```
 ## PR #5753 Review
 
-**Title:** feat: ge-841 pii warning
-**Jira:** GE-841 - FE | Unitary AI PII Instructions
+**Title:** feat: ab-841 pii warning
+**Jira:** AB-841 - FE | PII redaction warnings
 **Status:** All checks passing
+**Reviews:** 1 approved, 0 commented
 
 ### Changes Overview
 - 136 additions, 1528 deletions across 37 files
 - Adds PII redaction instructions to file upload screens
 - Removes unused IdVerification component
 
+### Unresolved Reviewer Comments
+- None.
+
 ### AC Checklist
 | AC | Status | Implementation |
 |----|--------|----------------|
 | Prompt users to redact PII | Pass | New `getUploadInstructionText` utility |
-| Different messages for Employed/Retired/Volunteer | Pass | Three distinct messages |
+| Different messages per user role | Pass | Three distinct messages |
 | Include data-testid | Pass | `data-testid="upload-instruction-text"` |
-| BLC UK only (ok for others) | Pass | Brand check in utility |
-| Update request new card journey | Pass | Both screens updated |
+| Region A only (ok for others) | Pass | Region check in utility |
+| Update primary user flow | Pass | Both screens updated |
 | Cleanup is fine if nothing breaks | Pass | Deleted unused code, CI green |
 
 ### Concerns
@@ -271,11 +340,15 @@ Safe to merge. PR fully implements all acceptance criteria.
 **Title:** chore: update dependencies
 **Jira:** No Jira ticket linked
 **Status:** All checks passing
+**Reviews:** 0 approved, 0 commented
 
 ### Changes Overview
 - 45 additions, 32 deletions across 3 files
 - Updates npm dependencies to latest versions
 - Updates lock file
+
+### Unresolved Reviewer Comments
+- None.
 
 ### Code Review
 - package.json: Minor version bumps for react, typescript

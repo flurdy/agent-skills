@@ -51,7 +51,7 @@ mcp__jira__jira_get
 
 The `sprint` field is an array of sprint objects. For each ticket extract the **active** sprint's name (first entry where `state == "active"`), else the most recent. Empty/null → `—` (no sprint — usually backlog).
 
-If the result mentions a parent epic (e.g. `GE-280`), **also fetch its other children** so beads referencing sibling tickets can be resolved:
+If the result mentions a parent epic (e.g. `AB-280`), **also fetch its other children** so beads referencing sibling tickets can be resolved:
 
 ```
 jql: parent = {epic-key}
@@ -85,17 +85,17 @@ Reuse `pr-status` scripts (don't re-implement). The closed-list window is **28 d
 ~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh "" 28   # last 28 days
 ```
 
-These return PRs across all repos in the org (the script uses `gh search prs --owner $ORG`, so e.g. `bluelightcard/auth0` PRs come back alongside `bluelightcard/BlueLightCard-2.0`). This list feeds **orphan-PR detection** (Rule B) and the recent-PR context.
+These return PRs across all repos in the org (the script uses `gh search prs --owner $ORG`, so e.g. `yourorg/service-a` PRs come back alongside `yourorg/monorepo`). This list feeds **orphan-PR detection** (Rule B) and the recent-PR context.
 
 **3b — Per-ticket targeted search (accurate PR counts in the table):**
 
 The 28-day window can still miss older PRs that shipped against tickets still in flight (e.g. a PR merged 6 weeks ago for a ticket still in Code Review awaiting verification). For **every Jira ticket from step 1** (your assigned set, status != Done), do a targeted search by key — no time limit, all repos in the org:
 
 ```bash
-~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh GE-649 GE-1107 GE-1121 ...
+~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh AB-649 AB-1107 AB-1121 ...
 ```
 
-Pass all non-Done Jira ticket keys as arguments. The script searches each key across the org with no time limit and outputs one JSON line per key: `{"key":"GE-649","open":1,"merged":7,"prs":[...]}`. Use `open` and `merged` counts directly for the table column.
+Pass all non-Done Jira ticket keys as arguments. The script searches each key across the org with no time limit and outputs one JSON line per key: `{"key":"AB-649","open":1,"merged":7,"prs":[...]}`. Use `open` and `merged` counts directly for the table column.
 
 Cost: one `gh search prs` per ticket. ~9 calls in a typical sweep, ~5–10s total. Worth it for accuracy.
 
@@ -173,15 +173,15 @@ Mirror the column style of `/landscape`'s Jira table, extended with two cross-re
 
 | Sprint | Key | Type | Pri | Status | Updated | PRs (open/merged) | Beads (in_p/open) | Summary |
 |--------|-----|------|-----|--------|---------|-------------------|-------------------|---------|
-| Sprint 42 | [GE-649](…) | Task | P3 | Code Review | 2h | 1 / 9 | 0 / 0 | FE \| Ensure Session Id… |
-| Sprint 42 | [GE-1107](…) | Task | P1 | In Progress | 3h | 0 / 3 | 0 / 0 | FE \| Add Amplitude events… |
-| Sprint 41 | [GE-1121](…) | Task | P2 | Code Review | 7d | 0 / 0 | 0 / 0 | FE \| Send Device ID & Session ID… |
-| — | [GE-678](…) | Task | P2 | Ready to Work | 4d | 0 / 0 | 0 / 0 | BE \| Update API Headers |
+| Sprint 42 | [AB-649](…) | Task | P3 | Code Review | 2h | 1 / 9 | 0 / 0 | FE \| Ensure Session Id… |
+| Sprint 42 | [AB-1107](…) | Task | P1 | In Progress | 3h | 0 / 3 | 0 / 0 | FE \| Add analytics events… |
+| Sprint 41 | [AB-1121](…) | Task | P2 | Code Review | 7d | 0 / 0 | 0 / 0 | FE \| Send Device ID & Session ID… |
+| — | [AB-678](…) | Task | P2 | Ready to Work | 4d | 0 / 0 | 0 / 0 | BE \| Update API Headers |
 ```
 
 Table rules:
 - **Sprint**: active sprint name. Truncate purely-numeric names to `S{N}` if the column gets wide. `—` if none.
-- **Key**: markdown link to Jira (e.g. `https://bluelightcard.atlassian.net/browse/{key}`).
+- **Key**: markdown link to Jira (e.g. `https://yourorg.atlassian.net/browse/{key}`).
 - **Type**: Jira issuetype name (Task / Story / Bug / Sub-task).
 - **Pri**: shortened — `P1 Critical` → `P1`, `P2 High` → `P2`, etc.
 - **Updated**: relative time (`2h`, `4d`).
@@ -211,22 +211,22 @@ After the table, render drift findings:
 Group by category if more than 3 items:
 
 **Status mismatches**
-- **GE-1107** (In Progress) — all 3 linked PRs merged ≥10d ago, no in_progress bead.
+- **AB-1107** (In Progress) — all 3 linked PRs merged ≥10d ago, no in_progress bead.
   → _Recommendation:_ comment summarising shipped scope, transition to Test/Review (or confirm parking).
 
 **Orphan beads**
-- `blc-2-xyz` — no Jira link.
+- `myrepo-xyz` — no Jira link.
   → _Recommendation:_ link to a ticket or document local-only scope.
 
 **Parent moved**
-- `blc-2-abc` → GE-999 (Done).
+- `myrepo-abc` → AB-999 (Done).
   → _Recommendation:_ close bead.
 
 ### ℹ️ Info ({count})
 - {Lower-priority observations.}
 
 ### ✅ Honoured parking
-- **GE-1107, GE-1344** — parked behind GE-649 cookie work (per memory `regularly-cross-check-jira-ticket-status-against-beads`).
+- **AB-1107, AB-1344** — parked behind AB-649 cookie work (per memory `regularly-cross-check-jira-ticket-status-against-beads`).
 
 ---
 
@@ -234,7 +234,7 @@ Group by category if more than 3 items:
 **Suggested next step:** {one concrete action — usually the highest-severity item or a /tracking-auditor invocation for a suspicious branch}
 ```
 
-Drift findings should reference the table by key (e.g. "GE-1121"), letting the user glance up to see the full row rather than restating context.
+Drift findings should reference the table by key (e.g. "AB-1121"), letting the user glance up to see the full row rather than restating context.
 
 If there's no drift at all:
 

@@ -84,10 +84,10 @@ Render:
 
 | Key | Sprint | Type | Pri | Status | Updated | Summary |
 |-----|--------|------|-----|--------|---------|---------|
-| [GE-649](https://.../browse/GE-649) | Sprint 42 | Task | P1 | In Progress | 2h | Stabilise identity cookies |
+| [AB-649](https://.../browse/AB-649) | Sprint 42 | Task | P1 | In Progress | 2h | Stabilise identity cookies |
 ```
 
-- **Key**: markdown link to the Jira issue. Use the Jira base URL from the issue's `self` field, or a site-configured base (e.g. `https://bluelightcard.atlassian.net/browse/{key}`).
+- **Key**: markdown link to the Jira issue. Use the Jira base URL from the issue's `self` field, or a site-configured base (e.g. `https://yourorg.atlassian.net/browse/{key}`).
 - **Sprint**: active sprint name. Truncate numeric-only names to `S{N}` if the column gets wide. `—` if none.
 - **Type**: issuetype name (Task / Story / Bug / Sub-task).
 - **Pri**: shorten long names — `P1 Critical` → `P1`, `P2 High` → `P2`, etc.
@@ -173,8 +173,8 @@ For each ticket's `sprint` array, pick the **active** sprint (first with `state=
 ```
 
 - `#` is the picker index `1-N`.
-- `Jira` column: markdown link `[KEY](https://bluelightcard.atlassian.net/browse/KEY)`. Show `—` if no Jira key.
-- `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`) — strip the project prefix from sprint names like `"GE Sprint 31"`. Show `—` if no sprint or no Jira.
+- `Jira` column: markdown link `[KEY](https://yourorg.atlassian.net/browse/KEY)`. Show `—` if no Jira key.
+- `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`) — strip the project prefix from sprint names like `"PROJ Sprint 31"`. Show `—` if no sprint or no Jira.
 - `Status` column: Jira status. Show `—` if no Jira.
 - If no ready beads at all: `_No ready beads. Run /triage to add work._`
 - If the `---READY---` section is not valid JSON (fallback plain text): render it as-is, capped at 5 lines.
@@ -199,7 +199,7 @@ Render:
 
 | Field | Value |
 |-------|-------|
-| Branch | fix/GE-649-device-cookie-combined |
+| Branch | fix/AB-649-device-cookie-combined |
 | Dirty | clean _(or: 3 modified, 1 untracked)_ |
 | vs upstream | ✅ in sync _(or: ⬆ 2 ahead, ⬇ 1 behind)_ |
 | Last commit | `abc1234` commit subject (2h ago) |

@@ -195,4 +195,4 @@ Backups: 2 .bak files written; delete when you've verified.
 - The script never auto-removes from the `deny` or `ask` arrays beyond exact dedupe. Promote/remove from those only on explicit user request.
 - `mcp__server__tool` entries can't be verified for existence without a live MCP probe — leave them alone unless the user flags one.
 - `WebSearch` and other bare tool names (no parens) are valid permissions — they sort with their tool prefix.
-- If a project's `.claude/` is a symlink to another git repo (e.g. `claude-blc-2/`), the underlying real path is what gets edited.
+- If a project's `.claude/` is a symlink to another git repo (e.g. `claude-myrepo/`), the underlying real path is what gets edited.

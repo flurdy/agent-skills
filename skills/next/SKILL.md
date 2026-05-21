@@ -227,14 +227,14 @@ Within each bucket, preserve the `next-bd` rank order.
 
 | # | ID | Pri | Type | Jira | Sprint | Status | Title |
 |---|----|-----|------|------|--------|--------|-------|
-| 1 | mycode-agf | P1 | task | [GE-1088](https://bluelightcard.atlassian.net/browse/GE-1088) | 31 (active) | In Progress | Replace autocapture.attribution... |
-| 2 | mycode-6ic | P2 | task | [GE-1424](https://bluelightcard.atlassian.net/browse/GE-1424) | 32 (future) | Backlog | Make Amplitude client stateless... |
+| 1 | mycode-agf | P1 | task | [AB-1088](https://yourorg.atlassian.net/browse/AB-1088) | 31 (active) | In Progress | Replace event attribution wiring... |
+| 2 | mycode-6ic | P2 | task | [AB-1424](https://yourorg.atlassian.net/browse/AB-1424) | 32 (future) | Backlog | Make analytics client stateless... |
 | 3 | mycode-y8p | P2 | bug | — | — | — | Auth0 postLogin race... |
 ```
 
 - `#` is a continuous index for the picker.
-- `Jira` column: markdown link `[KEY](https://bluelightcard.atlassian.net/browse/KEY)`. `—` if no key.
-- `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`). Strip the project prefix from sprint names like `"GE Sprint 31"`. For descriptive sprint names without an obvious number, keep the full name. `—` for no-sprint and no-Jira beads.
+- `Jira` column: markdown link `[KEY](https://yourorg.atlassian.net/browse/KEY)`. `—` if no key.
+- `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`). Strip the project prefix from sprint names like `"PROJ Sprint 31"`. For descriptive sprint names without an obvious number, keep the full name. `—` for no-sprint and no-Jira beads.
 - `Status` column: Jira status. `—` for no-Jira beads.
 - If the Jira call fails: render the table without Sprint/Status columns and with no Jira links. Footnote: `_Jira unavailable: {error}. Showing beads in rank order without sprint info._`
 - If all beads end up in the same sprint, footnote: `_All ready beads in {sprint name}._`
