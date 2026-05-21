@@ -4,6 +4,8 @@ description: >
   Pick the next bead to work on. Shows ready tasks (no blockers), applies user
   preferences for ordering (priority, type, recency), and helps select work.
 allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),AskUserQuestion,mcp__jira__jira_get"
+model: haiku
+effort: low
 version: "1.2.0"
 author: "flurdy"
 ---

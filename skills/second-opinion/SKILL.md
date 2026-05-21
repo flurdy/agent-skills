@@ -2,6 +2,8 @@
 name: second-opinion
 description: Query an alternative AI CLI (Claude, Codex, or Gemini) for a second opinion on plans, PRs, bugs, or code.
 allowed-tools: "Read,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Grep,Glob,AskUserQuestion"
+model: sonnet
+effort: medium
 version: "1.1.0"
 author: "flurdy"
 ---

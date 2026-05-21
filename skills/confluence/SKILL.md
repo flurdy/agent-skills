@@ -4,6 +4,8 @@ description: >
   Read Confluence pages and comments. Use to fetch design docs, ADRs, runbooks,
   or any wiki content for context when working on tasks.
 allowed-tools: "Read,AskUserQuestion,mcp__jira__jira_get,mcp__confluence__*"
+model: haiku
+effort: low
 version: "1.1.0"
 author: "flurdy"
 ---

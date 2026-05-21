@@ -2,6 +2,8 @@
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, and pushes to origin.
 allowed-tools: "Read,Bash(git:*),Bash(~/.claude/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+model: sonnet
+effort: medium
 version: "1.0.0"
 author: "flurdy"
 ---

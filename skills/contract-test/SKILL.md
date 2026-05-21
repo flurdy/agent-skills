@@ -1,6 +1,8 @@
 ---
 name: contract-test
 description: Run consumer-driven contract tests (pact-lite, no broker). Guides through generating, syncing, and verifying contracts between services. Supports both single-service and multi-service project-wide runs.
+model: sonnet
+effort: medium
 version: "2.0.0"
 author: "flurdy"
 ---

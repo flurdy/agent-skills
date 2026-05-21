@@ -2,6 +2,8 @@
 name: clean-code
 description: Format, lint, and fix all warnings across the entire codebase — including test files and pre-existing issues.
 allowed-tools: "Read,Edit,Grep,Glob,Bash(make:*),AskUserQuestion"
+model: haiku
+effort: low
 version: "1.0.0"
 author: "flurdy"
 ---

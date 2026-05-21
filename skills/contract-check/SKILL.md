@@ -2,6 +2,8 @@
 name: contract-check
 description: "Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests."
 allowed-tools: "Read,Grep,Glob,Bash(./scripts/contract-check:*),Bash(./scripts/mgit:*),Bash(ls:*),Bash(chmod:*),Skill,AskUserQuestion"
+model: sonnet
+effort: medium
 version: "1.0.0"
 author: "flurdy"
 ---

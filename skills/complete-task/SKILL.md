@@ -2,6 +2,8 @@
 name: complete-task
 description: "Complete an in-progress task by running clean-code, staging, committing, and closing the bead. Use after /verify-task."
 allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
+model: sonnet
+effort: medium
 version: "1.1.0"
 author: "flurdy"
 ---
