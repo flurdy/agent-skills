@@ -1,6 +1,6 @@
 ---
 name: total-review
-description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, simplify, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on Must-Fix tier findings (failing tests, security, blocking-severity bugs), emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
+description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, code-review, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on Must-Fix tier findings (failing tests, security, blocking-severity bugs), emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
 model: opus
 effort: high
@@ -33,7 +33,7 @@ This is a **synthesis layer**. It calls existing skills, it does not reimplement
 |-------|-----------------------|
 | `/clean-code` | Phase 1 — auto-fix lint/format |
 | `/verify-task` | Phase 2 — requirements + test coverage |
-| `/simplify` | Phase 3 — cheap reuse/quality cleanup |
+| `/code-review` | Phase 3 — cheap reuse/quality cleanup (formerly `/simplify`) |
 | `/pedantic-review` | Phase 4 — craft critique |
 | `/review` | Phase 5 — built-in correctness review |
 | `/security-review` | Phase 6 — security audit (any finding halts) |
@@ -90,7 +90,7 @@ Record `SCOPE_BASE` and `SCOPE_HEAD` once at Phase 0 and use `git diff ${SCOPE_B
 
 For `--uncommitted` scope, snapshot the staged+unstaged diff once into `/tmp/total-review-scope.patch` and re-use it across phases.
 
-If `--pr <N>`, set the scope to that PR. Phases 1–3 (`clean-code`, `verify-task`, `simplify`) mutate the working tree, so they require a checkout of the PR branch:
+If `--pr <N>`, set the scope to that PR. Phases 1–3 (`clean-code`, `verify-task`, `code-review`) mutate the working tree, so they require a checkout of the PR branch:
 
 - If the local working tree is clean (`git status --porcelain` empty) **and** no unrelated branch is checked out — run `gh pr checkout {N}` and proceed normally through all phases.
 - Otherwise — fall back to **diff-only mode**: skip Phases 1–3, fetch the PR diff via `gh pr diff {N}` and `gh pr view {N}`, and run Phases 4–9 against that diff. Note the skip in the final report.
@@ -135,17 +135,17 @@ Read the verification report carefully. Map outcomes:
 
 If halted, emit a P0 bead and stop.
 
-### 3. Phase 3 — Simplify (cheap auto-fix)
+### 3. Phase 3 — Code-review (cheap auto-fix)
 
-Apply the same code-files-in-scope check as Phase 2. If the diff is docs-only, **skip Phase 3 with a note**: "Phase 3 skipped — diff contains no code files." `/simplify` is a code reuse/quality scan and has no signal on prose.
+Apply the same code-files-in-scope check as Phase 2. If the diff is docs-only, **skip Phase 3 with a note**: "Phase 3 skipped — diff contains no code files." `/code-review` is a code reuse/quality scan and has no signal on prose.
 
 Otherwise:
 
 ```
-Skill /simplify
+Skill /code-review
 ```
 
-`/simplify` auto-applies cheap reuse/quality improvements. Treat any **prompt-before-apply** suggestions as findings — apply them inline only if mechanical and safe, otherwise queue as a P2 bead.
+`/code-review` (formerly `/simplify`) auto-applies cheap reuse/quality improvements. Treat any **prompt-before-apply** suggestions as findings — apply them inline only if mechanical and safe, otherwise queue as a P2 bead. An effort level can be passed (e.g. `/code-review high`) if a deeper pass is wanted, but the default is appropriate for this phase.
 
 After this phase, re-run `make clean-code` if any edits were applied (a cheap sanity check that auto-fixes didn't reintroduce lint).
 
@@ -273,7 +273,7 @@ Render a single readout. Quiet success — only show sections that have content.
 | {id} | P{0–3}   | {phase}      | {one line} |
 
 ### Auto-applied fixes _(omit if none)_
-- {file:line} — {what clean-code/simplify changed}
+- {file:line} — {what clean-code/code-review changed}
 
 ### Next steps
 - {recommended action based on outcome}
@@ -317,7 +317,7 @@ In all three cases the final report grows a "Findings" section; halts still prin
 |-------|-----------|
 | 1 — clean-code | Yes — that's its job |
 | 2 — verify-task | No — never modifies code |
-| 3 — simplify | Yes for mechanical; prompt for behavioural |
+| 3 — code-review | Yes for mechanical; prompt for behavioural |
 | 4 — pedantic-review | No — emit beads only |
 | 5 — review | No — emit beads only |
 | 6 — security-review | No — emit beads only (and halt) |
