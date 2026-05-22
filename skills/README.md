@@ -12,6 +12,7 @@
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
 | create-pr | Create a pull request from the current branch following project conventions |
 | eas-build-error | Show the status and errors from the latest EAS build |
+| handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |

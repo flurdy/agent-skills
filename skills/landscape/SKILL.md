@@ -1,10 +1,10 @@
 ---
 name: landscape
 description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
-allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
+allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model: sonnet
 effort: medium
-version: "0.5.2"
+version: "0.6.0"
 author: "flurdy"
 ---
 
@@ -219,6 +219,15 @@ Notes:
   - `/path/to/other` on `fix/X` — 3 modified, 2 unpushed
   ```
   Omit the dirty/unpushed parts that are zero (e.g. `3 modified` alone, or `2 unpushed` alone).
+- **Recent handoffs for this repo**: probe `~/.claude/handoffs/` via:
+  ```bash
+  ~/.claude/skills/handoffs/scripts/list.sh --summary-only
+  ```
+  Parse the `---SUMMARY---` block and read `current_repo_recent` (which uses the same Mon→3 / Tue→4 / else→3 weekend buffer as the closed-PR list). If `current_repo_recent > 0`, add a footnote below the table:
+  ```
+  📥 {N} recent handoff(s) for this repo (last {RECENT-WINDOW-DAYS}d) — `/handoffs` to browse.
+  ```
+  Suppress the footnote when zero — silence is shorter. Older handoffs are still browsable via `/handoffs`; the footer is just a fresh-work hint. This call can run in parallel with `working-copy.sh`.
 
 ### 5. Next step suggestion
 

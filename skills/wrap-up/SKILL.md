@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(date:*), Bash(pwd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git config:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.1.0"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -50,6 +50,14 @@ git rev-parse --git-dir 2>/dev/null
 ```
 
 If `--git-common-dir` and `--git-dir` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3. (String inequality is sufficient: the main checkout returns the same value for both — typically `.git` — while a linked worktree returns `/path/to/main/.git` for common-dir vs `/path/to/main/.git/worktrees/{name}` for git-dir.)
+
+Also compute the **canonical repo root** — the absolute path of the main checkout, which is the directory containing the realpath of `--git-common-dir`:
+
+```bash
+git rev-parse --git-common-dir 2>/dev/null | xargs -I {} realpath {} 2>/dev/null | xargs -r dirname
+```
+
+Capture this value as `{repo-root}` for the resume block in §4. It's the stable identity `/handoffs` uses to group sessions per project — independent of which worktree wrote the handoff, and resilient to the worktree being pruned later.
 
 Render:
 
@@ -232,6 +240,10 @@ This is the explicit "what should we call this session" cue — without it, the 
 # Resume: {topic-slug} — {YYYY-MM-DD}
 
 **Where to pick up:** `{cwd}` on branch `{branch}`{worktree-note}
+**Repo root:** `{repo-root}`
+**Jira:** {jira-field}
+**Beads:** {beads-field}
+**PRs:** {prs-field}
 
 **Context:**
 - {one-line framing of what we're doing and why}
@@ -246,10 +258,7 @@ This is the explicit "what should we call this session" cue — without it, the 
 - {one concrete action — file to open, command to run, person to ask, ticket to read}
 
 **Pointers:**
-- Jira: {key(s) or —}
-- Beads: {id(s) or —}
-- PR(s): {link(s) or —}
-- Related files touched: {paths or —}
+- {free-form ancillary refs: dashboards, commits worth re-reading, people to ask — or omit the section entirely if nothing to add}
 ```
 ```
 
@@ -258,8 +267,23 @@ Guidance for the model when filling this in:
 - Keep it short. A resume block longer than ~30 lines is a signal to split the work into multiple beads instead.
 - `{topic-slug}` is kebab-case, ≤4 words. Pick the most specific noun phrase — `ab-1107-cta-event` beats `cta-stuff`.
 - `{worktree-note}` is ` (worktree at {path})` for linked worktrees, else empty.
+- `{cwd}` should be an **absolute path** when possible — not a relative path like `packages/web/`. The `/handoffs` skill matches handoffs to repos via the recorded location, and relative paths can't be resolved later.
+- `{repo-root}` is the value captured in §0 (canonical repo root — parent dir of the realpath of `--git-common-dir`). Omit the line entirely (don't render an empty value) if the session wasn't in a git repo.
+
+#### Header fields: Jira / Beads / PRs
+
+These are **structured top-level fields** (one per line, right under `Repo root:`) so future tooling can grep them cleanly. Multiple values per field are common — use comma-separated backtick-quoted tokens. Use `—` when there are none for that field. Never omit a field; if empty, render `—`.
+
+Auto-populate from the data already gathered in §§1–2; do not ask the user. Sources, in priority order:
+
+- **Jira**: tickets touched today (from §1's "Jira touched today" table) + any Jira keys extracted from the current branch name (e.g. `fix/AB-649-…` → `AB-649`) + any keys the chat referenced. De-duplicate. Format: `` `AB-649`, `AB-651` ``.
+- **Beads**: in-progress beads (load-bearing for "what was I doing") plus any beads closed or created during this session. Format: `` `bd-123`, `bd-124` ``. Don't list every closed bead from §1 if there were many — prefer the in-progress set as the primary signal.
+- **PRs**: PRs created, updated, or referenced this session (from §1's PRs-today table). Format: `` `[#42](url)`, `[#43](url)` `` — keep the markdown link form so the next session can click through. Use just `` `#42` `` if no URL is available.
+
+If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)` after the last item rather than wrapping to a second line.
+
 - Prefer **paths and IDs** over prose summaries — they're greppable next session.
-- If the session was admin-only (no code), the resume block is *more* valuable, not less. Capture the Jira/bead context exchanged in chat.
+- If the session was admin-only (no code), the resume block is *more* valuable, not less. Capture the Jira/bead context exchanged in chat — those header fields stay populated even when no code changed.
 
 ### 5. 💾 Save the resume block (offer, don't force)
 
