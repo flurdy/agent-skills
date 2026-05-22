@@ -1,10 +1,10 @@
 ---
 name: handoffs
 description: Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full (including ones whose worktree has been pruned) and summarises other repos by count. Companion to /wrap-up and /landscape.
-allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Read, AskUserQuestion"
+allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(git worktree add:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.6.1"
+version: "0.7.1"
 author: "flurdy"
 ---
 
@@ -158,19 +158,80 @@ Render the file content **verbatim** inside a fenced block so the rest of the se
 ```
 ````
 
-Then surface where to pick up:
+Then offer the right follow-up based on `exists`:
 
-- If `exists=Y` and recorded cwd differs from pwd:
-  ```markdown
-  **Switch directory:** `cd {cwd}` _(handoff was recorded in a different worktree of this repo)_
-  ```
-- If `exists=N` (worktree was pruned):
-  ```markdown
-  **Worktree pruned.** The original location `{cwd}` no longer exists. Resume from your current checkout (`{pwd}`), or spin up a fresh worktree (`git worktree add ../worktrees/{slug} {branch}`).
-  ```
-- If `exists=Y` and recorded cwd matches pwd: no extra note.
+#### `exists=Y` — worktree still on disk
 
-Do **not** run `cd` or `git worktree add` yourself — shell state does not persist across Bash calls, so the user has to run these themselves.
+If recorded cwd differs from pwd:
+
+```markdown
+**Switch directory:** `cd {cwd}` _(handoff was recorded in a different worktree of this repo)_
+```
+
+If recorded cwd matches pwd: no extra note.
+
+(Don't run `cd` yourself — shell state doesn't persist across Bash calls.)
+
+#### `exists=N` — worktree was pruned
+
+**First, check for a newer handoff on the same branch.** Scan the current-repo table (the `---HANDOFFS---` rows where `repo-key` matched the current repo) for any other row with the same `branch` value, a more recent `date`, and `exists=Y`. If one is found, the work was likely continued in a live worktree — surface that as the recommended option *before* asking about recreation:
+
+> Original worktree `{cwd}` is gone. The same branch has a newer handoff in `{newer-where}` (still on disk). What would you like to do?
+
+Options (use `AskUserQuestion`):
+- **Load the newer handoff instead** — `Open {newer-filename} from {newer-where} (recommended)`. Treat as if the user had picked that filename in §4 — go back to the top of §5 with the new file.
+- **Recreate this worktree** — proceed with the regular worktree-creation flow below.
+- **Resume here** — stay in the current checkout.
+
+If no newer same-branch handoff exists, skip this prompt and go straight to the worktree-creation flow below.
+
+---
+
+Offer to recreate the worktree. Compute the proposed values:
+
+- `{worktree-path}` = the recorded cwd if its parent directory still exists on disk; otherwise `{pwd}/../worktrees/{basename of recorded cwd}`. If the basename is empty or generic (`worktrees`, `.`), use `{topic-slug}` from the filename instead.
+- `{branch}` = the branch parsed from the handoff (Branch column).
+
+Ask via `AskUserQuestion`:
+
+> Original worktree `{cwd}` is gone. Recreate it?
+
+Options:
+- **Create worktree** — runs `git worktree add {worktree-path} {branch}` in the current repo.
+- **Resume here** — stay in the current checkout (`{pwd}`); user can `git checkout {branch}` themselves if they want.
+- **Show command** — prints the `git worktree add` invocation without running.
+
+On **Create worktree**:
+
+```bash
+git worktree add "{worktree-path}" "{branch}"
+```
+
+If the command succeeds, render:
+
+```markdown
+✅ Worktree created at `{worktree-path}`.
+
+**Switch directory:** `cd {worktree-path}`
+```
+
+If it fails (path already exists, branch missing locally, dirty index, …), surface the stderr and fall back to **Show command** behaviour. Do not retry, do not delete anything, do not `--force`.
+
+On **Resume here**:
+
+```markdown
+**Resuming in current checkout** (`{pwd}`). If you need the branch, run `git checkout {branch}` (the pruned worktree's commits are still in the repo).
+```
+
+On **Show command**:
+
+```markdown
+**Worktree pruned.** Original location `{cwd}` no longer exists. To recreate it yourself:
+
+```bash
+git worktree add {worktree-path} {branch}
+```
+```
 
 ### 6. Footer
 
