@@ -1,10 +1,10 @@
 ---
 name: handoffs
 description: Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full (including ones whose worktree has been pruned) and summarises other repos by count. Companion to /wrap-up and /landscape.
-allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(git worktree add:*), Read, AskUserQuestion"
+allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.7.1"
+version: "0.7.2"
 author: "flurdy"
 ---
 
@@ -183,7 +183,21 @@ Options (use `AskUserQuestion`):
 - **Recreate this worktree** — proceed with the regular worktree-creation flow below.
 - **Resume here** — stay in the current checkout.
 
-If no newer same-branch handoff exists, skip this prompt and go straight to the worktree-creation flow below.
+If no newer same-branch handoff exists, skip this prompt.
+
+**Second, check whether pwd is already on the handoff's branch.** Run:
+
+```bash
+git rev-parse --abbrev-ref HEAD
+```
+
+If the output equals the handoff's `{branch}`, the user is already on a viable landing spot (likely a fresh worktree they prepared). Don't prompt for worktree creation — just render:
+
+```markdown
+**Already on `{branch}` here** (`{pwd}`). No worktree action needed — resume from this checkout.
+```
+
+Then skip to §6. Only fall through to the worktree-creation prompt when pwd's branch differs from the handoff's branch.
 
 ---
 

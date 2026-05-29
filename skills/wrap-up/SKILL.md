@@ -1,10 +1,10 @@
 ---
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (especially in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(date:*), Bash(pwd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git config:*), Write, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(date:*), Bash(pwd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git config:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.3.0"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -221,6 +221,42 @@ Then exactly one of the warnings below (pick the first matching rule):
 
 Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSAFE---` as a footnote if any exist — easy to forget those after closing the session.
 
+### 3a. 🧹 Stale in-progress beads
+
+Skip this whole section if `---BEADS-STATUS---` was `NO_BD`/`NO_BEADS_IN_REPO` or if `---BEADS-IN-PROGRESS---` was empty.
+
+For each in-progress bead, check whether its ID (e.g. `bd-123`) appears in any of today's signals:
+
+- Commit subjects (§1 Commits)
+- Branch names from the worktree list (§1 Commits, second column)
+- PR titles (§1 PRs today)
+- The current branch (§0)
+
+A bead with **no match in any of those** is "stale in_progress" — moved to `in_progress` at some point but saw no work today. Tomorrow's `/landscape` will misreport it as live WIP.
+
+If any stale beads exist, render:
+
+```markdown
+### 🧹 Stale in-progress
+
+These beads are in_progress but had no commits, PRs, or branch references today:
+
+| ID | Type | Pri | Title |
+|----|------|-----|-------|
+```
+
+Then prompt with `AskUserQuestion` (multiSelect, options are the bead IDs):
+
+> Demote selected beads back to `ready` so tomorrow's WIP list is honest? Skip any you genuinely intend to keep open (e.g. design work in chat only).
+
+For each selected bead:
+
+```bash
+bd update {id} --status=ready
+```
+
+After any demotions, recompute the **Beads** header field in §4 so demoted IDs don't reappear as in-progress in the resume block. (Demoted beads are still worth mentioning in the open-threads bullets if relevant — they're just no longer claimed as WIP.)
+
 ### 4. 🧷 Resume block
 
 A self-contained paste that, dropped into a fresh session tomorrow, lets the next instance pick up without re-discovering context. Fenced as markdown so it copies cleanly.
@@ -319,7 +355,8 @@ Each section is independent — fail soft, don't block the rest.
 - **Not in a git repo**: skip §0 worktree detection, §1 commits, §3 hygiene. Still produce §2 threads and §4 resume block — they're the load-bearing parts.
 - **gh not authenticated**: skip the PRs sub-section, print `_GitHub CLI not authenticated — PR roundup skipped._`
 - **No Jira MCP**: omit Jira pointers from the resume block; do not fail.
-- **No `bd` / no `.beads/`**: skip the beads sub-section silently.
+- **No `bd` / no `.beads/`**: skip the beads sub-section and §3a silently.
+- **`bd update` fails** for a selected bead: report the error inline, keep going with the rest. Don't abort the skill — the resume block is still the primary artifact.
 
 ## Notes
 
