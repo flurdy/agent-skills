@@ -13,10 +13,12 @@ HANDOFFS_DIR="${HOME}/.claude/handoffs"
 
 RECENT_DAYS=""
 SUMMARY_ONLY=0
+CHECK_BRANCHES=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --recent-days) RECENT_DAYS="$2"; shift 2 ;;
         --summary-only) SUMMARY_ONLY=1; shift ;;
+        --check-branches) CHECK_BRANCHES=1; shift ;;
         *) shift ;;
     esac
 done
@@ -152,6 +154,64 @@ fi
 
 CUTOFF=$(date -I -d "${RECENT_DAYS} days ago" 2>/dev/null || date -j -v-${RECENT_DAYS}d +%Y-%m-%d 2>/dev/null)
 
+# --- Branch-liveness setup (only with --check-branches, only in a repo) -----
+# Staleness is current-repo-only: the git queries run in the invocation pwd, so
+# we can't speak to branches in other repos. One `git ls-remote` (network,
+# timeout-guarded) covers remote existence; merged/ancestor checks are local
+# against the default branch tip. Degrades gracefully when offline.
+TIMEOUT=""
+if command -v timeout >/dev/null 2>&1; then TIMEOUT="timeout 8"
+elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT="gtimeout 8"; fi
+
+DEFAULT_TIP=""
+REMOTE_HEADS=""
+REMOTE_OK=0
+if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+    dref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+    if [ -n "$dref" ]; then
+        DEFAULT_TIP="${dref#refs/remotes/}"
+    else
+        for cand in origin/main origin/master main master; do
+            if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1; then
+                DEFAULT_TIP="$cand"; break
+            fi
+        done
+    fi
+    if REMOTE_HEADS=$($TIMEOUT git ls-remote --heads origin 2>/dev/null); then
+        REMOTE_OK=1
+    fi
+fi
+
+# Classify one branch as live / merged / gone / unknown. `unknown` means we
+# couldn't determine it (no --check-branches, branch is `?`, or offline with no
+# local ref). Only `merged` and `gone` count as stale.
+branch_state() {
+    local b="$1"
+    [ "$b" = "?" ] && { echo "unknown"; return; }
+
+    local local_exists=0 remote_sha="" test_commit=""
+    if git show-ref --verify --quiet "refs/heads/$b" 2>/dev/null; then
+        local_exists=1
+        test_commit="refs/heads/$b"
+    fi
+    if [ "$REMOTE_OK" -eq 1 ]; then
+        remote_sha=$(printf '%s\n' "$REMOTE_HEADS" | awk -v r="refs/heads/$b" '$2==r {print $1}')
+        [ -z "$test_commit" ] && [ -n "$remote_sha" ] && test_commit="$remote_sha"
+    fi
+
+    if [ -n "$test_commit" ] && [ -n "$DEFAULT_TIP" ] \
+        && git merge-base --is-ancestor "$test_commit" "$DEFAULT_TIP" 2>/dev/null; then
+        echo "merged"; return
+    fi
+    if [ "$local_exists" -eq 0 ] && [ "$REMOTE_OK" -eq 1 ] && [ -z "$remote_sha" ]; then
+        echo "gone"; return
+    fi
+    if [ "$local_exists" -eq 0 ] && [ "$REMOTE_OK" -eq 0 ]; then
+        echo "unknown"; return
+    fi
+    echo "live"
+}
+
 echo "---CURRENT-REPO---"
 echo "$CURRENT_REPO_KEY"
 
@@ -167,17 +227,31 @@ echo "$HANDOFFS_DIR"
 echo "---CUTOFF---"
 echo "$CUTOFF"
 
-echo "---HANDOFFS---"
 TOTAL=0
 CUR_TOTAL=0
 CUR_RECENT=0
 CUR_PRUNED=0
+CUR_SUPERSEDED=0
 PRUNED_TOTAL=0
+SUPERSEDED_TOTAL=0
 UNRESOLVED_COUNT=0
 # Parallel arrays for per-repo aggregation (bash 3.2 compatible — macOS).
 OTHER_KEYS=()
 OTHER_DISPLAYS=()
 OTHER_COUNTS=()
+# Parallel arrays buffering every handoff record. Supersede classification
+# needs all records before any line is emitted, so we collect first, compute
+# supersede in a second pass, then print.
+R_FILE=()
+R_DATE=()
+R_SLUG=()
+R_BASESLUG=()   # slug with a trailing collision suffix (-2, -3, …) removed
+R_SUFFIX=()     # the stripped collision suffix, or empty
+R_RANK=()       # sortable recency key: "{date}#{suffix3}" (no-suffix → 000)
+R_CWD=()
+R_BRANCH=()
+R_REPO=()
+R_EXISTS=()
 
 bump_other() {
     local key="$1" display="$2"
@@ -249,9 +323,28 @@ if [ -d "$HANDOFFS_DIR" ]; then
             fi
         fi
 
-        if [ "$SUMMARY_ONLY" -eq 0 ]; then
-            echo "${BASE}|${DATE}|${SLUG}|${CWD}|${BRANCH}|${REPO_KEY}|${EXISTS}"
+        # Recency key for supersede ordering. A trailing collision suffix
+        # (-2, -3, … appended by wrap-up on same-day filename collision) makes
+        # the suffixed file the newer of the pair, so fold it into the rank.
+        SUFFIX=$(printf '%s' "$SLUG" | sed -n 's/.*-\([0-9]\{1,\}\)$/\1/p')
+        if [ -n "$SUFFIX" ]; then
+            BASESLUG="${SLUG%-$SUFFIX}"
+            RANK_SUFFIX=$(printf '%03d' "$((10#$SUFFIX))" 2>/dev/null || echo "000")
+        else
+            BASESLUG="$SLUG"
+            RANK_SUFFIX="000"
         fi
+
+        R_FILE+=("$BASE")
+        R_DATE+=("$DATE")
+        R_SLUG+=("$SLUG")
+        R_BASESLUG+=("$BASESLUG")
+        R_SUFFIX+=("$SUFFIX")
+        R_RANK+=("${DATE}#${RANK_SUFFIX}")
+        R_CWD+=("$CWD")
+        R_BRANCH+=("$BRANCH")
+        R_REPO+=("$REPO_KEY")
+        R_EXISTS+=("$EXISTS")
 
         [ "$EXISTS" = "N" ] && PRUNED_TOTAL=$((PRUNED_TOTAL+1))
         [ "$REPO_KEY" = "UNRESOLVED" ] && UNRESOLVED_COUNT=$((UNRESOLVED_COUNT+1))
@@ -268,13 +361,98 @@ if [ -d "$HANDOFFS_DIR" ]; then
     done < <(ls -1 "$HANDOFFS_DIR"/*.md 2>/dev/null | sort -r)
 fi
 
+# --- Supersede pass -------------------------------------------------------
+# A handoff is superseded by a *newer* handoff in the SAME repo that shares its
+# branch, its exact slug, or its base slug via a same-day collision suffix.
+# Ticket/cwd overlap is deliberately NOT a supersede signal — a ticket spans
+# many handoffs legitimately. For each record we record the newest superseding
+# file and the reason. UNRESOLVED records never participate.
+R_SUPBY=()
+R_SUPREASON=()
+N=${#R_FILE[@]}
+i=0
+while [ "$i" -lt "$N" ]; do
+    best_rank=""
+    best_idx=-1
+    best_reason=""
+    j=0
+    while [ "$j" -lt "$N" ]; do
+        if [ "$j" -ne "$i" ] \
+            && [ "${R_REPO[$i]}" != "UNRESOLVED" ] \
+            && [ "${R_REPO[$j]}" = "${R_REPO[$i]}" ] \
+            && [[ "${R_RANK[$j]}" > "${R_RANK[$i]}" ]]; then
+            reason=""
+            if [ "${R_BRANCH[$i]}" != "?" ] && [ "${R_BRANCH[$j]}" = "${R_BRANCH[$i]}" ]; then
+                reason="branch"
+            elif [ "${R_SLUG[$j]}" = "${R_SLUG[$i]}" ]; then
+                reason="slug"
+            elif [ -n "${R_SUFFIX[$j]}" ] \
+                && [ "${R_BASESLUG[$j]}" = "${R_SLUG[$i]}" ] \
+                && [ "${R_DATE[$j]}" = "${R_DATE[$i]}" ]; then
+                reason="collision"
+            fi
+            if [ -n "$reason" ] && { [ -z "$best_rank" ] || [[ "${R_RANK[$j]}" > "$best_rank" ]]; }; then
+                best_rank="${R_RANK[$j]}"
+                best_idx="$j"
+                best_reason="$reason"
+            fi
+        fi
+        j=$((j+1))
+    done
+    if [ "$best_idx" -ge 0 ]; then
+        R_SUPBY+=("${R_FILE[$best_idx]}")
+        R_SUPREASON+=("$best_reason")
+        SUPERSEDED_TOTAL=$((SUPERSEDED_TOTAL+1))
+        if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+            CUR_SUPERSEDED=$((CUR_SUPERSEDED+1))
+        fi
+    else
+        R_SUPBY+=("")
+        R_SUPREASON+=("")
+    fi
+    i=$((i+1))
+done
+
+# --- Branch-liveness pass (current-repo rows only; needs --check-branches) ---
+# Fills R_STATE with live/merged/gone/unknown. merged|gone == stale. Rows in
+# other repos stay `unknown` — we can only query the repo we're standing in.
+R_STATE=()
+CUR_STALE=0
+i=0
+while [ "$i" -lt "$N" ]; do
+    state="unknown"
+    if [ "$CHECK_BRANCHES" -eq 1 ] \
+        && [ "$CURRENT_REPO_KEY" != "NONE" ] \
+        && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+        state=$(branch_state "${R_BRANCH[$i]}")
+        if [ "$state" = "merged" ] || [ "$state" = "gone" ]; then
+            CUR_STALE=$((CUR_STALE+1))
+        fi
+    fi
+    R_STATE+=("$state")
+    i=$((i+1))
+done
+
+# --- Emit per-handoff lines (newest first; suppressed in --summary-only) ---
+echo "---HANDOFFS---"
+if [ "$SUMMARY_ONLY" -eq 0 ]; then
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}"
+        i=$((i+1))
+    done
+fi
+
 echo "---SUMMARY---"
 echo "total=${TOTAL}"
 echo "current_repo_total=${CUR_TOTAL}"
 echo "current_repo_recent=${CUR_RECENT}"
 echo "current_repo_pruned=${CUR_PRUNED}"
+echo "current_repo_superseded=${CUR_SUPERSEDED}"
+echo "current_repo_stale=${CUR_STALE}"
 echo "other_repos=${#OTHER_KEYS[@]}"
 echo "pruned_total=${PRUNED_TOTAL}"
+echo "superseded_total=${SUPERSEDED_TOTAL}"
 echo "unresolved=${UNRESOLVED_COUNT}"
 
 echo "---OTHER-REPOS---"

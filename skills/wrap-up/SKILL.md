@@ -1,10 +1,10 @@
 ---
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (especially in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.4.1"
+version: "0.5.0"
 author: "flurdy"
 ---
 
@@ -24,7 +24,8 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 2. Working-copy hygiene — flag uncommitted, unpushed, or worktree-only state.
 3. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
 4. Optional: save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` for later.
-5. Reminder to run `/exit` yourself — the skill cannot exit Claude Code for you.
+5. Optional: archive older handoffs this one supersedes (same branch/topic) so the picker stays focused.
+6. Reminder to run `/exit` yourself — the skill cannot exit Claude Code for you.
 
 ## Important — what this skill cannot do
 
@@ -337,6 +338,54 @@ Then write the file with `Write`. **Never overwrite** — if a file with that na
 
 The directory naming convention (`~/.claude/handoffs/YYYY-MM-DD-slug.md`) means `ls ~/.claude/handoffs/` is a chronological log of session topics — easy to grep for "what was I doing about X last week."
 
+### 5a. 🗂️ Archive handoffs this one supersedes
+
+Skip this step entirely if no file was saved in §5 (nothing new to supersede with).
+
+The handoff you just wrote may continue a thread captured by an older handoff — same branch, same topic slug, or a same-day collision. Now is the moment to retire those: the supersede relationship is unambiguous because you just wrote the continuation. Archiving keeps tomorrow's `/handoffs` picker focused on the live thread without losing anything (archived files move to `~/.claude/handoffs/archive/`, still greppable).
+
+Run the lister — it classifies supersede across all handoffs and resolves the current repo:
+
+```bash
+~/.claude/skills/handoffs/scripts/list.sh
+```
+
+Parse the `---HANDOFFS---` lines (pipe-delimited):
+`{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}`
+
+Select the rows where **`superseded-by` equals the filename you just saved**. Those are the older handoffs this session retires. (The lister recomputes from disk, so it already accounts for the file you just wrote.) If none match, skip silently — say nothing.
+
+If one or more match, render:
+
+```markdown
+### 🗂️ Superseded by this handoff
+
+Your new handoff `{new-filename}` continues these older ones:
+
+| Date | Slug | Branch | Why |
+|------|------|--------|-----|
+```
+
+- **Why**: humanise `supersede-reason` — `branch` → "same branch", `slug` → "same topic", `collision` → "same-day re-wrap".
+
+Then prompt with `AskUserQuestion` (multiSelect, one option per superseded filename, plus the choices being which to archive):
+
+> Archive the selected superseded handoffs to `~/.claude/handoffs/archive/`? They stay on disk (greppable) but drop out of the `/handoffs` picker. Leave any you still want surfaced.
+
+For the selected filenames, archive them in one call:
+
+```bash
+~/.claude/skills/handoffs/scripts/archive.sh {file1} {file2} …
+```
+
+Parse the script's `---ARCHIVED---` / `---SKIPPED---` sections and confirm:
+
+```markdown
+✅ Archived {N} superseded handoff(s) to `~/.claude/handoffs/archive/`.
+```
+
+Report any `---SKIPPED---` lines verbatim (with their reason) rather than silently dropping them. Never delete — `archive.sh` only moves. If the user selects none, render nothing and move on.
+
 ### 6. Footer
 
 ```markdown
@@ -355,6 +404,7 @@ Each section is independent — fail soft, don't block the rest.
 - **No Jira MCP**: omit Jira pointers from the resume block; do not fail.
 - **No `bd` / no `.beads/`**: skip the beads sub-section and §3a silently.
 - **`bd update` fails** for a selected bead: report the error inline, keep going with the rest. Don't abort the skill — the resume block is still the primary artifact.
+- **§5a `list.sh`/`archive.sh` missing or erroring** (e.g. handoffs skill not installed): skip §5a silently. It's an opt-in tidy step, not load-bearing — the saved handoff is the artifact that matters.
 
 ## Notes
 
