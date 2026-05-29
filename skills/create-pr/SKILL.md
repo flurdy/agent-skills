@@ -1,10 +1,10 @@
 ---
 name: create-pr
-description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, and pushes to origin.
-allowed-tools: "Read,Bash(git:*),Bash(~/.claude/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, pushes to origin, and closes the associated bead.
+allowed-tools: "Read,Bash(git:*),Bash(bd:*),Bash(~/.claude/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -105,6 +105,36 @@ EOF
 )"
 ```
 
-### 7. Return Result
+### 7. Close the Associated Bead
 
-Output the PR URL so the user can view it.
+Once the PR is created, close the bead for this work — this is the preferred close point in a PR workflow (the commit was done in `/complete-task`, which deliberately left the bead open for this step). Reopen later if review demands major changes.
+
+Skip this whole step silently if `bd` is unavailable or the repo has no beads database.
+
+1. Find the in-progress bead for this work:
+
+   ```bash
+   bd list --status=in_progress
+   ```
+
+   Match by the Jira key from §2 appearing in the bead title/description, or an obvious 1:1 correspondence to the branch.
+
+2. If exactly one bead matches, close it, referencing the PR:
+
+   ```bash
+   bd close <bead-id> --reason="PR #<number> created: <pr-title>"
+   ```
+
+3. If multiple beads plausibly match, ask the user which (if any) to close with `AskUserQuestion`. If none match, skip silently — don't invent one.
+
+4. Tell the user the bead was closed and how to reopen it if review requires major changes:
+
+   ```bash
+   bd update <bead-id> --status=in_progress
+   ```
+
+Note: `/ready-to-merge` already closes a bead only "if still in_progress" post-merge, so closing here is compatible — by merge time it's normally already closed and that step no-ops.
+
+### 8. Return Result
+
+Output the PR URL so the user can view it, and note the bead that was closed (or left open, if none matched).

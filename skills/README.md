@@ -6,11 +6,11 @@
 | beads-migrate-to-dolt | Migrate a beads installation from classic format (SQLite/JSONL) to the new Dolt-based format |
 | browser-screenshot | Take a screenshot of the running web application for visual verification of UI/CSS changes |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
-| complete-task | Complete an in-progress task by running clean-code, staging, committing, and closing the bead |
+| complete-task | Complete an in-progress task by running clean-code, staging, and committing; closes the bead in trunk repos or hands off to /create-pr in PR repos |
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
 | contract-check | Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests |
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
-| create-pr | Create a pull request from the current branch following project conventions |
+| create-pr | Create a pull request from the current branch following project conventions, and close the associated bead |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |

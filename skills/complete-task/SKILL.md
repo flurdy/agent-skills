@@ -1,16 +1,16 @@
 ---
 name: complete-task
-description: "Complete an in-progress task by running clean-code, staging, committing, and closing the bead. Use after /verify-task."
+description: "Complete an in-progress task by running clean-code, staging, and committing. In trunk repos it also closes the bead; in PR repos it leaves the bead open and offers /create-pr. Use after /verify-task."
 allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
 # Complete Task
 
-Run clean-code, stage, commit, and close an in-progress task — the finalization phase of the development workflow.
+Run clean-code, stage, and commit an in-progress task — the finalization phase of the development workflow. Whether the bead is closed here depends on the workflow: in a **trunk / direct-commit** repo the commit is the deliverable, so the bead closes now; in a **PR-based** repo the deliverable is a merged PR, so the bead is left open and closed later at the `/create-pr` stage.
 
 ## When to Use
 
@@ -92,28 +92,54 @@ EOF
 - Keep the message concise (1-2 sentences) focused on the "why"
 - Do not push to remote
 
-### 5. Close the Bead
+### 5. Detect the Workflow Mode
 
-Only after the commit succeeds:
+Only after the commit succeeds, detect whether this repo/branch uses a PR-based workflow — it decides whether the bead closes now or later.
+
+```bash
+# Default branch (origin/HEAD, falling back to local main/master)
+default_branch=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+if [ -z "$default_branch" ]; then
+  for c in main master; do git show-ref --verify --quiet "refs/heads/$c" && default_branch=$c && break; done
+fi
+current_branch=$(git branch --show-current)
+git remote   # empty output = no remote
+```
+
+Classify:
+
+- **Trunk / direct-commit mode** — `current_branch` equals `default_branch`, **or** there is no remote, **or** HEAD is detached. The commit itself is the deliverable.
+- **PR mode** — on a feature branch (`current_branch` ≠ `default_branch`) **with** a remote. The deliverable is a reviewed, merged PR; this commit is only the first step.
+
+### 6. Finalize the Bead
+
+Never close a bead if the commit failed or changes are still uncommitted.
+
+**Trunk mode** — close the bead now (the commit is the whole deliverable):
 
 ```bash
 bd close <bead-id> --reason="<brief summary of what was done>"
 ```
 
-Never close a bead if the commit failed or changes are still uncommitted.
+**PR mode** — do **not** close the bead here. By convention the bead is closed one step later, at the `/create-pr` stage (and reopened if review demands major changes); closing at commit time would be premature, before the PR even exists. Instead, tell the user a PR workflow was detected (on branch `{current_branch}`) and the bead is being left `in_progress`, then offer the next step with `AskUserQuestion`:
 
-### 6. Check for Follow-Up Work
+- **Create the PR now (recommended)** — invoke the `/create-pr` skill via `Skill`. It pushes, opens the PR, and closes the bead.
+- **Not yet** — leave the branch committed and the bead `in_progress`; remind the user to run `/create-pr` when ready.
+- **Close the bead anyway** — escape hatch for a repo that is actually trunk-based despite the feature branch; close it as in trunk mode.
 
-After closing:
+### 7. Check for Follow-Up Work
+
+After finalizing:
 
 - If implementation revealed new issues or TODOs, mention them to the user
 - Suggest creating follow-up beads if appropriate (but don't auto-create)
 
-### 7. Report
+### 8. Report
 
 Summarize what was done:
 
-- Bead closed with ID and title
+- Workflow mode (trunk or PR) and the resulting bead state — **closed** (trunk / close-anyway) or **left `in_progress`** (PR mode, to be closed at `/create-pr`)
+- If a PR was created via the handoff, its URL
 - Commit hash and message
 - Files changed count
 - Any follow-up items noted
@@ -126,12 +152,15 @@ Summarize what was done:
 - **No changes to commit**: Inform user there's nothing to commit; ask if the bead should still be closed
 - **Unrelated unstaged changes**: Warn user about them; suggest creating a separate bead/commit
 - **Commit hook fails**: Investigate the hook failure, fix the underlying issue, and create a new commit (never amend, never skip hooks)
+- **Feature branch but non-PR repo**: detection assumes PR mode on any feature branch with a remote. If the user knows the repo is trunk-based, use the **Close the bead anyway** option in §6.
+- **PR already exists for this branch**: still leave the bead open; `/create-pr` (or the user) handles the existing PR. Don't open a duplicate.
 
 ## Rules
 
 - Never use `--no-verify` or skip git hooks
-- Never push to remote (leave that to the user or a separate skill)
+- Never push to remote yourself — pushing happens via the `/create-pr` handoff, not in this skill
 - Never amend existing commits
 - Never close a bead with uncommitted changes
+- In PR mode, do not close the bead — that happens at `/create-pr` (reopen later if review demands major changes)
 - Always stage specific files, never bulk-add
 - If any step fails, stop and inform the user rather than forcing through
