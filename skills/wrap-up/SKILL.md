@@ -1,10 +1,10 @@
 ---
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (especially in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(date:*), Bash(pwd:*), Bash(mkdir:*), Bash(git rev-parse:*), Bash(git config:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.4.0"
+version: "0.4.1"
 author: "flurdy"
 ---
 
@@ -35,29 +35,27 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 
 > **MUST re-fetch on every invocation.** Each run executes the helper scripts from scratch. Never reuse output from a prior run; state has changed since.
 >
-> **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §1 must go through `~/.claude/skills/wrap-up/scripts/activity.sh`, and §3 must go through `~/.claude/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe).
+> **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §0 must go through `~/.claude/skills/wrap-up/scripts/header.sh`, §1 must go through `~/.claude/skills/wrap-up/scripts/activity.sh`, and §3 must go through `~/.claude/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe).
 
-Render the sections below in order. The two helper scripts in §1 and §3 can run in parallel.
+Render the sections below in order. The three helper scripts in §0, §1, and §3 can run in parallel.
 
 ### 0. Header
 
 ```bash
-date '+%A %Y-%m-%d %H:%M'
-pwd
-git rev-parse --abbrev-ref HEAD 2>/dev/null
-git rev-parse --git-common-dir 2>/dev/null
-git rev-parse --git-dir 2>/dev/null
+~/.claude/skills/wrap-up/scripts/header.sh
 ```
 
-If `--git-common-dir` and `--git-dir` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3. (String inequality is sufficient: the main checkout returns the same value for both — typically `.git` — while a linked worktree returns `/path/to/main/.git` for common-dir vs `/path/to/main/.git/worktrees/{name}` for git-dir.)
+It emits delimited sections:
 
-Also compute the **canonical repo root** — the absolute path of the main checkout, which is the directory containing the realpath of `--git-common-dir`:
+- `---DATE---` — `date '+%A %Y-%m-%d %H:%M'` output.
+- `---CWD---` — `pwd`.
+- `---BRANCH---` — current branch (empty if not in a git repo).
+- `---GIT-COMMON-DIR---` / `---GIT-DIR---` — used for worktree detection (see below).
+- `---REPO-ROOT---` — canonical repo root (parent of the realpath of `--git-common-dir`); empty if not in a git repo.
 
-```bash
-git rev-parse --git-common-dir 2>/dev/null | xargs -I {} realpath {} 2>/dev/null | xargs -r dirname
-```
+If `---GIT-COMMON-DIR---` and `---GIT-DIR---` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3. (String inequality is sufficient: the main checkout returns the same value for both — typically `.git` — while a linked worktree returns `/path/to/main/.git` for common-dir vs `/path/to/main/.git/worktrees/{name}` for git-dir.)
 
-Capture this value as `{repo-root}` for the resume block in §4. It's the stable identity `/handoffs` uses to group sessions per project — independent of which worktree wrote the handoff, and resilient to the worktree being pruned later.
+Capture `---REPO-ROOT---` as `{repo-root}` for the resume block in §4. It's the stable identity `/handoffs` uses to group sessions per project — independent of which worktree wrote the handoff, and resilient to the worktree being pruned later.
 
 Render:
 
