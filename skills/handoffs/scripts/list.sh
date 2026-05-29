@@ -433,6 +433,33 @@ while [ "$i" -lt "$N" ]; do
     i=$((i+1))
 done
 
+# --- Current-repo "last session" + live-recent count (offline; for landscape) -
+# LATEST_* is the newest current-repo handoff (records are newest-first, and the
+# newest is always live — nothing newer can supersede it). recent_live counts
+# recent current-repo handoffs that aren't superseded, so the morning nudge
+# reflects distinct resumable threads rather than re-wraps of the same one.
+CUR_RECENT_LIVE=0
+LATEST_SLUG=""
+LATEST_BRANCH=""
+LATEST_DATE=""
+if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        if [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+            if [ -z "$LATEST_DATE" ]; then
+                LATEST_SLUG="${R_SLUG[$i]}"
+                LATEST_BRANCH="${R_BRANCH[$i]}"
+                LATEST_DATE="${R_DATE[$i]}"
+            fi
+            if [ -z "${R_SUPBY[$i]}" ] \
+                && { [[ "${R_DATE[$i]}" > "$CUTOFF" ]] || [ "${R_DATE[$i]}" = "$CUTOFF" ]; }; then
+                CUR_RECENT_LIVE=$((CUR_RECENT_LIVE+1))
+            fi
+        fi
+        i=$((i+1))
+    done
+fi
+
 # --- Emit per-handoff lines (newest first; suppressed in --summary-only) ---
 echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
@@ -443,10 +470,17 @@ if [ "$SUMMARY_ONLY" -eq 0 ]; then
     done
 fi
 
+# Newest current-repo handoff (the "last session"), or empty line if none.
+echo "---CURRENT-REPO-LATEST---"
+if [ -n "$LATEST_DATE" ]; then
+    echo "${LATEST_SLUG}|${LATEST_BRANCH}|${LATEST_DATE}"
+fi
+
 echo "---SUMMARY---"
 echo "total=${TOTAL}"
 echo "current_repo_total=${CUR_TOTAL}"
 echo "current_repo_recent=${CUR_RECENT}"
+echo "current_repo_recent_live=${CUR_RECENT_LIVE}"
 echo "current_repo_pruned=${CUR_PRUNED}"
 echo "current_repo_superseded=${CUR_SUPERSEDED}"
 echo "current_repo_stale=${CUR_STALE}"
