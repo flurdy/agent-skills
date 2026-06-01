@@ -182,6 +182,51 @@ if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
     fi
 fi
 
+# --- PR-liveness setup (auto-enabled when `gh` exists; no separate flag) ------
+# Tied to --check-branches (the only "network detail wanted" caller) so that
+# landscape's --summary-only and wrap-up's plain calls stay network-free. One
+# batched `gh pr list` (timeout-guarded) covers every branch; we map by
+# headRefName locally. `gh`'s embedded --jq means no external jq dependency.
+# Degrades exactly like ls-remote: missing/unauthenticated/timed-out gh → every
+# row reports pr-state `unknown` and the local heuristic stands.
+PR_LINES=""
+PR_OK=0
+if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ] \
+    && command -v gh >/dev/null 2>&1; then
+    if PR_LINES=$($TIMEOUT gh pr list --state all --limit 200 \
+        --json number,state,headRefName,url \
+        --jq '.[] | [.headRefName, (.state|ascii_downcase), (.number|tostring), .url] | @tsv' \
+        2>/dev/null); then
+        PR_OK=1
+    fi
+fi
+
+# Look up the PR state for a branch from the cached `gh` listing. Echoes
+# `{state}|{number}|{url}` where state ∈ merged|open|closed (a real PR exists),
+# `none||` when gh ran but found no PR for the branch, or `unknown||` when gh
+# wasn't consulted (no --check-branches, no gh, offline, or branch `?`).
+# Precedence when a branch has several PRs: merged > open > closed.
+pr_state() {
+    local b="$1"
+    { [ "$PR_OK" -eq 1 ] && [ "$b" != "?" ]; } || { echo "unknown||"; return; }
+    local best_rank=0 best="none||"
+    local hb st num url rank
+    while IFS=$'\t' read -r hb st num url; do
+        [ "$hb" = "$b" ] || continue
+        case "$st" in
+            merged) rank=3 ;;
+            open)   rank=2 ;;
+            closed) rank=1 ;;
+            *)      rank=0 ;;
+        esac
+        if [ "$rank" -gt "$best_rank" ]; then
+            best_rank=$rank
+            best="${st}|${num}|${url}"
+        fi
+    done <<< "$PR_LINES"
+    echo "$best"
+}
+
 # Classify one branch as live / merged / gone / unknown. `unknown` means we
 # couldn't determine it (no --check-branches, branch is `?`, or offline with no
 # local ref). Only `merged` and `gone` count as stale.
@@ -413,23 +458,68 @@ while [ "$i" -lt "$N" ]; do
     i=$((i+1))
 done
 
-# --- Branch-liveness pass (current-repo rows only; needs --check-branches) ---
-# Fills R_STATE with live/merged/gone/unknown. merged|gone == stale. Rows in
-# other repos stay `unknown` — we can only query the repo we're standing in.
+# --- Branch/PR-liveness pass (current-repo rows only; needs --check-branches) -
+# Fills R_STATE (live/merged/gone/unknown) and, when gh is available, the PR
+# fields R_PRSTATE/R_PRNUM/R_PRURL. Rows in other repos stay `unknown` — we can
+# only query the repo we're standing in.
+#
+# R_ARCHCLASS is the per-row archive recommendation used by §3b:
+#   safe — superseded, or PR merged, or branch-tip merged locally. Low regret;
+#          the context lives on (newer handoff) or the work demonstrably landed.
+#   keep — PR closed unmerged, or branch gone with no merged evidence. Higher
+#          regret; may be the only record of an abandoned thread.
+#   ""   — live work (incl. an OPEN PR — never a candidate) or unknown.
+# Precedence: supersede > open PR > merged PR > closed PR > local merged > gone.
+# A merged PR is ground truth that beats local ancestry — the fix for
+# squash-merges, where the branch is never an ancestor of the default tip.
+# CUR_STALE counts the §3b "stale" group: archivable for a NON-supersede reason
+# (superseded rows are counted by CUR_SUPERSEDED and grouped separately).
 R_STATE=()
+R_PRSTATE=()
+R_PRNUM=()
+R_PRURL=()
+R_ARCHCLASS=()
 CUR_STALE=0
 i=0
 while [ "$i" -lt "$N" ]; do
     state="unknown"
-    if [ "$CHECK_BRANCHES" -eq 1 ] \
-        && [ "$CURRENT_REPO_KEY" != "NONE" ] \
-        && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+    ps="unknown"; pnum=""; purl=""
+    archclass=""
+    is_current=0
+    if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+        is_current=1
+    fi
+
+    if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$is_current" -eq 1 ]; then
         state=$(branch_state "${R_BRANCH[$i]}")
-        if [ "$state" = "merged" ] || [ "$state" = "gone" ]; then
+        IFS='|' read -r ps pnum purl <<< "$(pr_state "${R_BRANCH[$i]}")"
+    fi
+
+    if [ "$is_current" -eq 1 ]; then
+        if [ -n "${R_SUPBY[$i]}" ]; then
+            archclass="safe"
+        elif [ "$ps" = "open" ]; then
+            archclass=""
+        elif [ "$ps" = "merged" ]; then
+            archclass="safe"
+        elif [ "$ps" = "closed" ]; then
+            archclass="keep"
+        elif [ "$state" = "merged" ]; then
+            archclass="safe"
+        elif [ "$state" = "gone" ]; then
+            archclass="keep"
+        fi
+        # "stale" group = archivable, but not via supersede.
+        if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ]; then
             CUR_STALE=$((CUR_STALE+1))
         fi
     fi
+
     R_STATE+=("$state")
+    R_PRSTATE+=("$ps")
+    R_PRNUM+=("$pnum")
+    R_PRURL+=("$purl")
+    R_ARCHCLASS+=("$archclass")
     i=$((i+1))
 done
 
@@ -465,7 +555,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}"
+        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}"
         i=$((i+1))
     done
 fi
