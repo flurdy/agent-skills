@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.5.0"
+version: "0.7.0"
 author: "flurdy"
 ---
 
@@ -30,7 +30,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 ## Important — what this skill cannot do
 
 - It **cannot run `/exit`**. `/exit` is a built-in CLI command, not a model-invocable tool. After the summary renders, you exit manually.
-- It **cannot rename the Claude Code session**. Session names are managed by the harness. The handoff file (step 4) is the durable artifact you grep for tomorrow.
+- It **cannot rename the Claude Code session** for you. `/rename` is a built-in command — only you typing it triggers a rename. Step 4 prints a paste-ready `/rename {slug}` line so you *can* rename before exiting, but the handoff file (step 4) remains the durable artifact you grep for tomorrow.
 
 ## Instructions
 
@@ -53,10 +53,14 @@ It emits delimited sections:
 - `---BRANCH---` — current branch (empty if not in a git repo).
 - `---GIT-COMMON-DIR---` / `---GIT-DIR---` — used for worktree detection (see below).
 - `---REPO-ROOT---` — canonical repo root (parent of the realpath of `--git-common-dir`); empty if not in a git repo.
+- `---DEFAULT-BRANCH---` — short name of the repo's default branch (`main`/`master`), empty if undetermined.
+- `---WORKTREES---` — one `{path}|{branch}` line per worktree of this repo (branch `(detached)` when applicable). §4 uses it to map a feature branch back to the worktree that holds it.
 
 If `---GIT-COMMON-DIR---` and `---GIT-DIR---` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3. (String inequality is sufficient: the main checkout returns the same value for both — typically `.git` — while a linked worktree returns `/path/to/main/.git` for common-dir vs `/path/to/main/.git/worktrees/{name}` for git-dir.)
 
 Capture `---REPO-ROOT---` as `{repo-root}` for the resume block in §4. It's the stable identity `/handoffs` uses to group sessions per project — independent of which worktree wrote the handoff, and resilient to the worktree being pruned later.
+
+**If `{branch}` equals `---DEFAULT-BRANCH---`, the cwd is parked on the trunk.** That branch almost never holds a session's work — the work usually lived on a feature branch in another worktree, and recording `main` would send `/handoffs` hunting for a PR that isn't on the trunk. Flag it here; §4 reconciles against today's actual activity before writing the resume block.
 
 Render:
 
@@ -260,13 +264,42 @@ After any demotions, recompute the **Beads** header field in §4 so demoted IDs 
 
 A self-contained paste that, dropped into a fresh session tomorrow, lets the next instance pick up without re-discovering context. Fenced as markdown so it copies cleanly.
 
-**Before rendering the block, surface the topic slug on its own line** so the user sees what this session is being filed under:
+**Before rendering the block, surface the topic slug and a paste-ready rename** so the user sees what this session is being filed under and can name the session to match before exiting:
 
 ```markdown
-**Topic slug:** `{slug}` — used as the Resume title and the handoff filename. (Claude Code's session name itself isn't model-settable; this slug is the closest stand-in.)
+**Topic slug:** `{slug}` — used as the Resume title and the handoff filename.
+
+**Rename this session to match:**
+
+```
+/rename {slug}
+```
+
+(Paste it — `/rename` is a built-in command, so it only fires when you run it. Optional; skip if the session is already named for this slug.)
 ```
 
 This is the explicit "what should we call this session" cue — without it, the slug is buried inside the fenced block and easy to miss.
+
+#### Reconcile the branch when parked on the trunk
+
+The resume block's `{branch}` and `{cwd}` default to §0's current cwd and branch. But when §0 flagged that `{branch}` equals `---DEFAULT-BRANCH---` (the cwd is parked on `main`/`master`), that branch is almost never where the session's work lived — recording it sends `/handoffs` looking for a PR on the trunk (there is none) and leaves liveness detection blind to the real feature branch.
+
+When parked on the trunk, pick a better resume target from the data already gathered, in priority order:
+
+1. **Today's commits on a feature branch** — a non-default branch in §1's Commits table with commits today. Map it to its worktree path via §0's `---WORKTREES---`.
+2. **A PR created/merged today** (§1 PRs) whose head branch is a feature branch.
+3. **The topic ticket** — a branch in `---WORKTREES---` whose name contains the topic slug's ticket (e.g. slug `ge-1505-…` → branch `fix/GE-1505-…`).
+
+Then:
+
+- **Exactly one feature branch stands out** → record *that* branch as `{branch}` and its worktree path as `{cwd}` (set `{worktree-note}` to `(worktree at {path})` if it's a linked worktree). Surface the swap so it's visible, not silent:
+
+  `> Wrapped from `{cwd-on-trunk}` (on `{default-branch}`), but today's work is on `{feature-branch}` in `{feature-worktree}` — recording that as the resume location.`
+
+- **Several feature branches are in play, or it's ambiguous** → ask with `AskUserQuestion` which branch/worktree the next session should resume in. Options: each candidate `{branch} — {worktree basename}`, plus `Stay on {default-branch}`.
+- **No feature branch at all** (the session committed directly to the trunk, or did no code) → keep the trunk. That's correct, not the bug — don't invent a branch.
+
+`{repo-root}` is unaffected — it's the same repo regardless of which worktree you record.
 
 ```markdown
 ### Resume block

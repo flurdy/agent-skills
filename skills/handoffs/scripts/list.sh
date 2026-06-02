@@ -164,6 +164,7 @@ if command -v timeout >/dev/null 2>&1; then TIMEOUT="timeout 8"
 elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT="gtimeout 8"; fi
 
 DEFAULT_TIP=""
+DEFAULT_BRANCH_NAME=""
 REMOTE_HEADS=""
 REMOTE_OK=0
 if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
@@ -177,6 +178,10 @@ if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
             fi
         done
     fi
+    # Short name of the default branch (strip a leading `origin/`). A handoff
+    # recorded *on* the trunk must never be classified `merged` — the trunk is
+    # trivially its own ancestor (see branch_state).
+    DEFAULT_BRANCH_NAME="${DEFAULT_TIP#origin/}"
     if REMOTE_HEADS=$($TIMEOUT git ls-remote --heads origin 2>/dev/null); then
         REMOTE_OK=1
     fi
@@ -233,6 +238,17 @@ pr_state() {
 branch_state() {
     local b="$1"
     [ "$b" = "?" ] && { echo "unknown"; return; }
+
+    # The default branch is never "merged" in the feature sense — its tip is
+    # trivially an ancestor of DEFAULT_TIP, so the merge-base check below would
+    # always fire. A handoff recorded on the trunk (e.g. wrap-up captured a
+    # worktree that happened to sit on main while the real work lived on a
+    # feature branch elsewhere) tells us nothing about liveness — report
+    # `unknown` so it renders 🟢 live and never becomes a stale/archive
+    # candidate. PR detection still applies separately.
+    if [ -n "$DEFAULT_BRANCH_NAME" ] && [ "$b" = "$DEFAULT_BRANCH_NAME" ]; then
+        echo "unknown"; return
+    fi
 
     local local_exists=0 remote_sha="" test_commit=""
     if git show-ref --verify --quiet "refs/heads/$b" 2>/dev/null; then

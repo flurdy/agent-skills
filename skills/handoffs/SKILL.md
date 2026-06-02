@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.10.0"
+version: "0.11.1"
 author: "flurdy"
 ---
 
@@ -30,6 +30,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 ## Important — what this skill cannot do
 
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
+- It **cannot rename the session** for you. On load it prints a paste-ready `/rename {slug}` line (§5), but `/rename` is a built-in command — only you typing it triggers a rename.
 - It **cannot pick handoffs from other repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in another repo, `cd` there and run `/handoffs` again.
 - It **never deletes** handoff files. The opt-in archive step (§3b) only *moves* superseded ones into `~/.claude/handoffs/archive/` — they stay on disk and greppable. Everything else you curate manually.
 
@@ -74,8 +75,9 @@ Branch-state field (only populated with `--check-branches`, current-repo rows on
 - `live` — branch exists and isn't merged into the default branch.
 - `merged` — branch tip is an ancestor of the default branch (its PR likely landed).
 - `gone` — branch exists neither locally nor on the remote (deleted after merge, or abandoned).
-- `unknown` — couldn't determine (other repo, branch `?`, or offline with no local ref). **Never treated as stale** — absence of evidence isn't evidence of deadness.
+- `unknown` — couldn't determine (other repo, branch `?`, offline with no local ref, **or the handoff's branch is the default branch itself**). **Never treated as stale** — absence of evidence isn't evidence of deadness.
 - `merged` and `gone` are the two "stale" states. Offline runs degrade safely: a branch with no local ref reports `unknown`, never a false `gone`.
+- **Default-branch guard:** a handoff recorded on the trunk (`main`/`master`) reports `unknown`, never `merged`. The trunk tip is trivially an ancestor of itself, so the merge-base check would always fire — but being on the trunk says nothing about whether the handoff's work shipped (it usually means wrap-up captured a worktree sitting on `main` while the real work lived on a feature branch elsewhere). PR detection still applies on top.
 
 PR fields (`pr-state`/`pr-number`/`pr-url`, only populated when `--check-branches` is active and `gh` is available, current-repo rows only):
 - `merged` — a PR for this branch was merged. **Ground truth that beats `branch-state`** — local ancestry can't see a squash-merge (the branch is never an ancestor of the default tip), so a squash-merged branch shows `branch-state=live`/`gone` but `pr-state=merged`.
@@ -235,6 +237,20 @@ Render the file content **verbatim** inside a fenced block so the rest of the se
 {file contents}
 ```
 ````
+
+Then surface a paste-ready rename so the resumed session is legible in the session list. Derive the slug from the filename (strip the `YYYY-MM-DD-` prefix and `.md` suffix):
+
+```markdown
+**Rename this session to match:**
+
+```
+/rename {slug}
+```
+
+(Paste it — `/rename` only fires when you run it.)
+```
+
+Skip the rename line only if the current session is already named for this slug.
 
 Then offer the right follow-up based on `exists`:
 
