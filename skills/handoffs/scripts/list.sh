@@ -163,8 +163,26 @@ TIMEOUT=""
 if command -v timeout >/dev/null 2>&1; then TIMEOUT="timeout 8"
 elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT="gtimeout 8"; fi
 
-DEFAULT_TIP=""
+# Short name of the default branch. Computed whenever we're in a repo (not just
+# under --check-branches) because the supersede pass — which runs for every
+# caller, including wrap-up's no-flag invocation — needs it too: two handoffs
+# co-resident on the trunk are NOT the same thread (see is_trunk_branch).
 DEFAULT_BRANCH_NAME=""
+if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+    dref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+    if [ -n "$dref" ]; then
+        DEFAULT_BRANCH_NAME="${dref##*/}"
+    else
+        for cand in main master; do
+            if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1 \
+                || git rev-parse --verify --quiet "origin/$cand" >/dev/null 2>&1; then
+                DEFAULT_BRANCH_NAME="$cand"; break
+            fi
+        done
+    fi
+fi
+
+DEFAULT_TIP=""
 REMOTE_HEADS=""
 REMOTE_OK=0
 if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
@@ -178,14 +196,25 @@ if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
             fi
         done
     fi
-    # Short name of the default branch (strip a leading `origin/`). A handoff
-    # recorded *on* the trunk must never be classified `merged` — the trunk is
-    # trivially its own ancestor (see branch_state).
-    DEFAULT_BRANCH_NAME="${DEFAULT_TIP#origin/}"
     if REMOTE_HEADS=$($TIMEOUT git ls-remote --heads origin 2>/dev/null); then
         REMOTE_OK=1
     fi
 fi
+
+# True when $1 is a trunk branch — the repo's default branch, or the universal
+# main/master. The trunk is never a meaningful "same thread" or "merged feature"
+# signal: a worktree sitting on main while the real work lives on a feature
+# branch is the trunk-parking case. Used to suppress the `branch` supersede
+# reason and the `merged` branch-state. Same-slug / same-day-collision
+# supersedes still apply on the trunk — only branch co-residence is discounted.
+is_trunk_branch() {
+    local b="$1"
+    [ -z "$b" ] && return 1
+    [ "$b" = "?" ] && return 1
+    case "$b" in main|master) return 0 ;; esac
+    [ -n "$DEFAULT_BRANCH_NAME" ] && [ "$b" = "$DEFAULT_BRANCH_NAME" ] && return 0
+    return 1
+}
 
 # --- PR-liveness setup (auto-enabled when `gh` exists; no separate flag) ------
 # Tied to --check-branches (the only "network detail wanted" caller) so that
@@ -239,14 +268,13 @@ branch_state() {
     local b="$1"
     [ "$b" = "?" ] && { echo "unknown"; return; }
 
-    # The default branch is never "merged" in the feature sense — its tip is
-    # trivially an ancestor of DEFAULT_TIP, so the merge-base check below would
-    # always fire. A handoff recorded on the trunk (e.g. wrap-up captured a
-    # worktree that happened to sit on main while the real work lived on a
-    # feature branch elsewhere) tells us nothing about liveness — report
-    # `unknown` so it renders 🟢 live and never becomes a stale/archive
-    # candidate. PR detection still applies separately.
-    if [ -n "$DEFAULT_BRANCH_NAME" ] && [ "$b" = "$DEFAULT_BRANCH_NAME" ]; then
+    # The trunk is never "merged" in the feature sense — its tip is trivially an
+    # ancestor of DEFAULT_TIP, so the merge-base check below would always fire. A
+    # handoff recorded on the trunk (wrap-up captured a worktree sitting on main
+    # while the real work lived on a feature branch elsewhere) tells us nothing
+    # about liveness — report `unknown` so it renders 🟢 live and never becomes a
+    # stale/archive candidate. PR detection still applies separately.
+    if is_trunk_branch "$b"; then
         echo "unknown"; return
     fi
 
@@ -426,8 +454,11 @@ fi
 # A handoff is superseded by a *newer* handoff in the SAME repo that shares its
 # branch, its exact slug, or its base slug via a same-day collision suffix.
 # Ticket/cwd overlap is deliberately NOT a supersede signal — a ticket spans
-# many handoffs legitimately. For each record we record the newest superseding
-# file and the reason. UNRESOLVED records never participate.
+# many handoffs legitimately. The `branch` reason also excludes the trunk: two
+# distinct threads both recorded on main (the trunk-parking case) are NOT the
+# same thread, so trunk co-residence must not collapse them — they only
+# supersede on an exact slug or same-day collision. For each record we keep the
+# newest superseding file and the reason. UNRESOLVED records never participate.
 R_SUPBY=()
 R_SUPREASON=()
 N=${#R_FILE[@]}
@@ -443,7 +474,8 @@ while [ "$i" -lt "$N" ]; do
             && [ "${R_REPO[$j]}" = "${R_REPO[$i]}" ] \
             && [[ "${R_RANK[$j]}" > "${R_RANK[$i]}" ]]; then
             reason=""
-            if [ "${R_BRANCH[$i]}" != "?" ] && [ "${R_BRANCH[$j]}" = "${R_BRANCH[$i]}" ]; then
+            if [ "${R_BRANCH[$i]}" != "?" ] && [ "${R_BRANCH[$j]}" = "${R_BRANCH[$i]}" ] \
+                && ! is_trunk_branch "${R_BRANCH[$i]}"; then
                 reason="branch"
             elif [ "${R_SLUG[$j]}" = "${R_SLUG[$i]}" ]; then
                 reason="slug"

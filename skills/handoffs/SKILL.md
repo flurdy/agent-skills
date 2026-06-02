@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.11.1"
+version: "0.11.2"
 author: "flurdy"
 ---
 
@@ -69,6 +69,7 @@ Repo identity rules:
 
 Supersede fields:
 - `superseded-by` is the filename of the **newest** handoff in the same repo that continues this thread, or empty if this is the live tip. `supersede-reason` is `branch` (same branch), `slug` (same exact topic slug), or `collision` (same-day re-wrap of the same topic). Ticket/cwd overlap is deliberately *not* a supersede signal — a ticket legitimately spans many handoffs.
+- **Trunk co-residence never supersedes.** The `branch` reason excludes the default branch (`main`/`master`): two distinct threads both recorded on the trunk (the wrap-up trunk-parking case) are *not* the same thread, so they only supersede each other on an exact slug or same-day collision — never on sharing `main`. This mirrors the `branch-state` trunk guard; both stem from the trunk being a meaningless thread/liveness signal.
 - A superseded handoff is still pickable; the field just flags that a newer continuation exists, so the picker can steer you to it and the archive step can offer to retire it.
 
 Branch-state field (only populated with `--check-branches`, current-repo rows only):
