@@ -65,9 +65,11 @@ Run these in parallel — they're independent fetches:
 5. **Local working copy** — if the resolved PR matches the current branch, also:
    ```bash
    git status --porcelain
-   git log @{u}..HEAD --oneline   # unpushed commits
+   ~/.claude/skills/ready-to-merge/scripts/git-unpushed.sh   # unpushed commits
    ```
    Uncommitted/unpushed work is a hard blocker.
+   Use the wrapper for the unpushed-commits check — never inline `git log @{u}..HEAD`.
+   The sandbox flags the bare `@{u}..HEAD` as brace expansion, so it can never be auto-approved.
 
 ### Phase 3 — Ticket cross-reference
 
