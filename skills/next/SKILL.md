@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),AskUserQuestion,mcp__jira__jira_get"
 model: haiku
 effort: low
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -24,7 +24,8 @@ Help select the next bead to work on based on readiness and user preferences.
 ## Usage
 
 ```bash
-/next                    # Show ready beads, ranked by suitability
+/next                    # Show ready beads as a ranked table (same as `list`)
+/next list               # Explicitly render the full ranked table, then ask which to pick
 /next safe               # Same but exclude services with in-progress beads
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next task               # Auto-pick the next most suitable task and start it
@@ -58,8 +59,11 @@ Help select the next bead to work on based on readiness and user preferences.
 ## Examples
 
 ```bash
-# Show ready work ranked by suitability
+# Show ready work as a ranked table
 /next
+
+# Explicitly render the full table (when a bare /next got over-interpreted)
+/next list
 
 # Show ready work, excluding services with in-progress beads
 /next safe
@@ -122,7 +126,7 @@ When invoked:
    This outputs a markdown table ranked by the priority algorithm, with labels included, blocked beads filtered out, and in-progress beads shown for awareness.
 
 2. Parse command argument:
-   - (none): Show the script output, ask user to pick
+   - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Show the script output with `--avoid-busy`, ask user to pick
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
    - `task`: Auto-select top-ranked bead and start it
@@ -143,6 +147,19 @@ When invoked:
    - Mark as in_progress
    - Show full details with `bd show`
    - If bead has description with steps, highlight first step
+
+## Listing Mode (default and `list`)
+
+`/next` with no auto-pick argument — and the explicit `/next list` — must **show the table**, not a prose summary of it. The `next-bd` output arrives inside a Bash tool result that the UI collapses to a few lines, so do not rely on the user seeing it there.
+
+When listing:
+
+1. Run the `next-bd` script.
+2. **Reproduce the full ranked table in your own markdown reply**, every row, using the columns from the Output Format above. Do not truncate to "top 3" and do not replace the table with a narrative.
+3. *After* the table, you may add a short note (1–2 sentences) on the strongest candidate(s) and any in-progress overlap — but the table comes first and stays complete.
+4. End with the picker prompt: `Pick a number, a bead ID, or type task/bug/quick to auto-pick.`
+
+Listing mode never marks anything `in_progress`. It only selects work once the user replies.
 
 ## Handling Edge Cases
 
