@@ -1,10 +1,10 @@
 ---
 name: handoffs
 description: Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full (including ones whose worktree has been pruned) and summarises other repos by count. Companion to /wrap-up and /landscape.
-allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Read, AskUserQuestion"
+allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.11.2"
+version: "0.12.0"
 author: "flurdy"
 ---
 
@@ -280,19 +280,48 @@ Options (use `AskUserQuestion`):
 
 If `superseded-by` is empty (or the newer handoff is itself pruned, `exists=N`), skip this prompt.
 
-**Second, check whether pwd is already on the handoff's branch.** Run:
+**Second, assess this checkout as a landing spot.** The original worktree is gone, so you'll resume either *here* (the current checkout) or in a *fresh worktree*. Gather the facts in one call:
 
 ```bash
-git rev-parse --abbrev-ref HEAD
+git rev-parse --abbrev-ref HEAD && git status --porcelain && git branch --list "{branch}"
 ```
 
-If the output equals the handoff's `{branch}`, the user is already on a viable landing spot (likely a fresh worktree they prepared). Don't prompt for worktree creation — just render:
+Read four signals from the output:
+- **on-branch** — `HEAD` (line 1) already equals `{branch}`.
+- **clean** — `git status --porcelain` printed nothing (no uncommitted work to disrupt by switching branches).
+- **branch-exists-locally** — `git branch --list` printed a line for `{branch}`.
+- **fresh worktree** — `HEAD` matches `worktree-*`, the auto-generated name `claude -` gives a throwaway worktree. This is the strong signal that the user spun up *this* checkout specifically to host the resume.
+
+Then branch on them:
+
+**on-branch** → already on a viable spot. Render and skip to §6, no prompt:
 
 ```markdown
 **Already on `{branch}` here** (`{pwd}`). No worktree action needed — resume from this checkout.
 ```
 
-Then skip to §6. Only fall through to the worktree-creation prompt when pwd's branch differs from the handoff's branch.
+**clean + fresh worktree** (the `claude -` case) → the user opened this worktree *for* this handoff, so adopting the branch in place is the whole point — don't push a nested worktree. The adopt command depends on `branch-exists-locally`:
+- missing → `git checkout -b {branch}` (create it here — the usual case when wrap-up predated the branch or it was deleted).
+- exists → `git checkout {branch}`.
+
+Ask via `AskUserQuestion`:
+
+> Original worktree `{cwd}` is gone, but `{pwd}` looks like a fresh worktree (`{HEAD}`) you opened to resume here. Adopt `{branch}` in this checkout?
+
+Options:
+- **Adopt here (recommended)** — runs `git checkout -b {branch}` (or `git checkout {branch}` if it already exists). No second worktree.
+- **Separate worktree** — fall through to the worktree-creation flow below.
+- **Stay as-is** — leave the branch alone; just resume reading from here.
+
+On **Adopt here**, run the adopt command. On success render and skip to §6:
+
+```markdown
+✅ Now on `{branch}` in `{pwd}`. Resume from this checkout.
+```
+
+If it fails (e.g. the branch is checked out in another live worktree), surface the stderr and offer the **Separate worktree** flow instead.
+
+**otherwise** (dirty tree, or a real branch you'd disrupt by switching) → adopting in place would clobber existing work, so offer a fresh worktree. Fall through to the worktree-creation flow below.
 
 ---
 
@@ -300,20 +329,22 @@ Offer to recreate the worktree. Compute the proposed values:
 
 - `{worktree-path}` = the recorded cwd if its parent directory still exists on disk; otherwise `{pwd}/../worktrees/{basename of recorded cwd}`. If the basename is empty or generic (`worktrees`, `.`), use `{topic-slug}` from the filename instead.
 - `{branch}` = the branch parsed from the handoff (Branch column).
+- The `git worktree add` form depends on `branch-exists-locally` (from the assessment above): an existing branch is *checked out* into the new worktree (`git worktree add {path} {branch}`); a missing branch must be *created* with it (`git worktree add -b {branch} {path}`). Plain `git worktree add {path} {missing-branch}` errors — that's the failure to avoid.
 
 Ask via `AskUserQuestion`:
 
 > Original worktree `{cwd}` is gone. Recreate it?
 
 Options:
-- **Create worktree** — runs `git worktree add {worktree-path} {branch}` in the current repo.
-- **Resume here** — stay in the current checkout (`{pwd}`); user can `git checkout {branch}` themselves if they want.
+- **Create worktree** — runs the `git worktree add` form matching the branch's existence (see above) in the current repo.
+- **Resume here** — stay in the current checkout (`{pwd}`); user can adopt the branch themselves (`git checkout -b {branch}` if it doesn't exist yet, else `git checkout {branch}`).
 - **Show command** — prints the `git worktree add` invocation without running.
 
-On **Create worktree**:
+On **Create worktree**, pick the form by `branch-exists-locally`:
 
 ```bash
-git worktree add "{worktree-path}" "{branch}"
+git worktree add "{worktree-path}" "{branch}"        # branch exists locally — check it out
+git worktree add -b "{branch}" "{worktree-path}"     # branch missing locally — create it with the worktree
 ```
 
 If the command succeeds, render:
@@ -324,21 +355,22 @@ If the command succeeds, render:
 **Switch directory:** `cd {worktree-path}`
 ```
 
-If it fails (path already exists, branch missing locally, dirty index, …), surface the stderr and fall back to **Show command** behaviour. Do not retry, do not delete anything, do not `--force`.
+If it fails (path already exists, dirty index, …), surface the stderr and fall back to **Show command** behaviour. Do not retry, do not delete anything, do not `--force`.
 
 On **Resume here**:
 
 ```markdown
-**Resuming in current checkout** (`{pwd}`). If you need the branch, run `git checkout {branch}` (the pruned worktree's commits are still in the repo).
+**Resuming in current checkout** (`{pwd}`). If you need the branch, run `git checkout -b {branch}` (or `git checkout {branch}` if it already exists) — the pruned worktree's commits are still in the repo.
 ```
 
-On **Show command**:
+On **Show command**, print both forms and say which to run:
 
 ```markdown
 **Worktree pruned.** Original location `{cwd}` no longer exists. To recreate it yourself:
 
 ```bash
-git worktree add {worktree-path} {branch}
+git worktree add -b {branch} {worktree-path}   # if {branch} doesn't exist locally yet — create it
+git worktree add {worktree-path} {branch}      # if {branch} already exists — check it out
 ```
 ```
 
