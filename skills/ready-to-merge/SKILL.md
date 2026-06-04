@@ -228,7 +228,9 @@ Otherwise ask the user via `AskUserQuestion`:
 
 ### Phase 10 — Merge
 
-Only on explicit "Yes". Use the GitHub CLI's squash mode with the drafted (or edited) commit:
+Only on explicit "Yes". Use the GitHub CLI's squash mode with the drafted (or edited) commit.
+
+**Do NOT pass `--delete-branch`.** It makes `gh` run *local* git operations (switch to the default branch, pull, delete the local branch) as a side effect of the merge. In a worktree checkout — where `main`/`master` is checked out in a *different* worktree — that local step fails with `fatal: '{branch}' is already used by worktree at ...` **even though the remote merge succeeded**. The merge is done; only the local cleanup errored, which reads as a scary failure for a no-op. Branch deletion is handled separately below, against the remote only.
 
 ```bash
 gh pr merge {number} --squash \
@@ -236,24 +238,35 @@ gh pr merge {number} --squash \
   --body "$(cat <<'EOF'
 {body}
 EOF
-)" \
-  --delete-branch
+)"
 ```
+
+**Idempotency:** if the command prints `Pull request ... was already merged` (e.g. a prior attempt merged remotely before erroring on local cleanup), treat that as **success** — do not retry or alarm. Confirm with `gh pr view {number} --json state --jq .state` (expect `MERGED`) if unsure.
+
+After the merge succeeds, delete the **remote** branch separately — this is a pure remote ref delete with no local git involvement, so it's worktree-safe:
+
+```bash
+gh api -X DELETE "repos/{owner}/{repo}/git/refs/heads/{head-branch}"
+```
+
+This is **best-effort**: it may be denied by branch permissions/SSO, or the branch may already be gone (auto-delete-on-merge). On any error, don't retry — just note that the remote branch wasn't deleted and add it to the follow-ups. Never delete the *local* branch or switch worktrees yourself.
 
 After merge succeeds, print:
 
 ```
-✅ Merged #{number}.
+✅ Merged #{number}.{branch-note}
 ```
+
+where `{branch-note}` is ` Remote branch deleted.` on success, or ` (remote branch not deleted — {reason}; delete manually if wanted.)` otherwise.
 
 Then list **post-merge follow-ups** as a checklist (do NOT execute them):
 
 - [ ] Transition Jira {KEY} → Test/Review (or Done)
 - [ ] `bd close {bead-id}` if a bead is still in_progress
 - [ ] `/rebase-merged-parent` on stacked child PR(s): #{n1}, #{n2}
-- [ ] Pull main locally and delete the merged branch from any worktrees
+- [ ] Pull the default branch locally and remove the merged worktree/branch (only if the remote-branch delete above was denied or skipped)
 
-Don't auto-perform these — they're explicit user follow-ups, often touching other branches/repos.
+Don't auto-perform these — they're explicit user follow-ups, often touching other branches/repos. In particular, do not switch the local checkout to the default branch or run `git worktree`/`git branch -d` yourself.
 
 ## Operating rules
 
@@ -272,3 +285,5 @@ Don't auto-perform these — they're explicit user follow-ups, often touching ot
 - **No `bd`**: skip beads cross-reference. Continue.
 - **Contract-check script missing**: skip silently (project has no contracts).
 - **GraphQL/gh failure on a single fetch**: render that gate as `?` rather than aborting. Surface the failed fetch under Risks so the user knows the check was incomplete.
+- **`gh pr merge` errors with `fatal: '{branch}' is already used by worktree`**: this is the `--delete-branch` local-cleanup failure (Phase 10) — the remote merge already succeeded. Don't pass `--delete-branch`; verify with `gh pr view {number} --json state` (expect `MERGED`) and delete the remote branch via the API call in Phase 10. Never resolve it by switching worktrees or deleting local branches.
+- **`gh pr merge` prints `was already merged`**: success, not an error — a prior attempt merged remotely before its local step failed. Proceed to remote-branch cleanup and follow-ups.
