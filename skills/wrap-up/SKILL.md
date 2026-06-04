@@ -1,7 +1,7 @@
 ---
 name: wrap-up
-description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (especially in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
+description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before `/exit`.
+allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
 version: "0.8.0"
@@ -36,9 +36,9 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 
 > **MUST re-fetch on every invocation.** Each run executes the helper scripts from scratch. Never reuse output from a prior run; state has changed since.
 >
-> **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §0 must go through `~/.claude/skills/wrap-up/scripts/header.sh`, §1 must go through `~/.claude/skills/wrap-up/scripts/activity.sh`, and §3 must go through `~/.claude/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe).
+> **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §0 must go through `~/.claude/skills/wrap-up/scripts/header.sh`, §1 must go through `~/.claude/skills/wrap-up/scripts/activity.sh`, §3 must go through `~/.claude/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe), and §3b must go through `~/.claude/skills/wrap-up/scripts/multirepo.sh`.
 
-Render the sections below in order. The three helper scripts in §0, §1, and §3 can run in parallel.
+Render the sections below in order. The four helper scripts in §0, §1, §3, and §3b can run in parallel.
 
 ### 0. Header
 
@@ -60,7 +60,7 @@ If `---GIT-COMMON-DIR---` and `---GIT-DIR---` differ, the cwd is a **linked work
 
 Capture `---REPO-ROOT---` as `{repo-root}` for the resume block in §4. It's the stable identity `/handoffs` uses to group sessions per project — independent of which worktree wrote the handoff, and resilient to the worktree being pruned later.
 
-**If `{branch}` equals `---DEFAULT-BRANCH---`, the cwd is parked on the trunk.** That branch almost never holds a session's work — the work usually lived on a feature branch in another worktree, and recording `main` would send `/handoffs` hunting for a PR that isn't on the trunk. Flag it here; §4 reconciles against today's actual activity before writing the resume block.
+**If `{branch}` equals `---DEFAULT-BRANCH---` _and_ the repo has linked worktrees (>1 `---WORKTREES---` entry), the cwd is parked on the trunk.** That branch almost never holds the session's work — it usually lived on a feature branch in another worktree, and recording `main` would send `/handoffs` hunting for a PR that isn't on the trunk. Flag it here; §4 reconciles against today's actual activity before writing the resume block. **On a single-checkout repo (no linked worktrees), committing to the trunk is normal — skip the reconciliation entirely.**
 
 Render:
 
@@ -181,6 +181,7 @@ Render each of the three lists only when non-empty. Combine into compact tables 
 Notes:
 - The default `bd list` output already filters out closed beads, so `BEADS-CREATED-TODAY` naturally excludes ones that were closed the same day. Those appear under "Closed today" instead — no de-duplication needed.
 - **In-progress** is the most load-bearing for resume — it's the answer to "what was I in the middle of?" Always render it first when non-empty.
+- **Epic context.** If today's beads belong to a parent epic (multi-session work), add one line after the tables: `_Epic {id}: {closed}/{total} closed — path to goal: {a} → {b} → … → closes {goal-bead}._` Derive the chain from the blocking deps (`bd show {epic}`). When one epic dominates the session, this is far more resume-useful than three flat lists — it's the "how far are we and what unblocks the finish" view. Skip it for ad-hoc, non-epic beads.
 - If all three are empty, skip the whole `### 🎯 Beads` heading. If only some are non-empty, render just the populated tables and skip the empty ones (don't show `_No created today._` placeholders — silence is shorter).
 
 ### 2. 🧠 Today's threads (model-summarised)
@@ -223,6 +224,35 @@ Then exactly one of the warnings below (pick the first matching rule):
 4. **Main checkout, clean** → no warning.
 
 Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSAFE---` as a footnote if any exist — easy to forget those after closing the session.
+
+**Not-yours changes.** If the working copy holds uncommitted changes you did **not** make this session — e.g. a forked or parallel session is editing the same checkout — call them out as *belonging to another session* and do **not** commit or stash them in the wrap-up. The §1 commit-author filter and your own conversation history tell you what was yours; anything else in `git status` is someone else's WIP to leave alone.
+
+### 3b. 🗂️ Multi-repo roll-up
+
+The §3 probe only inspects the **cwd repo**. In a multi-repo workspace (mgit services or git submodules) that silently misses unpushed/uncommitted state in sibling repos — the single most common wrap-up blind spot. Run the roll-up:
+
+```bash
+~/.claude/skills/wrap-up/scripts/multirepo.sh
+```
+
+It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---REPOS---` lines:
+`{name}|{branch}|{ahead}|{behind}|{upstream}|{modified}|{untracked}` (ahead/behind are `-` with no upstream; the root repo appears as its own row).
+
+- **`---MARKER---` is `none`** → single repo; skip this whole section silently (§3 already covered it).
+- Otherwise render only the members with something to report (ahead>0, behind>0, or modified+untracked>0); a clean+pushed member is noise. Skip the table entirely if every member is clean.
+
+```markdown
+### 🗂️ Other repos in this workspace
+
+| Repo | Branch | Unpushed | Behind | Uncommitted |
+|------|--------|----------|--------|-------------|
+```
+
+- **Unpushed**: `{ahead}`, or `no upstream` when upstream=no (local-only, never pushed).
+- **Behind**: show only when >0. A member that's **diverged** (ahead>0 AND behind>0) needs a rebase/pull before it can push — flag it explicitly: `⚠️ diverged — N ahead / M behind`.
+- **Uncommitted**: `{modified} modified / {untracked} untracked` (omit zero parts).
+
+Load-bearing for resume: a service repo left ahead-but-unpushed, or a deploy/config repo left diverged, is exactly what tomorrow forgets. Feed any unpushed/diverged members into the resume block's **Open threads** or **Blocked on you** field (§4).
 
 ### 3a. 🧹 Stale in-progress beads
 
@@ -282,6 +312,8 @@ This is the explicit "what should we call this session" cue — without it, the 
 
 #### Reconcile the branch when parked on the trunk
 
+> **Gate — skip this whole sub-section unless the repo has linked worktrees** (more than one `---WORKTREES---` entry from §0). With only the main checkout there is no other-worktree feature branch to recover, so just record the current branch as-is (even the trunk). The reconciliation below is worktree-specific machinery and pure noise for projects that don't use worktrees — don't run it for them.
+
 The resume block's `{branch}` and `{cwd}` default to §0's current cwd and branch. But when §0 flagged that `{branch}` equals `---DEFAULT-BRANCH---` (the cwd is parked on `main`/`master`), that branch is almost never where the session's work lived — recording it sends `/handoffs` looking for a PR on the trunk (there is none) and leaves liveness detection blind to the real feature branch.
 
 When parked on the trunk, pick a better resume target from the data already gathered, in priority order:
@@ -322,6 +354,9 @@ Then:
 **Open threads:**
 - {bullet}
 
+**Blocked on you (manual ops):**
+- {human-only action the agent could not do — secret to seal, deploy/sync to run, push reserved by the permission classifier, access to grant — omit the whole section if none}
+
 **Suggested next step:**
 - {one concrete action — file to open, command to run, person to ask, ticket to read}
 
@@ -334,6 +369,7 @@ Guidance for the model when filling this in:
 
 - Keep it short. A resume block longer than ~30 lines is a signal to split the work into multiple beads instead.
 - `{YYYY-MM-DD}` and `{HH:MM}` both come from the header script's `---DATE---` field (`date '+%A %Y-%m-%d %H:%M'`). The time disambiguates several same-day handoffs in the `/handoffs` picker — `list.sh` reads it back from this header line (falling back to file mtime for older handoffs), so keep the `{YYYY-MM-DD} {HH:MM}` shape on the `# Resume:` line intact.
+- **Blocked on you (manual ops)** is for actions only the human can take — sealing secrets, running deploys / `make …-sync`, pushes the permission classifier reserved, granting access. Keep these out of "Suggested next step" (which is the *agent's* next move). Omit the field entirely when there are none — most sessions have none.
 - `{topic-slug}` is kebab-case, ≤4 words. Pick the most specific noun phrase — `ab-1107-cta-event` beats `cta-stuff`.
 - `{worktree-note}` is ` (worktree at {path})` for linked worktrees, else empty.
 - `{cwd}` should be an **absolute path** when possible — not a relative path like `packages/web/`. The `/handoffs` skill matches handoffs to repos via the recorded location, and relative paths can't be resolved later.
@@ -372,53 +408,9 @@ Then write the file with `Write`. **Never overwrite** — if a file with that na
 
 The directory naming convention (`~/.claude/handoffs/YYYY-MM-DD-slug.md`) means `ls ~/.claude/handoffs/` is a chronological log of session topics — easy to grep for "what was I doing about X last week."
 
-### 5a. 🗂️ Archive handoffs this one supersedes
+### 5a. 🗂️ Tidy superseded handoffs → `/handoffs-tidy`
 
-Skip this step entirely if no file was saved in §5 (nothing new to supersede with).
-
-The handoff you just wrote may continue a thread captured by an older handoff — same branch, same topic slug, or a same-day collision. Now is the moment to retire those: the supersede relationship is unambiguous because you just wrote the continuation. Archiving keeps tomorrow's `/handoffs` picker focused on the live thread without losing anything (archived files move to `~/.claude/handoffs/archive/`, still greppable).
-
-Run the lister — it classifies supersede across all handoffs and resolves the current repo:
-
-```bash
-~/.claude/skills/handoffs/scripts/list.sh
-```
-
-Parse the `---HANDOFFS---` lines (pipe-delimited):
-`{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}`
-
-Select the rows where **`superseded-by` equals the filename you just saved**. Those are the older handoffs this session retires. (The lister recomputes from disk, so it already accounts for the file you just wrote.) If none match, skip silently — say nothing.
-
-If one or more match, render:
-
-```markdown
-### 🗂️ Superseded by this handoff
-
-Your new handoff `{new-filename}` continues these older ones:
-
-| Date | Slug | Branch | Why |
-|------|------|--------|-----|
-```
-
-- **Why**: humanise `supersede-reason` — `branch` → "same branch", `slug` → "same topic", `collision` → "same-day re-wrap".
-
-Then prompt with `AskUserQuestion` (multiSelect, one option per superseded filename, plus the choices being which to archive):
-
-> Archive the selected superseded handoffs to `~/.claude/handoffs/archive/`? They stay on disk (greppable) but drop out of the `/handoffs` picker. Leave any you still want surfaced.
-
-For the selected filenames, archive them in one call:
-
-```bash
-~/.claude/skills/handoffs/scripts/archive.sh {file1} {file2} …
-```
-
-Parse the script's `---ARCHIVED---` / `---SKIPPED---` sections and confirm:
-
-```markdown
-✅ Archived {N} superseded handoff(s) to `~/.claude/handoffs/archive/`.
-```
-
-Report any `---SKIPPED---` lines verbatim (with their reason) rather than silently dropping them. Never delete — `archive.sh` only moves. If the user selects none, render nothing and move on.
+The supersede-detection + archive flow has been **moved out to its own `/handoffs-tidy` command** — it was heavy to carry on every wrap-up, and pruning is a distinct intent from handing off. After saving (§5), if this handoff continues an older thread you want to retire, run **`/handoffs-tidy`** (it reuses the same `handoffs/scripts/list.sh` + `archive.sh`). Wrap-up itself no longer touches `~/.claude/handoffs/archive/`.
 
 ### 6. Footer
 
@@ -438,7 +430,7 @@ Each section is independent — fail soft, don't block the rest.
 - **No Jira MCP**: omit Jira pointers from the resume block; do not fail.
 - **No `bd` / no `.beads/`**: skip the beads sub-section and §3a silently.
 - **`bd update` fails** for a selected bead: report the error inline, keep going with the rest. Don't abort the skill — the resume block is still the primary artifact.
-- **§5a `list.sh`/`archive.sh` missing or erroring** (e.g. handoffs skill not installed): skip §5a silently. It's an opt-in tidy step, not load-bearing — the saved handoff is the artifact that matters.
+- **Multi-repo roll-up (§3b) errors or finds nothing**: skip the section silently — single-repo sessions hit this normally; it's additive, not load-bearing.
 
 ## Notes
 
