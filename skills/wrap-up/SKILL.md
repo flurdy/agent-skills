@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.7.0"
+version: "0.8.0"
 author: "flurdy"
 ---
 
@@ -305,7 +305,7 @@ Then:
 ### Resume block
 
 ```markdown
-# Resume: {topic-slug} — {YYYY-MM-DD}
+# Resume: {topic-slug} — {YYYY-MM-DD} {HH:MM}
 
 **Where to pick up:** `{cwd}` on branch `{branch}`{worktree-note}
 **Repo root:** `{repo-root}`
@@ -333,6 +333,7 @@ Then:
 Guidance for the model when filling this in:
 
 - Keep it short. A resume block longer than ~30 lines is a signal to split the work into multiple beads instead.
+- `{YYYY-MM-DD}` and `{HH:MM}` both come from the header script's `---DATE---` field (`date '+%A %Y-%m-%d %H:%M'`). The time disambiguates several same-day handoffs in the `/handoffs` picker — `list.sh` reads it back from this header line (falling back to file mtime for older handoffs), so keep the `{YYYY-MM-DD} {HH:MM}` shape on the `# Resume:` line intact.
 - `{topic-slug}` is kebab-case, ≤4 words. Pick the most specific noun phrase — `ab-1107-cta-event` beats `cta-stuff`.
 - `{worktree-note}` is ` (worktree at {path})` for linked worktrees, else empty.
 - `{cwd}` should be an **absolute path** when possible — not a relative path like `packages/web/`. The `/handoffs` skill matches handoffs to repos via the recorded location, and relative paths can't be resolved later.

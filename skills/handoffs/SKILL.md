@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.12.0"
+version: "0.13.0"
 author: "flurdy"
 ---
 
@@ -54,7 +54,7 @@ Parse the delimited output:
 - `---CURRENT-REPO-DISPLAY---` — short label for the current repo (basename of the repo root), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
 - `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
-- `---HANDOFFS---` — one pipe-delimited line per handoff, newest first: `{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}`.
+- `---HANDOFFS---` — one pipe-delimited line per handoff, newest first: `{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}`. `{time}` is the `HH:MM` the handoff was written — read from the `# Resume:` header (wrap-up v0.8.0+), falling back to the file's mtime for older handoffs. `?` only when neither is available. It is the **last** field so older positional parsers (e.g. `/wrap-up`'s 9-field prefix) keep working.
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff (the "last session"), or empty. Consumed by `/landscape`'s footnote; this skill renders the full table instead and can ignore it.
 - `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N` (recent and not superseded), `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc.
@@ -106,6 +106,7 @@ If `current_repo_total > 0`:
 |------|------|--------|-------|----------|--------|---------|
 ```
 
+- **Date**: render `{date} {time}` (e.g. `2026-06-03 14:32`) so same-day handoffs are distinguishable at a glance. Drop the time and show just `{date}` when `{time}` is `?` (neither header time nor mtime was available).
 - **Slug**: from the filename (e.g. `ab-1107-cta-event`).
 - **Branch**: from the parsed line; `?` if unknown.
 - **Where**: basename of the recorded cwd. Append ` (current)` if it matches pwd. Special cases: empty cwd → `—`; cwd ending in `/` → use the next-up segment, e.g. `worktrees/` → `(worktrees root)`.
@@ -113,7 +114,7 @@ If `current_repo_total > 0`:
   - Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️` (the wide colored forms, not the narrow text `✂︎`/`⚠︎`). Mixing the two presentations across rows makes column widths jump — keep one form so the cells line up.
 - **Status**: pick the first that applies, in this order:
   1. `superseded-by` non-empty → `⏩ superseded` with the newer handoff's slug and reason, e.g. `⏩ by ge-1470-complete (same branch)`. Humanise the reason: `branch` → "same branch", `slug` → "same topic", `collision` → "same-day re-wrap". Derive the newer slug from the `superseded-by` filename (strip the `YYYY-MM-DD-` prefix and `.md`).
-  2. `pr-state` = `open` → `🔀 PR #{pr-number} open` (active work — link `pr-url` if rendering allows).
+  2. `pr-state` = `open` → `🟠 PR #{pr-number} open` (active work — link `pr-url` if rendering allows).
   3. `pr-state` = `merged` → `✅ PR #{pr-number} merged` (definitive — survives squash-merge).
   4. `pr-state` = `closed` → `🚫 PR #{pr-number} closed` (abandoned).
   5. `branch-state` = `merged` → `🔵 merged` (branch landed; no PR data).
@@ -185,7 +186,7 @@ The candidates split by regret — the `archive-class` field already encodes whi
 - **Merged** (`archive-class=safe`, not superseded — Status `✅ PR merged` or `🔵 merged`) — the PR landed (or the branch tip is in the default branch). Low regret: the work shipped.
 - **Stale** (`archive-class=keep` — Status `🚫 PR closed` or `⚪ branch gone`) — abandoned, and *no newer handoff supersedes it*. Higher regret: this may be the **only** record of that thread. Default to leaving these unless the user is sure.
 
-A row is **never** a candidate while its PR is open (`🔀`) — that's live work. A row that is both superseded and otherwise archivable belongs in the Superseded group (supersede is the safest reason to archive).
+A row is **never** a candidate while its PR is open (`🟠`) — that's live work. A row that is both superseded and otherwise archivable belongs in the Superseded group (supersede is the safest reason to archive).
 
 Prompt with `AskUserQuestion` (multiSelect). One option per candidate, labelled `{date} {slug}`, described by its group:
 - superseded → `⏩ superseded by {newer-slug}`
@@ -206,7 +207,7 @@ Parse the script's `---ARCHIVED---` / `---SKIPPED---` sections and confirm:
 ✅ Archived {N} handoff(s) to `~/.claude/handoffs/archive/`.
 ```
 
-Surface any `---SKIPPED---` lines verbatim with their reason. After archiving, **drop the archived rows** from the current-repo table for the rest of this run (and subtract them from `current_repo_total`) so §4's picker doesn't offer them. Only offer rows with a non-empty `archive-class` (`safe` or `keep`); never a `🟢 live`, `🔀 PR open`, or `unknown` row. Never delete — `archive.sh` only moves. If the user selects none, render nothing and continue to §4.
+Surface any `---SKIPPED---` lines verbatim with their reason. After archiving, **drop the archived rows** from the current-repo table for the rest of this run (and subtract them from `current_repo_total`) so §4's picker doesn't offer them. Only offer rows with a non-empty `archive-class` (`safe` or `keep`); never a `🟢 live`, `🟠 PR open`, or `unknown` row. Never delete — `archive.sh` only moves. If the user selects none, render nothing and continue to §4.
 
 ### 4. Pick a handoff (current repo only)
 
@@ -215,7 +216,7 @@ If `current_repo_total == 0`, skip this step.
 If `current_repo_total` is between 1 and 4, use `AskUserQuestion`:
 
 - Option label: `{date} {slug}` (truncate slug if needed to stay under the chip width).
-- Option description: `Branch: {branch} | Where: {basename of cwd}`.
+- Option description: `{time} · Branch: {branch} | Where: {basename of cwd}` (lead with the `HH:MM` so several same-day handoffs are distinguishable here; omit the `{time} · ` prefix when `{time}` is `?`).
 
 If `current_repo_total > 4`, do **not** force the picker (the option cap is 4). Instead, print:
 

@@ -333,6 +333,7 @@ OTHER_COUNTS=()
 # supersede in a second pass, then print.
 R_FILE=()
 R_DATE=()
+R_TIME=()       # HH:MM from the handoff's "# Resume:" header, falling back to file mtime
 R_SLUG=()
 R_BASESLUG=()   # slug with a trailing collision suffix (-2, -3, …) removed
 R_SUFFIX=()     # the stripped collision suffix, or empty
@@ -369,6 +370,16 @@ if [ -d "$HANDOFFS_DIR" ]; then
             DATE=$(date -r "$F" +%Y-%m-%d 2>/dev/null)
             SLUG="${BASE%.md}"
         fi
+        # Time of the handoff. Prefer the HH:MM trailing the date on the
+        # "# Resume:" header (wrap-up v0.8.0+ embeds it — authoritative, and
+        # survives the file being copied/synced across machines). Fall back to
+        # the file's mtime so older handoffs and hand-edited ones still show a
+        # time. `?` only if neither is available.
+        TIME=$(grep -m1 '^# Resume:' "$F" 2>/dev/null \
+            | sed -n 's/.*[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}[[:space:]]\{1,\}\([0-2][0-9]:[0-5][0-9]\).*/\1/p')
+        [ -z "$TIME" ] && TIME=$(date -r "$F" +%H:%M 2>/dev/null)
+        [ -z "$TIME" ] && TIME="?"
+
         LINE=$(grep -m1 '^\*\*Where to pick up:\*\*' "$F" 2>/dev/null || true)
         # Prefer "worktree at `PATH`" — that's reliably absolute. Otherwise use
         # the first backtick-quoted token, which may be relative.
@@ -426,6 +437,7 @@ if [ -d "$HANDOFFS_DIR" ]; then
 
         R_FILE+=("$BASE")
         R_DATE+=("$DATE")
+        R_TIME+=("$TIME")
         R_SLUG+=("$SLUG")
         R_BASESLUG+=("$BASESLUG")
         R_SUFFIX+=("$SUFFIX")
@@ -603,7 +615,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}"
+        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}"
         i=$((i+1))
     done
 fi
