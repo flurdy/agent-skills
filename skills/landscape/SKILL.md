@@ -1,10 +1,10 @@
 ---
 name: landscape
 description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
-allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
+allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model: sonnet
 effort: medium
-version: "0.7.0"
+version: "0.8.0"
 author: "flurdy"
 ---
 
@@ -26,7 +26,7 @@ Separate blocks, rendered from broadest context to most immediate. Order matters
 1. **📋 Jira** — tickets assigned to you, not Done (with sprint)
 2. **🔀 PRs** — org-wide open PRs, recently closed, unresolved threads
 3. **🎯 Beads** — in-progress and top ready beads in this repo (skipped if `bd` not installed)
-4. **📍 Working copy** — current branch, uncommitted/unpushed work
+4. **📍 Working copy** — current branch, uncommitted/unpushed work (plus, in a multi-repo workspace, a roll-up of sibling service repos with unsaved/unpushed state)
 5. **Next** — single-sentence suggestion for the most load-bearing action
 
 Each block is independent — if one source fails, the others still render.
@@ -35,7 +35,7 @@ Each block is independent — if one source fails, the others still render.
 
 > **MUST re-fetch on every invocation.** Each `/landscape` run MUST execute every fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `beads.sh`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
 >
-> **MUST use the dedicated helper scripts.** Never construct ad-hoc `bd …` or `git …` shell pipelines for this skill. Specifically: do NOT chain `command -v bd` probes with `bd list … && …` or `… || bd list --ready` inside a single Bash call. Always invoke `~/.claude/skills/landscape/scripts/beads.sh` instead — it handles probing, repo gating, and listing internally. Inline chaining bypasses the per-script permission allowlist and produces noisy permission prompts.
+> **MUST use the dedicated helper scripts.** Never construct ad-hoc `bd …` or `git …` shell pipelines for this skill. Specifically: do NOT chain `command -v bd` probes with `bd list … && …` or `… || bd list --ready` inside a single Bash call. Always invoke `~/.claude/skills/landscape/scripts/beads.sh` instead — it handles probing, repo gating, and listing internally. Likewise, do NOT hand-walk sibling service repos with your own `for … git -C …` loop — always go through `~/.claude/skills/wrap-up/scripts/multirepo.sh` (§4b), which handles workspace detection and per-repo state. Inline chaining bypasses the per-script permission allowlist and produces noisy permission prompts.
 
 Render the blocks in the order listed below. Some data fetches can run in parallel at the top.
 
@@ -238,6 +238,33 @@ Notes:
 
   Suppress the footnote entirely when `current_repo_recent_live == 0` — silence is shorter. Older or superseded handoffs are still browsable via `/handoffs`; the footnote is just a fresh-work hint, deliberately offline (no `--check-branches`, so no branch-staleness here). This call can run in parallel with `working-copy.sh`.
 
+### 4b. 🗂️ Other repos in this workspace
+
+`working-copy.sh` (§4) inspects **only the cwd repo** (plus its own worktrees). In a multi-repo workspace — mgit services (`.mgit.conf`) or git submodules (`.gitmodules`) — that silently misses uncommitted/unpushed state in sibling service repos. This is the single biggest blind spot at session start: you orient on the root repo and never notice that, say, `dispatch` was left with unpushed commits last night. Roll them up:
+
+```bash
+~/.claude/skills/wrap-up/scripts/multirepo.sh
+```
+
+It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---REPOS---` lines:
+`{name}|{branch}|{ahead}|{behind}|{upstream}|{modified}|{untracked}` (ahead/behind are `-` with no upstream; the root repo appears as its own row). This call can run in parallel with `working-copy.sh` — it's the same roll-up `/wrap-up` §3b uses.
+
+- **`---MARKER---` is `none`** → single repo; skip this whole section silently (§4 already covered it).
+- Otherwise render only the members with something to report (ahead>0, behind>0, or modified+untracked>0); a clean+pushed member is noise. Skip the table entirely if every member is clean — in a healthy workspace this section shows nothing, which is the point.
+
+```markdown
+### 🗂️ Other repos in this workspace
+
+| Repo | Branch | Unpushed | Behind | Uncommitted |
+|------|--------|----------|--------|-------------|
+```
+
+- **Unpushed**: `{ahead}`, or `no upstream` when upstream=no (local-only, never pushed).
+- **Behind**: show only when >0. A member that's **diverged** (ahead>0 AND behind>0) needs a rebase/pull before it can push — flag it explicitly: `⚠️ diverged — N ahead / M behind`.
+- **Uncommitted**: `{modified} modified / {untracked} untracked` (omit zero parts).
+
+Carry the most urgent member (diverged, then unpushed, then uncommitted) into the §5 Next suggestion — a sibling repo left in that state is exactly what a fresh session forgets.
+
 ### 5. Next step suggestion
 
 After all blocks render, add a short footer with a concrete next step, picked from what's visible. Prefer the most load-bearing single action:
@@ -246,6 +273,8 @@ After all blocks render, add a short footer with a concrete next step, picked fr
 - If the current branch's PR has **unresolved review threads** → suggest `/review-comments`.
 - If the current branch's PR is **behind main** → suggest `/rebase-main`.
 - If there is uncommitted work → suggest committing or stashing.
+- If a sibling service repo (§4b) is **diverged** → suggest rebasing/pulling it before it can block a push (name the repo).
+- If a sibling service repo has **unpushed commits** or uncommitted work → suggest pushing/committing it (name the repo).
 - If exactly one in-progress bead → suggest resuming it (show the ID).
 - If nothing in progress and ready beads exist → suggest `/next`.
 - Otherwise → suggest `/triage` or pulling a Jira ticket.
@@ -267,6 +296,7 @@ Each block is independent — a failure in one must not prevent the others from 
 - **No Jira MCP configured**: skip the Jira block, print `_Jira MCP not configured._`.
 - **gh not authenticated**: skip the PR block, print `_GitHub CLI not authenticated (run \`gh auth login\`)._`.
 - **No beads in repo**: skip the Beads block, print `_No beads in this repo._`.
+- **Single repo (no `.mgit.conf`/`.gitmodules`)**: the §4b roll-up emits `MARKER=none` — skip that block silently; §4 already covers the one repo.
 
 ## Performance notes
 
