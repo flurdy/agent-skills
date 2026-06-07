@@ -23,15 +23,20 @@ cd "$PROJECT_ROOT"
 MGIT="./scripts/mgit"
 SYNC_SCRIPT="./scripts/sync-pacts.sh"
 
-# Provider pact directories — two known patterns
-# Play services: test/resources/pacts/
-# Scala 3 services: src/test/resources/pacts/
+# Provider pact directories — two layouts coexist:
+#   Play services:    test/resources/pacts/
+#   http4s/Scala 3:   src/test/resources/pacts/
+# Detect dynamically (which dir actually holds the provider's pacts) rather than
+# maintaining a hardcoded service list — robust to new http4s services.
 pact_dir_for_provider() {
-    local provider=$1
-    case "$provider" in
-        event|membership) echo "src/test/resources/pacts" ;;
-        *) echo "test/resources/pacts" ;;
-    esac
+    local provider=$1 d
+    for d in "test/resources/pacts" "src/test/resources/pacts"; do
+        if compgen -G "$provider/$d/*-provider.json" > /dev/null 2>&1; then
+            echo "$d"; return
+        fi
+    done
+    # No synced pacts yet — fall back to whichever layout the service uses.
+    [[ -d "$provider/src/test/resources/pacts" ]] && echo "src/test/resources/pacts" || echo "test/resources/pacts"
 }
 
 # ─── STALE CHECK ─────────────────────────────────────────────────────────────
