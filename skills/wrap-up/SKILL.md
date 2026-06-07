@@ -1,10 +1,10 @@
 ---
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(mkdir:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.8.0"
+version: "0.8.1"
 author: "flurdy"
 ---
 
@@ -398,13 +398,17 @@ Ask the user whether to persist the resume block:
 
 Use `AskUserQuestion` with options: **Save**, **Don't save**, **Save with different name**. (If `AskUserQuestion` isn't appropriate in the current flow, just print the path and ask in plain text.)
 
-On Save:
+On Save, **never overwrite** — even a second wrap-up of the *same topic on the same day* gets its own file (you picked numbered files; the screenshot bug was a silent overwrite). Don't pass a hand-built path to `Write`; let the helper pick the next free name so collisions are handled mechanically rather than from memory:
 
 ```bash
-mkdir -p ~/.claude/handoffs
+~/.claude/skills/wrap-up/scripts/handoff-path.sh {YYYY-MM-DD} {slug}
 ```
 
-Then write the file with `Write`. **Never overwrite** — if a file with that name already exists, append `-2`, `-3`, … until unique. Confirm with the path written.
+It `mkdir -p`s the handoffs dir and prints the absolute path to use: `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` when free, else the first non-existing `…-2.md`, `…-3.md`, … . **Write to exactly the path it prints** — do not strip a `-N` suffix or substitute the bare name, or you'll clobber the earlier handoff. Confirm with the path written.
+
+The `-N` collision suffix is a first-class convention `/handoffs` understands: `list.sh` strips it for grouping but folds it into recency rank, so the suffixed file sorts as the *newer* of a same-day pair, and reads each file's real time from its `# Resume:` header. So several same-day re-wraps of one topic each survive as distinct, correctly-ordered entries — and `/handoffs-tidy` (§5a) can later archive the superseded earlier ones if the picker gets crowded.
+
+On **Save with different name**, run the same helper with the user's chosen slug so the uniqueness guarantee still applies.
 
 The directory naming convention (`~/.claude/handoffs/YYYY-MM-DD-slug.md`) means `ls ~/.claude/handoffs/` is a chronological log of session topics — easy to grep for "what was I doing about X last week."
 
