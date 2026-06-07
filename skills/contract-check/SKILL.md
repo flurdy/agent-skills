@@ -28,7 +28,8 @@ This is a **read-only audit** — it does not run tests or modify files. Use `/c
 /contract-check status       # Summary dashboard only
 /contract-check stale        # Consumer output newer than provider copy
 /contract-check uncommitted  # Pact files not committed in service repos
-/contract-check sync-gaps    # Pairs missing from sync-pacts.sh
+/contract-check sync-gaps    # Pairs missing from sync-pacts.sh (registered for sync?)
+/contract-check coverage     # Provider CI verifies each synced pact? (catches commented-out/disabled consumers)
 /contract-check missing      # Connectors with no consumer tests
 /contract-check docs         # Documentation drift in pact-workflow.md
 /contract-check disabled     # Contract tests excluded from default builds
@@ -60,9 +61,11 @@ Parse the user's argument:
 - `stale` → Run `./scripts/contract-check stale`
 - `uncommitted` → Run `./scripts/contract-check uncommitted`
 - `sync-gaps` → Run `./scripts/contract-check sync-gaps`
+- `coverage` → Run `./scripts/contract-check coverage` (CI verifies each synced pact?)
 - `missing` → Run semantic Missing Consumer Tests check (Step 3)
 - `docs` → Run semantic Documentation Drift check (Step 4)
-- `disabled` → Run semantic Disabled Tests check (Step 5)
+- `disabled` → Run semantic Disabled Tests check (Step 5). `coverage` is the mechanical
+  companion: it catches commented-out PACTCONSUMER entries in a provider's CI verify job.
 - `<service>` → Run all checks scoped to that service
 - `matrix` → Run `./scripts/contract-check matrix`
 
@@ -77,7 +80,7 @@ Before running the `uncommitted` check (or `all`/`full`), suggest running `make 
 Run the appropriate script subcommand:
 
 ```bash
-./scripts/contract-check all      # or stale, uncommitted, sync-gaps, matrix
+./scripts/contract-check all      # or stale, uncommitted, sync-gaps, coverage, matrix
 ```
 
 Parse the script output. Each line starts with a status keyword:
@@ -89,6 +92,8 @@ Parse the script output. Each line starts with a status keyword:
 - `COVERED` — pair is in sync-pacts.sh
 - `NOT_SYNCED` — pair has consumer pact but is missing from sync-pacts.sh
 - `STALE_SYNC` — pair is in sync-pacts.sh but consumer has no pact file (not built)
+- `GAP` — (coverage) provider CI does not verify all its synced consumer pacts
+  (`style=enum` with commented-out consumers, or `style=none` with no verify job)
 - `CLEAN` — no issues found
 - `NO_DATA` — no consumer pact files found
 - `SUMMARY` — counts for the check
@@ -158,6 +163,7 @@ Combine all findings into a health report:
 | Staleness        | PASS/WARN/FAIL | X stale / Y total       |
 | Uncommitted      | PASS/WARN | X files across Y services     |
 | Sync coverage    | PASS/FAIL | X/Y pairs in sync-pacts.sh   |
+| Verify coverage  | PASS/FAIL | X providers verify all synced pacts |
 | Missing tests    | PASS/WARN | X connectors without tests    |
 | Documentation    | PASS/FAIL | X items out of date           |
 | Disabled tests   | PASS/INFO | X services exclude by default |

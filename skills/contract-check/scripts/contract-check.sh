@@ -259,6 +259,81 @@ check_matrix() {
     echo "TOTAL  ${#relationships[@]} relationships"
 }
 
+# ─── CI VERIFICATION COVERAGE ────────────────────────────────────────────────
+# Does each provider's CI actually VERIFY the consumer pacts synced into it?
+# This is distinct from sync-gaps (is the pact registered for sync?): a pact can
+# be synced into the provider yet never verified by the provider's CI.
+# Two CI styles in letterbox:
+#   tag  -> `sbt testOnly -- -n tags.ContractVerifyTest` auto-verifies EVERY
+#           synced pact (good — nothing to enumerate).
+#   enum -> PACTCONSUMER env vars enumerate consumers explicitly; any consumer
+#           that is commented out (or simply not listed) is NOT verified — a
+#           silent coverage hole where the provider can break that consumer.
+
+check_coverage() {
+    echo "## CI Verification Coverage"
+    echo ""
+    local gaps=0 ok=0 providers=0
+
+    for pact_dir in */test/resources/pacts */src/test/resources/pacts; do
+        [[ -d "$pact_dir" ]] || continue
+        local provider
+        provider="$(echo "$pact_dir" | cut -d'/' -f1)"
+
+        # Consumers whose pact is synced into this provider's source tree.
+        local -a synced=()
+        for f in "$pact_dir"/*-consumer-"$provider"-provider.json; do
+            [[ -f "$f" ]] || continue
+            synced+=("$(basename "$f" | sed 's/-consumer-.*//')")
+        done
+        [[ ${#synced[@]} -eq 0 ]] && continue
+        providers=$((providers + 1))
+
+        local cfg="$provider/.circleci/config.yml"
+        if [[ ! -f "$cfg" ]]; then
+            echo "GAP  $provider  no .circleci/config.yml (cannot verify ${#synced[@]} consumer(s))"
+            gaps=$((gaps + 1))
+            continue
+        fi
+
+        # Active (uncommented) PACTCONSUMER entries, normalised to the bare name.
+        local -a active=()
+        while IFS= read -r val; do
+            [[ -z "$val" ]] && continue
+            active+=("$(echo "$val" | sed 's/-consumer//')")
+        done < <(grep -E '^[[:space:]]*PACTCONSUMER[0-9]*:' "$cfg" 2>/dev/null \
+                 | sed -E 's/.*PACTCONSUMER[0-9]*:[[:space:]]*//')
+
+        local style="" ; local -a unverified=()
+        if [[ ${#active[@]} -gt 0 ]]; then
+            style="enum"
+            local c a found
+            for c in "${synced[@]}"; do
+                found=false
+                for a in "${active[@]}"; do [[ "$a" == "$c" ]] && found=true && break; done
+                $found || unverified+=("$c")
+            done
+        elif grep -q "ContractVerifyTest" "$cfg" 2>/dev/null; then
+            style="tag"   # verifies every synced pact — no enumeration to miss
+        else
+            style="none"
+            unverified=("${synced[@]}")
+        fi
+
+        if [[ ${#unverified[@]} -gt 0 ]]; then
+            local list; list="$(IFS=,; echo "${unverified[*]}")"
+            echo "GAP  $provider  style=$style synced=${#synced[@]} not-verified=$list"
+            gaps=$((gaps + 1))
+        else
+            echo "OK   $provider  style=$style synced=${#synced[@]} verified"
+            ok=$((ok + 1))
+        fi
+    done
+
+    echo ""
+    echo "SUMMARY  ok=$ok gaps=$gaps providers=$providers"
+}
+
 # ─── MAIN DISPATCHER ─────────────────────────────────────────────────────────
 
 usage() {
@@ -268,7 +343,8 @@ usage() {
     echo "  all          Run all mechanical checks"
     echo "  stale        Check for stale provider pact files"
     echo "  uncommitted  Check for uncommitted pact files"
-    echo "  sync-gaps    Check sync-pacts.sh coverage"
+    echo "  sync-gaps    Check sync-pacts.sh coverage (is the pact registered for sync?)"
+    echo "  coverage     Check CI verification coverage (does the provider verify each synced pact?)"
     echo "  matrix       Show full relationship matrix"
     echo ""
 }
@@ -283,6 +359,9 @@ case "${1:-all}" in
     sync-gaps|sync)
         check_sync_gaps
         ;;
+    coverage)
+        check_coverage
+        ;;
     matrix)
         check_matrix
         ;;
@@ -292,6 +371,8 @@ case "${1:-all}" in
         check_uncommitted
         echo ""
         check_sync_gaps
+        echo ""
+        check_coverage
         echo ""
         check_matrix
         ;;
