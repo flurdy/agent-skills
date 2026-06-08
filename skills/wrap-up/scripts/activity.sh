@@ -82,6 +82,16 @@ if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
     bd list --status=in_progress --limit=50 --no-pager 2>/dev/null
 fi
 
+# In-progress beads NOT touched today — the candidate set for §3a's stale check.
+# A bead a parallel session is actively working got set in_progress today
+# (updated_at = today) and so is excluded here, which kills the false positives
+# where cross-session WIP read as "stale" just because *this* session left no
+# commit/branch trace for it.
+echo "---BEADS-STALE-CANDIDATES---"
+if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
+    bd list --status=in_progress --updated-before="$TODAY" --limit=50 --no-pager 2>/dev/null
+fi
+
 echo "---BEADS-CREATED-TODAY---"
 if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
     # Default filter excludes closed — beads created and closed the same day

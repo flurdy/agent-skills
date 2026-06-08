@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.8.1"
+version: "0.8.2"
 author: "flurdy"
 ---
 
@@ -90,6 +90,7 @@ It emits delimited sections:
 - `---PRS-CREATED---` / `---PRS-MERGED---` / `---PRS-CLOSED-UNMERGED---` — JSON arrays (always `[]` when empty) from `gh search prs --author=@me`.
 - `---BEADS-STATUS---` — `OK` / `NO_BD` / `NO_BEADS_IN_REPO`.
 - `---BEADS-IN-PROGRESS---` — output of `bd list --status=in_progress` (state being left for tomorrow).
+- `---BEADS-STALE-CANDIDATES---` — `bd list --status=in_progress --updated-before=TODAY`: the subset of in-progress beads not touched today. This is §3a's candidate set — pre-filtering on `updated_before` drops beads a parallel session set `in_progress` today, so cross-session WIP no longer reads as stale.
 - `---BEADS-CREATED-TODAY---` — output of `bd list --created-after=TODAY` (open beads created today; closed-same-day beads appear in `BEADS-CLOSED` instead, no double-counting).
 - `---BEADS-CLOSED---` — output of `bd list --status=closed --closed-after=TODAY`.
 
@@ -256,23 +257,23 @@ Load-bearing for resume: a service repo left ahead-but-unpushed, or a deploy/con
 
 ### 3a. 🧹 Stale in-progress beads
 
-Skip this whole section if `---BEADS-STATUS---` was `NO_BD`/`NO_BEADS_IN_REPO` or if `---BEADS-IN-PROGRESS---` was empty.
+Skip this whole section if `---BEADS-STATUS---` was `NO_BD`/`NO_BEADS_IN_REPO` or if `---BEADS-STALE-CANDIDATES---` was empty.
 
-For each in-progress bead, check whether its ID (e.g. `bd-123`) appears in any of today's signals:
+Work from `---BEADS-STALE-CANDIDATES---`, **not** the full `---BEADS-IN-PROGRESS---` list — it's already pre-filtered to beads not updated today, so a bead a parallel session is actively working (set `in_progress` today) won't appear. For each candidate bead, check whether its ID (e.g. `bd-123`) appears in any of today's signals:
 
 - Commit subjects (§1 Commits)
 - Branch names from the worktree list (§1 Commits, second column)
 - PR titles (§1 PRs today)
 - The current branch (§0)
 
-A bead with **no match in any of those** is "stale in_progress" — moved to `in_progress` at some point but saw no work today. Tomorrow's `/landscape` will misreport it as live WIP.
+A bead with **no match in any of those** is "stale in_progress" — moved to `in_progress` days ago but idle since, with no commit/branch/PR trace today. Tomorrow's `/landscape` will misreport it as live WIP. Bead hygiene matters: always flag these — don't quietly skip the section.
 
 If any stale beads exist, render:
 
 ```markdown
 ### 🧹 Stale in-progress
 
-These beads are in_progress but had no commits, PRs, or branch references today:
+These beads are in_progress but were last touched before today, with no commits, PRs, or branch references today:
 
 | ID | Type | Pri | Title |
 |----|------|-----|-------|
@@ -280,7 +281,7 @@ These beads are in_progress but had no commits, PRs, or branch references today:
 
 Then prompt with `AskUserQuestion` (multiSelect, options are the bead IDs):
 
-> Demote selected beads back to `ready` so tomorrow's WIP list is honest? Skip any you genuinely intend to keep open (e.g. design work in chat only).
+> Demote selected beads back to `ready` so tomorrow's WIP list is honest? Skip any you genuinely intend to keep open — e.g. design work in chat only, or a long-running task still live in a parallel session.
 
 For each selected bead:
 
