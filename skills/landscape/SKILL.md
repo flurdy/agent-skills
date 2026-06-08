@@ -4,7 +4,7 @@ description: Morning catch-up view — assigned Jira tickets, open PRs, current 
 allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model: sonnet
 effort: medium
-version: "0.8.0"
+version: "0.9.0"
 author: "flurdy"
 ---
 
@@ -275,8 +275,13 @@ After all blocks render, add a short footer with a concrete next step, picked fr
 - If there is uncommitted work → suggest committing or stashing.
 - If a sibling service repo (§4b) is **diverged** → suggest rebasing/pulling it before it can block a push (name the repo).
 - If a sibling service repo has **unpushed commits** or uncommitted work → suggest pushing/committing it (name the repo).
-- If exactly one in-progress bead → suggest resuming it (show the ID).
-- If nothing in progress and ready beads exist → suggest `/next`.
+
+Once those "finish / unblock" actions are clear, the suggestion becomes a **pick-what-to-work-on** decision. This is the morning "resume a handoff or start fresh?" question — arbitrate it here rather than leaving the user to choose between `/handoffs` and `/next`. Use the handoff signals from §4 (`current_repo_recent_live` and the `---CURRENT-REPO-LATEST---` `{slug}|{branch}|{date}` line):
+
+- If a recent live handoff is on the **current branch** (its `{branch}` equals the §4 working-copy branch) → strongest resume signal: you're already sitting on its branch and it carries the open threads + suggested next step the bare branch doesn't. Suggest `Resume {slug} — /handoffs`.
+- If exactly one in-progress bead **and no** current-branch handoff → suggest resuming the bead (show the ID).
+- If nothing decisive above but a recent live handoff exists (`current_repo_recent_live > 0`) → **lead with the handoff and name the fallback in one sentence**, e.g. `Resume {slug} (last session's thread) via /handoffs — or /next safe for fresh work.` A warm thread beats a cold start, but the user keeps the choice.
+- If no live handoff and nothing in progress but ready beads exist → suggest `/next`.
 - Otherwise → suggest `/triage` or pulling a Jira ticket.
 
 Format as one line:
@@ -286,7 +291,7 @@ Format as one line:
 **Next:** _{suggestion}_
 ```
 
-Single sentence. Don't list multiple options — pick one.
+Single sentence. Pick one action — don't list a menu. The one exception is the handoff-fallback branch above, which deliberately names a single fallback (`Resume {slug} … — or /next safe …`) so the morning "resume or start fresh?" choice stays visible in one sentence.
 
 ## Failure modes
 

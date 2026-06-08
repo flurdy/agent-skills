@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),Bash(~/.claude/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model: haiku
 effort: low
-version: "1.4.0"
+version: "1.4.1"
 author: "flurdy"
 ---
 
@@ -20,6 +20,8 @@ Help select the next bead to work on based on readiness and user preferences.
 - Finished a task and need to pick the next one
 - Want to see what's available to work on
 - Need help prioritizing between multiple options
+
+> **Deciding between resuming a handoff and starting fresh?** Run `/landscape` first — its `**Next:**` line weighs last session's live thread against fresh ready work. This skill is the "start fresh" branch of that decision; it still runs its own handoff check (see *Resume awareness*) before marking a bead in_progress.
 
 ## Usage
 

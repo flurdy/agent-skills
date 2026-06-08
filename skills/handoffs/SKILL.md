@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.14.0"
+version: "0.14.1"
 author: "flurdy"
 ---
 
@@ -17,6 +17,8 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 - Starting a session and wanting to pick up a thread from a previous one.
 - After `/landscape` flagged that recent handoffs exist for this repo.
 - Searching for an older thread — `ls ~/.claude/handoffs/` is grep-friendly, but this skill renders the metadata table.
+
+> **Not sure whether to resume a handoff or start fresh work?** That's a morning orientation call, not a handoffs call — run `/landscape` first. Its `**Next:**` line arbitrates resume-a-handoff vs `/next safe` from the full picture (Jira, PRs, beads, working copy). Come here once you've decided to resume a thread.
 
 ## What it does
 
