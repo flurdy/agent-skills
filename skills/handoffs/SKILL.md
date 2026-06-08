@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.13.0"
+version: "0.14.0"
 author: "flurdy"
 ---
 
@@ -405,3 +405,4 @@ Each step is independent — a failure in one should not block the others.
   - **Non-bare** — A's `.claude` symlinks to B's `.claude` subdir. A defers to B's identity. Display is B's basename.
   - **Bare** — A's `.claude` symlinks to B's repo root itself (B is just a scratch state-holder, not a working project). A keeps its own identity (and display); when B resolves on its own (e.g. via a handoff whose cwd lands inside B), a one-level sibling scan finds A's bare link pointing at B and defers up. Net effect: both ends group under A, the "real" repo. The follow is one-hop in either direction, so reciprocal links don't cycle.
 - Pruned-worktree handoffs are pickable: the script walks up the recorded path to find the parent repo, so even after `git worktree remove` the handoff still groups correctly. When picked, the user resumes from their current checkout (or creates a fresh worktree).
+- **`list.sh --bead <id>` / `--ticket <key>`** (consumed by `/next` and `/start-ticket`, not by this skill) emit an extra `---MATCHED-HANDOFFS---` section: current-repo, non-stale handoffs whose `**Beads:**` / `**Jira:**` header field contains that exact token. It reuses the same supersede + (with `--check-branches`) liveness machinery, so a bead/ticket resume surfaces only the *live tip*, never a superseded or shipped handoff. Matching is exact-token and case-insensitive (`bd-12` never matches `bd-123`). The flags leave every other section byte-identical, so this skill, `/wrap-up`, and `/landscape` are unaffected.

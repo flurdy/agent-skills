@@ -2,11 +2,21 @@
 # List Claude Code handoff files (~/.claude/handoffs/*.md) with metadata.
 # Sections delimited by `---<NAME>---` markers. Companion to the wrap-up skill.
 #
-# Usage: list.sh [--recent-days N] [--summary-only]
+# Usage: list.sh [--recent-days N] [--summary-only] [--bead ID] [--ticket KEY]
 #   --recent-days N   override the "recent" window (default: 3, with Mon=3, Tue=4
 #                     weekend buffer to mirror gh-pr-list-closed.sh)
 #   --summary-only    suppress per-file lines in the HANDOFFS section (landscape's
 #                     footer only needs the SUMMARY counts)
+#   --bead ID         emit a `---MATCHED-HANDOFFS---` section: current-repo, NON-stale
+#   --ticket KEY      handoffs whose `**Beads:**` / `**Jira:**` header field contains
+#                     an exact ID/KEY token. Lets /next and /start-ticket surface
+#                     "you have a handoff for this" at bead/ticket resume — without
+#                     re-implementing repo-matching or staleness. "Non-stale" =
+#                     archive-class empty (live / open-PR / unknown); superseded and
+#                     merged/closed rows are dropped so dead context isn't resurfaced.
+#                     Pair with --check-branches for full staleness (merged-PR) filtering;
+#                     without it only supersede filtering applies. Leaves every other
+#                     section byte-identical, so existing callers are unaffected.
 set -uo pipefail
 
 HANDOFFS_DIR="${HOME}/.claude/handoffs"
@@ -14,14 +24,37 @@ HANDOFFS_DIR="${HOME}/.claude/handoffs"
 RECENT_DAYS=""
 SUMMARY_ONLY=0
 CHECK_BRANCHES=0
+MATCH_BEAD=""
+MATCH_TICKET=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --recent-days) RECENT_DAYS="$2"; shift 2 ;;
         --summary-only) SUMMARY_ONLY=1; shift ;;
         --check-branches) CHECK_BRANCHES=1; shift ;;
+        --bead) MATCH_BEAD="$2"; shift 2 ;;
+        --ticket) MATCH_TICKET="$2"; shift 2 ;;
         *) shift ;;
     esac
 done
+# A filter is active when either ID was supplied — gates the (otherwise skipped)
+# per-file Beads/Jira grep and the MATCHED-HANDOFFS section.
+MATCH_FILTER=""
+[ -n "$MATCH_BEAD" ] || [ -n "$MATCH_TICKET" ] && MATCH_FILTER=1
+
+# True when handoff field $1 (e.g. "`bd-123`, `bd-124`") contains the exact
+# token $2. Backticks and commas are flattened to spaces, then each token is
+# compared case-insensitively for an EXACT match — so `bd-12` never matches
+# `bd-123`, and `AB-649` matches regardless of case drift from a branch name.
+field_has_token() {
+    local field id tok
+    field=$(printf '%s' "$1" | tr '`,' '  ' | tr '[:upper:]' '[:lower:]')
+    id=$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')
+    [ -n "$id" ] || return 1
+    for tok in $field; do
+        [ "$tok" = "$id" ] && return 0
+    done
+    return 1
+}
 if [ -z "$RECENT_DAYS" ]; then
     DOW=$(date +%u)  # 1=Mon..7=Sun
     case "$DOW" in
@@ -342,6 +375,8 @@ R_CWD=()
 R_BRANCH=()
 R_REPO=()
 R_EXISTS=()
+R_BEADS=()      # raw `**Beads:**` field content (only parsed under --bead/--ticket)
+R_JIRA=()       # raw `**Jira:**` field content (only parsed under --bead/--ticket)
 
 bump_other() {
     local key="$1" display="$2"
@@ -399,6 +434,15 @@ if [ -d "$HANDOFFS_DIR" ]; then
         # handoffs that don't have the field.
         REPO_ROOT=$(grep -m1 '^\*\*Repo root:\*\*' "$F" 2>/dev/null | sed -n 's/.*\*\*Repo root:\*\* `\([^`]*\)`.*/\1/p' || true)
 
+        # Beads/Jira header fields — only needed (and only parsed) when a
+        # --bead/--ticket filter is active, so the hot path (wrap-up/landscape)
+        # pays nothing. Strip the `**Field:**` label; keep the raw token list.
+        BEADS_FIELD=""; JIRA_FIELD=""
+        if [ -n "$MATCH_FILTER" ]; then
+            BEADS_FIELD=$(grep -m1 '^\*\*Beads:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Beads:\*\*[[:space:]]*//' || true)
+            JIRA_FIELD=$(grep -m1 '^\*\*Jira:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Jira:\*\*[[:space:]]*//' || true)
+        fi
+
         if [ -n "$CWD" ] && [ -d "$CWD" ]; then
             EXISTS="Y"
         else
@@ -446,6 +490,8 @@ if [ -d "$HANDOFFS_DIR" ]; then
         R_BRANCH+=("$BRANCH")
         R_REPO+=("$REPO_KEY")
         R_EXISTS+=("$EXISTS")
+        R_BEADS+=("$BEADS_FIELD")
+        R_JIRA+=("$JIRA_FIELD")
 
         [ "$EXISTS" = "N" ] && PRUNED_TOTAL=$((PRUNED_TOTAL+1))
         [ "$REPO_KEY" = "UNRESOLVED" ] && UNRESOLVED_COUNT=$((UNRESOLVED_COUNT+1))
@@ -644,3 +690,29 @@ echo "---OTHER-REPOS---"
 for i in "${!OTHER_KEYS[@]}"; do
     echo "${OTHER_COUNTS[$i]}|${OTHER_DISPLAYS[$i]}|${OTHER_KEYS[$i]}"
 done | sort -t'|' -k1,1nr -k2,2 | awk -F'|' '{print $3"|"$1"|"$2}'
+
+# --- Matched handoffs (only under --bead/--ticket) ------------------------
+# Current-repo, NON-stale handoffs whose Beads/Jira field exactly contains the
+# queried ID/KEY. "Non-stale" = R_ARCHCLASS empty: live, open-PR, or unknown.
+# Superseded rows (archclass=safe) and merged/closed rows are dropped, so a
+# resume nudge never points at dead context — the newer/live tip wins. Emitted
+# only when a filter is active; absent otherwise, so existing parsers are
+# untouched. Rows arrive newest-first (same order as ---HANDOFFS---).
+# Line: {filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}
+if [ -n "$MATCH_FILTER" ]; then
+    echo "---MATCHED-HANDOFFS---"
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        if [ "$CURRENT_REPO_KEY" != "NONE" ] \
+            && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ] \
+            && [ -z "${R_ARCHCLASS[$i]}" ]; then
+            matched=0
+            if [ -n "$MATCH_BEAD" ] && field_has_token "${R_BEADS[$i]}" "$MATCH_BEAD"; then matched=1; fi
+            if [ -n "$MATCH_TICKET" ] && field_has_token "${R_JIRA[$i]}" "$MATCH_TICKET"; then matched=1; fi
+            if [ "$matched" -eq 1 ]; then
+                echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_TIME[$i]}|${R_SLUG[$i]}|${R_BRANCH[$i]}|${R_EXISTS[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}"
+            fi
+        fi
+        i=$((i+1))
+    done
+fi

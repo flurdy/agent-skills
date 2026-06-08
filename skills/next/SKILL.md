@@ -3,10 +3,10 @@ name: next
 description: >
   Pick the next bead to work on. Shows ready tasks (no blockers), applies user
   preferences for ordering (priority, type, recency), and helps select work.
-allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),AskUserQuestion,mcp__jira__jira_get"
+allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),Bash(~/.claude/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model: haiku
 effort: low
-version: "1.3.0"
+version: "1.4.0"
 author: "flurdy"
 ---
 
@@ -138,15 +138,49 @@ When invoked:
 
    ```bash
    bd show <id>
+   ```
+   Then **run the handoff check** (see *Resume awareness* below) before marking in_progress:
+   ```bash
    bd update <id> --status=in_progress
    ```
 
 4. Otherwise, present the script output and ask user to choose
 
 5. On selection:
+   - **Run the handoff check** (see *Resume awareness* below)
    - Mark as in_progress
    - Show full details with `bd show`
    - If bead has description with steps, highlight first step
+
+## Resume awareness (handoff check before starting)
+
+Run this **only when committing to start a specific bead** — `/next <bead-id>`, `task`, `quick`, `bug`, or a pick from the table — *before* `bd update --status=in_progress`. **Never** in Listing mode (`/next` / `/next list` mark nothing in_progress, so they must stay network-free and silent).
+
+A prior session may have left a `/wrap-up` handoff that names this exact bead — its open threads and suggested next step are the warm-start context you'd otherwise resume without. Surface it, don't bury it.
+
+Two-step so the common case (a fresh bead with no handoff) stays cheap — no network:
+
+1. **Cheap pass (no network):**
+   ```bash
+   ~/.claude/skills/handoffs/scripts/list.sh --bead <id>
+   ```
+   Read the `---MATCHED-HANDOFFS---` section (current-repo, supersede-filtered, newest first). **Empty → proceed straight to in_progress, say nothing.** This is the usual path.
+2. **Confirm live (only if step 1 matched):** a squash-merged branch still looks live to the cheap pass. Re-run with liveness to drop shipped/merged handoffs:
+   ```bash
+   ~/.claude/skills/handoffs/scripts/list.sh --check-branches --bead <id>
+   ```
+   If `---MATCHED-HANDOFFS---` is now empty, the work already shipped — **proceed silently**. Otherwise take the **newest** matched line.
+
+Matched line: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}`.
+
+When a live handoff remains, ask with `AskUserQuestion` before starting:
+
+> 📥 A handoff `{slug}` ({date} {time}) covers `{id}` — load its context before starting?
+
+- **Load handoff (recommended)** — `Read` `~/.claude/handoffs/{filename}` and render it **verbatim** in a fenced block so it becomes resume context. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`. If `{exists}=N` (worktree pruned) or the flow gets involved, point to `/handoffs` for the full worktree-recreation flow rather than reimplementing it here. Then mark the bead in_progress and continue.
+- **Start fresh** — skip the handoff; mark in_progress and proceed.
+
+Keep it to one prompt. If `bd`/`list.sh` errors or there's no handoffs dir, proceed silently — the check is a courtesy, never a blocker.
 
 ## Listing Mode (default and `list`)
 
