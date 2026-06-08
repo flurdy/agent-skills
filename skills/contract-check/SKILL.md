@@ -28,7 +28,7 @@ This is a **read-only audit** — it does not run tests or modify files. Use `/c
 /contract-check status       # Summary dashboard only
 /contract-check stale        # Consumer output newer than provider copy
 /contract-check uncommitted  # Pact files not committed in service repos
-/contract-check sync-gaps    # Pairs missing from sync-pacts.sh (registered for sync?)
+/contract-check sync-gaps    # Trace each intended edge: consumer test → built pact → synced to provider
 /contract-check coverage     # Provider CI verifies each synced pact? (catches commented-out/disabled consumers)
 /contract-check missing      # Connectors with no consumer tests
 /contract-check docs         # Documentation drift in pact-workflow.md
@@ -89,9 +89,8 @@ Parse the script output. Each line starts with a status keyword:
 - `DIFFERS` — same age but content differs
 - `MISSING_PROVIDER` — provider does not have this pact file
 - `UNCOMMITTED` — pact file has uncommitted changes
-- `COVERED` — pair is in sync-pacts.sh
-- `NOT_SYNCED` — pair has consumer pact but is missing from sync-pacts.sh
-- `STALE_SYNC` — pair is in sync-pacts.sh but consumer has no pact file (not built)
+- `NOT_BUILT` — (sync-gaps) consumer test exists but produced no pact in target/ (tests not run)
+- `NOT_SYNCED` — (sync-gaps) pact is built but not copied into the provider (run sync-pacts.sh)
 - `GAP` — (coverage) provider CI does not verify all its synced consumer pacts
   (`style=enum` with commented-out consumers, or `style=none` with no verify job)
 - `CLEAN` — no issues found

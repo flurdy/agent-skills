@@ -21,7 +21,6 @@ PROJECT_ROOT="$(find_project_root)"
 cd "$PROJECT_ROOT"
 
 MGIT="./scripts/mgit"
-SYNC_SCRIPT="./scripts/sync-pacts.sh"
 
 # Provider pact directories — two layouts coexist:
 #   Play services:    test/resources/pacts/
@@ -156,65 +155,41 @@ check_uncommitted() {
 
 # ─── SYNC COVERAGE ───────────────────────────────────────────────────────────
 
+# Intended consumer→provider edges (from consumer test files) as "consumer->provider".
+# Convention and filtering live in scripts/pact-pairs (the single source of truth).
+intended_edges() {
+    ./scripts/pact-pairs intended | awk -F'\t' '{print $1 "->" $2}'
+}
+
 check_sync_gaps() {
-    echo "## Sync Coverage (sync-pacts.sh)"
+    echo "## Sync Coverage (consumer test → built pact → provider)"
     echo ""
 
-    # Parse sync-pacts.sh for covered pairs
-    local -A covered_pairs
-    if [[ -f "$SYNC_SCRIPT" ]]; then
-        while IFS= read -r line; do
-            # Match: copy_pact "consumer" "provider"
-            if [[ "$line" =~ copy_pact[[:space:]]+\"([^\"]+)\"[[:space:]]+\"([^\"]+)\" ]]; then
-                local consumer="${BASH_REMATCH[1]}"
-                local provider="${BASH_REMATCH[2]}"
-                covered_pairs["$consumer->$provider"]=1
-            fi
-        done < "$SYNC_SCRIPT"
-    else
-        echo "WARNING  sync-pacts.sh not found at $SYNC_SCRIPT"
-    fi
+    # Three convention-derived sets (all from scripts/pact-pairs), no registry:
+    # each intended edge is traced through its lifecycle test → built → synced.
+    local -A built synced
+    local c p
+    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && built["$c->$p"]=1; done < <(./scripts/pact-pairs built)
+    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && synced["$c->$p"]=1; done < <(./scripts/pact-pairs synced)
 
-    local covered=0 not_synced=0 total=0
-
-    # Find all consumer-generated pact files and check sync coverage
-    for consumer_file in */target/pacts/*-consumer-*-provider.json; do
-        [[ -f "$consumer_file" ]] || continue
+    local ok=0 not_built=0 not_synced=0 total=0 key
+    while IFS= read -r key; do
+        [[ -n "$key" ]] || continue
         total=$((total + 1))
-
-        local filename
-        filename="$(basename "$consumer_file")"
-
-        local consumer provider
-        consumer="$(echo "$filename" | sed 's/-consumer-.*//')"
-        provider="$(echo "$filename" | sed 's/.*-consumer-//' | sed 's/-provider\.json//')"
-
-        local key="$consumer->$provider"
-
-        if [[ -n "${covered_pairs[$key]:-}" ]]; then
-            echo "COVERED     $consumer -> $provider"
-            covered=$((covered + 1))
-        else
-            echo "NOT_SYNCED  $consumer -> $provider  (has pact in target/ but not in sync-pacts.sh)"
+        if [[ -z "${built[$key]:-}" ]]; then
+            echo "NOT_BUILT   ${key/->/ -> }  (consumer test present but no pact in target/ — tests not run?)"
+            not_built=$((not_built + 1))
+        elif [[ -z "${synced[$key]:-}" ]]; then
+            echo "NOT_SYNCED  ${key/->/ -> }  (built but not copied to provider — run scripts/sync-pacts.sh)"
             not_synced=$((not_synced + 1))
+        else
+            echo "OK          ${key/->/ -> }"
+            ok=$((ok + 1))
         fi
-    done
-
-    # Also check: pairs in sync-pacts.sh that have no consumer pact file
-    for key in "${!covered_pairs[@]}"; do
-        local consumer="${key%%->*}"
-        local provider="${key##*->}"
-        local found=false
-        for f in "$consumer/target/pacts/"*"-consumer-$provider-provider.json"; do
-            [[ -f "$f" ]] && found=true && break
-        done
-        if ! $found; then
-            echo "STALE_SYNC  $consumer -> $provider  (in sync-pacts.sh but no consumer pact file — tests not run?)"
-        fi
-    done
+    done < <(intended_edges | sort -u)
 
     echo ""
-    echo "SUMMARY  covered=$covered not_synced=$not_synced total=$total"
+    echo "SUMMARY  ok=$ok not_built=$not_built not_synced=$not_synced total=$total"
 }
 
 # ─── RELATIONSHIP MATRIX ─────────────────────────────────────────────────────
@@ -266,7 +241,7 @@ check_matrix() {
 
 # ─── CI VERIFICATION COVERAGE ────────────────────────────────────────────────
 # Does each provider's CI actually VERIFY the consumer pacts synced into it?
-# This is distinct from sync-gaps (is the pact registered for sync?): a pact can
+# This is distinct from sync-gaps (is the pact built and synced?): a pact can
 # be synced into the provider yet never verified by the provider's CI.
 # Two CI styles in letterbox:
 #   tag  -> `sbt testOnly -- -n tags.ContractVerifyTest` auto-verifies EVERY
@@ -348,7 +323,7 @@ usage() {
     echo "  all          Run all mechanical checks"
     echo "  stale        Check for stale provider pact files"
     echo "  uncommitted  Check for uncommitted pact files"
-    echo "  sync-gaps    Check sync-pacts.sh coverage (is the pact registered for sync?)"
+    echo "  sync-gaps    Trace each intended edge: consumer test -> built pact -> synced to provider"
     echo "  coverage     Check CI verification coverage (does the provider verify each synced pact?)"
     echo "  matrix       Show full relationship matrix"
     echo ""
