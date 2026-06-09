@@ -638,6 +638,12 @@ CUR_RECENT_LIVE=0
 LATEST_SLUG=""
 LATEST_BRANCH=""
 LATEST_DATE=""
+# Per-handoff lines for the recent, non-superseded current-repo handoffs counted
+# by CUR_RECENT_LIVE (newest first, same records). Lets landscape enumerate the
+# few live threads inline instead of only naming the newest. Always emitted —
+# survives --summary-only, since it's the summary-mode caller (landscape) that
+# wants it.
+CUR_LIVE_LINES=()
 if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
@@ -650,6 +656,7 @@ if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
             if [ -z "${R_SUPBY[$i]}" ] \
                 && { [[ "${R_DATE[$i]}" > "$CUTOFF" ]] || [ "${R_DATE[$i]}" = "$CUTOFF" ]; }; then
                 CUR_RECENT_LIVE=$((CUR_RECENT_LIVE+1))
+                CUR_LIVE_LINES+=("${R_SLUG[$i]}|${R_BRANCH[$i]}|${R_DATE[$i]}|${R_TIME[$i]}")
             fi
         fi
         i=$((i+1))
@@ -670,6 +677,17 @@ fi
 echo "---CURRENT-REPO-LATEST---"
 if [ -n "$LATEST_DATE" ]; then
     echo "${LATEST_SLUG}|${LATEST_BRANCH}|${LATEST_DATE}"
+fi
+
+# Recent, non-superseded current-repo handoffs (newest first) — the live threads
+# behind the current_repo_recent_live count. One `{slug}|{branch}|{date}|{time}`
+# line each; first line is the same as ---CURRENT-REPO-LATEST--- when both exist.
+# Empty when there are none.
+echo "---CURRENT-REPO-LIVE---"
+if [ "${#CUR_LIVE_LINES[@]}" -gt 0 ]; then
+    for line in "${CUR_LIVE_LINES[@]}"; do
+        echo "$line"
+    done
 fi
 
 echo "---SUMMARY---"

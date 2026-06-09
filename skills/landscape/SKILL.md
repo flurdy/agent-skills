@@ -4,7 +4,7 @@ description: Morning catch-up view — assigned Jira tickets, open PRs, current 
 allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model: sonnet
 effort: medium
-version: "0.9.0"
+version: "0.10.0"
 author: "flurdy"
 ---
 
@@ -226,15 +226,35 @@ Notes:
   Parse from the output:
   - `---SUMMARY---` → `current_repo_recent_live` — recent handoffs for this repo that aren't superseded (uses the same Mon→3 / Tue→4 / else→3 weekend buffer as the closed-PR list). This is the live-thread count; re-wraps of the same branch collapse to one.
   - `---CURRENT-REPO-LATEST---` → a single `{slug}|{branch}|{date}` line for the newest current-repo handoff (the "last session"), or empty if none.
+  - `---CURRENT-REPO-LIVE---` → one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff, newest first (these are the threads behind the `current_repo_recent_live` count). The first line is the same handoff as `---CURRENT-REPO-LATEST---`.
 
-  If `current_repo_recent_live > 0`, add a footnote below the table:
+  If `current_repo_recent_live > 0`, add a footnote below the table. The header line always names the last session:
   ```
   📥 Last session: `{slug}` on `{branch}`
-     — {N} live handoff(s) (last {RECENT-WINDOW-DAYS}d). `/handoffs` to browse.
   ```
-  - `{slug}` / `{branch}` come from the `---CURRENT-REPO-LATEST---` line; `{N}` is `current_repo_recent_live`.
+  - `{slug}` / `{branch}` come from the `---CURRENT-REPO-LATEST---` line.
   - Omit the `` on `{branch}` `` clause when the branch is `?` or empty.
-  - Pluralise correctly: `1 live handoff` vs `{N} live handoffs`.
+
+  Then, depending on how many live threads there are (`N` = `current_repo_recent_live`):
+
+  - **`N == 1`** — the last session is the only live thread. One follow-on line:
+    ```
+       — 1 live handoff (last {RECENT-WINDOW-DAYS}d). `/handoffs` to browse.
+    ```
+  - **`2 ≤ N ≤ 4`** — enumerate the *other* live threads (every `---CURRENT-REPO-LIVE---` line except the first, which is the last session already named above):
+    ```
+       — {N} live handoffs (last {RECENT-WINDOW-DAYS}d), the other{s}:
+         • `{slug}` on `{branch}` ({age})
+         • `{slug}` on `{branch}` ({age})
+       `/handoffs` to browse.
+    ```
+    - `{age}` is the relative time since `{date}` (e.g. `2d`, `today`).
+    - Omit the `` on `{branch}` `` clause per bullet when that branch is `?` or empty.
+    - `the other:` when there is exactly one other (`N == 2`), `the others:` when more.
+  - **`N ≥ 5`** — too many to list; collapse to the count:
+    ```
+       — {N} live handoffs (last {RECENT-WINDOW-DAYS}d). `/handoffs` to browse.
+    ```
 
   Suppress the footnote entirely when `current_repo_recent_live == 0` — silence is shorter. Older or superseded handoffs are still browsable via `/handoffs`; the footnote is just a fresh-work hint, deliberately offline (no `--check-branches`, so no branch-staleness here). This call can run in parallel with `working-copy.sh`.
 

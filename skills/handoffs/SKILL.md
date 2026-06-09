@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.14.1"
+version: "0.14.2"
 author: "flurdy"
 ---
 
@@ -58,6 +58,7 @@ Parse the delimited output:
 - `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first: `{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}`. `{time}` is the `HH:MM` the handoff was written — read from the `# Resume:` header (wrap-up v0.8.0+), falling back to the file's mtime for older handoffs. `?` only when neither is available. It is the **last** field so older positional parsers (e.g. `/wrap-up`'s 9-field prefix) keep working.
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff (the "last session"), or empty. Consumed by `/landscape`'s footnote; this skill renders the full table instead and can ignore it.
+- `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff (newest first) — the threads behind `current_repo_recent_live`. The first line is the same handoff as `---CURRENT-REPO-LATEST---`. Always emitted (survives `--summary-only`); empty when there are none. Consumed by `/landscape` to enumerate the few live threads inline; this skill renders the full table instead and can ignore it.
 - `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N` (recent and not superseded), `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc.
 
