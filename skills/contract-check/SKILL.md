@@ -4,7 +4,7 @@ description: "Audit health of contract tests across services — staleness, sync
 allowed-tools: "Read,Grep,Glob,Bash(./scripts/contract-check:*),Bash(./scripts/mgit:*),Bash(ls:*),Bash(chmod:*),Skill,AskUserQuestion"
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
