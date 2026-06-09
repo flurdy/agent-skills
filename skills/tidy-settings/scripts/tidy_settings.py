@@ -8,6 +8,8 @@ to each file unless --no-backup is given).
 Auto-applied transforms (with --apply):
   - Sort allow/deny/ask arrays by tool-prefix group, then alphabetical.
   - Remove exact duplicate entries.
+  - Each written file is re-read and confirmed (applied.verified); write failures
+    through a `.claude` symlink or onto a mode-600 file surface as write_error.
 
 Report-only (the calling skill decides whether to remove):
   - subsumed_candidates: narrow entries covered by a broader `:*` entry.
@@ -15,6 +17,8 @@ Report-only (the calling skill decides whether to remove):
   - risk_flags: entries matching known-risky patterns.
   - syntax_errors: entries that don't parse as a known permission shape.
   - cross_file.duplicates: identical entries appearing across multiple files.
+  - worktree_promotions: entries in a --worktree file but missing from the
+    --canonical file of the same basename (lost when the worktree is pruned).
 """
 
 from __future__ import annotations
@@ -192,6 +196,11 @@ def process_file(path: str, apply: bool, make_backup: bool) -> dict:
     except json.JSONDecodeError as e:
         result["error"] = f"JSON parse error: {e}"
         return result
+    except OSError as e:
+        # Unreadable file (mode-600 the agent can't read, dangling symlink) —
+        # report it rather than crashing the whole run.
+        result["error"] = f"read error: {e}"
+        return result
 
     perms = data.get("permissions") or {}
     allow_in = list(perms.get("allow", []))
@@ -218,19 +227,49 @@ def process_file(path: str, apply: bool, make_backup: bool) -> dict:
     }
 
     if apply and changed:
-        if make_backup:
-            backup = file_path.with_suffix(file_path.suffix + ".bak")
-            shutil.copy2(file_path, backup)
-            result["applied"]["backup"] = str(backup)
         data.setdefault("permissions", {})
         data["permissions"]["allow"] = allow
         data["permissions"]["deny"] = deny
         data["permissions"]["ask"] = ask
-        with open(file_path, "w") as f:
-            json.dump(data, f, indent=2)
-            f.write("\n")
+        # Resolve through any `.claude` symlink and record where the bytes
+        # actually go — this is the path that a write/read must agree on.
+        result["applied"]["realpath"] = os.path.realpath(file_path)
+        try:
+            if make_backup:
+                backup = file_path.with_suffix(file_path.suffix + ".bak")
+                shutil.copy2(file_path, backup)
+                result["applied"]["backup"] = str(backup)
+            with open(file_path, "w") as f:
+                json.dump(data, f, indent=2)
+                f.write("\n")
+        except OSError as e:
+            # Dangling symlink, mode-600 file the agent can't write, read-only
+            # mount, etc. Surface it loudly instead of pretending the write took.
+            result["applied"]["write_error"] = str(e)
+            result["applied"]["verified"] = False
+            return result
+        # Re-read from disk and confirm the permission arrays round-tripped.
+        # Catches partial writes and writes that silently landed elsewhere.
+        result["applied"]["verified"] = verify_persisted(file_path, allow, deny, ask)
 
     return result
+
+
+def verify_persisted(
+    file_path: Path, allow: list[str], deny: list[str], ask: list[str]
+) -> bool:
+    """Re-read file_path and confirm its permission arrays match what we wrote."""
+    try:
+        with open(file_path) as f:
+            on_disk = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return False
+    perms = on_disk.get("permissions") or {}
+    return (
+        perms.get("allow", []) == allow
+        and perms.get("deny", []) == deny
+        and perms.get("ask", []) == ask
+    )
 
 
 def cross_section_conflicts(allow: list[str], deny: list[str]) -> list[dict]:
@@ -268,6 +307,47 @@ def cross_file_duplicates(file_results: list[dict]) -> list[dict]:
     ]
 
 
+def compute_promotions(
+    file_results: list[dict], canonical: list[str], worktree: list[str]
+) -> list[dict]:
+    """Entries present in a worktree settings file but absent from the canonical
+    file of the same basename — these are lost when the worktree is pruned.
+
+    Matched by basename so `settings.local.json` pairs with `settings.local.json`
+    and `settings.json` with `settings.json`.
+    """
+    by_path = {fr["path"]: fr for fr in file_results}
+    canon_by_base: dict[str, dict] = {}
+    for path in canonical:
+        fr = by_path.get(path)
+        if fr and fr.get("exists") and "report" in fr:
+            canon_by_base[os.path.basename(path)] = fr
+
+    out: list[dict] = []
+    for wt_path in worktree:
+        wt_fr = by_path.get(wt_path)
+        if not wt_fr or not wt_fr.get("exists") or "report" not in wt_fr:
+            continue
+        canon_fr = canon_by_base.get(os.path.basename(wt_path))
+        if not canon_fr:
+            continue
+        wt_cur = wt_fr["report"]["current"]
+        canon_cur = canon_fr["report"]["current"]
+        for section in ("allow", "deny", "ask"):
+            canon_set = set(canon_cur.get(section, []))
+            only = [e for e in wt_cur.get(section, []) if e not in canon_set]
+            if only:
+                out.append(
+                    {
+                        "from": wt_path,
+                        "into": canon_fr["path"],
+                        "section": section,
+                        "entries": only,
+                    }
+                )
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -280,6 +360,22 @@ def main() -> int:
         action="store_true",
         help="Skip creating .bak files when applying.",
     )
+    ap.add_argument(
+        "--canonical",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Tag a (positional) path as a canonical main-worktree settings file "
+        "— the promotion target. Repeatable.",
+    )
+    ap.add_argument(
+        "--worktree",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Tag a (positional) path as a per-worktree settings file whose "
+        "extra entries are promotion candidates. Repeatable.",
+    )
     ap.add_argument("files", nargs="+", help="Paths to settings JSON files.")
     args = ap.parse_args()
 
@@ -291,6 +387,9 @@ def main() -> int:
     output = {
         "files": results,
         "cross_file": {"duplicates": cross_file_duplicates(results)},
+        "worktree_promotions": compute_promotions(
+            results, args.canonical, args.worktree
+        ),
     }
     json.dump(output, sys.stdout, indent=2)
     sys.stdout.write("\n")

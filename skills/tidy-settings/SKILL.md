@@ -1,10 +1,10 @@
 ---
 name: tidy-settings
 description: Sort, dedupe, and audit Claude settings.json / settings.local.json files at user and project level. Flags risky permissions, broken references, glob-subsumed entries, syntax errors, and cross-file duplicates that could be promoted up the hierarchy. Mechanical fixes auto-apply, judgment calls are presented as a triage list.
-allowed-tools: "Read, Edit, Write, Bash(python3:*), Bash(test:*), Bash(ls:*), AskUserQuestion"
+allowed-tools: "Read, Edit, Write, Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -76,29 +76,66 @@ When presenting subsumption findings, name the section, name the trade-off, and 
 
 ### 1. Resolve which files to operate on
 
-Build the file list:
+Settings come in three roles. Resolve all of them — the worktree role is what's new.
+
+**User-level** (always):
 
 ```bash
 test -e ~/.claude/settings.json && echo ~/.claude/settings.json
 test -e ~/.claude/settings.local.json && echo ~/.claude/settings.local.json
 ```
 
-If currently inside a git repo (use `git rev-parse --show-toplevel` resolved via the shared symlink if `.claude` is one), also include:
+**Canonical project-level** — the settings the main worktree uses. Do *not* use
+`git rev-parse --show-toplevel`: inside a worktree it points at the worktree's own checkout, not
+the main one. Instead take the **first** worktree from `git worktree list` (always the main
+worktree) and resolve its `.claude` through any symlink:
 
 ```bash
-test -e <repo>/.claude/settings.json && echo <repo>/.claude/settings.json
-test -e <repo>/.claude/settings.local.json && echo <repo>/.claude/settings.local.json
+main_wt=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')
+canon=$(realpath "$main_wt/.claude" 2>/dev/null)   # follows the .claude symlink, if any
+test -e "$canon/settings.json"       && echo "$canon/settings.json"
+test -e "$canon/settings.local.json" && echo "$canon/settings.local.json"
 ```
 
-If `.claude` is a symlink, resolve through it — the underlying file is what matters.
+**Per-worktree** — every *other* worktree has its own real `.claude/settings.local.json` (and a
+tracked `settings.json`). These accumulate permissions that are **lost when the worktree is pruned**:
+
+```bash
+git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}' | tail -n +2 \
+  | while IFS= read -r wt; do
+      test -e "$wt/.claude/settings.json"       && echo "$wt/.claude/settings.json"
+      test -e "$wt/.claude/settings.local.json" && echo "$wt/.claude/settings.local.json"
+    done
+```
+
+#### Worktree topology (why canonical ≠ pwd)
+
+In the multi-repo setup, the main worktree's `.claude` is a **symlink** to a sibling state dir
+(e.g. `blc-2/.claude` → `claude-blc-2/`), and worktrees live *inside* that state dir at
+`claude-blc-2/worktrees/<name>/` — each a real checkout with its **own real** `.claude/`. So:
+
+- The canonical `settings.local.json` (the one that survives) is reached through the **main
+  worktree's** symlinked `.claude`, found via the first `git worktree list` entry above.
+- A worktree's `settings.local.json` is a *separate, gitignored* file that vanishes on prune.
+  Permissions you accepted while working there are promotion candidates (step 4).
+- `settings.json` is git-tracked, so worktree copies converge on commit — drift there is reported
+  but lower-stakes than the local file.
+
+If there are no sibling worktrees, this degrades to exactly the old user + project behavior.
 
 ### 2. Run the script
 
 ```bash
-python3 ~/.claude/skills/tidy-settings/scripts/tidy_settings.py --apply <files...>
+python3 ~/.claude/skills/tidy-settings/scripts/tidy_settings.py --apply \
+  --canonical "$canon/settings.json" --canonical "$canon/settings.local.json" \
+  --worktree  "<wt>/.claude/settings.local.json" --worktree "<wt>/.claude/settings.json" \
+  <all files including the canonical and worktree ones...>
 ```
 
-(Omit `--apply` for `--report` mode.)
+Every path is still passed positionally (so it's sorted/deduped/audited once); `--canonical` and
+`--worktree` just *tag* which positional paths participate in the promotion diff. Pass the canonical
+files under `--canonical` and each worktree file under `--worktree`. Omit both flags (and `--apply`)
+for plain `--report` mode; with no sibling worktrees, omit them entirely.
 
 Parse the JSON output. The shape is:
 
@@ -108,7 +145,13 @@ Parse the JSON output. The shape is:
     {
       "path": "...",
       "exists": true,
-      "applied": {"changed": bool, "deduped": {...}, "backup": "..." | null},
+      "error": "read error: ... | JSON parse error: ...",   // present only on failure
+      "applied": {
+        "changed": bool, "deduped": {...}, "backup": "..." | null,
+        "realpath": "...",        // where the bytes actually went (symlink resolved)
+        "verified": bool,         // re-read confirmed the write landed
+        "write_error": "..."      // present only if the write itself failed
+      },
       "report": {
         "current": {"allow": [...], "deny": [...], "ask": [...]},
         "allow_audit": {
@@ -122,9 +165,16 @@ Parse the JSON output. The shape is:
       }
     }
   ],
-  "cross_file": {"duplicates": [{"entry": "...", "in": ["...", "..."]}]}
+  "cross_file": {"duplicates": [{"entry": "...", "in": ["...", "..."]}]},
+  "worktree_promotions": [
+    {"from": "<wt>/.claude/settings.local.json", "into": "<canon>/settings.local.json",
+     "section": "allow", "entries": ["Bash(gh run watch *)"]}
+  ]
 }
 ```
+
+`worktree_promotions` lists entries present in a worktree file but absent from the canonical file of
+the same basename — these are exactly the permissions that disappear when the worktree is pruned.
 
 ### 3. Summarize the mechanical pass
 
@@ -132,9 +182,13 @@ Print a single short block per modified file, e.g.:
 
 ```
 ✓ ~/.claude/settings.json — sorted, dedupe removed 0, backup at settings.json.bak
-✓ <project>/.claude/settings.local.json — sorted, dedupe removed 2, backup at settings.local.json.bak
+✓ <canon>/settings.local.json — sorted, dedupe removed 2, verified, backup at settings.local.json.bak
+✗ <canon>/settings.json — write FAILED (permission denied) — see remediation in step 5
 - ~/.claude/settings.local.json — absent, skipped
 ```
+
+When `applied.changed` is true, append `verified` (or a `write FAILED` callout) from
+`applied.verified` / `applied.write_error` — never report a write as done without it.
 
 ### 4. Triage the findings
 
@@ -150,7 +204,15 @@ Order findings by severity:
    - Entry references a path inside the current repo → suggest keeping at project level only.
    - Entry already exists at user level AND project level → suggest removing from project (redundant).
    - Entry has no path scope (e.g. `Skill(landscape)`, `mcp__playwright__*`) → suggest user level.
-7. **Medium-severity risk_flags** last — most are intentional (`Bash(curl:*)` if you do a lot of web work).
+7. **Worktree-only entries (promotion candidates)** — each `worktree_promotions` entry is a
+   permission living *only* in a worktree's settings; it's lost when that worktree is pruned. Default
+   recommendation: **promote into the canonical `into` file** so it survives. Apply judgment though —
+   a one-off `Bash(...)` you accepted for a throwaway experiment may be better left to die with the
+   worktree. Batch with `AskUserQuestion` when several share an obvious intent (e.g. "Promote these 3
+   `gh`-related permissions from worktree `zazzy` into canonical settings?"). For tracked
+   `settings.json` drift, note that committing the worktree's change is usually the cleaner fix than
+   promoting — call it out rather than copying bytes.
+8. **Medium-severity risk_flags** last — most are intentional (`Bash(curl:*)` if you do a lot of web work).
 
 For each finding, present:
 
@@ -164,13 +226,35 @@ Group similar findings and use `AskUserQuestion` to batch decisions where it hel
 
 For removals: use `Edit` on the target JSON file to delete the line, including the trailing comma when not last, or the preceding comma when last in the array.
 
-For promotion (move entry from file A to file B):
+For cross-file promotion (move entry from file A to file B):
 
 1. Remove from file A using `Edit`.
 2. Append to file B's `allow` array (insert before the closing `]`).
 3. Re-run the script with `--apply --no-backup` on file B to re-sort.
 
-After all chosen mutations, run the script once more with `--report` on all files to verify nothing went wrong (no new syntax errors, file still valid JSON).
+For **worktree → canonical promotion** (a `worktree_promotions` entry the user approved): the entry
+stays in the worktree (it may still be in use there) and is *added* to the canonical file. Append it
+to the canonical file's matching section array, then re-run the script with `--apply --no-backup` on
+the canonical file to re-sort.
+
+#### Verify persistence (required when any canonical/worktree file was written)
+
+The canonical file is reached through a `.claude` symlink and is often mode `600`, so a write can
+silently fail or land on the wrong inode. After all mutations, **re-run the script with `--report`
+on every file you touched** and confirm:
+
+- No file grew an `error` (read error / JSON parse error).
+- For each written file, `applied.write_error` is absent and `applied.verified` is `true`. Use
+  `applied.realpath` to confirm the bytes went where you intended (through the symlink, not beside it).
+- Every promoted entry now appears in the canonical file's `report.current.<section>`.
+
+If a write **failed** (`write_error` set or `verified` false), emit a loud `✗ FAILED` line and do
+**not** claim success. Remediate:
+
+- `readlink -f <main_wt>/.claude` — confirm the symlink resolves to a real directory.
+- `ls -l <realpath>` — check the file mode; a `600` file the agent can't write is the usual cause.
+- Fallback: write directly to the resolved `applied.realpath` rather than the symlinked path, then
+  re-verify.
 
 ### 6. Final summary
 
@@ -182,6 +266,7 @@ Applied:
   - removed 6 subsumed Skill(<name>) entries from ~/.claude/settings.json
   - removed Bash(~/.claude/skills/landscape/scripts/pr-status.sh) (missing file)
   - promoted Skill(landscape) and Skill(next) to user level
+  - promoted Bash(gh run watch *) from worktree zazzy → canonical (verified persisted)
 
 Still on your radar:
   - Bash(curl:*) in <project> — flagged medium-risk, you said keep
@@ -196,3 +281,6 @@ Backups: 2 .bak files written; delete when you've verified.
 - `mcp__server__tool` entries can't be verified for existence without a live MCP probe — leave them alone unless the user flags one.
 - `WebSearch` and other bare tool names (no parens) are valid permissions — they sort with their tool prefix.
 - If a project's `.claude/` is a symlink to another git repo (e.g. `claude-myrepo/`), the underlying real path is what gets edited.
+- Worktree promotion always targets the **canonical** main-worktree file (the `into` path), never the reverse — the worktree copy is the ephemeral one. Promoting *adds* to canonical and leaves the worktree entry in place (it may still be in active use).
+- Only `settings.local.json` drift is high-stakes: it's gitignored and per-worktree, so it's gone on prune. `settings.json` is git-tracked — worktree drift there is reported, but committing the worktree's change is usually the right fix, not byte-copying it into canonical.
+- Never report a canonical write as done on the strength of having *issued* the write. The symlink hop and `600` mode mean writes can silently fail; only `applied.verified == true` (a successful re-read) counts as persisted.
