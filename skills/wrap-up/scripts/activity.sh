@@ -7,6 +7,16 @@ set -uo pipefail
 TODAY=$(date -I)
 SINCE="${TODAY}T00:00:00"
 
+# Grace period (days) before an in-progress bead counts as "stale". A bead
+# touched within this window is still considered live WIP, so running wrap-up
+# many times a day — or working a bead over several days without committing —
+# no longer flags it. Override with WRAP_UP_STALE_DAYS; default 7.
+STALE_DAYS="${WRAP_UP_STALE_DAYS:-7}"
+case "$STALE_DAYS" in
+    ''|*[!0-9]*) STALE_DAYS=7 ;;  # non-numeric override → fall back to default
+esac
+STALE_BEFORE=$(date -I -d "${TODAY} -${STALE_DAYS} days" 2>/dev/null || echo "$TODAY")
+
 echo "---STATUS---"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     echo "OK"
@@ -82,14 +92,19 @@ if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
     bd list --status=in_progress --limit=50 --no-pager 2>/dev/null
 fi
 
-# In-progress beads NOT touched today — the candidate set for §3a's stale check.
-# A bead a parallel session is actively working got set in_progress today
-# (updated_at = today) and so is excluded here, which kills the false positives
-# where cross-session WIP read as "stale" just because *this* session left no
-# commit/branch trace for it.
+# Window the §3a stale check exposes, so the prose can name it ("idle 7+ days").
+echo "---BEADS-STALE-DAYS---"
+echo "$STALE_DAYS"
+
+# In-progress beads idle for the whole grace period — the candidate set for
+# §3a's stale check. Anything updated within STALE_DAYS (a bead a parallel
+# session is actively working, or one you've been at over several days, or one
+# you touched earlier in a day full of repeated wrap-ups) is still live WIP and
+# excluded here. This kills the false positives where a bead read as "stale"
+# the moment the clock rolled past midnight without a commit/branch trace.
 echo "---BEADS-STALE-CANDIDATES---"
 if command -v bd >/dev/null 2>&1 && [ -d .beads ]; then
-    bd list --status=in_progress --updated-before="$TODAY" --limit=50 --no-pager 2>/dev/null
+    bd list --status=in_progress --updated-before="$STALE_BEFORE" --limit=50 --no-pager 2>/dev/null
 fi
 
 echo "---BEADS-CREATED-TODAY---"

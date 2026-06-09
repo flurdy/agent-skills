@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.8.2"
+version: "0.9.0"
 author: "flurdy"
 ---
 
@@ -90,7 +90,8 @@ It emits delimited sections:
 - `---PRS-CREATED---` / `---PRS-MERGED---` / `---PRS-CLOSED-UNMERGED---` — JSON arrays (always `[]` when empty) from `gh search prs --author=@me`.
 - `---BEADS-STATUS---` — `OK` / `NO_BD` / `NO_BEADS_IN_REPO`.
 - `---BEADS-IN-PROGRESS---` — output of `bd list --status=in_progress` (state being left for tomorrow).
-- `---BEADS-STALE-CANDIDATES---` — `bd list --status=in_progress --updated-before=TODAY`: the subset of in-progress beads not touched today. This is §3a's candidate set — pre-filtering on `updated_before` drops beads a parallel session set `in_progress` today, so cross-session WIP no longer reads as stale.
+- `---BEADS-STALE-DAYS---` — the idle grace period in days (`WRAP_UP_STALE_DAYS`, default 7). §3a names it in the prompt.
+- `---BEADS-STALE-CANDIDATES---` — `bd list --status=in_progress --updated-before={today − STALE_DAYS}`: in-progress beads idle for the **whole grace period**, not merely "not touched today". This is §3a's candidate set. Windowing on a multi-day cutoff (rather than midnight) means a bead a parallel session set `in_progress` today, a bead you've worked over several days without committing, and a bead you touched earlier on a day of repeated wrap-ups all stay out of the candidate set — only genuinely-idle WIP surfaces.
 - `---BEADS-CREATED-TODAY---` — output of `bd list --created-after=TODAY` (open beads created today; closed-same-day beads appear in `BEADS-CLOSED` instead, no double-counting).
 - `---BEADS-CLOSED---` — output of `bd list --status=closed --closed-after=TODAY`.
 
@@ -259,21 +260,21 @@ Load-bearing for resume: a service repo left ahead-but-unpushed, or a deploy/con
 
 Skip this whole section if `---BEADS-STATUS---` was `NO_BD`/`NO_BEADS_IN_REPO` or if `---BEADS-STALE-CANDIDATES---` was empty.
 
-Work from `---BEADS-STALE-CANDIDATES---`, **not** the full `---BEADS-IN-PROGRESS---` list — it's already pre-filtered to beads not updated today, so a bead a parallel session is actively working (set `in_progress` today) won't appear. For each candidate bead, check whether its ID (e.g. `bd-123`) appears in any of today's signals:
+Work from `---BEADS-STALE-CANDIDATES---`, **not** the full `---BEADS-IN-PROGRESS---` list — it's already pre-filtered to beads idle for the whole grace period (`---BEADS-STALE-DAYS---`, default 7 days), so a bead updated within that window — actively worked by a parallel session, carried over several days, or touched earlier on a day of repeated wrap-ups — won't appear. For each candidate bead, check whether its ID (e.g. `bd-123`) appears in any of today's signals:
 
 - Commit subjects (§1 Commits)
 - Branch names from the worktree list (§1 Commits, second column)
 - PR titles (§1 PRs today)
 - The current branch (§0)
 
-A bead with **no match in any of those** is "stale in_progress" — moved to `in_progress` days ago but idle since, with no commit/branch/PR trace today. Tomorrow's `/landscape` will misreport it as live WIP. Bead hygiene matters: always flag these — don't quietly skip the section.
+A bead with **no match in any of those** is "stale in_progress" — moved to `in_progress` and idle for `---BEADS-STALE-DAYS---`+ days since, with no commit/branch/PR trace today. Tomorrow's `/landscape` will misreport it as live WIP. Bead hygiene matters: always flag these — don't quietly skip the section.
 
-If any stale beads exist, render:
+If any stale beads exist, render (substitute the actual `{stale-days}` from `---BEADS-STALE-DAYS---`):
 
 ```markdown
 ### 🧹 Stale in-progress
 
-These beads are in_progress but were last touched before today, with no commits, PRs, or branch references today:
+These beads are in_progress but have been idle for {stale-days}+ days, with no commits, PRs, or branch references today:
 
 | ID | Type | Pri | Title |
 |----|------|-----|-------|
@@ -440,4 +441,5 @@ Each section is independent — fail soft, don't block the rest.
 ## Notes
 
 - This skill is intentionally *generative* in §2 and §4 — the model writes the threads and resume block from the current conversation history. The Bash fetches in §1 and §3 are mechanical guardrails so the qualitative parts are anchored in real activity rather than vibes.
+- **Stale-bead grace period.** §3a only flags in-progress beads idle for `WRAP_UP_STALE_DAYS` days (default 7), not merely "untouched today". This is what stops repeated same-day wrap-ups — and multi-day work-in-chat — from nagging you to demote beads that are still live. Tighten it (`export WRAP_UP_STALE_DAYS=3`) if you want drift caught sooner, or loosen it further if even weekly prompts are too eager. A non-numeric value falls back to 7.
 - Don't suggest `git stash` as a way to "preserve" work for tomorrow without committing — stashes evaporate from memory faster than commits, and worktree pruning takes them with it. Prefer a WIP commit on a throwaway branch if there's something to save.
