@@ -224,9 +224,9 @@ Notes:
   ~/.claude/skills/handoffs/scripts/list.sh --summary-only
   ```
   Parse from the output:
-  - `---SUMMARY---` → `current_repo_recent_live` — recent handoffs for this repo that aren't superseded (uses the same Mon→3 / Tue→4 / else→3 weekend buffer as the closed-PR list). This is the live-thread count; re-wraps of the same branch collapse to one.
+  - `---SUMMARY---` → `current_repo_recent_live` — recent handoffs for this repo that are still live work: not superseded **and not finished** (uses the same Mon→3 / Tue→4 / else→3 weekend buffer as the closed-PR list). "Finished" here means all referenced beads are closed — a local `bd` check that runs even on this offline (`--summary-only`, no `--check-branches`) call, so a handoff whose task shipped no longer counts as a live thread to resume. Re-wraps of the same branch still collapse to one. (Merged-PR / Jira-Done detection needs the network and only applies under `/handoffs`'s `--check-branches`; landscape's offline count catches the bead-closed case.)
   - `---CURRENT-REPO-LATEST---` → a single `{slug}|{branch}|{date}` line for the newest current-repo handoff (the "last session"), or empty if none.
-  - `---CURRENT-REPO-LIVE---` → one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff, newest first (these are the threads behind the `current_repo_recent_live` count). The first line is the same handoff as `---CURRENT-REPO-LATEST---`.
+  - `---CURRENT-REPO-LIVE---` → one `{slug}|{branch}|{date}|{time}` line per recent live (non-superseded, non-finished) current-repo handoff, newest first (these are the threads behind the `current_repo_recent_live` count). The first line is the same handoff as `---CURRENT-REPO-LATEST---`.
 
   If `current_repo_recent_live > 0`, add a footnote below the table. The header line always names the last session:
   ```

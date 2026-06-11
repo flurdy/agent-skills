@@ -268,18 +268,33 @@ if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ] \
     fi
 fi
 
-# Look up the PR state for a branch from the cached `gh` listing. Echoes
-# `{state}|{number}|{url}` where state ∈ merged|open|closed (a real PR exists),
-# `none||` when gh ran but found no PR for the branch, or `unknown||` when gh
-# wasn't consulted (no --check-branches, no gh, offline, or branch `?`).
-# Precedence when a branch has several PRs: merged > open > closed.
+# Look up the PR state for a handoff from the cached `gh` listing. A PR matches
+# either by branch (headRefName) OR by a number recorded in the handoff's
+# `**PRs:**` field ($2) — the latter is what catches the trunk-parking case,
+# where wrap-up recorded `main` as the branch (the feature branch was already
+# gone) but stored the real PR number in the body. Without the number fallback
+# such handoffs look up `main`, match nothing, and wrongly render 🟢 live.
+# Echoes `{state}|{number}|{url}` where state ∈ merged|open|closed (a real PR
+# exists), `none||` when gh ran but found no PR, or `unknown||` when gh wasn't
+# consulted (no --check-branches, no gh, offline). Precedence across all
+# matching PRs (branch- or number-matched): merged > open > closed.
 pr_state() {
-    local b="$1"
-    { [ "$PR_OK" -eq 1 ] && [ "$b" != "?" ]; } || { echo "unknown||"; return; }
+    local b="$1" prfield="${2:-}"
+    [ "$PR_OK" -eq 1 ] || { echo "unknown||"; return; }
+    local nums n
+    nums=$(printf '%s' "$prfield" | grep -oE '#[0-9]+' | tr -d '#')
+    # Nothing to match on at all (branch `?` and no recorded numbers) → unknown.
+    { [ "$b" != "?" ] || [ -n "$nums" ]; } || { echo "unknown||"; return; }
     local best_rank=0 best="none||"
-    local hb st num url rank
+    local hb st num url rank match
     while IFS=$'\t' read -r hb st num url; do
-        [ "$hb" = "$b" ] || continue
+        [ -n "$hb" ] || continue
+        match=0
+        [ "$b" != "?" ] && [ "$hb" = "$b" ] && match=1
+        if [ "$match" -eq 0 ] && [ -n "$nums" ]; then
+            for n in $nums; do [ "$n" = "$num" ] && { match=1; break; }; done
+        fi
+        [ "$match" -eq 1 ] || continue
         case "$st" in
             merged) rank=3 ;;
             open)   rank=2 ;;
@@ -292,6 +307,47 @@ pr_state() {
         fi
     done <<< "$PR_LINES"
     echo "$best"
+}
+
+# --- Bead-closure setup (local; no network, no --check-branches needed) -------
+# A finished task often leaves no live branch/PR — on a trunk-based repo there's
+# no PR at all, and even on a PR repo the handoff may have recorded `main`. The
+# bead it referenced is the ground-truth "done" signal in those cases. This is a
+# local `bd` query, so it runs whenever beads exist (independent of the network
+# --check-branches gate) — that lets landscape's offline call also stop counting
+# bead-closed handoffs as live threads.
+BEADS_AVAILABLE=""
+BEADS_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if command -v bd >/dev/null 2>&1 && [ -n "$BEADS_ROOT" ] && [ -d "$BEADS_ROOT/.beads" ]; then
+    BEADS_AVAILABLE=1
+fi
+
+# True when handoff Beads-field $1 names at least one bead and every referenced
+# bead still present in the db is closed. Conservative: a field truncated with
+# "(+N more)" can't be fully verified, so returns false. Tokens are the
+# backtick/comma-flattened field filtered to `{prefix}-{suffix}` shapes
+# (bd-123, ge-1505, letterbox-lf9d). One batched `bd list --id` per row.
+beads_all_closed() {
+    local field="$1"
+    [ -n "$BEADS_AVAILABLE" ] || return 1
+    [ -n "$field" ] || return 1
+    case "$field" in *"more)"*) return 1 ;; esac   # truncated list — can't verify all
+    local ids="" tok
+    for tok in $(printf '%s' "$field" | tr '`,' '  '); do
+        case "$tok" in
+            [A-Za-z]*-[A-Za-z0-9]*) ids="${ids:+$ids,}$tok" ;;
+        esac
+    done
+    [ -n "$ids" ] || return 1
+    local json total closed
+    json=$(bd list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || return 1
+    [ -n "$json" ] || return 1
+    # Count occurrences (grep -o → one match per line → wc -l) rather than
+    # matching lines, so a future compact-JSON `bd` doesn't collapse to 1.
+    total=$(printf '%s' "$json" | grep -oE '"status":[[:space:]]*"[a-z_]+"' | wc -l | tr -d ' ')
+    [ "$total" -gt 0 ] || return 1
+    closed=$(printf '%s' "$json" | grep -oE '"status":[[:space:]]*"closed"' | wc -l | tr -d ' ')
+    [ "$total" -eq "$closed" ]
 }
 
 # Classify one branch as live / merged / gone / unknown. `unknown` means we
@@ -375,8 +431,9 @@ R_CWD=()
 R_BRANCH=()
 R_REPO=()
 R_EXISTS=()
-R_BEADS=()      # raw `**Beads:**` field content (only parsed under --bead/--ticket)
-R_JIRA=()       # raw `**Jira:**` field content (only parsed under --bead/--ticket)
+R_BEADS=()      # raw `**Beads:**` field content (parsed under --bead/--ticket or when beads exist)
+R_JIRA=()       # raw `**Jira:**` field content (parsed under --bead/--ticket or --check-branches)
+R_PRS=()        # raw `**PRs:**` field content (parsed under --check-branches; PR-number fallback)
 
 bump_other() {
     local key="$1" display="$2"
@@ -434,13 +491,23 @@ if [ -d "$HANDOFFS_DIR" ]; then
         # handoffs that don't have the field.
         REPO_ROOT=$(grep -m1 '^\*\*Repo root:\*\*' "$F" 2>/dev/null | sed -n 's/.*\*\*Repo root:\*\* `\([^`]*\)`.*/\1/p' || true)
 
-        # Beads/Jira header fields — only needed (and only parsed) when a
-        # --bead/--ticket filter is active, so the hot path (wrap-up/landscape)
-        # pays nothing. Strip the `**Field:**` label; keep the raw token list.
-        BEADS_FIELD=""; JIRA_FIELD=""
-        if [ -n "$MATCH_FILTER" ]; then
+        # Beads/Jira/PRs header fields. Parsed conditionally so the hot path
+        # (wrap-up's no-flag call) pays only for what it uses:
+        #   - Beads: when a --bead/--ticket filter is active, OR beads exist
+        #     locally (the bead-closure "done" check needs it).
+        #   - Jira: when filtering, OR under --check-branches (the skill resolves
+        #     Jira-Done for live rows from this field).
+        #   - PRs: under --check-branches only (PR-number fallback for pr_state).
+        # Strip the `**Field:**` label; keep the raw token list.
+        BEADS_FIELD=""; JIRA_FIELD=""; PRS_FIELD=""
+        if [ -n "$MATCH_FILTER" ] || [ -n "$BEADS_AVAILABLE" ]; then
             BEADS_FIELD=$(grep -m1 '^\*\*Beads:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Beads:\*\*[[:space:]]*//' || true)
+        fi
+        if [ -n "$MATCH_FILTER" ] || [ "$CHECK_BRANCHES" -eq 1 ]; then
             JIRA_FIELD=$(grep -m1 '^\*\*Jira:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Jira:\*\*[[:space:]]*//' || true)
+        fi
+        if [ "$CHECK_BRANCHES" -eq 1 ]; then
+            PRS_FIELD=$(grep -m1 '^\*\*PRs:\*\*' "$F" 2>/dev/null | sed 's/^\*\*PRs:\*\*[[:space:]]*//' || true)
         fi
 
         if [ -n "$CWD" ] && [ -d "$CWD" ]; then
@@ -492,6 +559,7 @@ if [ -d "$HANDOFFS_DIR" ]; then
         R_EXISTS+=("$EXISTS")
         R_BEADS+=("$BEADS_FIELD")
         R_JIRA+=("$JIRA_FIELD")
+        R_PRS+=("$PRS_FIELD")
 
         [ "$EXISTS" = "N" ] && PRUNED_TOTAL=$((PRUNED_TOTAL+1))
         [ "$REPO_KEY" = "UNRESOLVED" ] && UNRESOLVED_COUNT=$((UNRESOLVED_COUNT+1))
@@ -575,9 +643,15 @@ done
 #   keep — PR closed unmerged, or branch gone with no merged evidence. Higher
 #          regret; may be the only record of an abandoned thread.
 #   ""   — live work (incl. an OPEN PR — never a candidate) or unknown.
-# Precedence: supersede > open PR > merged PR > closed PR > local merged > gone.
-# A merged PR is ground truth that beats local ancestry — the fix for
-# squash-merges, where the branch is never an ancestor of the default tip.
+# Precedence: supersede > open PR > merged PR > beads-closed > closed PR >
+# local merged > gone. A merged PR is ground truth that beats local ancestry —
+# the fix for squash-merges, where the branch is never an ancestor of the
+# default tip. Beads-closed ("done") is the fix for the trunk case, where there
+# is no feature branch/PR to read — it ranks just under a merged PR but above a
+# closed-unmerged PR (the work shipped some other way) and an open PR still wins
+# (active review beats a sub-bead closing). R_BEADSDONE records the bead signal
+# so the skill renders "✅ done (beads closed)". Jira-Done is resolved by the
+# skill from the emitted Jira field (bash can't call the Jira MCP).
 # CUR_STALE counts the §3b "stale" group: archivable for a NON-supersede reason
 # (superseded rows are counted by CUR_SUPERSEDED and grouped separately).
 R_STATE=()
@@ -585,12 +659,14 @@ R_PRSTATE=()
 R_PRNUM=()
 R_PRURL=()
 R_ARCHCLASS=()
+R_BEADSDONE=()
 CUR_STALE=0
 i=0
 while [ "$i" -lt "$N" ]; do
     state="unknown"
     ps="unknown"; pnum=""; purl=""
     archclass=""
+    beadsdone=""
     is_current=0
     if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
         is_current=1
@@ -598,7 +674,14 @@ while [ "$i" -lt "$N" ]; do
 
     if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$is_current" -eq 1 ]; then
         state=$(branch_state "${R_BRANCH[$i]}")
-        IFS='|' read -r ps pnum purl <<< "$(pr_state "${R_BRANCH[$i]}")"
+        IFS='|' read -r ps pnum purl <<< "$(pr_state "${R_BRANCH[$i]}" "${R_PRS[$i]}")"
+    fi
+
+    # Bead-closure is local — computed for current rows whenever beads exist,
+    # even without --check-branches, so landscape's offline call benefits too.
+    if [ "$is_current" -eq 1 ] && [ -n "$BEADS_AVAILABLE" ] \
+        && beads_all_closed "${R_BEADS[$i]}"; then
+        beadsdone="Y"
     fi
 
     if [ "$is_current" -eq 1 ]; then
@@ -607,6 +690,8 @@ while [ "$i" -lt "$N" ]; do
         elif [ "$ps" = "open" ]; then
             archclass=""
         elif [ "$ps" = "merged" ]; then
+            archclass="safe"
+        elif [ -n "$beadsdone" ]; then
             archclass="safe"
         elif [ "$ps" = "closed" ]; then
             archclass="keep"
@@ -626,14 +711,17 @@ while [ "$i" -lt "$N" ]; do
     R_PRNUM+=("$pnum")
     R_PRURL+=("$purl")
     R_ARCHCLASS+=("$archclass")
+    R_BEADSDONE+=("$beadsdone")
     i=$((i+1))
 done
 
 # --- Current-repo "last session" + live-recent count (offline; for landscape) -
 # LATEST_* is the newest current-repo handoff (records are newest-first, and the
 # newest is always live — nothing newer can supersede it). recent_live counts
-# recent current-repo handoffs that aren't superseded, so the morning nudge
-# reflects distinct resumable threads rather than re-wraps of the same one.
+# recent current-repo handoffs that are still live work — archive-class empty,
+# which excludes superseded AND finished (bead-closed; or, under --check-branches,
+# merged/gone/closed) threads. So the morning nudge reflects distinct resumable
+# threads, not re-wraps of the same one nor work that has already shipped.
 CUR_RECENT_LIVE=0
 LATEST_SLUG=""
 LATEST_BRANCH=""
@@ -653,7 +741,7 @@ if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
                 LATEST_BRANCH="${R_BRANCH[$i]}"
                 LATEST_DATE="${R_DATE[$i]}"
             fi
-            if [ -z "${R_SUPBY[$i]}" ] \
+            if [ -z "${R_ARCHCLASS[$i]}" ] \
                 && { [[ "${R_DATE[$i]}" > "$CUTOFF" ]] || [ "${R_DATE[$i]}" = "$CUTOFF" ]; }; then
                 CUR_RECENT_LIVE=$((CUR_RECENT_LIVE+1))
                 CUR_LIVE_LINES+=("${R_SLUG[$i]}|${R_BRANCH[$i]}|${R_DATE[$i]}|${R_TIME[$i]}")
@@ -668,7 +756,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}"
+        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}"
         i=$((i+1))
     done
 fi
