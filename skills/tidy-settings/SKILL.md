@@ -1,10 +1,10 @@
 ---
 name: tidy-settings
 description: Sort, dedupe, and audit Claude settings.json / settings.local.json files at user and project level. Flags risky permissions, broken references, glob-subsumed entries, syntax errors, and cross-file duplicates that could be promoted up the hierarchy. Mechanical fixes auto-apply, judgment calls are presented as a triage list.
-allowed-tools: "Read, Edit, Write, Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
+allowed-tools: "Read, Edit, Write, Bash(~/.claude/skills/tidy-settings/scripts/resolve-files.sh:*), Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -76,37 +76,22 @@ When presenting subsumption findings, name the section, name the trade-off, and 
 
 ### 1. Resolve which files to operate on
 
-Settings come in three roles. Resolve all of them — the worktree role is what's new.
-
-**User-level** (always):
-
-```bash
-test -e ~/.claude/settings.json && echo ~/.claude/settings.json
-test -e ~/.claude/settings.local.json && echo ~/.claude/settings.local.json
-```
-
-**Canonical project-level** — the settings the main worktree uses. Do *not* use
-`git rev-parse --show-toplevel`: inside a worktree it points at the worktree's own checkout, not
-the main one. Instead take the **first** worktree from `git worktree list` (always the main
-worktree) and resolve its `.claude` through any symlink:
+Settings come in three roles. Resolve all of them with the helper script — **never** inline ad-hoc
+shell for this (variable assignments and `while read` loops bypass the permission allowlist and
+trigger noisy prompts):
 
 ```bash
-main_wt=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')
-canon=$(realpath "$main_wt/.claude" 2>/dev/null)   # follows the .claude symlink, if any
-test -e "$canon/settings.json"       && echo "$canon/settings.json"
-test -e "$canon/settings.local.json" && echo "$canon/settings.local.json"
+~/.claude/skills/tidy-settings/scripts/resolve-files.sh
 ```
 
-**Per-worktree** — every *other* worktree has its own real `.claude/settings.local.json` (and a
-tracked `settings.json`). These accumulate permissions that are **lost when the worktree is pruned**:
+Output is `---<ROLE>---` sections, one existing file path per line:
 
-```bash
-git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}' | tail -n +2 \
-  | while IFS= read -r wt; do
-      test -e "$wt/.claude/settings.json"       && echo "$wt/.claude/settings.json"
-      test -e "$wt/.claude/settings.local.json" && echo "$wt/.claude/settings.local.json"
-    done
-```
+- `---USER---` — `~/.claude/settings.json` / `settings.local.json` (always checked).
+- `---CANONICAL---` — the settings the **main worktree** uses. The script avoids
+  `git rev-parse --show-toplevel` (inside a worktree it points at the worktree's own checkout) and
+  instead resolves the first `git worktree list` entry's `.claude` through any symlink.
+- `---WORKTREE---` — every *other* worktree's own real `.claude/settings.local.json` (and tracked
+  `settings.json`). These accumulate permissions that are **lost when the worktree is pruned**.
 
 #### Worktree topology (why canonical ≠ pwd)
 
@@ -115,7 +100,7 @@ In the multi-repo setup, the main worktree's `.claude` is a **symlink** to a sib
 `claude-blc-2/worktrees/<name>/` — each a real checkout with its **own real** `.claude/`. So:
 
 - The canonical `settings.local.json` (the one that survives) is reached through the **main
-  worktree's** symlinked `.claude`, found via the first `git worktree list` entry above.
+  worktree's** symlinked `.claude` — the script's `---CANONICAL---` section.
 - A worktree's `settings.local.json` is a *separate, gitignored* file that vanishes on prune.
   Permissions you accepted while working there are promotion candidates (step 4).
 - `settings.json` is git-tracked, so worktree copies converge on commit — drift there is reported
@@ -127,15 +112,17 @@ If there are no sibling worktrees, this degrades to exactly the old user + proje
 
 ```bash
 python3 ~/.claude/skills/tidy-settings/scripts/tidy_settings.py --apply \
-  --canonical "$canon/settings.json" --canonical "$canon/settings.local.json" \
+  --canonical "<canon>/settings.json" --canonical "<canon>/settings.local.json" \
   --worktree  "<wt>/.claude/settings.local.json" --worktree "<wt>/.claude/settings.json" \
   <all files including the canonical and worktree ones...>
 ```
 
-Every path is still passed positionally (so it's sorted/deduped/audited once); `--canonical` and
-`--worktree` just *tag* which positional paths participate in the promotion diff. Pass the canonical
-files under `--canonical` and each worktree file under `--worktree`. Omit both flags (and `--apply`)
-for plain `--report` mode; with no sibling worktrees, omit them entirely.
+Substitute the **literal paths** from step 1's output (don't reference shell variables — state
+doesn't persist between Bash calls). Every path is still passed positionally (so it's
+sorted/deduped/audited once); `--canonical` and `--worktree` just *tag* which positional paths
+participate in the promotion diff. Pass each `---CANONICAL---` line under `--canonical` and each
+`---WORKTREE---` line under `--worktree`. Omit both flags (and `--apply`) for plain `--report` mode;
+with no sibling worktrees, omit them entirely.
 
 Parse the JSON output. The shape is:
 
