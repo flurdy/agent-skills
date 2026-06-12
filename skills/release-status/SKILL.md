@@ -7,7 +7,7 @@ description: >
 allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*)"
 model: sonnet
 effort: medium
-version: "1.4.0"
+version: "1.4.1"
 author: "flurdy"
 ---
 
@@ -45,8 +45,9 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
    - `---META---`: `context=<kubectl ctx>`, `ci=<available|unavailable>` — when `ci=unavailable`
      (no `CIRCLECI_TOKEN`/`.env.circleci`) every `ci` field is `unknown`; show it as such.
    - `---SERVICES---`: one pipe-delimited line per service after the header line:
-     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|deploy|tag|age`.
-     - `unpushed` (int, commits ahead of origin), `uncommitted` (`true|false`).
+     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age`.
+     - `unpushed` (int, commits ahead of origin), `uncommitted` (`true|false`), `head` = short
+       sha of the current local HEAD (`-` if no checkout).
      - `ci` ∈ `success|failed|running|error|unknown`; `ciBranch`/`gitBranch` are the pipeline branch
        and the repo's current branch.
      - `deploy` = a Deployment's `<ready>/<desired>` (`1/1` = rolled out; `N/M`, N<M = rolling out;

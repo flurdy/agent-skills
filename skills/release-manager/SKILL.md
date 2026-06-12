@@ -9,7 +9,7 @@ description: >
 allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model: sonnet
 effort: medium
-version: "1.9.0"
+version: "1.10.0"
 author: "flurdy"
 ---
 
@@ -102,6 +102,17 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
   - `restartWatch` — restart issued (step 7b ran `kubectl rollout restart`); awaiting pod cycle.
     `ageBaseline` is the pod age at restart time — step 4b confirms when pods show fresh + ready.
 
+## Command discipline
+
+Every Bash call in a tick must match `allowed-tools` **as written** — a plain invocation of one
+listed script/command. Never wrap them in `for` loops, variable expansion, command substitution,
+or pipes (`| head`, `| grep`): the composed command can't match `Bash(./scripts/mgit log:*)`, so
+it stalls the whole watcher loop on a permission prompt until a human answers. If you want the
+same fact for several services, that's a sign it belongs in the digest — and the per-service
+basics (`unpushed`, `head`, …) already do: read the columns, don't shell out. The one sanctioned
+drill-down is the step-7 `why?` flow — run `./scripts/mgit log <service> --oneline @{u}..HEAD`
+as one plain call per service (parallel calls are fine; loops are not).
+
 ## Per-tick flow
 
 1. **Gather.** Run the shared mechanical digest — it keeps the raw kubectl/CircleCI/git dumps out
@@ -115,8 +126,11 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    - `---META---`: `context=<kubectl ctx>`, `ci=<available|unavailable>` (CI is `available` only
      when `CIRCLECI_TOKEN`/`.env.circleci` is present; otherwise every `ci` field is `unknown`).
    - `---SERVICES---`: one pipe-delimited line per service after the header line:
-     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|deploy|tag|age`.
-     - `unpushed` (int), `uncommitted` (`true|false`).
+     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age`.
+     - `unpushed` (int), `uncommitted` (`true|false`), `head` = short sha of the current local
+       HEAD (`-` if no checkout) — the tip identity for every sha comparison/record this tick
+       (step 6 `cancelled` check, step 7 `rolloutWatch.sha`); never run per-service git commands
+       to re-derive it.
      - `ci` ∈ `success|failed|running|error|unknown`; `ciBranch` = the branch the latest pipeline
        ran on (`-` if none). `gitBranch` = the service repo's current branch (what `git push`
        sends). Both branches are needed for the step-6 branch-match gate.
@@ -129,9 +143,9 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    - `---TOGGLES---`: `FLAG=value` lines — the full live toggle map (also covers membership tiers).
      For the disabled-only view that step 5 references, run `make feature-toggles-disabled`.
    - `---K8S---`: state of the `kubernetes` GitOps repo (which ships via `make k8s-sync`, not as a
-     `---SERVICES---` entry): `present=<true|false>`, then when present `branch`, `unpushed` (int),
-     `uncommitted` (bool), `behind` (int, from the last-known remote ref — may be stale). Consumed by
-     step 5b.
+     `---SERVICES---` entry): `present=<true|false>`, then when present `branch`, `head` (short
+     sha), `unpushed` (int), `uncommitted` (bool), `behind` (int, from the last-known remote ref —
+     may be stale). Consumed by step 5b.
    - `---CONFIG---`: one pipe-delimited line per ConfigMap/Secret referenced by a Deployment in the
      `kubernetes` GitOps repo, after the header: `name|kind|resourceVersion|changed|mounts|restart`.
      All **derived** by the digest (deployment yamls for who-mounts-what; per-key source grep for
@@ -261,7 +275,8 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      **Then register restart watches:** for each `---CONFIG---` line with `changed=true` (it was part
      of the commits just synced), unless the name is in `manifest.config_restarts.suppress`, record
      `state.configApply[<name>] = { baseline: <its resourceVersion from THIS tick's ---CONFIG--->,
-     consumers: <its restart column, split on commas>, syncedSha: <k8s repo HEAD short sha> }`. The
+     consumers: <its restart column, split on commas>, syncedSha: <the `head` from this tick's
+     ---K8S--- — pre-sync, fine for this audit-only field> }`. The
      `resourceVersion` read *now* (before Flux applies) is the pre-apply baseline step 4b watches to
      move off — exactly like `fromTag` at push. A `restart` of `?` still registers (with consumers
      `["?"]`) so the apply gets confirmed — step 4b then warns instead of queuing restarts. Print
@@ -277,7 +292,9 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    step 7 and the step-8b cadence.
 
 6. **Evaluate ready-to-push.** Build the candidate set: anything with `unpushed > 0`, excluding
-   `manifest.ignore`, excluding `cancelled` whose stored sha still matches current HEAD. Then
+   `manifest.ignore`, excluding `cancelled` whose stored sha still matches the digest's `head`
+   column (a moved `head` means new commits landed — the cancel expires; this is a pure data
+   comparison, no git commands). Then
    **partition** it:
    - **Non-deploying repos** (in `manifest.non_deploying`, e.g. root, functional-tests) are NOT
      CircleCI services — `git push` triggers no prod deploy, there's no pipeline to gate on and no
@@ -363,8 +380,8 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      the risk and leaves the call to you. (A hard prerequisite belongs in the manifest's `order`,
      not here.)
    - `push` → `make git-push <service>`; print `⬆️ pushed <service>`. On success, **for a
-     deploying service** add it to `state.rolloutWatch` as `{ sha: <pushed short sha>, fromTag:
-     <the service's current live deploy tag from the step-1 digest> }`. `fromTag` is the pre-push
+     deploying service** add it to `state.rolloutWatch` as `{ sha: <the service's `head` from the
+     step-1 digest>, fromTag: <the service's current live deploy tag from the step-1 digest> }`. `fromTag` is the pre-push
      baseline step 4 watches to move off (the exact post-push tag isn't knowable at push — see the
      State file note); use `null` only if deploy-status had no tag for the service. A
      **non-deploying repo** is NOT added to `rolloutWatch` (there is no rollout) — it just
