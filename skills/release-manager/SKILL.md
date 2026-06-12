@@ -8,7 +8,7 @@ description: >
 allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model: sonnet
 effort: medium
-version: "1.6.0"
+version: "1.7.0"
 author: "flurdy"
 ---
 
@@ -24,7 +24,7 @@ It is **advisory and explicit**: nothing gets pushed unless you choose `push` at
 
 ## When to Use
 
-- Driven by `/watch-release` (= `/loop 10m /release-manager`) in a kitty tab during parallel work.
+- Driven by `/watch-release` (adaptive cadence — step 8b's `next-tick:` line paces the loop) in a kitty tab during parallel work.
 - Ad-hoc, when you want to be walked through what's ready to push/release right now.
 
 For a passive look with no prompts, use `/release-status`. For a deep gate on a single service,
@@ -61,7 +61,8 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
   "deferred":     { "dispatch": { "untilEpochTick": false } },
   "cancelled":    { "web": { "sha": "<short sha when cancelled>" } },
   "ciBeads":      { "account@master": "letterbox-xyz" },
-  "rolloutWatch": { "dispatch": { "sha": "<pushed sha>", "fromTag": "<live tag at push time>" } }
+  "rolloutWatch": { "dispatch": { "sha": "<pushed sha>", "fromTag": "<live tag at push time>" } },
+  "quietStreak":  0
 }
 ```
 
@@ -69,6 +70,9 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 - `cancelled` — suppressed until the service's unpushed HEAD sha changes (new commits arrive).
 - `ciBeads` — dedup map of auto-filed beads → bead id. Keys: `<service>@<branch>` for red CI
   builds; `coverage:<provider>` for contract-coverage gaps. Drop a key when its problem clears.
+- `quietStreak` — count of consecutive **cold** ticks (nothing in flight, nothing queued). Drives
+  the adaptive back-off in step 8: reset to 0 on any hot/warm tick, incremented on a cold one.
+  Ignored entirely under a fixed-interval loop.
 - `rolloutWatch` — services pushed in a prior tick, awaiting their new tag in K8s. `fromTag` is the
   live deploy tag captured **at push time** (the pre-push baseline). The exact post-push tag can't
   be known at push: CircleCI tags images `<IMAGE_BASE_VERSION>.<CIRCLE_BUILD_NUM>` (e.g. `1.0.<N>`)
@@ -261,6 +265,36 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 
 8. **Persist & summarise.** Write the updated `.release-state.json`. Print a one-line tick
    summary: e.g. `tick: 2 pushed, 1 deferred, 1 waiting, 1 CI bead, 1 coverage gap, 1 toggle ready`.
+
+8b. **Adaptive cadence recommendation.** Classify this tick so an adaptive watcher (`/watch-release`,
+   default mode) can pace the next run. A fixed-interval loop ignores this line. Pick the **first**
+   bucket that matches:
+
+   - **hot** — something is *in flight or imminent*: `state.rolloutWatch` is non-empty (a push is
+     mid-rollout — the live tag could move any tick), **or** a candidate's `ci=running`, **or** a
+     service was pushed *this* tick. External events that resolve in minutes; check again soon to
+     catch them. → **~180s** (3 min — inside the prompt-cache window, but not so tight it burns the
+     cache several times per CircleCI build).
+   - **warm** — nothing in flight, but *pending work*: `state.deferred` non-empty, unreconciled
+     dependency drift (step 2b skipped), or ready candidates still awaiting your push/defer answer,
+     or any `unpushed > 0` not yet actioned. → **~600s** (10 min).
+   - **cold** — fully settled: no `rolloutWatch`, no running CI, nothing pushed this tick, nothing
+     deferred, nothing unpushed, no ready candidates. → escalating back-off: **1200s** first cold
+     tick, **1500s** second, **1800s** (30 min) third and beyond.
+
+   Maintain `state.quietStreak`: **cold** → increment, then `seconds = min(1800, 1200 + 300 × (quietStreak − 1))`;
+   **hot/warm** → reset to 0. Persist it alongside the rest of the state in step 8.
+
+   Print one machine-readable line **last**, after the tick summary, so the watcher can parse it:
+
+   ```
+   next-tick: {hot|warm|cold} (~{seconds}s) — {one-clause reason}
+   ```
+
+   e.g. `next-tick: hot (~180s) — dispatch mid-rollout` / `next-tick: cold (~1500s) — all settled, 2 quiet ticks`.
+   The seconds are a recommendation; the adaptive loop clamps to `[60, 3600]`. Never let a hot
+   recommendation drop below ~120s — a CircleCI build takes minutes, so tighter polling just burns
+   the cache without catching the rollout sooner.
 
 ## Caveats
 

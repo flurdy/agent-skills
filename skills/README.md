@@ -41,5 +41,5 @@
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
 | watch-prs | Start a recurring PR status dashboard — polls every 10m until 18:00 (shortcut for `/loop 10m /pr-status`) |
-| watch-release | Start a recurring release-gatekeeper loop — runs /release-manager every 10m until end of day (shortcut for `/loop 10m /release-manager`) |
+| watch-release | Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence (fast ~3m when a push is mid-rollout or CI is running, backing off 10→30m when settled) until end of day. Pass `\d+m` for a fixed interval instead |
 | wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees), and a paste-ready resume block for the next session |
