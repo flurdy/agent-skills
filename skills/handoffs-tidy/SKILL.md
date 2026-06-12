@@ -4,7 +4,7 @@ description: Prune handoffs that no longer point at live work — superseded (a 
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: low
-version: "0.2.0"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -57,11 +57,14 @@ each row, and run the archive flow — the same definitions `/handoffs` uses, so
 
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is
 present) `pr-state`, so the script can mark merged PRs, landed branches, and closed PRs. Bead-closure
-(`beads-done`) and supersede are computed regardless. See REFERENCE §Run and §Fields for the flag
-semantics and the 18-field line format. Degrades cleanly offline (REFERENCE §Run / the failure modes below).
+(`beads-done`, keyed off the `**Deliverable:**` field when present) and supersede are computed
+regardless. See REFERENCE §Run and §Fields for the flag semantics and the 21-field line format.
+Degrades cleanly offline (REFERENCE §Run / the failure modes below).
 
 Parse the `---HANDOFFS---` lines and the `---SUMMARY---` counts. For each current-repo row, derive its
 **Status** (REFERENCE §Status) and **archive-class** (`safe` / `keep` / empty — REFERENCE §Fields).
+Also note rows with `needs-review=Y` — trunk-parked legacy handoffs the script couldn't auto-classify
+(step 5b).
 
 ### 3. Resolve Jira-Done (optional)
 
@@ -72,14 +75,16 @@ if you want to stay network-light; PR/bead/branch/supersede classification still
 
 ### 4. Present the candidates
 
-Skip to step 6 and report nothing to archive if `current_repo_superseded == 0` **and**
-`current_repo_stale == 0` (after any §Jira-Done promotions) — the picker is already tidy:
+If `current_repo_superseded == 0` **and** `current_repo_stale == 0` (after any §Jira-Done promotions)
+**and** no row has `needs-review=Y`, report nothing and stop at step 6 — the picker is already tidy:
 
 ```markdown
 _No archivable handoffs — every handoff for this repo still points at live work._
 ```
 
-Otherwise render the candidates as a table, grouped by regret (REFERENCE §Archive-flow defines the groups):
+If there are auto-classified candidates, render them as a table, grouped by regret (REFERENCE
+§Archive-flow defines the groups). (When the only thing flagged is `needs-review`, skip straight to
+step 5b.)
 
 ```markdown
 ## 🗂️ Archive candidates ({count})
@@ -106,9 +111,19 @@ reason. Never offer a `🟢 live`, `🟠 PR open`, or `unknown` row. `archive.sh
 ✅ Archived {N} handoff(s) to `~/.claude/handoffs/archive/`.
 ```
 
+### 5b. Trunk handoffs worth a look (assisted)
+
+If any current-repo row has `needs-review=Y`, run the assisted prompt per **REFERENCE §Trunk-review**
+— a separate, clearly-labelled prompt (not mixed into the step-5 groups) for legacy trunk-parked
+handoffs the script couldn't auto-classify: partial bead closure (`beads-progress` like `1/4`), no
+`**Deliverable:**` marker, so it can't tell finished own-work from never-closing context. Present the
+`{beads-progress}` and bead list per row and let the user decide; archive any they confirm via the
+same `archive.sh` call. Skip entirely when no row is flagged. This prompt goes quiet on its own as
+old handoffs age out and new ones carry `**Deliverable:**`.
+
 ### 6. Done
 
-If nothing was archivable (step 4) or the user selected none, say so plainly and stop. This command
+If nothing was archivable (steps 4–5b) or the user selected none, say so plainly and stop. This command
 never touches live work and never deletes — at worst it's a no-op.
 
 ## Failure modes

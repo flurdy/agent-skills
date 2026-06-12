@@ -322,32 +322,32 @@ if command -v bd >/dev/null 2>&1 && [ -n "$BEADS_ROOT" ] && [ -d "$BEADS_ROOT/.b
     BEADS_AVAILABLE=1
 fi
 
-# True when handoff Beads-field $1 names at least one bead and every referenced
-# bead still present in the db is closed. Conservative: a field truncated with
-# "(+N more)" can't be fully verified, so returns false. Tokens are the
-# backtick/comma-flattened field filtered to `{prefix}-{suffix}` shapes
-# (bd-123, ge-1505, letterbox-lf9d). One batched `bd list --id` per row.
-beads_all_closed() {
+# Echo "{closed} {total}" for the beads named in field $1 (backtick/comma
+# flattened, filtered to `{prefix}-{suffix}` shapes — bd-123, ge-1505,
+# letterbox-lf9d). "0 0" when beads are unavailable, the field is empty, the
+# field is truncated with "(+N more)" (can't verify all — conservative), or no
+# token resolves in the db. One batched, local `bd list --id` per call (no
+# network). The caller decides done-ness: all-closed = (total>0 && closed==total).
+beads_counts() {
     local field="$1"
-    [ -n "$BEADS_AVAILABLE" ] || return 1
-    [ -n "$field" ] || return 1
-    case "$field" in *"more)"*) return 1 ;; esac   # truncated list — can't verify all
+    [ -n "$BEADS_AVAILABLE" ] || { echo "0 0"; return; }
+    [ -n "$field" ] || { echo "0 0"; return; }
+    case "$field" in *"more)"*) echo "0 0"; return ;; esac
     local ids="" tok
     for tok in $(printf '%s' "$field" | tr '`,' '  '); do
         case "$tok" in
             [A-Za-z]*-[A-Za-z0-9]*) ids="${ids:+$ids,}$tok" ;;
         esac
     done
-    [ -n "$ids" ] || return 1
+    [ -n "$ids" ] || { echo "0 0"; return; }
     local json total closed
-    json=$(bd list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || return 1
-    [ -n "$json" ] || return 1
+    json=$(bd list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || { echo "0 0"; return; }
+    [ -n "$json" ] || { echo "0 0"; return; }
     # Count occurrences (grep -o → one match per line → wc -l) rather than
     # matching lines, so a future compact-JSON `bd` doesn't collapse to 1.
     total=$(printf '%s' "$json" | grep -oE '"status":[[:space:]]*"[a-z_]+"' | wc -l | tr -d ' ')
-    [ "$total" -gt 0 ] || return 1
     closed=$(printf '%s' "$json" | grep -oE '"status":[[:space:]]*"closed"' | wc -l | tr -d ' ')
-    [ "$total" -eq "$closed" ]
+    echo "$closed $total"
 }
 
 # Classify one branch as live / merged / gone / unknown. `unknown` means we
@@ -432,6 +432,7 @@ R_BRANCH=()
 R_REPO=()
 R_EXISTS=()
 R_BEADS=()      # raw `**Beads:**` field content (parsed under --bead/--ticket or when beads exist)
+R_DELIV=()      # raw `**Deliverable:**` field content — own-work beads (wrap-up v0.10.0+); keys beads-done when present
 R_JIRA=()       # raw `**Jira:**` field content (parsed under --bead/--ticket or --check-branches)
 R_PRS=()        # raw `**PRs:**` field content (parsed under --check-branches; PR-number fallback)
 
@@ -499,9 +500,14 @@ if [ -d "$HANDOFFS_DIR" ]; then
         #     Jira-Done for live rows from this field).
         #   - PRs: under --check-branches only (PR-number fallback for pr_state).
         # Strip the `**Field:**` label; keep the raw token list.
-        BEADS_FIELD=""; JIRA_FIELD=""; PRS_FIELD=""
+        BEADS_FIELD=""; DELIV_FIELD=""; JIRA_FIELD=""; PRS_FIELD=""
         if [ -n "$MATCH_FILTER" ] || [ -n "$BEADS_AVAILABLE" ]; then
             BEADS_FIELD=$(grep -m1 '^\*\*Beads:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Beads:\*\*[[:space:]]*//' || true)
+            # `**Deliverable:**` (wrap-up v0.10.0+) names just the own-work beads —
+            # the subset whose closure means this handoff is finished. Keys the
+            # bead-closure check when present, so trunk-parked handoffs whose
+            # **Beads:** list also carries context/epic beads still classify.
+            DELIV_FIELD=$(grep -m1 '^\*\*Deliverable:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Deliverable:\*\*[[:space:]]*//' || true)
         fi
         if [ -n "$MATCH_FILTER" ] || [ "$CHECK_BRANCHES" -eq 1 ]; then
             JIRA_FIELD=$(grep -m1 '^\*\*Jira:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Jira:\*\*[[:space:]]*//' || true)
@@ -558,6 +564,7 @@ if [ -d "$HANDOFFS_DIR" ]; then
         R_REPO+=("$REPO_KEY")
         R_EXISTS+=("$EXISTS")
         R_BEADS+=("$BEADS_FIELD")
+        R_DELIV+=("$DELIV_FIELD")
         R_JIRA+=("$JIRA_FIELD")
         R_PRS+=("$PRS_FIELD")
 
@@ -654,12 +661,25 @@ done
 # skill from the emitted Jira field (bash can't call the Jira MCP).
 # CUR_STALE counts the §3b "stale" group: archivable for a NON-supersede reason
 # (superseded rows are counted by CUR_SUPERSEDED and grouped separately).
+#
+# R_BEADSPROGRESS ("{closed}/{total}", or empty) and R_NEEDSREVIEW ("Y"/empty)
+# support trunk-parked LEGACY handoffs — recorded on the trunk with no
+# **Deliverable:** field, whose **Beads:** list mixes own work with
+# context/epic beads. There the all-closed rule can't fire (a context bead
+# never closes) yet branch/PR state is `unknown` (trunk guard), so the row
+# renders 🟢 live forever. R_NEEDSREVIEW flags exactly those — partial bead
+# closure on a trunk-parked, no-deliverable, otherwise-live current row — so
+# the skill can surface a "this may be finished, check it" prompt rather than
+# auto-archiving (which could clobber genuinely-live work). Handoffs WITH a
+# **Deliverable:** field never need this — they classify cleanly via beadsdone.
 R_STATE=()
 R_PRSTATE=()
 R_PRNUM=()
 R_PRURL=()
 R_ARCHCLASS=()
 R_BEADSDONE=()
+R_BEADSPROGRESS=()
+R_NEEDSREVIEW=()
 CUR_STALE=0
 i=0
 while [ "$i" -lt "$N" ]; do
@@ -667,6 +687,8 @@ while [ "$i" -lt "$N" ]; do
     ps="unknown"; pnum=""; purl=""
     archclass=""
     beadsdone=""
+    beadsprogress=""
+    needsreview=""
     is_current=0
     if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
         is_current=1
@@ -679,9 +701,19 @@ while [ "$i" -lt "$N" ]; do
 
     # Bead-closure is local — computed for current rows whenever beads exist,
     # even without --check-branches, so landscape's offline call benefits too.
-    if [ "$is_current" -eq 1 ] && [ -n "$BEADS_AVAILABLE" ] \
-        && beads_all_closed "${R_BEADS[$i]}"; then
-        beadsdone="Y"
+    # The **Deliverable:** field (own-work beads) keys the check when present;
+    # absent it, fall back to the full **Beads:** field (legacy handoffs).
+    # Over-inclusion in Deliverable only ever UNDER-detects (a never-closing
+    # bead keeps the row live) — safe; omitting an own-work bead is the only way
+    # to false-positive, so wrap-up errs toward including.
+    if [ "$is_current" -eq 1 ] && [ -n "$BEADS_AVAILABLE" ]; then
+        bead_src="${R_DELIV[$i]}"
+        [ -n "$bead_src" ] || bead_src="${R_BEADS[$i]}"
+        read -r bclosed btotal <<< "$(beads_counts "$bead_src")"
+        if [ "$btotal" -gt 0 ]; then
+            beadsprogress="${bclosed}/${btotal}"
+            [ "$bclosed" -eq "$btotal" ] && beadsdone="Y"
+        fi
     fi
 
     if [ "$is_current" -eq 1 ]; then
@@ -704,6 +736,15 @@ while [ "$i" -lt "$N" ]; do
         if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ]; then
             CUR_STALE=$((CUR_STALE+1))
         fi
+        # Trunk-parked legacy handoff that still renders live but has PARTIAL
+        # bead closure (something shipped, something open) and no Deliverable
+        # field to disambiguate → flag for the assisted prompt. All-closed rows
+        # already became archclass=safe above; all-open rows are genuinely live.
+        if [ -z "$archclass" ] && [ -z "${R_DELIV[$i]}" ] \
+            && is_trunk_branch "${R_BRANCH[$i]}" && [ -n "$beadsprogress" ] \
+            && [ "${beadsprogress%%/*}" -gt 0 ]; then
+            needsreview="Y"
+        fi
     fi
 
     R_STATE+=("$state")
@@ -712,6 +753,8 @@ while [ "$i" -lt "$N" ]; do
     R_PRURL+=("$purl")
     R_ARCHCLASS+=("$archclass")
     R_BEADSDONE+=("$beadsdone")
+    R_BEADSPROGRESS+=("$beadsprogress")
+    R_NEEDSREVIEW+=("$needsreview")
     i=$((i+1))
 done
 
@@ -756,7 +799,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}"
+        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}"
         i=$((i+1))
     done
 fi

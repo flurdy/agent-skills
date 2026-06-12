@@ -6,7 +6,7 @@ script's output, classify each handoff, and run the archive flow**. The *signals
 from `list.sh` (the `archive-class` field already encodes the safe/keep verdict) — this file is the
 single source for how to render and act on them, so the two skills can never drift on classification.
 
-Cite sections by anchor: §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow.
+Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review.
 
 ---
 
@@ -44,15 +44,15 @@ Delimited sections:
 - `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc.
 
-**`---HANDOFFS---` line — 18 pipe-delimited fields, in order:**
+**`---HANDOFFS---` line — 21 pipe-delimited fields, in order:**
 
 ```
-{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}
+{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}
 ```
 
 `{time}` (field 15) is the `HH:MM` the handoff was written — from the `# Resume:` header
 (wrap-up v0.8.0+), falling back to the file's mtime; `?` only when neither is available. Fields after
-`{time}` were **appended** so older 9-field positional parsers keep working.
+`{time}` were **appended** so older positional parsers keep working.
 
 ### Repo identity (`repo-key`, `exists`)
 
@@ -90,11 +90,15 @@ row wrongly shows `🟢 live`, but the merged PR's number is still in the body).
 - `none` — `gh` ran but found no PR for this branch.
 - `unknown` — `gh` wasn't consulted (no flag, no `gh`, offline, or branch `?`). Falls back to `branch-state`.
 
-### Beads / Jira (`beads-field`, `jira-field`, `beads-done`)
+### Beads / Jira (`beads-field`, `jira-field`, `beads-done`, `deliverable-field`, `beads-progress`, `needs-review`)
 
-- `{beads-field}` — raw `**Beads:**` token list; empty unless beads exist locally or a `--bead`/`--ticket` filter is active.
+- `{beads-field}` — raw `**Beads:**` token list (own-work **and** context/epic beads); empty unless beads exist locally or a `--bead`/`--ticket` filter is active.
 - `{jira-field}` — raw `**Jira:**` token list; populated under `--check-branches` (and filters). Bash can't call the Jira MCP, so the script never sets a jira-done flag — it only hands you the keys (see §Jira-Done).
-- `{beads-done}` — `Y` when **every** bead the handoff references is closed (all `**Beads:**` IDs resolve to `status=closed`), else empty. Computed locally via `bd` for current-repo rows whenever beads exist — **independent of `--check-branches`**. A field truncated with `(+N more)` can't be fully verified and stays empty (conservative).
+- `{deliverable-field}` — raw `**Deliverable:**` token list: just the **own-work** beads this handoff was advancing (wrap-up v0.10.0+), the subset whose closure means the handoff is finished. Empty for older handoffs that predate the field.
+- `{beads-done}` — `Y` when **every** bead in the **closure-check set** is closed (all resolve to `status=closed`), else empty. The closure-check set is the **`**Deliverable:**` field when present**, else the full `**Beads:**` field (legacy fallback). Computed locally via `bd` for current-repo rows whenever beads exist — **independent of `--check-branches`**. A field truncated with `(+N more)` can't be fully verified and stays empty (conservative).
+  - **Why Deliverable matters:** in trunk repos all work commits to `master`, so wrap-up records every handoff with `branch: master` → `branch-state=unknown` (the default-branch guard) and no PR. The bead is then the only "done" signal — but the `**Beads:**` list mixes own work with recurring "in-progress elsewhere" context beads and parent epics that never close, so an all-`**Beads:**`-closed rule can never fire. Keying off `**Deliverable:**` (own work only) fixes that. Safety: over-including a bead in Deliverable only ever *under*-detects (a never-closing bead keeps the row live); **omitting** an own-work bead is the only way to false-positive, so wrap-up errs toward including.
+- `{beads-progress}` — `{closed}/{total}` over the closure-check set (Deliverable if present, else Beads), or empty when there are no resolvable beads. Lets a caller distinguish *partial* closure (something shipped, something open) from all-open (nothing done) and all-closed (done).
+- `{needs-review}` — `Y` for a current-repo row that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are already `safe`; all-open rows are genuinely live.
 
 ### Archive-class (`archive-class`) — current-repo rows only
 
@@ -105,10 +109,12 @@ The script's per-row archive recommendation, so callers read straight off it ins
 - empty — live work (incl. an open PR) or `unknown`. **Not an archive candidate.**
 
 Precedence: supersede > open PR > merged PR > **beads-done** > closed PR > local `merged` > `gone`.
-Beads-done sits just under a merged PR (the finished-work signal when there's no live branch/PR — the
-trunk case) but **below** an open PR. Jira-Done is *not* in this list — the script can't query Jira;
-the skill folds it in at §Jira-Done. `current_repo_stale` counts the `keep`/`safe` rows that are
-**not** superseded; superseded rows are counted by `current_repo_superseded`.
+Beads-done (keyed off `**Deliverable:**` when present, else the full `**Beads:**` field) sits just
+under a merged PR (the finished-work signal when there's no live branch/PR — the trunk case) but
+**below** an open PR. Jira-Done is *not* in this list — the script can't query Jira; the skill folds
+it in at §Jira-Done. `current_repo_stale` counts the `keep`/`safe` rows that are **not** superseded;
+superseded rows are counted by `current_repo_superseded`. Rows that can't be auto-classified set
+`needs-review` instead (§Trunk-review) — they are **not** counted in `current_repo_stale`.
 
 ---
 
@@ -220,3 +226,42 @@ offer rows with a non-empty `archive-class` (`safe` or `keep`); never a `🟢 li
 `unknown` row. Never delete — `archive.sh` only moves. If the user selects none, render nothing.
 After archiving, **drop the archived rows** from any subsequent listing or picker the caller renders
 (and subtract them from `current_repo_total`) so they aren't offered again this run.
+
+---
+
+## §Trunk-review — assisted prompt for un-auto-classifiable trunk handoffs
+
+A **legacy** trunk-parked handoff (recorded on `master` before the `**Deliverable:**` field existed)
+can't be auto-classified: branch/PR state is `unknown`, and its `**Beads:**` list mixes own work with
+context/epic beads, so neither the all-closed rule nor branch/PR liveness fires. The script flags
+exactly these with **`needs-review=Y`** (renders `🟢 live`, trunk-parked, no Deliverable field,
+partial bead closure — `beads-progress` with closed ≥ 1). They are **not** `archive-class` candidates
+and never auto-archive — the open beads might be live own-work or might be untouched context, and the
+script can't tell.
+
+Run this only when there is at least one `needs-review=Y` current-repo row. It is a **separate,
+clearly-labelled** prompt — *not* mixed into the §Archive-flow groups, because these are
+judgement calls, not safe candidates:
+
+```markdown
+## 🔍 Trunk handoffs worth a look ({count})
+
+These are recorded on the trunk with some beads closed and some open, and no **Deliverable:** marker
+to tell own-work from context — so I can't tell if they're finished. Open the ones you're unsure of.
+
+| Date | Slug | Beads closed | Beads |
+|------|------|--------------|-------|
+```
+
+- **Beads closed**: the `{beads-progress}` value (e.g. `1/4`).
+- **Beads**: the `{beads-field}` token list, so the closed/open split is visible inline.
+
+Then offer, via `AskUserQuestion` (multiSelect, one option per `needs-review` row, labelled
+`{date} {slug}`, described by its `{beads-progress}` + bead list):
+
+> Archive any whose **own** work is actually done? The open beads here may just be context/epics that
+> never close — if so the handoff is finished and safe to archive. Leave any whose own work is still live.
+
+Archive the selected filenames via the same `archive.sh` call and confirmation as §Archive-flow. The
+durable fix is upstream: once these age out and new handoffs carry `**Deliverable:**`, this prompt
+goes quiet on its own.

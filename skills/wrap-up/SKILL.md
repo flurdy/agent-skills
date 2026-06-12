@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.9.0"
+version: "0.10.0"
 author: "flurdy"
 ---
 
@@ -345,6 +345,7 @@ Then:
 **Repo root:** `{repo-root}`
 **Jira:** {jira-field}
 **Beads:** {beads-field}
+**Deliverable:** {deliverable-field}
 **PRs:** {prs-field}
 
 **Context:**
@@ -384,10 +385,11 @@ These are **structured top-level fields** (one per line, right under `Repo root:
 Auto-populate from the data already gathered in §§1–2; do not ask the user. Sources, in priority order:
 
 - **Jira**: tickets touched today (from §1's "Jira touched today" table) + any Jira keys extracted from the current branch name (e.g. `fix/AB-649-…` → `AB-649`) + any keys the chat referenced. De-duplicate. Format: `` `AB-649`, `AB-651` ``.
-- **Beads**: in-progress beads (load-bearing for "what was I doing") plus any beads closed or created during this session. Format: `` `bd-123`, `bd-124` ``. Don't list every closed bead from §1 if there were many — prefer the in-progress set as the primary signal.
+- **Beads**: in-progress beads (load-bearing for "what was I doing") plus any beads closed or created during this session. Format: `` `bd-123`, `bd-124` ``. Don't list every closed bead from §1 if there were many — prefer the in-progress set as the primary signal. This is the **full context** list — own work *and* recurring "in-progress elsewhere" / parent-epic beads.
+- **Deliverable**: the subset of `Beads` that is **this session's own work** — the bead(s) whose closure means *this handoff is finished*. Derive it from the beads referenced in **today's commits in this repo** (§1's activity) and/or the bead the session actively worked, in_progress or just closed. **Exclude** context beads (recurring "in-progress elsewhere", another session's WIP) and parent epics — they appear in `Beads` only. Format: `` `bd-123` ``. This is what `/handoffs` and `/handoffs-tidy` key their "done" check on for trunk repos (where everything commits to `master`, so there's no branch/PR signal). **When unsure, include rather than omit** — an extra bead only delays the handoff being marked done (safe); omitting an own-work bead can make it look done while live work remains. Use `—` when the session delivered nothing of its own (pure context/triage/discussion) — then the handoff stays live until something else marks it done.
 - **PRs**: PRs created, updated, or referenced this session (from §1's PRs-today table). Format: `` `[#42](url)`, `[#43](url)` `` — keep the markdown link form so the next session can click through. Use just `` `#42` `` if no URL is available.
 
-If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)` after the last item rather than wrapping to a second line.
+If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)` after the last item rather than wrapping to a second line. (For `Deliverable`, a `(+N more)` truncation makes the bead-closure check un-verifiable — so keep that field complete; it's own-work only and should rarely exceed a couple of beads.)
 
 - Prefer **paths and IDs** over prose summaries — they're greppable next session.
 - If the session was admin-only (no code), the resume block is *more* valuable, not less. Capture the Jira/bead context exchanged in chat — those header fields stay populated even when no code changed.

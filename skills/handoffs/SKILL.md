@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.16.0"
+version: "0.17.0"
 author: "flurdy"
 ---
 
@@ -47,8 +47,9 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 ```
 
 `--check-branches` adds branch-liveness + PR classification for current-repo handoffs. The full flag
-semantics, the 18-field `---HANDOFFS---` line format, and every field's meaning (supersede,
-branch-state, pr-state, archive-class, beads-done, jira-field) are specified once in
+semantics, the 21-field `---HANDOFFS---` line format, and every field's meaning (supersede,
+branch-state, pr-state, archive-class, beads-done, deliverable-field, beads-progress, needs-review)
+are specified once in
 **`~/.claude/skills/handoffs/REFERENCE.md`** — `Read` it. Both `/handoffs` and `/handoffs-tidy` read
 off the same definitions, so the two never drift on classification.
 
@@ -156,6 +157,13 @@ skill's current-repo table and §4 picker** — remove the archived rows and sub
 `current_repo_total` so §4 doesn't offer them. If the user selects none, render nothing and continue to §4.
 
 (`/handoffs-tidy` is the standalone twin of this step: same flow, no table or picker around it.)
+
+### 3c. 🔍 Trunk handoffs worth a look (opt-in)
+
+If any current-repo row has `needs-review=Y`, run the assisted prompt per **REFERENCE §Trunk-review**
+*after* §3b — a separate, clearly-labelled prompt for legacy trunk-parked handoffs the script
+couldn't auto-classify (partial bead closure, no `**Deliverable:**` marker). Drop any the user
+archives from the table and §4 picker, same as §3b. Skip the step entirely when no row is flagged.
 
 ### 4. Pick a handoff (current repo only)
 
