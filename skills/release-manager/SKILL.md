@@ -84,15 +84,18 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
   `previous+1`. So confirmation (step 4) is "the live tag has moved **off** `fromTag`", not an
   exact-tag match. `fromTag` may be `null` if deploy-status was unavailable at push — step 4 then
   falls back to the older heuristic.
-- `configApply` / `restartPending` / `restartWatch` — the **config-restart state machine** for
-  services that read a ConfigMap/Secret only at startup (mapped in `manifest.config_consumers`).
-  A synced config change does NOT auto-restart them, so they need a `kubectl rollout restart` once
-  it lands — but only *after* Flux has applied it (restarting sooner just reloads the old config).
+- `configApply` / `restartPending` / `restartWatch` — the **config-restart state machine**. Every
+  service reads its ConfigMaps/Secrets only at startup, so a synced config change does NOT take
+  effect until its consumers get a `kubectl rollout restart` — and only *after* Flux has applied it
+  (restarting sooner just reloads the old config). The consumer set is **derived, never curated**:
+  the digest's `---CONFIG---` `restart` column (deployment yamls for who mounts the map; per-key
+  source grep to narrow shared maps), minus `manifest.config_restarts.suppress`.
   Three states, each a separate tick, mirroring `rolloutWatch`'s push→confirm pattern:
   - `configApply` — config synced via `make k8s-sync` (step 5b) and awaiting Flux. `baseline` is the
     resource's live `resourceVersion` captured **at sync time** (the pre-apply baseline, exactly like
-    `fromTag`); step 4b confirms apply when it moves **off** `baseline`. `consumers` = the Deployment
-    services to restart (from the manifest); `syncedSha` = the k8s repo sha that shipped it.
+    `fromTag`); step 4b confirms apply when it moves **off** `baseline`. `consumers` = the derived
+    restart set frozen at sync time (`["?"]` if underivable); `syncedSha` = the k8s repo sha that
+    shipped it.
   - `restartPending` — Flux applied the config (step 4b saw `resourceVersion` move); the listed
     services now await a restart decision. Survives a `defer` so it re-prompts next tick. `appliedRV`
     is the resourceVersion observed at apply (audit/debug only).
@@ -129,11 +132,15 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      `---SERVICES---` entry): `present=<true|false>`, then when present `branch`, `unpushed` (int),
      `uncommitted` (bool), `behind` (int, from the last-known remote ref — may be stale). Consumed by
      step 5b.
-   - `---CONFIG---`: one pipe-delimited line per `manifest.config_consumers` entry after the header:
-     `name|kind|resourceVersion|changed`. `kind` ∈ `configmap|secret|notfound`; `resourceVersion` is
-     the live value (or `-`) — the apply baseline steps 5b/4b watch; `changed` (`true|false`) means
-     the resource appears in the `kubernetes` repo's unpushed diff, i.e. it's part of the config
-     `make k8s-sync` will ship **this** tick. Empty (header only) when `config_consumers` is `{}`.
+   - `---CONFIG---`: one pipe-delimited line per ConfigMap/Secret referenced by a Deployment in the
+     `kubernetes` GitOps repo, after the header: `name|kind|resourceVersion|changed|mounts|restart`.
+     All **derived** by the digest (deployment yamls for who-mounts-what; per-key source grep for
+     shared maps) — nothing curated. `kind` ∈ `configmap|secret|notfound`; `resourceVersion` is the
+     live value (or `-`) — the apply baseline steps 5b/4b watch; `changed` (`true|false`) means a
+     file defining this resource is in the repo's unpushed diff, i.e. `make k8s-sync` ships it
+     **this** tick; `mounts` = comma-list of Deployment services mounting it (CronJob services never
+     appear — no restart needed); `restart` = the derived restart set for this change: `-` (not
+     changed), a comma-list of services, or `?` (changed but underivable — warn, don't guess).
      Consumed by steps 5b (register) and 4b (confirm apply).
 
 1b. **Scan dependencies + contract coverage** (cheap, no subagent needed — compact output):
@@ -152,8 +159,8 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 2. **Load context.** Read `.release-state.json` (create `{}`-shaped default if absent) and
    `docs/release-manifest.yaml`. From `order`, build the **effective dependency map** =
    `(derived ∪ manual) − suppress`. Also read `toggles`, `parked`, `ignore`,
-   `non_deploying`, and `config_consumers` (the ConfigMap/Secret → restart-needing-services map
-   for steps 5b/4b/7b).
+   `non_deploying`, and `config_restarts.suppress` (maps whose changes must never produce a
+   restart prompt — vetoes the digest's derived `restart` column in steps 5b/7b).
 
 2b. **Dependency drift reconcile.** If `---DRIFT---` is not `in-sync`, the pacts have diverged
    from `order.derived`. Print the `new`/`removed` edges, then prompt once (AskUserQuestion):
@@ -193,10 +200,13 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 
    - **`configApply` → `restartPending` (Flux applied the config).** For each `state.configApply`
      entry, look up the resource's current `resourceVersion` in `---CONFIG---`. If it has **moved
-     off** `baseline`, Flux has applied the synced change. Print `✅ CONFIG APPLIED <name>` and, for
-     each `consumer`, queue a restart — `state.restartPending[<consumer>] = { config: <name>,
-     appliedRV: <new resourceVersion> }` — **unless** that consumer's new pods will already pick the
-     config up on their own, in which case skip it (no restart needed):
+     off** `baseline`, Flux has applied the synced change. Print `✅ CONFIG APPLIED <name>`. If
+     `consumers` is `["?"]` (derivation failed at sync time), don't guess: print
+     `⚠️ <name> applied — consumers underivable, restart manually if a service reads it` and just
+     remove the entry. Otherwise, for each `consumer`, queue a restart —
+     `state.restartPending[<consumer>] = { config: <name>, appliedRV: <new resourceVersion> }` —
+     **unless** that consumer's new pods will already pick the config up on their own, in which case
+     skip it (no restart needed):
      - consumer is in `state.rolloutWatch`, or has `unpushed > 0`, or shows `deploy` mid-rollout —
        it's deploying anyway; its fresh pods read the applied config. Note `…<consumer> deploying —
        picks up <name> without a restart`.
@@ -249,12 +259,13 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      `pull --rebase` then push), surface stderr verbatim and **do not retry** — a conflict is a
      human call. `make k8s-sync` never edits the repo or force-pushes.
      **Then register restart watches:** for each `---CONFIG---` line with `changed=true` (it was part
-     of the commits just synced), record `state.configApply[<name>] = { baseline: <its
-     resourceVersion from THIS tick's ---CONFIG--->, consumers: <manifest.config_consumers[<name>]>,
-     syncedSha: <k8s repo HEAD short sha> }`. The `resourceVersion` read *now* (before Flux applies)
-     is the pre-apply baseline step 4b watches to move off — exactly like `fromTag` at push. If no
-     `changed=true` line has consumers, register nothing (config with no startup-readers needs no
-     restart). Print `🔁 watching restart for <name> → <consumers>`.
+     of the commits just synced), unless the name is in `manifest.config_restarts.suppress`, record
+     `state.configApply[<name>] = { baseline: <its resourceVersion from THIS tick's ---CONFIG--->,
+     consumers: <its restart column, split on commas>, syncedSha: <k8s repo HEAD short sha> }`. The
+     `resourceVersion` read *now* (before Flux applies) is the pre-apply baseline step 4b watches to
+     move off — exactly like `fromTag` at push. A `restart` of `?` still registers (with consumers
+     `["?"]`) so the apply gets confirmed — step 4b then warns instead of queuing restarts. Print
+     `🔁 watching restart for <name> → <consumers>`.
    - `skip` → leave it. It resurfaces next tick (no state recorded — git is the source of truth),
      and step 7 carries the caution into any push prompt below.
 
@@ -373,8 +384,8 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    - Otherwise prompt (AskUserQuestion, one per service, options `restart` / `defer` / `skip`). State
      the consequence plainly: *"restart deployment/<service> to load applied config <config> — brief
      rolling pod cycle, **no new image**, no CI gate, no prod deploy."* CronJob-backed services never
-     appear here (the manifest excludes them — they read fresh config each run); if one somehow does,
-     skip it with that note.
+     appear here (the digest derives mounts from `deployment.yaml`s only — CronJobs read fresh config
+     each run); if one somehow does, skip it with that note.
      - `restart` → run `kubectl rollout restart deployment/<service> -n apps`; print
        `🔄 restarted <service>`. On success move it from `restartPending` to
        `state.restartWatch[<service>] = { for: <config>, ageBaseline: <the service's current pod age
@@ -445,11 +456,15 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
   runs sync (register) → confirm apply (`resourceVersion` moves off baseline) → confirm-gated
   `kubectl rollout restart` → confirm pod cycle, one hop per tick, mirroring `rolloutWatch`. The
   restart is the third prod action (after `make git-push` / `make k8s-sync`), and like them it's
-  **confirm-gated** — never autonomous. Only services in `manifest.config_consumers` are ever
-  restarted; CronJob-backed services are excluded (they read fresh config on their next run).
-  Apply-confirm uses `resourceVersion` movement; restart-confirm uses pod age-reset (a config
-  restart doesn't move the image tag), so it's heuristic — it prefers waiting a tick over a false
-  confirm. If `config_consumers` is `{}`, the whole flow stays dormant.
+  **confirm-gated** — never autonomous. The restart set is **derived, never curated** (the digest
+  reads the GitOps repo's deployment yamls for who mounts each map, and narrows shared maps per
+  changed env-var key by grepping each mounting service's source — keys are referenced verbatim,
+  e.g. `${?FT_SES_API}`); `manifest.config_restarts.suppress` is the only human knob (veto). When
+  derivation can't resolve a change (`restart=?`), the skill warns "restart manually" rather than
+  guessing. CronJob-backed services are excluded by construction (mounts come from `deployment.yaml`s
+  only — they read fresh config on their next run). Apply-confirm uses `resourceVersion` movement;
+  restart-confirm uses pod age-reset (a config restart doesn't move the image tag), so it's
+  heuristic — it prefers waiting a tick over a false confirm.
 - **Remote CI never verifies the candidate.** `ci-status.sh` reports the latest pipeline on the
   repo — the last *pushed* SHA — so it cannot have run the unpushed candidate commits. A green CI
   is a statement about the branch's already-live tip, not about what you're about to ship; the
