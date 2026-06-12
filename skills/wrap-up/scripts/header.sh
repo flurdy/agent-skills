@@ -47,3 +47,45 @@ git worktree list --porcelain 2>/dev/null | awk '
     /^branch /{ b=$2; sub(/^refs\/heads\//,"",b); print path "|" b }
     /^detached$/{ print path "|(detached)" }
 '
+
+# Permission entries living only in a linked worktree's settings file — gone if
+# that worktree is pruned. One `{path}|{basename}|{count}` line per drifting file
+# (`parse-error` instead of a count when the file isn't valid JSON). §3c flags
+# these and offers /tidy-settings, which owns the promotion flow.
+echo "---SETTINGS-DRIFT---"
+python3 - <<'PY' 2>/dev/null || true
+import json, os, subprocess, sys
+
+def entries(path):
+    try:
+        with open(path) as f:
+            perms = json.load(f).get("permissions") or {}
+    except OSError:
+        return set()  # missing canonical file: every worktree entry is drift
+    except Exception:
+        return None
+    return {(s, e) for s in ("allow", "deny", "ask") for e in (perms.get(s) or [])}
+
+out = subprocess.run(["git", "worktree", "list", "--porcelain"],
+                     capture_output=True, text=True).stdout
+wts = [l[len("worktree "):] for l in out.splitlines() if l.startswith("worktree ")]
+if len(wts) < 2:
+    sys.exit(0)
+canon = os.path.realpath(os.path.join(wts[0], ".claude"))
+for wt in wts[1:]:
+    cdir = os.path.join(wt, ".claude")
+    if not os.path.isdir(cdir) or os.path.realpath(cdir) == canon:
+        continue
+    for base in ("settings.json", "settings.local.json"):
+        wfile = os.path.join(cdir, base)
+        if not os.path.isfile(wfile):
+            continue
+        wset = entries(wfile)
+        if wset is None:
+            print(f"{wt}|{base}|parse-error")
+            continue
+        cset = entries(os.path.join(canon, base)) or set()
+        drift = len(wset - cset)
+        if drift:
+            print(f"{wt}|{base}|{drift}")
+PY

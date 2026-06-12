@@ -1,7 +1,7 @@
 ---
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
 model: sonnet
 effort: medium
 version: "0.10.0"
@@ -22,10 +22,11 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 
 1. Activity roundup for today (commits, PRs created/merged, beads closed).
 2. Working-copy hygiene — flag uncommitted, unpushed, or worktree-only state.
-3. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
-4. Optional: save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` for later.
-5. Optional: archive older handoffs this one supersedes (same branch/topic) so the picker stays focused.
-6. Reminder to run `/exit` yourself — the skill cannot exit Claude Code for you.
+3. Settings drift — flag permissions living only in a worktree's `.claude` settings (lost on prune) and offer `/tidy-settings` to promote them.
+4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
+5. Optional: save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` for later.
+6. Optional: archive older handoffs this one supersedes (same branch/topic) so the picker stays focused.
+7. Reminder to run `/exit` yourself — the skill cannot exit Claude Code for you.
 
 ## Important — what this skill cannot do
 
@@ -55,6 +56,7 @@ It emits delimited sections:
 - `---REPO-ROOT---` — canonical repo root (parent of the realpath of `--git-common-dir`); empty if not in a git repo.
 - `---DEFAULT-BRANCH---` — short name of the repo's default branch (`main`/`master`), empty if undetermined.
 - `---WORKTREES---` — one `{path}|{branch}` line per worktree of this repo (branch `(detached)` when applicable). §4 uses it to map a feature branch back to the worktree that holds it.
+- `---SETTINGS-DRIFT---` — one `{worktree}|{file}|{count}` line per worktree settings file holding permission entries the canonical (main-worktree) copy lacks (`parse-error` instead of a count when the file isn't valid JSON). §3c renders these.
 
 If `---GIT-COMMON-DIR---` and `---GIT-DIR---` differ, the cwd is a **linked worktree** (not the main checkout). Note this — it affects the warnings in §3. (String inequality is sufficient: the main checkout returns the same value for both — typically `.git` — while a linked worktree returns `/path/to/main/.git` for common-dir vs `/path/to/main/.git/worktrees/{name}` for git-dir.)
 
@@ -256,6 +258,27 @@ It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---
 
 Load-bearing for resume: a service repo left ahead-but-unpushed, or a deploy/config repo left diverged, is exactly what tomorrow forgets. Feed any unpushed/diverged members into the resume block's **Open threads** or **Blocked on you** field (§4).
 
+### 3c. ⚙️ Worktree settings drift
+
+Skip this section silently if §0's `---SETTINGS-DRIFT---` was empty (not a git repo, no linked worktrees, no drift — or no `python3`, in which case `/tidy-settings` remains the manual path).
+
+Each line is `{worktree}|{file}|{count}`: `{count}` permission entries that live **only** in that worktree's `.claude/{file}` and not in the canonical main-worktree copy. For `settings.local.json` (gitignored, per-worktree) those entries are deleted forever when the worktree is pruned — that's the high-stakes case, and exactly the loss this check exists to prevent. For `settings.json` (git-tracked) the drift is an uncommitted edit; committing it is the fix, and §3's hygiene warnings already cover uncommitted files.
+
+Render one line per drifting file:
+
+```markdown
+### ⚙️ Worktree settings drift
+
+⚙️ {count} permission(s) in `{worktree}/.claude/{file}` exist only in that worktree — pruning it loses them.
+```
+
+(For a `parse-error` count, render `` `{file}` does not parse — `/tidy-settings` will diagnose `` instead.)
+
+Then offer to fix it now with `AskUserQuestion` — options: **Run /tidy-settings**, **Skip — note in resume block**.
+
+- **Run /tidy-settings** → invoke the `tidy-settings` skill via the Skill tool, then resume the wrap-up at §3a. Its worktree-promotion triage is the authoritative flow — do **not** reimplement the diff or copy entries between settings files yourself.
+- **Skip** → add a bullet to §4's **Open threads**: `{count} worktree-only permission(s) in {worktree} — run /tidy-settings before pruning`.
+
 ### 3a. 🧹 Stale in-progress beads
 
 Skip this whole section if `---BEADS-STATUS---` was `NO_BD`/`NO_BEADS_IN_REPO` or if `---BEADS-STALE-CANDIDATES---` was empty.
@@ -439,6 +462,8 @@ Each section is independent — fail soft, don't block the rest.
 - **No `bd` / no `.beads/`**: skip the beads sub-section and §3a silently.
 - **`bd update` fails** for a selected bead: report the error inline, keep going with the rest. Don't abort the skill — the resume block is still the primary artifact.
 - **Multi-repo roll-up (§3b) errors or finds nothing**: skip the section silently — single-repo sessions hit this normally; it's additive, not load-bearing.
+- **Settings-drift probe (§3c) empty or `python3` missing**: skip the section silently. `/tidy-settings` run by hand covers the same ground.
+- **`/tidy-settings` invocation fails from §3c**: fall back to the Skip path (note the drift in the resume block's open threads) and continue the wrap-up.
 
 ## Notes
 
