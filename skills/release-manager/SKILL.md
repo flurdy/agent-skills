@@ -5,10 +5,10 @@ description: >
   then prompts to push / defer / cancel each ready service, auto-files a bead on CI failure,
   enforces deploy order, watches rollouts, and nudges feature toggles. Drive it on a loop with
   /watch-release. Advisory: it only pushes after you explicitly choose "push".
-allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
+allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model: sonnet
 effort: medium
-version: "1.7.0"
+version: "1.8.0"
 author: "flurdy"
 ---
 
@@ -107,6 +107,10 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
        services in steps 4 and 6.
    - `---TOGGLES---`: `FLAG=value` lines — the full live toggle map (also covers membership tiers).
      For the disabled-only view that step 5 references, run `make feature-toggles-disabled`.
+   - `---K8S---`: state of the `kubernetes` GitOps repo (which ships via `make k8s-sync`, not as a
+     `---SERVICES---` entry): `present=<true|false>`, then when present `branch`, `unpushed` (int),
+     `uncommitted` (bool), `behind` (int, from the last-known remote ref — may be stale). Consumed by
+     step 5b.
 
 1b. **Scan dependencies + contract coverage** (cheap, no subagent needed — compact output):
 
@@ -170,6 +174,41 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    - **Skip `manifest.parked` flags entirely** — they are deliberately off (e.g. superseded by
      another path); never nudge them. At most show once as a footnote
      (`<flag> parked — superseded by <x>; reconsider_if <y>`).
+
+5b. **K8s config sync watch.** The `kubernetes` GitOps repo ships via `make k8s-sync` (pull
+   `--rebase` + push → Flux applies to the cluster), **never** `make git-push` — so it's in
+   `manifest.ignore` and is *not* a step-6 push candidate. But committed-but-unsynced config there
+   is a frequent **prerequisite** for a service deploy: ship the service while its ConfigMap /
+   Secret / manifest change is still local and the release breaks. So the gatekeeper watches its
+   state even though it never `git-push`es it.
+
+   Read the digest's `---K8S---` section: `present`, and (when present) `unpushed`, `uncommitted`,
+   `behind`. If `present=false`, skip silently. If `unpushed=0` **and** `uncommitted=false` **and**
+   `behind=0`, the repo is in sync — skip silently.
+
+   Otherwise it has **pending config**. Surface it prominently (this is high-signal — it gates real
+   deploys):
+
+   ```
+   ⚠️ KUBERNETES UNSYNCED — <unpushed> unpushed, <uncommitted?>, <behind> behind on <branch>; run `make k8s-sync`
+   ```
+
+   Then prompt **once** (AskUserQuestion), *before* the step-7 service-push prompts so config lands
+   first: *"Sync the kubernetes config now?"*
+   - `sync` → run `make k8s-sync`. On success print `✅ k8s-synced`; the change is now en route to
+     the cluster via Flux. On failure (rebase conflict, push rejected — `make k8s-sync` does
+     `pull --rebase` then push), surface stderr verbatim and **do not retry** — a conflict is a
+     human call. `make k8s-sync` is the **only** k8s action this skill takes; it never edits the
+     repo or force-pushes.
+   - `skip` → leave it. It resurfaces next tick (no state recorded — git is the source of truth),
+     and step 7 carries the caution into any push prompt below.
+
+   `uncommitted=true` means there are **uncommitted** edits in the k8s repo — `make k8s-sync` won't
+   ship those (only committed commits push). Note that explicitly: `…uncommitted edits won't sync
+   until committed`.
+
+   Carry an `k8sUnsynced` boolean (true when pending config exists and wasn't just synced) into
+   step 7 and the step-8b cadence.
 
 6. **Evaluate ready-to-push.** Build the candidate set: anything with `unpushed > 0`, excluding
    `manifest.ignore`, excluding `cancelled` whose stored sha still matches current HEAD. Then
@@ -251,6 +290,12 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      not verified these commits (its green is for the last pushed SHA)."*
    - **Non-deploying repo:** *"push sends N unpushed commit(s) to the <repo> remote — no CI gate,
      no prod deploy, no rollout to watch."*
+   - **When `k8sUnsynced` (step 5b) and the candidate is a deploying service:** append a caution to
+     the push consequence — *"⚠️ kubernetes has unsynced config (`make k8s-sync` not yet run) — if
+     this deploy depends on it, sync first or the release may break."* This is a caution, **not a
+     hard block** — the skill can't know whether *this* service needs *that* config, so it surfaces
+     the risk and leaves the call to you. (A hard prerequisite belongs in the manifest's `order`,
+     not here.)
    - `push` → `make git-push <service>`; print `⬆️ pushed <service>`. On success, **for a
      deploying service** add it to `state.rolloutWatch` as `{ sha: <pushed short sha>, fromTag:
      <the service's current live deploy tag from the step-1 digest> }`. `fromTag` is the pre-push
@@ -276,8 +321,9 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      catch them. → **~180s** (3 min — inside the prompt-cache window, but not so tight it burns the
      cache several times per CircleCI build).
    - **warm** — nothing in flight, but *pending work*: `state.deferred` non-empty, unreconciled
-     dependency drift (step 2b skipped), or ready candidates still awaiting your push/defer answer,
-     or any `unpushed > 0` not yet actioned. → **~600s** (10 min).
+     dependency drift (step 2b skipped), `k8sUnsynced` (step 5b — pending config not yet synced),
+     or ready candidates still awaiting your push/defer answer, or any `unpushed > 0` not yet
+     actioned. → **~600s** (10 min).
    - **cold** — fully settled: no `rolloutWatch`, no running CI, nothing pushed this tick, nothing
      deferred, nothing unpushed, no ready candidates. → escalating back-off: **1200s** first cold
      tick, **1500s** second, **1800s** (30 min) third and beyond.
@@ -305,6 +351,13 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
   on green, no further human gate). The prompt is the explicit authorization; there is no
   auto-push. The step-6 pre-push gate withholds the prompt entirely while CI is red/running/
   unknown for the service's branch.
+- **K8s config (step 5b) is watched but never `git-push`ed.** The `kubernetes` repo is in
+  `manifest.ignore` so it's never a `make git-push` candidate — but the skill still reads its state
+  from the digest's `---K8S---` section and, when it has unsynced config, warns and offers
+  `make k8s-sync` (the one k8s action it takes, on explicit confirm — it's prod-affecting via Flux,
+  same "always ask" rule as service pushes). It's a **caution, not a hard gate** on dependent
+  service pushes: the skill can't know which service needs which config. A true ordering
+  prerequisite belongs in the manifest's `order`.
 - **Remote CI never verifies the candidate.** `ci-status.sh` reports the latest pipeline on the
   repo — the last *pushed* SHA — so it cannot have run the unpushed candidate commits. A green CI
   is a statement about the branch's already-live tip, not about what you're about to ship; the
