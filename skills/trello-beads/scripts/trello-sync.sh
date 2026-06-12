@@ -49,9 +49,9 @@ cmd_sync() {
     return 0
   fi
 
-  # Get bead IDs from the list output
+  # Get bead IDs from the list output (one per line, id is the first token)
   local bead_ids
-  bead_ids=$(echo "$closed_beads" | grep -oP 'letterbox-\w+' || true)
+  bead_ids=$(echo "$closed_beads" | grep -oP '^\s*\K[a-z0-9][a-z0-9-]*-\w+' || true)
 
   if [[ -z "$bead_ids" ]]; then
     echo "No closed trello-linked beads found."

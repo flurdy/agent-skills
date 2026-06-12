@@ -96,8 +96,8 @@ Output is `---<ROLE>---` sections, one existing file path per line:
 #### Worktree topology (why canonical ≠ pwd)
 
 In the multi-repo setup, the main worktree's `.claude` is a **symlink** to a sibling state dir
-(e.g. `blc-2/.claude` → `claude-blc-2/`), and worktrees live *inside* that state dir at
-`claude-blc-2/worktrees/<name>/` — each a real checkout with its **own real** `.claude/`. So:
+(e.g. `myrepo/.claude` → `claude-myrepo/`), and worktrees live *inside* that state dir at
+`claude-myrepo/worktrees/<name>/` — each a real checkout with its **own real** `.claude/`. So:
 
 - The canonical `settings.local.json` (the one that survives) is reached through the **main
   worktree's** symlinked `.claude` — the script's `---CANONICAL---` section.

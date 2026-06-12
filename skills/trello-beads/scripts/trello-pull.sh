@@ -105,9 +105,10 @@ ${card_desc}"
 
   echo "$result"
 
-  # Extract bead ID from creation output
+  # Extract bead ID from creation output (first {prefix}-{suffix} token,
+  # whatever prefix this repo's beads db uses)
   local bead_id
-  bead_id=$(echo "$result" | grep -oP 'letterbox-\w+' | head -1 || true)
+  bead_id=$(echo "$result" | grep -oP '[a-z0-9][a-z0-9-]*-\w+' | head -1 || true)
 
   # Add 'bead' label, comment with bead ID, then move card
   "$TRELLO_API" add-label "$card_id" "$BEAD_LABEL" "sky" 2>/dev/null || true

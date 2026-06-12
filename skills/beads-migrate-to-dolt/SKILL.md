@@ -386,7 +386,7 @@ bd import /tmp/bd-issues-from-sqlite.jsonl
 bd import .beads/issues.jsonl
 ```
 
-The bd 1.0 import preserves the original prefix from the imported issues' IDs (e.g. `expire-*`) regardless of the new database's configured prefix. Don't worry about `bd init`'s auto-detected prefix overriding the migrated IDs.
+The bd 1.0 import preserves the original prefix from the imported issues' IDs (e.g. `myrepo-*`) regardless of the new database's configured prefix. Don't worry about `bd init`'s auto-detected prefix overriding the migrated IDs.
 
 Note: `.beads-migration-backup/` contains raw SQLite+JSONL copies, not the structured format `bd backup restore` expects — so don't try `bd backup restore .beads-migration-backup/`, it will fail.
 

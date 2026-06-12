@@ -110,7 +110,7 @@ If you recognize common error patterns, suggest fixes:
 | Status   | ✗ ERRORED                                                |
 | Commit   | 8a2ba05 feat: Add haptic feedback...                      |
 | Duration | 94s                                                      |
-| Logs     | https://expo.dev/accounts/USERNAME/projects/expire/builds/… |
+| Logs     | https://expo.dev/accounts/USERNAME/projects/PROJECT/builds/… |
 
 ### Error
 The "Run fastlane" step failed because of an error in the Xcode build process.

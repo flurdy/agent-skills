@@ -323,8 +323,8 @@ if command -v bd >/dev/null 2>&1 && [ -n "$BEADS_ROOT" ] && [ -d "$BEADS_ROOT/.b
 fi
 
 # Echo "{closed} {total}" for the beads named in field $1 (backtick/comma
-# flattened, filtered to `{prefix}-{suffix}` shapes — bd-123, ge-1505,
-# letterbox-lf9d). "0 0" when beads are unavailable, the field is empty, the
+# flattened, filtered to `{prefix}-{suffix}` shapes — bd-123, ab-1505,
+# myrepo-lf9d). "0 0" when beads are unavailable, the field is empty, the
 # field is truncated with "(+N more)" (can't verify all — conservative), or no
 # token resolves in the db. One batched, local `bd list --id` per call (no
 # network). The caller decides done-ness: all-closed = (total>0 && closed==total).

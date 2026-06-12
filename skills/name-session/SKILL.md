@@ -23,13 +23,13 @@ Build a `<scope>-<descriptive>` name from the current context and emit it as a r
 ```
 
 - **scope** — the most specific identifier available, in priority order:
-  1. Jira ticket from the branch name (e.g. `GE-1505`) — keep its natural Jira case.
+  1. Jira ticket from the branch name (e.g. `AB-1505`) — keep its natural Jira case.
   2. Active bead ID (e.g. `bd-123`) if no ticket.
   3. PR number (e.g. `pr-6563`) if neither.
   4. Omit the scope entirely if none apply — just use the descriptive part.
 - **descriptive** — kebab-case, ≤4 words, the most specific noun phrase for what *this* session is doing. `rebase-pr-status` beats `git-stuff`. Derive it from the conversation, not the branch (the branch already gives the scope).
 
-Examples: `GE-1505-rebase-pr-status`, `bd-412-flaky-test-hunt`, `pr-6563-review-comments`, `auth0-logout-investigation`.
+Examples: `AB-1505-rebase-pr-status`, `bd-412-flaky-test-hunt`, `pr-6563-review-comments`, `auth0-logout-investigation`.
 
 ## Instructions
 

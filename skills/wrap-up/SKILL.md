@@ -345,7 +345,7 @@ When parked on the trunk, pick a better resume target from the data already gath
 
 1. **Today's commits on a feature branch** — a non-default branch in §1's Commits table with commits today. Map it to its worktree path via §0's `---WORKTREES---`.
 2. **A PR created/merged today** (§1 PRs) whose head branch is a feature branch.
-3. **The topic ticket** — a branch in `---WORKTREES---` whose name contains the topic slug's ticket (e.g. slug `ge-1505-…` → branch `fix/GE-1505-…`).
+3. **The topic ticket** — a branch in `---WORKTREES---` whose name contains the topic slug's ticket (e.g. slug `ab-1505-…` → branch `fix/AB-1505-…`).
 
 Then:
 

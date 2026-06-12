@@ -177,7 +177,7 @@ If `current_repo_total` is between 1 and 4, use `AskUserQuestion`:
 If `current_repo_total > 4`, do **not** force the picker (the option cap is 4). Instead, print:
 
 ```markdown
-**Pick one to load:** reply with the slug or filename (e.g. `ge-1344-login-state-decision` or `2026-05-21-ge-1344-login-state-decision.md`).
+**Pick one to load:** reply with the slug or filename (e.g. `ab-1344-login-state-decision` or `2026-05-21-ab-1344-login-state-decision.md`).
 ```
 
 Only pickable rows (✅) are valid choices. Pruned-worktree handoffs are pickable — they just resume in a different checkout. If the user picks an unresolved one, point them at `cat ~/.claude/handoffs/{filename}` for read-only access.
