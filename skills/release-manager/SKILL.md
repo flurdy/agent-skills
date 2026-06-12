@@ -3,12 +3,13 @@ name: release-manager
 description: >
   Interactive release gatekeeper for letterbox — runs one tick of the release dashboard,
   then prompts to push / defer / cancel each ready service, auto-files a bead on CI failure,
-  enforces deploy order, watches rollouts, and nudges feature toggles. Drive it on a loop with
+  enforces deploy order, watches rollouts, syncs k8s config and schedules the restarts that
+  applied config needs, and nudges feature toggles. Drive it on a loop with
   /watch-release. Advisory: it only pushes after you explicitly choose "push".
-allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
+allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model: sonnet
 effort: medium
-version: "1.8.0"
+version: "1.9.0"
 author: "flurdy"
 ---
 
@@ -58,11 +59,14 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 
 ```json
 {
-  "deferred":     { "dispatch": { "untilEpochTick": false } },
-  "cancelled":    { "web": { "sha": "<short sha when cancelled>" } },
-  "ciBeads":      { "account@master": "letterbox-xyz" },
-  "rolloutWatch": { "dispatch": { "sha": "<pushed sha>", "fromTag": "<live tag at push time>" } },
-  "quietStreak":  0
+  "deferred":       { "dispatch": { "untilEpochTick": false } },
+  "cancelled":      { "web": { "sha": "<short sha when cancelled>" } },
+  "ciBeads":        { "account@master": "letterbox-xyz" },
+  "rolloutWatch":   { "dispatch": { "sha": "<pushed sha>", "fromTag": "<live tag at push time>" } },
+  "configApply":    { "letterbox-app-config": { "baseline": "<resourceVersion at sync time>", "consumers": ["web"], "syncedSha": "<k8s repo sha>" } },
+  "restartPending": { "web": { "config": "letterbox-app-config", "appliedRV": "<resourceVersion when Flux applied>" } },
+  "restartWatch":   { "web": { "for": "letterbox-app-config", "ageBaseline": "<pod age at restart>" } },
+  "quietStreak":    0
 }
 ```
 
@@ -80,6 +84,20 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
   `previous+1`. So confirmation (step 4) is "the live tag has moved **off** `fromTag`", not an
   exact-tag match. `fromTag` may be `null` if deploy-status was unavailable at push — step 4 then
   falls back to the older heuristic.
+- `configApply` / `restartPending` / `restartWatch` — the **config-restart state machine** for
+  services that read a ConfigMap/Secret only at startup (mapped in `manifest.config_consumers`).
+  A synced config change does NOT auto-restart them, so they need a `kubectl rollout restart` once
+  it lands — but only *after* Flux has applied it (restarting sooner just reloads the old config).
+  Three states, each a separate tick, mirroring `rolloutWatch`'s push→confirm pattern:
+  - `configApply` — config synced via `make k8s-sync` (step 5b) and awaiting Flux. `baseline` is the
+    resource's live `resourceVersion` captured **at sync time** (the pre-apply baseline, exactly like
+    `fromTag`); step 4b confirms apply when it moves **off** `baseline`. `consumers` = the Deployment
+    services to restart (from the manifest); `syncedSha` = the k8s repo sha that shipped it.
+  - `restartPending` — Flux applied the config (step 4b saw `resourceVersion` move); the listed
+    services now await a restart decision. Survives a `defer` so it re-prompts next tick. `appliedRV`
+    is the resourceVersion observed at apply (audit/debug only).
+  - `restartWatch` — restart issued (step 7b ran `kubectl rollout restart`); awaiting pod cycle.
+    `ageBaseline` is the pod age at restart time — step 4b confirms when pods show fresh + ready.
 
 ## Per-tick flow
 
@@ -111,6 +129,12 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      `---SERVICES---` entry): `present=<true|false>`, then when present `branch`, `unpushed` (int),
      `uncommitted` (bool), `behind` (int, from the last-known remote ref — may be stale). Consumed by
      step 5b.
+   - `---CONFIG---`: one pipe-delimited line per `manifest.config_consumers` entry after the header:
+     `name|kind|resourceVersion|changed`. `kind` ∈ `configmap|secret|notfound`; `resourceVersion` is
+     the live value (or `-`) — the apply baseline steps 5b/4b watch; `changed` (`true|false`) means
+     the resource appears in the `kubernetes` repo's unpushed diff, i.e. it's part of the config
+     `make k8s-sync` will ship **this** tick. Empty (header only) when `config_consumers` is `{}`.
+     Consumed by steps 5b (register) and 4b (confirm apply).
 
 1b. **Scan dependencies + contract coverage** (cheap, no subagent needed — compact output):
 
@@ -127,8 +151,9 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 
 2. **Load context.** Read `.release-state.json` (create `{}`-shaped default if absent) and
    `docs/release-manifest.yaml`. From `order`, build the **effective dependency map** =
-   `(derived ∪ manual) − suppress`. Also read `toggles`, `parked`, `ignore`, and
-   `non_deploying`.
+   `(derived ∪ manual) − suppress`. Also read `toggles`, `parked`, `ignore`,
+   `non_deploying`, and `config_consumers` (the ConfigMap/Secret → restart-needing-services map
+   for steps 5b/4b/7b).
 
 2b. **Dependency drift reconcile.** If `---DRIFT---` is not `in-sync`, the pacts have diverged
    from `order.derived`. Print the `new`/`removed` edges, then prompt once (AskUserQuestion):
@@ -162,6 +187,30 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
      (recent). Less precise; note `…rolling out <service> (no baseline)`.
    - Otherwise (live tag still equals `fromTag`, or not yet ready/settled) leave it — optionally
      note `…rolling out <service>`.
+
+4b. **Config-apply & restart confirmation.** Two follow-on confirmations for the config-restart
+   machine (both read this tick's `---CONFIG---` and `---SERVICES---`):
+
+   - **`configApply` → `restartPending` (Flux applied the config).** For each `state.configApply`
+     entry, look up the resource's current `resourceVersion` in `---CONFIG---`. If it has **moved
+     off** `baseline`, Flux has applied the synced change. Print `✅ CONFIG APPLIED <name>` and, for
+     each `consumer`, queue a restart — `state.restartPending[<consumer>] = { config: <name>,
+     appliedRV: <new resourceVersion> }` — **unless** that consumer's new pods will already pick the
+     config up on their own, in which case skip it (no restart needed):
+     - consumer is in `state.rolloutWatch`, or has `unpushed > 0`, or shows `deploy` mid-rollout —
+       it's deploying anyway; its fresh pods read the applied config. Note `…<consumer> deploying —
+       picks up <name> without a restart`.
+     Then remove the `configApply` entry. If `resourceVersion` is still `baseline` (or `-`/notfound),
+     leave it — note `…config applying <name>`. (Over-registration is harmless: a config that didn't
+     actually change never moves off `baseline`, so it just sits until you sync something — prune
+     stale entries if a `syncedSha` is long gone.)
+   - **`restartWatch` → done (pods cycled).** For each `state.restartWatch` entry, the restart is
+     confirmed when the service shows `deploy` ready (e.g. `1/1`) with a **freshly-aged** pod (the
+     `age` in `---SERVICES---` is younger than `ageBaseline` — pods were replaced). A config restart
+     does **not** move the image `tag`, so age-reset + ready is the signal (not tag movement like
+     step 4). Print `✅ RESTARTED <service> (config <for>)` and remove. Otherwise leave it — note
+     `…restarting <service>`. (Heuristic, like step 4's `fromTag: null` fallback: if age is
+     ambiguous, prefer leaving it one more tick over a false confirm.)
 
 5. **Toggle readiness.** For each `manifest.toggles` entry: if its `service` is rolled out
    (a Deployment showing `deploy ready`, or a CronJob service showing the settled `cron` marker)
@@ -198,8 +247,14 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    - `sync` → run `make k8s-sync`. On success print `✅ k8s-synced`; the change is now en route to
      the cluster via Flux. On failure (rebase conflict, push rejected — `make k8s-sync` does
      `pull --rebase` then push), surface stderr verbatim and **do not retry** — a conflict is a
-     human call. `make k8s-sync` is the **only** k8s action this skill takes; it never edits the
-     repo or force-pushes.
+     human call. `make k8s-sync` never edits the repo or force-pushes.
+     **Then register restart watches:** for each `---CONFIG---` line with `changed=true` (it was part
+     of the commits just synced), record `state.configApply[<name>] = { baseline: <its
+     resourceVersion from THIS tick's ---CONFIG--->, consumers: <manifest.config_consumers[<name>]>,
+     syncedSha: <k8s repo HEAD short sha> }`. The `resourceVersion` read *now* (before Flux applies)
+     is the pre-apply baseline step 4b watches to move off — exactly like `fromTag` at push. If no
+     `changed=true` line has consumers, register nothing (config with no startup-readers needs no
+     restart). Print `🔁 watching restart for <name> → <consumers>`.
    - `skip` → leave it. It resurfaces next tick (no state recorded — git is the source of truth),
      and step 7 carries the caution into any push prompt below.
 
@@ -308,25 +363,51 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
    - `why?` → show `./scripts/mgit log <service> --oneline @{u}..HEAD` (the unpushed commits) plus
      the gate reasoning (CI/contract/coverage/order), then re-ask the same question for that service.
 
+7b. **Restart prompt per `restartPending` service.** These are services whose startup config Flux
+   applied (step 4b queued them); they need a `kubectl rollout restart` to read the new values. For
+   each `state.restartPending` entry:
+   - **Re-check it's still needed first.** If the service has since deployed a new image (it left
+     `rolloutWatch`, or its `tag` advanced this tick), its fresh pods already loaded the applied
+     config — drop the entry silently (print `…<service> redeployed — config picked up, no restart`)
+     and skip the prompt. This guards the case where a normal deploy overtakes the config restart.
+   - Otherwise prompt (AskUserQuestion, one per service, options `restart` / `defer` / `skip`). State
+     the consequence plainly: *"restart deployment/<service> to load applied config <config> — brief
+     rolling pod cycle, **no new image**, no CI gate, no prod deploy."* CronJob-backed services never
+     appear here (the manifest excludes them — they read fresh config each run); if one somehow does,
+     skip it with that note.
+     - `restart` → run `kubectl rollout restart deployment/<service> -n apps`; print
+       `🔄 restarted <service>`. On success move it from `restartPending` to
+       `state.restartWatch[<service>] = { for: <config>, ageBaseline: <the service's current pod age
+       from this tick's ---SERVICES--->`. Step 4b confirms the cycle (age resets + ready).
+     - `defer` → leave it in `restartPending`; it re-prompts next tick.
+     - `skip` → remove from `restartPending` (you've decided this service doesn't need the kick —
+       e.g. it actually re-reads config live). It will not re-prompt unless a future sync re-queues it.
+   This is the one prod action beyond push/sync; like them it's **confirm-gated** — never an
+   autonomous restart.
+
 8. **Persist & summarise.** Write the updated `.release-state.json`. Print a one-line tick
-   summary: e.g. `tick: 2 pushed, 1 deferred, 1 waiting, 1 CI bead, 1 coverage gap, 1 toggle ready`.
+   summary: e.g. `tick: 2 pushed, 1 restarted, 1 config applying, 1 deferred, 1 waiting, 1 CI bead,
+   1 coverage gap, 1 toggle ready`.
 
 8b. **Adaptive cadence recommendation.** Classify this tick so an adaptive watcher (`/watch-release`,
    default mode) can pace the next run. A fixed-interval loop ignores this line. Pick the **first**
    bucket that matches:
 
    - **hot** — something is *in flight or imminent*: `state.rolloutWatch` is non-empty (a push is
-     mid-rollout — the live tag could move any tick), **or** a candidate's `ci=running`, **or** a
-     service was pushed *this* tick. External events that resolve in minutes; check again soon to
-     catch them. → **~180s** (3 min — inside the prompt-cache window, but not so tight it burns the
-     cache several times per CircleCI build).
-   - **warm** — nothing in flight, but *pending work*: `state.deferred` non-empty, unreconciled
-     dependency drift (step 2b skipped), `k8sUnsynced` (step 5b — pending config not yet synced),
-     or ready candidates still awaiting your push/defer answer, or any `unpushed > 0` not yet
-     actioned. → **~600s** (10 min).
-   - **cold** — fully settled: no `rolloutWatch`, no running CI, nothing pushed this tick, nothing
-     deferred, nothing unpushed, no ready candidates. → escalating back-off: **1200s** first cold
-     tick, **1500s** second, **1800s** (30 min) third and beyond.
+     mid-rollout — the live tag could move any tick), **or** `state.configApply` is non-empty (Flux
+     mid-apply — `resourceVersion` could move any tick), **or** `state.restartWatch` is non-empty
+     (pods mid-cycle), **or** a candidate's `ci=running`, **or** a service was pushed or restarted
+     *this* tick. External events that resolve in minutes; check again soon to catch them. →
+     **~180s** (3 min — inside the prompt-cache window, but not so tight it burns the cache several
+     times per CircleCI build).
+   - **warm** — nothing in flight, but *pending work*: `state.deferred` non-empty, `state.restartPending`
+     non-empty (config applied, awaiting your restart answer), unreconciled dependency drift (step 2b
+     skipped), `k8sUnsynced` (step 5b — pending config not yet synced), or ready candidates still
+     awaiting your push/defer answer, or any `unpushed > 0` not yet actioned. → **~600s** (10 min).
+   - **cold** — fully settled: no `rolloutWatch`, no `configApply`/`restartPending`/`restartWatch`,
+     no running CI, nothing pushed or restarted this tick, nothing deferred, nothing unpushed, no
+     ready candidates. → escalating back-off: **1200s** first cold tick, **1500s** second, **1800s**
+     (30 min) third and beyond.
 
    Maintain `state.quietStreak`: **cold** → increment, then `seconds = min(1800, 1200 + 300 × (quietStreak − 1))`;
    **hot/warm** → reset to 0. Persist it alongside the rest of the state in step 8.
@@ -354,10 +435,21 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 - **K8s config (step 5b) is watched but never `git-push`ed.** The `kubernetes` repo is in
   `manifest.ignore` so it's never a `make git-push` candidate — but the skill still reads its state
   from the digest's `---K8S---` section and, when it has unsynced config, warns and offers
-  `make k8s-sync` (the one k8s action it takes, on explicit confirm — it's prod-affecting via Flux,
-  same "always ask" rule as service pushes). It's a **caution, not a hard gate** on dependent
-  service pushes: the skill can't know which service needs which config. A true ordering
-  prerequisite belongs in the manifest's `order`.
+  `make k8s-sync` (on explicit confirm — it's prod-affecting via Flux, same "always ask" rule as
+  service pushes). It's a **caution, not a hard gate** on dependent service pushes: the skill can't
+  know which service needs which config. A true ordering prerequisite belongs in the manifest's
+  `order`.
+- **Config restarts (steps 5b→4b→7b) are spread across ticks, never bundled.** A synced ConfigMap/
+  Secret only restarts a startup-reading service after Flux *applies* it — restarting in the same
+  tick as the sync would just reload the **old** config (Flux hasn't reconciled yet). So the machine
+  runs sync (register) → confirm apply (`resourceVersion` moves off baseline) → confirm-gated
+  `kubectl rollout restart` → confirm pod cycle, one hop per tick, mirroring `rolloutWatch`. The
+  restart is the third prod action (after `make git-push` / `make k8s-sync`), and like them it's
+  **confirm-gated** — never autonomous. Only services in `manifest.config_consumers` are ever
+  restarted; CronJob-backed services are excluded (they read fresh config on their next run).
+  Apply-confirm uses `resourceVersion` movement; restart-confirm uses pod age-reset (a config
+  restart doesn't move the image tag), so it's heuristic — it prefers waiting a tick over a false
+  confirm. If `config_consumers` is `{}`, the whole flow stays dormant.
 - **Remote CI never verifies the candidate.** `ci-status.sh` reports the latest pipeline on the
   repo — the last *pushed* SHA — so it cannot have run the unpushed candidate commits. A green CI
   is a statement about the branch's already-live tip, not about what you're about to ship; the
