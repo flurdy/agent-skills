@@ -4,7 +4,7 @@ description: Browse handoff files saved by /wrap-up and pick one to resume. List
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model: sonnet
 effort: medium
-version: "0.15.0"
+version: "0.16.0"
 author: "flurdy"
 ---
 
@@ -46,81 +46,30 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 ~/.claude/skills/handoffs/scripts/list.sh --check-branches
 ```
 
-`--check-branches` adds branch-liveness classification (the `branch-state` field) for current-repo handoffs. It runs one `git ls-remote` (network, timeout-guarded) plus local merge-base checks. It is current-repo-only — the git queries run in pwd, so handoffs in other repos always report `unknown`.
+`--check-branches` adds branch-liveness + PR classification for current-repo handoffs. The full flag
+semantics, the 18-field `---HANDOFFS---` line format, and every field's meaning (supersede,
+branch-state, pr-state, archive-class, beads-done, jira-field) are specified once in
+**`~/.claude/skills/handoffs/REFERENCE.md`** — `Read` it. Both `/handoffs` and `/handoffs-tidy` read
+off the same definitions, so the two never drift on classification.
 
-**PR detection auto-enables** (no separate flag) whenever `--check-branches` is active **and** `gh` is on `PATH`. It adds one batched, timeout-guarded `gh pr list` (mapped to branches locally) and fills the `pr-state`/`pr-number`/`pr-url` fields. It's tied to `--check-branches` so that `/landscape` (`--summary-only`) and `/wrap-up` (no flags) stay network-free. If `gh` is missing, unauthenticated, or times out, every row reports `pr-state=unknown` and the local branch-state heuristic stands.
+The sections you parse here: `---CURRENT-REPO---` / `---CURRENT-REPO-DISPLAY---` (identity + label,
+or `NONE` outside a repo), `---HANDOFFS---` (one row per handoff, newest first), `---SUMMARY---`
+(the counts, incl. `current_repo_total`, `current_repo_superseded`, `current_repo_stale`,
+`unresolved`), and `---OTHER-REPOS---` (`{repo-key}|{count}|{display}`, count desc). The
+`---CURRENT-REPO-LATEST---` / `---CURRENT-REPO-LIVE---` sections are for `/landscape`; this skill
+renders the full table instead and can ignore them.
 
-Parse the delimited output:
-
-- `---CURRENT-REPO---` — current repo identity (origin URL preferred, falling back to realpath of git-common-dir), or `NONE` if not in a repo.
-- `---CURRENT-REPO-DISPLAY---` — short label for the current repo (basename of the repo root), or `NONE`.
-- `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
-- `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
-- `---HANDOFFS---` — one pipe-delimited line per handoff, newest first: `{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}`. `{time}` is the `HH:MM` the handoff was written — read from the `# Resume:` header (wrap-up v0.8.0+), falling back to the file's mtime for older handoffs; `?` only when neither is available. New fields are **appended after `{time}`**, so older positional parsers (e.g. `/wrap-up`'s 9-field prefix, and anything reading `{time}` at field 15) keep working:
-  - `{beads-field}` — raw `**Beads:**` token list from the handoff body (the source for `{beads-done}`); empty unless beads exist locally or a `--bead`/`--ticket` filter is active.
-  - `{jira-field}` — raw `**Jira:**` token list; populated under `--check-branches` (and filters) so the skill can resolve Jira-Done (§1a). Bash can't call the Jira MCP, so the **script never sets a jira-done flag** — it only hands you the keys.
-  - `{beads-done}` — `Y` when every bead the handoff references is closed (all `**Beads:**` IDs resolve to `status=closed`), else empty. Computed locally via `bd` for current-repo rows whenever beads exist — **independent of `--check-branches`**, so even the offline callers (landscape) drop bead-closed threads from "live". A field truncated with `(+N more)` can't be fully verified and stays empty (conservative).
-- `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff (the "last session"), or empty. Consumed by `/landscape`'s footnote; this skill renders the full table instead and can ignore it.
-- `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff (newest first) — the threads behind `current_repo_recent_live`. The first line is the same handoff as `---CURRENT-REPO-LATEST---`. Always emitted (survives `--summary-only`); empty when there are none. Consumed by `/landscape` to enumerate the few live threads inline; this skill renders the full table instead and can ignore it.
-- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N` (recent and not superseded), `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`.
-- `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc.
-
-Repo identity rules:
-- Resolution order per handoff: (1) the **`Repo root:`** line if the handoff was written by wrap-up v0.2.0+, then (2) walking up the `Where to pick up:` cwd to find a parent repo.
-- Identity prefers `remote.origin.url` so independent clones of the same upstream collapse to one row; falls back to realpath of git-common-dir for local-only repos.
-- `.claude`-symlink unification: if a repo root's `.claude` is a symlink whose target lives inside another git repo, that other repo's identity wins (one hop, no cycles).
-- Pruned worktrees still resolve — the walk-up climbs out of the deleted directory to a still-existing parent.
-- `repo-key` is `UNRESOLVED` only when neither the `Repo root:` field nor the cwd walk-up finds a repo. Older handoffs that recorded a relative path may end up here.
-- `exists=Y` means the original recorded cwd still exists on disk. `exists=N` means it was pruned — the handoff is still pickable (you'll resume in your current checkout or a fresh worktree).
-
-Supersede fields:
-- `superseded-by` is the filename of the **newest** handoff in the same repo that continues this thread, or empty if this is the live tip. `supersede-reason` is `branch` (same branch), `slug` (same exact topic slug), or `collision` (same-day re-wrap of the same topic). Ticket/cwd overlap is deliberately *not* a supersede signal — a ticket legitimately spans many handoffs.
-- **Trunk co-residence never supersedes.** The `branch` reason excludes the default branch (`main`/`master`): two distinct threads both recorded on the trunk (the wrap-up trunk-parking case) are *not* the same thread, so they only supersede each other on an exact slug or same-day collision — never on sharing `main`. This mirrors the `branch-state` trunk guard; both stem from the trunk being a meaningless thread/liveness signal.
-- A superseded handoff is still pickable; the field just flags that a newer continuation exists, so the picker can steer you to it and the archive step can offer to retire it.
-
-Branch-state field (only populated with `--check-branches`, current-repo rows only):
-- `live` — branch exists and isn't merged into the default branch.
-- `merged` — branch tip is an ancestor of the default branch (its PR likely landed).
-- `gone` — branch exists neither locally nor on the remote (deleted after merge, or abandoned).
-- `unknown` — couldn't determine (other repo, branch `?`, offline with no local ref, **or the handoff's branch is the default branch itself**). **Never treated as stale** — absence of evidence isn't evidence of deadness.
-- `merged` and `gone` are the two "stale" states. Offline runs degrade safely: a branch with no local ref reports `unknown`, never a false `gone`.
-- **Default-branch guard:** a handoff recorded on the trunk (`main`/`master`) reports `unknown`, never `merged`. The trunk tip is trivially an ancestor of itself, so the merge-base check would always fire — but being on the trunk says nothing about whether the handoff's work shipped (it usually means wrap-up captured a worktree sitting on `main` while the real work lived on a feature branch elsewhere). PR detection still applies on top.
-
-PR fields (`pr-state`/`pr-number`/`pr-url`, only populated when `--check-branches` is active and `gh` is available, current-repo rows only). A PR matches a handoff either by branch (headRefName) **or by a number recorded in the handoff's `**PRs:**` field** — the number fallback is what rescues the **trunk-parking** case: when wrap-up recorded `main` as the branch (the feature branch was already gone after merge), a branch-only lookup matches nothing and the row wrongly shows `🟢 live`, but the merged PR's number is still in the body. This is the single most common reason a *finished* PR-repo handoff used to look live (see your `main`-branch rows).
-- `merged` — a PR for this branch (or recorded number) was merged. **Ground truth that beats `branch-state`** — local ancestry can't see a squash-merge (the branch is never an ancestor of the default tip), so a squash-merged branch shows `branch-state=live`/`gone` but `pr-state=merged`.
-- `open` — a PR is open. This is *active* work — it overrides everything except supersede and is **never** an archive candidate.
-- `closed` — a PR was closed without merging (abandoned).
-- `none` — `gh` ran but found no PR for this branch.
-- `unknown` — `gh` wasn't consulted (no flag, no `gh`, offline, or branch `?`). Falls back to `branch-state`.
-- `pr-number`/`pr-url` are the PR number and URL when one was found, else empty.
-
-Archive-class field (current-repo rows only):
-- The script's per-row archive recommendation, so the table and §3b read straight off it instead of re-deriving:
-  - `safe` — superseded, or `pr-state=merged`, or `beads-done=Y` (all referenced beads closed), or `branch-state=merged`. Low regret — the context lives on, or the work demonstrably shipped.
-  - `keep` — `pr-state=closed`, or `branch-state=gone` with no merged/done evidence. Higher regret — may be the only record.
-  - empty — live work (incl. an open PR) or `unknown`. Not an archive candidate.
-- Precedence: supersede > open PR > merged PR > **beads-done** > closed PR > local `merged` > `gone`. Beads-done sits just under a merged PR (it's the finished-work signal when there is no live branch/PR — the trunk case) but **below** an open PR (active review beats a sub-bead closing). Jira-Done is *not* in this list — the script can't query Jira; the skill folds it in at §1a. `current_repo_stale` counts the `keep`/`safe` rows that are **not** superseded (the §3b "stale" group); superseded rows are counted by `current_repo_superseded`.
+> See REFERENCE §Fields for repo-identity resolution (`Repo root:` → cwd walk-up, origin-URL keying,
+> `.claude`-symlink unification, `UNRESOLVED`), the supersede rules, and the branch-state / pr-state /
+> archive-class semantics this skill renders below.
 
 ### 1a. Resolve Jira-Done for still-live rows (skill layer)
 
-`list.sh` can read PR and bead state but **cannot call the Jira MCP** — so a handoff whose only "finished" signal is its ticket being closed in Jira still arrives with `archive-class` empty (`🟢 live`). Close that gap here, model-side.
-
-**Gate — skip this step entirely unless _all_ of:** you ran with `--check-branches` (this is the network/liveness pass; the offline callers stay Jira-free), the Jira MCP is configured, and there is at least one current-repo row that is **still live** (`archive-class` empty / would render `🟢 live`) **and** has a non-`—` `{jira-field}`. If none qualify, do nothing — most rows are already classified by PR/bead/supersede.
-
-For the qualifying rows, collect the distinct Jira keys from their `{jira-field}` values and resolve their status in **one batched** query:
-
-```
-mcp__jira__jira_get
-  path: /rest/api/3/search/jql
-  queryParams:
-    jql: key in (KEY-1, KEY-2, …) AND statusCategory = Done
-    fields: status
-  jq: issues[*].key
-```
-
-Any key the query returns is **Done** (Jira's `Done` status *category* covers Done / Closed / Resolved / Won't Do across workflow variants — more robust than matching status name strings). For each live row whose ticket is in that set, **promote it to done**: treat its `archive-class` as `safe` for the rest of this run (§2 Status, §3b grouping, the picker's live set). A row with several tickets counts as done only when **every** ticket it names is Done — a handoff spanning an open and a closed ticket is still live.
-
-If the Jira MCP errors or isn't configured, skip silently and let the PR/bead classification stand — never fail the skill over Jira.
+`list.sh` can read PR and bead state but **cannot call the Jira MCP** — so a handoff whose only
+"finished" signal is its ticket being closed in Jira still arrives with `archive-class` empty
+(`🟢 live`). Close that gap here, model-side, per **REFERENCE §Jira-Done**: same gate (only under
+`--check-branches`, only for still-live rows naming a ticket), same batched JQL query, same
+promote-to-`safe` rule. Skip silently if the Jira MCP errors or isn't configured.
 
 ### 2. Render the current-repo table
 
@@ -139,18 +88,8 @@ If `current_repo_total > 0`:
 - **Where**: basename of the recorded cwd. Append ` (current)` if it matches pwd. Special cases: empty cwd → `—`; cwd ending in `/` → use the next-up segment, e.g. `worktrees/` → `(worktrees root)`.
 - **Worktree**: ✅ if `exists=Y`; ✂️ (icon only, no word) if `exists=N`. The ✂️ reads as "pruned" and the footnote legend below spells it out; everything in the current-repo table is pickable by definition (handoffs that couldn't be matched to a repo never reach this table), so no separate Pickable column.
   - Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️` (the wide colored forms, not the narrow text `✂︎`/`⚠︎`). Mixing the two presentations across rows makes column widths jump — keep one form so the cells line up.
-- **Status**: pick the first that applies, in this order:
-  1. `superseded-by` non-empty → `⏩ superseded` with the newer handoff's slug and reason, e.g. `⏩ by ge-1470-complete (same branch)`. Humanise the reason: `branch` → "same branch", `slug` → "same topic", `collision` → "same-day re-wrap". Derive the newer slug from the `superseded-by` filename (strip the `YYYY-MM-DD-` prefix and `.md`).
-  2. `pr-state` = `open` → `🟠 PR #{pr-number} open` (active work — link `pr-url` if rendering allows).
-  3. `pr-state` = `merged` → `✅ PR #{pr-number} merged` (definitive — survives squash-merge).
-  4. `beads-done` = `Y` → `✅ done (beads closed)` (every referenced bead is closed — the finished-work signal when there's no live branch/PR, e.g. trunk repos).
-  5. Jira-Done from §1a → `✅ done ({KEY} done)` (ticket closed in Jira; only reachable when §1a ran).
-  6. `pr-state` = `closed` → `🚫 PR #{pr-number} closed` (abandoned).
-  7. `branch-state` = `merged` → `🔵 merged` (branch landed; no PR data).
-  8. `branch-state` = `gone` → `⚪ branch gone`.
-  9. otherwise → `🟢 live` (treat `unknown` as live — we have no evidence it's dead).
-  Supersede wins because "a newer handoff continues this" is the most actionable signal. PR state beats `branch-state` because it's ground truth (and the only thing that catches a squash-merge); an open PR specifically means *don't archive*. The two `✅ done` states (beads / Jira) rank above closed/gone for the same reason a merged PR does — the work shipped — and mirror the script's `archive-class=safe`.
-- **Archive**: render directly from the `archive-class` field — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—` (treat a §1a Jira-Done promotion as `safe`). This is the at-a-glance candidate flag §3b reads off; `safe` is low-regret (superseded / merged / done), `keep?` is higher-regret (abandoned / branch gone with no merge evidence).
+- **Status**: classify the row per **REFERENCE §Status** (the 9-step precedence: supersede → open PR → merged PR → beads-done → Jira-Done → closed PR → merged → gone → live). Emit the glyphs exactly as written there.
+- **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—` (a §1a Jira-Done promotion counts as `safe`).
 
 If `current_repo_total == 0` and `CURRENT-REPO != NONE`:
 `_No handoffs for this repo ({CURRENT-REPO-DISPLAY})._`
@@ -205,38 +144,18 @@ This is a tooltip-style explainer keyed to the column legend, not a count. Skip 
 
 ### 3b. 🗂️ Archive cleanup candidates (opt-in)
 
-Skip this step if `current_repo_superseded == 0` **and** `current_repo_stale == 0`.
+Run the archive flow exactly as **REFERENCE §Archive-flow** specifies: skip if
+`current_repo_superseded == 0` **and** `current_repo_stale == 0`; otherwise present the candidates in
+the three regret-ordered groups (Superseded / Done / Stale), prompt with `AskUserQuestion`
+(multiSelect, labelled and described per that section), archive the selected filenames in one
+`archive.sh` call, and parse `---ARCHIVED---` / `---SKIPPED---`. Never offer a `🟢 live`, `🟠 PR open`,
+or `unknown` row; `archive.sh` only moves, never deletes.
 
-Some current-repo handoffs clutter the picker without pointing at live work. Offer to retire them — archiving **moves** them to `~/.claude/handoffs/archive/` (still on disk, still greppable; just out of the active listing). This is opt-in and never automatic — the rows stay pickable until the user says so.
+When the flow says to drop archived rows from "any subsequent listing or picker", that is **this
+skill's current-repo table and §4 picker** — remove the archived rows and subtract them from
+`current_repo_total` so §4 doesn't offer them. If the user selects none, render nothing and continue to §4.
 
-The candidates split by regret — the `archive-class` field already encodes which is which. Present them as **distinct groups** and be honest about the difference:
-
-- **Superseded** (`archive-class=safe`, `superseded-by` non-empty) — a newer handoff in this repo continues the thread. Low regret: the context lives on in the newer file.
-- **Done** (`archive-class=safe`, not superseded — Status `✅ PR merged`, `✅ done (beads closed)`, `✅ done ({KEY} done)`, or `🔵 merged`) — the work shipped: the PR landed, every referenced bead is closed, the ticket is Done, or the branch tip is in the default branch. Low regret. This is the group that catches finished trunk work and trunk-parked PR handoffs that used to masquerade as `🟢 live`.
-- **Stale** (`archive-class=keep` — Status `🚫 PR closed` or `⚪ branch gone`) — abandoned, and *no newer handoff supersedes it*. Higher regret: this may be the **only** record of that thread. Default to leaving these unless the user is sure.
-
-A row is **never** a candidate while its PR is open (`🟠`) — that's live work. A row that is both superseded and otherwise archivable belongs in the Superseded group (supersede is the safest reason to archive).
-
-Prompt with `AskUserQuestion` (multiSelect). One option per candidate, labelled `{date} {slug}`, described by its group:
-- superseded → `⏩ superseded by {newer-slug}`
-- done → `✅ PR #{pr-number} merged` / `✅ beads closed` / `✅ {KEY} done` / `🔵 branch merged`
-- stale → `🚫 PR #{pr-number} closed — no newer handoff` / `⚪ branch gone — no newer handoff`
-
-> Archive these to `~/.claude/handoffs/archive/`? They stay on disk (greppable), just out of the picker. **Superseded** and **done** ones are safe — the context lives on or the work shipped. **Stale** ones may be the only record of an abandoned thread, so leave any you might still want.
-
-For the selected filenames, archive them in one call:
-
-```bash
-~/.claude/skills/handoffs/scripts/archive.sh {file1} {file2} …
-```
-
-Parse the script's `---ARCHIVED---` / `---SKIPPED---` sections and confirm:
-
-```markdown
-✅ Archived {N} handoff(s) to `~/.claude/handoffs/archive/`.
-```
-
-Surface any `---SKIPPED---` lines verbatim with their reason. After archiving, **drop the archived rows** from the current-repo table for the rest of this run (and subtract them from `current_repo_total`) so §4's picker doesn't offer them. Only offer rows with a non-empty `archive-class` (`safe` or `keep`); never a `🟢 live`, `🟠 PR open`, or `unknown` row. Never delete — `archive.sh` only moves. If the user selects none, render nothing and continue to §4.
+(`/handoffs-tidy` is the standalone twin of this step: same flow, no table or picker around it.)
 
 ### 4. Pick a handoff (current repo only)
 

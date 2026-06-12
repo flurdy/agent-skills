@@ -13,7 +13,7 @@
 | create-pr | Create a pull request from the current branch following project conventions, and close the associated bead |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
-| handoffs-tidy | Prune superseded session handoffs — archive ones a newer handoff continues (same branch/topic/same-day re-wrap) so the /handoffs picker stays focused. Read-only until you confirm; archives, never deletes |
+| handoffs-tidy | Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — so the /handoffs picker stays focused. Standalone twin of /handoffs's archive step; read-only until you confirm; archives, never deletes |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
