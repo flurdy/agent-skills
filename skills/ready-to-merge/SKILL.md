@@ -243,13 +243,15 @@ EOF
 
 **Idempotency:** if the command prints `Pull request ... was already merged` (e.g. a prior attempt merged remotely before erroring on local cleanup), treat that as **success** — do not retry or alarm. Confirm with `gh pr view {number} --json state --jq .state` (expect `MERGED`) if unsure.
 
-After the merge succeeds, delete the **remote** branch separately — this is a pure remote ref delete with no local git involvement, so it's worktree-safe:
+After the merge succeeds, delete the **remote** branch separately — this is a pure remote ref delete with no local git involvement, so it's worktree-safe. But **check it still exists first** — many repos auto-delete the head branch on merge, and skipping the DELETE avoids both a wasted call and a permission prompt:
 
 ```bash
+gh api "repos/{owner}/{repo}/branches/{head-branch}" --jq '.name'
+# 404 → auto-deleted on merge; report "Remote branch auto-deleted." and skip the DELETE
 gh api -X DELETE "repos/{owner}/{repo}/git/refs/heads/{head-branch}"
 ```
 
-This is **best-effort**: it may be denied by branch permissions/SSO, or the branch may already be gone (auto-delete-on-merge). On any error, don't retry — just note that the remote branch wasn't deleted and add it to the follow-ups. Never delete the *local* branch or switch worktrees yourself.
+The DELETE is **best-effort**: it may be denied by branch permissions/SSO. On any error, don't retry — just note that the remote branch wasn't deleted and add it to the follow-ups. A **local permission denial** (the harness/user declining the Bash call) is the user saying no — treat exactly like any other failure: never re-run the same command, note it, move on. Never delete the *local* branch or switch worktrees yourself.
 
 After merge succeeds, print:
 
@@ -257,7 +259,7 @@ After merge succeeds, print:
 ✅ Merged #{number}.{branch-note}
 ```
 
-where `{branch-note}` is ` Remote branch deleted.` on success, or ` (remote branch not deleted — {reason}; delete manually if wanted.)` otherwise.
+where `{branch-note}` is ` Remote branch deleted.` on success, ` Remote branch auto-deleted.` when the pre-check 404'd, or ` (remote branch not deleted — {reason}; delete manually if wanted.)` otherwise.
 
 Then list **post-merge follow-ups** as a checklist (do NOT execute them):
 

@@ -62,12 +62,29 @@ If the script is unavailable, fall back to:
 gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments"
 ```
 
+### 2b. Fetch CI Check Annotations
+
+Lint/typecheck jobs often attach inline annotations to the PR's checks — these surface in the GitHub UI alongside review comments but are NOT review threads, so the comment endpoints above never return them.
+
+```bash
+# List completed check runs on the PR head, then pull annotations per run
+gh pr view {pr_number} --json headRefOid --jq .headRefOid
+gh api "repos/{owner}/{repo}/commits/{head_sha}/check-runs" \
+  --jq '.check_runs[] | select(.output.annotations_count > 0) | {id, name}'
+gh api "repos/{owner}/{repo}/check-runs/{check_run_id}/annotations" \
+  --jq '.[] | {path, line: .start_line, level: .annotation_level, message}'
+```
+
+Filter to annotations whose `path` is in the PR's changed files — drop repo-wide noise (e.g. deprecated-runner warnings on `.github`). Skip this step silently if no check run has annotations.
+
 ### 3. Categorize Comments
 
 Group comments by:
 - **Reviewer**: amazon-q-developer[bot], copilot[bot], human reviewers
 - **Status**: Pending, Resolved, Outdated
 - **Type**: Code suggestion, question, blocking issue
+
+CI annotations are their own category — **fix-only**: there is no thread to reply to or resolve, so they are addressed in code (or consciously left, e.g. a passing warning) and never appear in the `/reply-comments` step.
 
 ### 4. Present Summary
 
@@ -81,8 +98,13 @@ Reviews:
 - copilot: 1 comment (style suggestion)
 - @username: 2 comments (1 question, 1 blocking)
 
+CI annotations (fix-only, no thread):
+- Linting: warning at src/foo.tsx:21 — missing useEffect dependency
+
 Unresolved comments: 6
 ```
+
+Omit the CI annotations block when there are none.
 
 ### 5. Ask the User
 
