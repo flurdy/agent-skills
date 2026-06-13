@@ -1,6 +1,6 @@
 ---
 name: backlog-groom
-description: "Per-bead quality audit over the open backlog — flags vague descriptions, missing acceptance criteria, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Read-only sweep that produces a proposal report; mutations apply only on explicit approval, and the dangerous ones (close, supersede, promote, split) are confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello), calibrating to whichever tracker the project actually uses."
+description: "Per-bead quality audit over the open backlog — flags empty/thin descriptions, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Judges description quality, not template conformance (template-section checks are opt-in). Read-only sweep that produces a proposal report; mutations apply only on explicit approval, and the dangerous ones (close, supersede, promote, split) are confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello), calibrating to whichever tracker the project actually uses."
 allowed-tools: "Read, Grep, Glob, Task, AskUserQuestion, Bash(bd status:*), Bash(bd list:*), Bash(bd show:*), Bash(bd lint:*), Bash(bd stale:*), Bash(bd find-duplicates:*), Bash(bd children:*), Bash(bd epic:*), Bash(bd label:*), Bash(bd priority:*), Bash(bd update:*), Bash(bd note:*), Bash(bd close:*), Bash(bd supersede:*), Bash(bd dep:*), Bash(bd memories:*), mcp__jira__jira_get"
 model: sonnet
 effort: medium
@@ -31,6 +31,7 @@ If a finding belongs to one of those tools, **delegate — don't duplicate its l
                                #   destructive ones still confirm one at a time.
 /backlog-groom all             # Widen scope to open + ready + blocked (default is open only).
 /backlog-groom labels          # Just the DB-wide label-normalisation pass (fast).
+/backlog-groom lint            # Opt in to template-conformance checks (AC / Steps / Success Criteria).
 /backlog-groom <bead-id> …     # Groom only the named beads.
 ```
 
@@ -44,7 +45,8 @@ Default is **report-only**. Mutation never happens without either `apply` or a p
 - **File a bead for work, not for edits — and never for spam.** Use `[bead]` only when the gate *can't* fix it in one shot: systemic patterns (e.g. "set a bead-template default so AC stops being missing" for an all-beads lint failure; "consolidate the `foo`/`foos`/`fooing` label taxonomy"), or a decision needing an owner/later. **One bead per pattern, never one per affected bead.** Never file a bead for something inline-fixable (a single relabel, one P4 bump) — that is noise. A finding the user can simply resolve in-session is resolved, not filed.
   - **Route bead creation through `/triage`, not raw `bd create`** — so it gets dedup-checked (won't re-file a hygiene bead a past groom already created), gets proper acceptance criteria, and is labelled `backlog-hygiene`.
   - **Recursion-safe:** because `/triage` gives the new bead AC, it won't trip its own `bd lint` next run; the `backlog-hygiene` label lets future grooms recognise prior suggestions and skip re-filing.
-- **Never fabricate scope.** When extending a thin description, add a *scaffold* (the missing section header plus draft bullets derived strictly from the existing title/comments) and mark it for human review. Do not invent acceptance criteria that change what the bead means.
+- **Description quality, not template conformance.** Judge whether the prose is clear enough to act on, not whether it has ceremonial section headers. These are personal beads (often investigations/spikes), not company Jira tickets — a good plain-text description is the goal. `bd lint` is one advisory input feeding that judgement (see §2), never the verdict; never enforce or propose a template default unprompted.
+- **Never fabricate scope.** When extending a thin description, draft only from what the title/comments already say, and mark it for human review. Do not invent requirements that change what the bead means.
 - **Closing is the riskiest verb.** A wrongly-closed bead is invisible afterward. Only ever *propose* a close with a one-line rationale; require explicit per-bead confirmation; close with `bd close --reason="…"` so the judgement is recorded.
 - **Don't restate healthy beads.** A bead with a good description, correct labels, sane priority and no duplicate is uninteresting — skip it. A short report is a good report.
 - **Delegate, don't duplicate.** Splitting → `/triage`. Cross-system linking → `/tracking-sweep` / `/trello-beads`. Branch-vs-ticket → `tracking-auditor`.
@@ -63,20 +65,23 @@ bd list --status=open -n 0                 # the working set (use --all-ish scop
 
 ### 2. Hygiene signals (per-bead)
 
-Beads can carry the issue but be cheap to detect — lean on `bd`'s own filters rather than re-deriving:
+The bar is **"is the description good enough to act on?"** — a *prose* judgement, not template conformance. A bead needs a clear description; it does **not** need ceremonial `## Acceptance Criteria` / `## Steps to Reproduce` sections. Many beads are investigations or spikes that have no acceptance criteria by nature, and these are personal beads, not company Jira tickets with mandated templates. Do not penalise a well-described bead for lacking section headers.
+
+The real, cheap signals — lean on `bd`'s own filters:
 
 ```bash
-bd lint                                    # missing template sections by type:
-                                           #   bug → Steps to Reproduce + Acceptance Criteria
-                                           #   task/feature → Acceptance Criteria
-                                           #   epic → Success Criteria
-bd list --empty-description --status=open -n 0
-bd list --no-labels --status=open -n 0
+bd list --empty-description --status=open -n 0   # no body at all — the clearest defect
+bd list --no-labels --status=open -n 0           # minor; one label is usually enough
 ```
 
-`bd lint` is the primary "description too vague / incomplete" detector — prefer it over guessing from prose length.
+Then, for beads that *have* a description, judge the prose: is it just the title restated, a single cryptic phrase, or a TODO with no context? Flag those as thin. Be conservative — a short but clear description is fine.
 
-**Collapse universal failures — don't emit one line per bead.** If a single check fails on (nearly) *all* open beads — e.g. every bead is missing `## Acceptance Criteria` — that is a **template/process gap, not 46 individual defects**. Emitting a scaffold proposal per bead would bury every other finding in noise. Instead, report it once as a systemic observation ("N/N beads missing AC — set a bead template default rather than scaffolding each") and only call out the *individual* beads that have an **additional** problem (empty description, no labels, also a YAGNI). Rule of thumb: if a hygiene check fails on >~70% of scope, summarise it; below that, list the beads.
+**`bd lint` is one input among many, not the verdict.** Running it is fine — it reports missing template sections by type (bug → Steps to Reproduce + Acceptance Criteria; task/feature → Acceptance Criteria; epic → Success Criteria). But a lint warning is **advisory evidence, not a defect**: use it to *corroborate* a prose judgement, never to generate findings on its own. A bead that fails lint but reads clearly is fine — no finding. A bead that's *also* genuinely thin → the lint warning is one more reason to flag it. So:
+- Treat lint output as a signal feeding the "is this actionable?" call, weighed alongside empty-description, prose clarity, type (a spike needs no AC), and age.
+- **Never** mechanically convert lint warnings into per-bead proposals, and **never** propose "set a bead-template default" — that's enforcing a template the project hasn't chosen.
+- `/backlog-groom lint` surfaces the raw `bd lint` table verbatim for users who *do* want a template-conformance pass; otherwise lint just informs the judgement quietly.
+
+**Collapse universal failures — don't emit one line per bead.** If a *genuine* hygiene defect (e.g. empty descriptions) hits nearly all open beads, report it once as a systemic observation, not N edits, and call out only beads with an additional problem. Rule of thumb: >~70% of scope → summarise; below → list. A near-universal *lint* failure is the opposite case — it just means the project doesn't use templates, so it isn't a finding at all (unless `lint` was requested).
 
 ### 3. Label-normalisation signals (DB-wide)
 
@@ -151,14 +156,15 @@ Group by grooming dimension, not by bead. Every line is a *proposal* with a conc
 ```markdown
 ## Backlog Groom — {YYYY-MM-DD HH:MM}
 
-**Scope:** {N} open beads · {W} lint warnings · {S} stale · {D} duplicate pairs · {L} label issues
+**Scope:** {N} open beads · {E} empty/thin descriptions · {S} stale · {D} duplicate pairs · {L} label issues{lint? · {W} template warnings}
 _Read-only. Nothing changed. Re-run with `apply` to action the safe proposals._
 
 ### ✍️  Hygiene — thin / incomplete ({count})
-- _Systemic: {W}/{N} open beads missing `## Acceptance Criteria` — a template gap, not {W} edits._
-  → `[bead]` file one bead via `/triage`: set a bead-template default so new beads include AC.
-- **myrepo-def** [bug] — empty description, missing Steps to Reproduce (in addition to the systemic gap).
-  → `[confirm]` draft repro skeleton; needs human detail before it's actionable.
+- **myrepo-abc** [P4, feature] — completely empty description (no body at all).
+  → `[confirm]` draft a description from the title; needs a line of human context to be actionable.
+- **myrepo-def** [task] — description just restates the title ("Fix the thing").
+  → `[safe]` flag for a one-line clarification.
+_(Template sections like Acceptance Criteria are not checked unless `lint` was requested — see §2.)_
 
 ### 🏷  Labels ({count})
 - `ui-test` (6) / `ui-tests` (18) / `ui-testing` (10) — three spellings, one concept.
@@ -206,12 +212,12 @@ Skip empty sections. If nothing needs grooming:
 1. **`[fix]` safe set** — present the safe proposals together via `AskUserQuestion` (approve all / pick subset / none). On approval run the corresponding commands:
    - relabel → `bd label add` / `bd label remove`
    - bump down → `bd priority <id> 4`
-   - scaffold description → `bd update <id> --description="…"` (or `bd note`), preserving existing content and appending the drafted section
+   - draft/extend description → `bd update <id> --description="…"` (or `bd note`), preserving existing content and appending the drafted text
 2. **`[fix]` confirm-each set** — for every confirm proposal, show the bead and the exact command, and ask per-item. Never batch closes, supersedes, promotions, or splits.
    - close → `bd close <id> --reason="…"`
    - supersede → `bd supersede <new> <old>` (confirm direction)
    - split → invoke `/triage <id> break into subtasks` rather than splitting inline
-3. **`[bead]` set** — for each systemic/work finding, confirm per-item, then file **one** bead via `/triage` describing the fix (e.g. `/triage Set a bead-template default so new beads include Acceptance Criteria` or `/triage Consolidate contract-test* label taxonomy across 16 beads`). Let `/triage` handle dedup, AC, and the `backlog-hygiene` label — do not `bd create` directly. Offer this as the fallback for any `[fix]` confirm-item the user wants to defer rather than action now.
+3. **`[bead]` set** — for each systemic/work finding, confirm per-item, then file **one** bead via `/triage` describing the fix (e.g. `/triage Consolidate the contract-test* label taxonomy across the ~16 affected beads`). Let `/triage` handle dedup, description, and the `backlog-hygiene` label — do not `bd create` directly. Offer this as the fallback for any `[fix]` confirm-item the user wants to defer rather than action now.
 4. After applying, print a short ledger of what changed (id, action), what beads were filed (new id, title), and what was skipped.
 
 ## Failure modes
