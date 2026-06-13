@@ -54,8 +54,11 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
        `0/1` = failing); for **CronJob-backed services** (digest, patrol, reconciler) it's a marker:
        `cron` = settled / rolled out, `cron:rollout` = images differ (Flux mid-bump). Also
        `notfound`/`unknown` (e.g. no kubectl). `tag`/`age` = live image tag + pod-or-run age.
-   - `---TOGGLES---`: `FLAG=value` lines (the full live toggle map). For the disabled-only view
-     run `make feature-toggles-disabled`.
+   - `---TOGGLES---`: `FLAG=value` lines — **compact by default**: only false-valued and
+     manifest-referenced (`toggles:`/`parked:`) flags, with a trailing `# compact: …` summary of
+     what was hidden. This covers the TOGGLE READY cross-reference (manifest flags show at any
+     value; everything still-`false` is present). For the full map run
+     `./scripts/release-digest --full-toggles`; for disabled-only, `make feature-toggles-disabled`.
 
 2. **Read the manifest** at `docs/release-manifest.yaml` for the `order` block
    (`derived` / `manual` / `suppress`), the `toggles` map, and the `ignore` list.

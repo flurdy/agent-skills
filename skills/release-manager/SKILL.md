@@ -140,8 +140,12 @@ as one plain call per service (parallel calls are fine; loops are not).
        Also `notfound`/`unknown`. `tag` = live image tag, `age` = pod age (Deployment) or most-recent
        run age (CronJob). Treat tag-movement (not ready replicas) as the rollout signal for CronJob
        services in steps 4 and 6.
-   - `---TOGGLES---`: `FLAG=value` lines — the full live toggle map (also covers membership tiers).
-     For the disabled-only view that step 5 references, run `make feature-toggles-disabled`.
+   - `---TOGGLES---`: `FLAG=value` lines — **compact by default**: only false-valued flags and
+     those referenced in the manifest's `toggles:`/`parked:` sections (so an already-flipped
+     dark-release flag still shows its live value). A trailing `# compact: …` line notes how many
+     were hidden. This is exactly what steps 5/5b need. For the complete map (all true flags +
+     membership tiers), run `./scripts/release-digest --full-toggles`; for the disabled-only view,
+     `make feature-toggles-disabled`.
    - `---K8S---`: state of the `kubernetes` GitOps repo (which ships via `make k8s-sync`, not as a
      `---SERVICES---` entry): `present=<true|false>`, then when present `branch`, `head` (short
      sha), `unpushed` (int), `uncommitted` (bool), `behind` (int, from the last-known remote ref —
