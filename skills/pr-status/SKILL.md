@@ -1,10 +1,10 @@
 ---
 name: pr-status
-description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table.
+description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table, with transition-driven suggested next actions.
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
 model: sonnet
 effort: medium
-version: "1.8.0"
+version: "1.9.0"
 author: "flurdy"
 ---
 
@@ -198,3 +198,49 @@ After the tables, if anything changed since the last check in this session, list
 If nothing changed, say "No changes."
 
 **Always render both the Open and Recently closed tables in full**, even on unchanged ticks. The point of repeated checks (via `/watch-prs` or otherwise) is to see current state at a glance — collapsing to "No changes." or omitting the closed section forces scrolling back to find prior state, which defeats the glance. With the narrow closed-PR window (3–4 days) there's not much to render anyway.
+
+### 5. Suggest next actions (transition-driven)
+
+After the deltas, surface a short **Suggested actions** list — copy-pasteable commands for PRs that *just became* actionable this tick. This stays read-only: it never runs the commands and never prompts (so it's safe inside the unattended `/watch-prs` loop), it only points.
+
+**Fire on transitions, not standing state.** Compare each PR's actionable signals (LGTM, unresolved threads, sync, review-decision, draft) against the previous tick in this session:
+
+- **First check of a session** (no prior tick to diff against) — treat the currently-actionable PRs as the baseline and list them once.
+- **Later ticks** — list a PR only when it *crosses into* an actionable state. A PR that has been 🚀 for an hour is not re-suggested every tick; you're nudged once, when it changes.
+
+Map each transition to its command:
+
+| Transition this tick | Suggested command |
+|---|---|
+| → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
+| unresolved threads increased, or → 👎 changes requested | `/review-comments {n}` |
+| → ⚠️ behind (fell behind base) | `/rebase-main` (on that PR's branch) |
+| → 🔔 awaiting review (no longer draft, still no reviewers) | `/request-review` |
+
+Render as a flat bullet list, most actionable first (🚀 → 💬 → ⚠️ → 🔔). Omit the section entirely when no PR changed state. Example:
+
+```markdown
+**Suggested actions**
+- 🚀 #6142 ready — `/ready-to-merge 6142`
+- 💬 #6141 new comment from @alice — `/review-comments 6141`
+```
+
+#### Thread enrichment
+
+For any PR whose unresolved-thread count *increased* this tick, fetch the new threads so the bullet names who commented and a one-line gist — the read-only slice of `/review-comments`, without touching code or prompting:
+
+```bash
+gh api graphql -f query='
+query($owner:String!,$repo:String!,$pr:Int!){
+  repository(owner:$owner,name:$repo){
+    pullRequest(number:$pr){
+      reviewThreads(last:10){
+        nodes{ isResolved comments(last:1){ nodes{ author{login} body } } }
+      }
+    }
+  }
+}' -f owner="{owner}" -f repo="{repo}" -F pr={number} \
+  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | .comments.nodes[0] | {author: .author.login, gist: (.body | .[0:80])}]'
+```
+
+Only run this for PRs with a thread increase — **never** for every PR every tick. Trim each gist to ~80 chars. If the fetch fails, fall back to the bare count (`💬 N new`).
