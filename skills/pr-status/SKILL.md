@@ -4,7 +4,7 @@ description: Show enriched status of your open PRs — CI checks, approvals, and
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
 model: sonnet
 effort: medium
-version: "1.9.0"
+version: "1.10.0"
 author: "flurdy"
 ---
 
@@ -244,3 +244,19 @@ query($owner:String!,$repo:String!,$pr:Int!){
 ```
 
 Only run this for PRs with a thread increase — **never** for every PR every tick. Trim each gist to ~80 chars. If the fetch fails, fall back to the bare count (`💬 N new`).
+
+### 6. Next-tick recommendation
+
+Emit, as the **very last line** of every tick, a cadence recommendation for `/watch-prs` to pace from:
+
+```
+next-tick: {hot|warm|cold} (~{N}s) — {reason}
+```
+
+Pick the bucket from current PR state (most urgent wins):
+
+- **hot (~180s)** — something is mid-flight you'll likely act on shortly: any open non-draft PR has CI ⏳ pending, was pushed in the last ~5 min (CI about to report), or *transitioned* this tick (→ 🚀, → 👎, thread increase). Check again soon to catch the result.
+- **warm (~600s)** — open non-draft PRs exist and are awaiting review or carry unresolved threads, but nothing is in flight. Reviewer-paced — no point checking hard.
+- **cold (1200 → 1800s)** — nothing actionable soon: no open PRs, or every open PR is a draft / stacked on another PR / blocked, or it's outside working hours. Escalate the back-off across consecutive cold ticks (1200 → 1500 → 1800) via a `quietStreak` counter held in session memory; reset to 1200 on any non-cold tick.
+
+This line is primarily consumed by `/watch-prs` in adaptive mode — it's harmless to ignore on a one-shot `/pr-status` run. If a tick can't compute a bucket (e.g. a fetch failed), emit `next-tick: warm (~600s) — incomplete fetch` so the loop still has something to pace from.
