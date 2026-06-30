@@ -41,6 +41,7 @@
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
-| watch-prs | Start a recurring PR status dashboard — polls every 10m until 18:00 (shortcut for `/loop 10m /pr-status`) |
+| watch-prs | Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence (fast ~3m when CI is in flight, backing off 10→30m when settled) until end of day, with transition-driven suggested next actions. Unattended; pass `\d+m` for a fixed interval |
 | watch-release | Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence (fast ~3m when a push is mid-rollout or CI is running, backing off 10→30m when settled) until end of day. Pass `\d+m` for a fixed interval instead |
+| watch-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a smoke test scoped to the change (browser for UI, GET for read-only API) against staging. Goal-terminating; staging by default, prod read-only opt-in. Generic GitHub-Actions cousin of /watch-release |
 | wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees, incl. worktree-only settings drift), and a paste-ready resume block for the next session |
