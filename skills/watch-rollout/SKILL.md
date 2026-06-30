@@ -4,7 +4,7 @@ description: >
   After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a
   smoke test scoped to the change (browser for UI, GET for read-only API) against staging.
   Goal-terminating loop — stops when the deploy lands and the smoke completes, or when it fails.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(gh:*),Bash(git:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.claude/skills/watch-rollout/scripts/run-jobs.sh:*),Bash(~/.claude/skills/watch-rollout/scripts/default-head-sha.sh:*),Bash(gh:*),Bash(git:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model: sonnet
 effort: medium
 version: "1.0.0"
@@ -56,7 +56,14 @@ merge commit (`gh pr view {n} --json mergeCommit --jq .mergeCommit.oid`) → exp
 default-branch commit:
 
 ```bash
-git fetch origin main -q && git rev-parse origin/main
+~/.claude/skills/watch-rollout/scripts/default-head-sha.sh        # fetches origin/main, prints its sha
+```
+
+Fallback if the script is unavailable — run as two steps, never `&&` (each stays prefix-matchable):
+
+```bash
+git fetch origin main -q
+git rev-parse origin/main
 ```
 
 List runs on that commit and pick the deploy workflow:
@@ -72,8 +79,11 @@ silently across ambiguous workflows.
 ### Phase 2 — Identify the gating job
 
 ```bash
-gh run view {run_id} --json jobs --jq '.jobs[] | {name, status, conclusion}'
+~/.claude/skills/watch-rollout/scripts/run-jobs.sh {run_id}
 ```
+
+Emits a JSON object: `{status, conclusion, jobs: [{name, status, conclusion}]}`. Fallback if the
+script is unavailable: `gh run view {run_id} --json status,conclusion,jobs` (read the raw JSON).
 
 A deploy run is often a matrix (per brand / per region). Watch the **one job that gates the env you
 care about** — the others don't block your target (e.g. `Deploy blc-uk [preview]` gates BLC-UK
@@ -102,7 +112,7 @@ smoke spec, and target URL, since each wake re-runs the prompt from scratch:
 
 ```
 /loop Watch GitHub Actions run {run_id} ({workflow} on {sha}).
-Run: gh run view {run_id} --json status,conclusion,jobs --jq '{status, conclusion, jobs: [.jobs[] | {name, status, conclusion}]}'.
+Run: ~/.claude/skills/watch-rollout/scripts/run-jobs.sh {run_id}.
 While the gating job "{gating_job}" is in_progress (or not yet started), reschedule ~240s.
 On gating-job success → run the smoke test: {smoke spec, with URL}. Report pass/fail with captured evidence.
 On gating-job failure → report which job failed and stop. Stop the loop once the smoke is done or the deploy failed.
