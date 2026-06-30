@@ -6,7 +6,7 @@ description: >
   renders tables and suggested next actions, never prompts or blocks.
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 
@@ -63,6 +63,11 @@ second-guess the bucket — `/pr-status` already weighs CI / push / transition s
 
 Stop and don't reschedule once the wake would land past `{stop_hour}:00`. If a tick produces no
 `next-tick:` line (e.g. it errored before step 6), fall back to ~600s and continue.
+
+**Keep the tail terse.** Each tick already ends with `/pr-status`'s machine-readable `next-tick:`
+line, and the dynamic `/loop` prints its own one-line narrator for the next wake. Those two are the
+entire cadence budget — do NOT add a third prose line restating the bucket, CI state, or next-check
+time. The tables, deltas, and suggested-actions footer are the content; the cadence is one line.
 
 ### Fixed mode (interval given)
 
