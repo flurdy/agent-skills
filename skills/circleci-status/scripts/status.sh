@@ -81,4 +81,4 @@ jq -n \
   --arg branch "$branch" \
   --argjson pipelines "$pipelines_json" \
   --argjson workflows "$workflows_json" \
-  '{project, branch, pipeline: ($pipelines.items[0] // null), workflows: ($workflows.items // [])}'
+  '{project: $project, branch: $branch, pipeline: ($pipelines.items[0] // null), workflows: ($workflows.items // [])}'

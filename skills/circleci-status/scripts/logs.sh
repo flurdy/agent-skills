@@ -61,9 +61,32 @@ printf '%s\n' '---WORKFLOW---' "$workflow_id"
 printf '%s\n' '---JOBS---'
 jq '{items: [.items[] | {name, status, job_number, stopped_at}]}' <<<"$jobs_json"
 printf '%s\n' '---LOGS---'
-if [[ -n "$job_number" ]]; then
-  "${api[@]}" "https://circleci.com/api/v2/project/$project_slug/$job_number/output" \
-    | jq -r '.[] | "### " + (.step // "step") + " / " + (.name // "output") + "\n" + (.message // "")'
-else
+if [[ -z "$job_number" ]]; then
   echo 'No jobs found.'
+  exit 0
+fi
+
+v2_output="$("${api[@]}" "https://circleci.com/api/v2/project/$project_slug/$job_number/output" 2>/dev/null || true)"
+if [[ -n "$v2_output" && "$(jq -r 'type' <<<"$v2_output" 2>/dev/null || true)" == "array" ]]; then
+  jq -r '.[] | "### " + ((.step // "step") | tostring) + " / " + (.name // "output") + "\n" + (.message // "")' <<<"$v2_output"
+  exit 0
+fi
+
+# CircleCI v2 occasionally returns 404 for output while v1.1 exposes
+# presigned step output URLs. Fetch the failed action first, else first action.
+v1_job_json="$(curl -fsS "https://circleci.com/api/v1.1/project/github/$owner/$name/$job_number?circle-token=$CIRCLECI_TOKEN" 2>/dev/null || true)"
+if [[ -z "$v1_job_json" ]]; then
+  echo 'No job output available.'
+  exit 0
+fi
+
+output_url="$(jq -r '.steps[]?.actions[]? | select(.failed == true) | .output_url // empty' <<<"$v1_job_json" | head -1)"
+if [[ -z "$output_url" ]]; then
+  output_url="$(jq -r '.steps[]?.actions[]? | .output_url // empty' <<<"$v1_job_json" | head -1)"
+fi
+
+if [[ -n "$output_url" ]]; then
+  curl -fsS "$output_url" | jq -r '.[] | .message // empty'
+else
+  echo 'No job output available.'
 fi
