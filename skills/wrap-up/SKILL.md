@@ -4,7 +4,7 @@ description: End-of-session handoff — summarise today's commits, PRs, and bead
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
 model: sonnet
 effort: medium
-version: "0.10.0"
+version: "0.11.0"
 author: "flurdy"
 ---
 
@@ -24,7 +24,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 2. Working-copy hygiene — flag uncommitted, unpushed, or worktree-only state.
 3. Settings drift — flag permissions living only in a worktree's `.claude` settings (lost on prune) and offer `/tidy-settings` to promote them.
 4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
-5. Optional: save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` for later.
+5. Auto-save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` when that file is free; prompt only on collision/overwrite or when choosing a different name.
 6. Optional: archive older handoffs this one supersedes (same branch/topic) so the picker stays focused.
 7. Reminder to run `/exit` yourself — the skill cannot exit Claude Code for you.
 
@@ -224,7 +224,7 @@ Then exactly one of the warnings below (pick the first matching rule):
 
 1. **Uncommitted changes** → `⚠️ Uncommitted work — commit, stash, or discard before `/exit`. The resume block does not preserve file diffs.`
 2. **Unpushed commits** → `⚠️ {N} unpushed commit(s) — push before `/exit` if the branch survives in a remote PR, or accept that this branch lives only locally.`
-3. **Linked worktree, clean, no unpushed, no stashes** → `ℹ️ Linked worktree with no code to preserve. If you prune this worktree (`git worktree remove`), only the conversation context is lost — the resume block below is your only recovery path. Save it (step 5).`
+3. **Linked worktree, clean, no unpushed, no stashes** → `ℹ️ Linked worktree with no code to preserve. If you prune this worktree (`git worktree remove`), only the conversation context is lost — the auto-saved resume block below is your durable recovery path.`
 4. **Main checkout, clean** → no warning.
 
 Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSAFE---` as a footnote if any exist — easy to forget those after closing the session.
@@ -417,25 +417,52 @@ If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)`
 - Prefer **paths and IDs** over prose summaries — they're greppable next session.
 - If the session was admin-only (no code), the resume block is *more* valuable, not less. Capture the Jira/bead context exchanged in chat — those header fields stay populated even when no code changed.
 
-### 5. 💾 Save the resume block (offer, don't force)
+### 5. 💾 Save the resume block (auto-save unless collision)
 
-Ask the user whether to persist the resume block:
+Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `pl` consume the file under `~/.claude/handoffs/`. Do **not** require an extra confirmation for the normal new-file case.
 
-> Save resume block to `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md`?
+First compute the canonical target path and the next-free path:
 
-Use `AskUserQuestion` with options: **Save**, **Don't save**, **Save with different name**. (If `AskUserQuestion` isn't appropriate in the current flow, just print the path and ask in plain text.)
-
-On Save, **never overwrite** — even a second wrap-up of the *same topic on the same day* gets its own file (you picked numbered files; the screenshot bug was a silent overwrite). Don't pass a hand-built path to `Write`; let the helper pick the next free name so collisions are handled mechanically rather than from memory:
+- `{target-path}` = the expanded absolute path `$HOME/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` (display it as `~/.claude/...` if you like, but compare/write the absolute path)
+- `{chosen-path}` comes from the helper:
 
 ```bash
 ~/.claude/skills/wrap-up/scripts/handoff-path.sh {YYYY-MM-DD} {slug}
 ```
 
-It `mkdir -p`s the handoffs dir and prints the absolute path to use: `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` when free, else the first non-existing `…-2.md`, `…-3.md`, … . **Write to exactly the path it prints** — do not strip a `-N` suffix or substitute the bare name, or you'll clobber the earlier handoff. Confirm with the path written.
+The helper `mkdir -p`s the handoffs dir and prints an absolute `{target-path}` when that file does not exist; otherwise it prints the first free collision suffix (`…-2.md`, `…-3.md`, …).
 
-The `-N` collision suffix is a first-class convention `/handoffs` understands: `list.sh` strips it for grouping but folds it into recency rank, so the suffixed file sorts as the *newer* of a same-day pair, and reads each file's real time from its `# Resume:` header. So several same-day re-wraps of one topic each survive as distinct, correctly-ordered entries — and `/handoffs-tidy` (§5a) can later archive the superseded earlier ones if the picker gets crowded.
+#### No collision — auto-save
 
-On **Save with different name**, run the same helper with the user's chosen slug so the uniqueness guarantee still applies.
+If `{chosen-path}` is exactly `{target-path}`, write the resume block to `{target-path}` immediately with `Write` and print:
+
+```markdown
+Saved to `{target-path}`.
+```
+
+Do not ask **Save / Don't save** in this case — Pi users can miss the prompt and accidentally leave only a transient chat/clipboard note.
+
+#### Collision — prompt before writing
+
+If `{chosen-path}` differs from `{target-path}`, then `{target-path}` already exists. Prompt with `AskUserQuestion` (or plain text if needed):
+
+> `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` already exists. Save this handoff how?
+
+Options:
+
+- **Save with different name** — ask for a replacement slug (default suggestion: `{slug}-2` or a more specific topic slug), then run the helper again with that slug and write to exactly the path it prints.
+- **Overwrite** — write to `{target-path}` only after the user explicitly chooses overwrite.
+- **Don't save** — leave no file; keep the resume block visible in the transcript.
+
+The `-N` collision suffix is a first-class convention `/handoffs` understands: `list.sh` strips it for grouping but folds it into recency rank, so suffixed files sort correctly and read each file's real time from its `# Resume:` header. If the user chooses a different name, still use the helper so uniqueness is mechanical.
+
+#### Save failure
+
+If writing fails for any reason, do **not** lose the handoff. Print the resume block again, followed by:
+
+```markdown
+⚠️ Failed to save handoff to `{attempted-path}`: {error}
+```
 
 The directory naming convention (`~/.claude/handoffs/YYYY-MM-DD-slug.md`) means `ls ~/.claude/handoffs/` is a chronological log of session topics — easy to grep for "what was I doing about X last week."
 
@@ -464,6 +491,7 @@ Each section is independent — fail soft, don't block the rest.
 - **Multi-repo roll-up (§3b) errors or finds nothing**: skip the section silently — single-repo sessions hit this normally; it's additive, not load-bearing.
 - **Settings-drift probe (§3c) empty or `python3` missing**: skip the section silently. `/tidy-settings` run by hand covers the same ground.
 - **`/tidy-settings` invocation fails from §3c**: fall back to the Skip path (note the drift in the resume block's open threads) and continue the wrap-up.
+- **Handoff save fails (§5)**: keep the resume block visible, print the attempted path and error, and continue to the footer. The generated block is still the recovery artifact even if the durable file write failed.
 
 ## Notes
 
