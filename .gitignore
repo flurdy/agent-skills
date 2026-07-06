@@ -5,6 +5,7 @@
 .idea
 __pycache__/
 *.pyc
+CLAUDE.local.md
 .claude/CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees
