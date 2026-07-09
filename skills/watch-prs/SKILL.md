@@ -6,7 +6,7 @@ description: >
   renders tables and suggested next actions, never prompts or blocks.
 model: sonnet
 effort: medium
-version: "2.0.1"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -42,11 +42,21 @@ If the current time is already past the stop hour, tell the user and don't start
 
 ### Adaptive mode (no interval given)
 
-Invoke the `/loop` skill in **dynamic (self-paced)** mode with `/pr-status`:
+Invoke the `/loop` skill in **dynamic (self-paced)** mode. The loop prompt is the only text
+re-injected verbatim on every wakeup — `pr-status`'s SKILL.md is NOT re-read on wakeup turns — so
+the render contract must live inside the prompt string itself, not just here:
 
 ```
-/loop /pr-status
+/loop /pr-status — render the full dashboard every tick (timestamp, both tables, deltas, next-tick line); a tick that only runs scripts and reschedules is a failed tick
 ```
+
+Pass that whole string (including the contract after the dash) as the loop prompt, and echo it back
+unchanged in every `ScheduleWakeup` call so later ticks keep the contract.
+
+**Per-tick output contract.** Every tick — including unchanged ones — must emit the full `/pr-status`
+output (timestamp line, both tables, deltas, `next-tick:` line) as visible text before ending the
+turn. Never end a tick on a bare `ScheduleWakeup` with no rendered dashboard; running the fetch
+scripts without rendering is a failed tick, not a terse one.
 
 Then pace each next wake from the recommendation `/pr-status` prints **last** in its tick output:
 
@@ -64,17 +74,20 @@ second-guess the bucket — `/pr-status` already weighs CI / push / transition s
 Stop and don't reschedule once the wake would land past `{stop_hour}:00`. If a tick produces no
 `next-tick:` line (e.g. it errored before step 6), fall back to ~600s and continue.
 
-**Keep the tail terse.** Each tick already ends with `/pr-status`'s machine-readable `next-tick:`
-line, and the dynamic `/loop` prints its own one-line narrator for the next wake. Those two are the
-entire cadence budget — do NOT add a third prose line restating the bucket, CI state, or next-check
-time. The tables, deltas, and suggested-actions footer are the content; the cadence is one line.
+**Keep the cadence commentary terse — never the tables.** Each tick already ends with `/pr-status`'s
+machine-readable `next-tick:` line, and the dynamic `/loop` prints its own one-line narrator for the
+next wake. Those two are the entire cadence budget — do NOT add a third prose line restating the
+bucket, CI state, or next-check time. This terseness applies ONLY to pacing commentary: the
+timestamp, tables, deltas, and suggested-actions footer are the whole point of the tick and are
+always rendered in full.
 
 ### Fixed mode (interval given)
 
-Invoke the `/loop` skill with the literal interval — `/pr-status`'s `next-tick:` line is ignored:
+Invoke the `/loop` skill with the literal interval — `/pr-status`'s `next-tick:` line is ignored.
+The same per-tick output contract applies, embedded in the prompt for the same reason:
 
 ```
-/loop {interval} /pr-status
+/loop {interval} /pr-status — render the full dashboard every tick (timestamp, both tables, deltas); a tick that only runs scripts is a failed tick
 ```
 
 Tell the loop to stop at `{stop_hour}:00` local time.

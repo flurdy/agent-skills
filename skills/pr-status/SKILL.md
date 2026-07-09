@@ -4,7 +4,7 @@ description: Show enriched status of your open PRs — CI checks, approvals, and
 allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
 model: sonnet
 effort: medium
-version: "1.10.1"
+version: "1.10.2"
 author: "flurdy"
 ---
 
@@ -247,7 +247,9 @@ Only run this for PRs with a thread increase — **never** for every PR every ti
 
 ### 6. Next-tick recommendation
 
-Emit, as the **very last line** of every tick, a cadence recommendation for `/watch-prs` to pace from:
+Emit, as the **very last line** of every tick, a cadence recommendation for `/watch-prs` to pace from.
+It comes *after* the rendered tables, never instead of them — a tick that emits only this line (or
+nothing at all) has failed step 3:
 
 ```
 next-tick: {hot|warm|cold} (~{N}s) — {reason}
