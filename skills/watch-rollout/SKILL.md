@@ -7,7 +7,7 @@ description: >
 allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.claude/skills/watch-rollout/scripts/run-jobs.sh:*),Bash(~/.claude/skills/watch-rollout/scripts/default-head-sha.sh:*),Bash(gh:*),Bash(git:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 
@@ -170,5 +170,6 @@ run is one command. Only on explicit yes.
 ## Notes
 
 - Goal-terminating, so unlike `/watch-prs` and `/watch-release` it does not take a stop-hour.
-- For letterbox's own kubectl/Flux rollouts use `/watch-release` / `/release-status` instead — this
-  skill is for GitHub-Actions-deployed repos.
+- This skill is for GitHub-Actions-deployed repos. For CircleCI + FluxCD repos use
+  `/watch-flux-rollout` (same shape, kubectl/CircleCI watch); for letterbox's multirepo release
+  flow use `/watch-release` / `/release-status`.
