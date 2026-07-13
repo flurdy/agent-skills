@@ -5,6 +5,7 @@ allowed-tools: "Read,Bash(npm:*),Bash(npx:*),Bash(scripts/screenshot:*),Bash(ln:
 model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
+model: haiku
 effort: low
 version: "1.0.0"
 author: "flurdy"

@@ -5,6 +5,7 @@ allowed-tools: "Read,Edit,Grep,Glob,Bash(make:*),AskUserQuestion"
 model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
+model: haiku
 effort: low
 version: "1.0.0"
 author: "flurdy"

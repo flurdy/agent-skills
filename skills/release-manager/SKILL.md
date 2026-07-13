@@ -7,7 +7,7 @@ description: >
   applied config needs, and nudges feature toggles. Drive it on a loop with
   /watch-release. Advisory: it only pushes after you explicitly choose "push".
 allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
-model-tier: long-context-audit
+model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: medium

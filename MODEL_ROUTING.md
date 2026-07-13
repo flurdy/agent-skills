@@ -34,19 +34,24 @@ These fields are intentionally semantic. Runners that do not understand them
 should ignore them; the skill body should still explain any important routing or
 cost guardrails in plain language.
 
+Cheap-bulk skills additionally keep `model: haiku` — Claude Code reads `model`
+directly and routes the skill to it, so without the hint those skills run on the
+(possibly premium) session model. Other runners ignore the field.
+
 ## Tiers
+
+GPT entries name the Terra/Sol/Luna capability split, not a pinned version — use the
+latest available model in that split.
 
 ```yaml
 tiers:
   standard-coding:
-    primary: openai-oauth:gpt-5.5
-    future-primary: openai-oauth:gpt-5.6-terra
+    primary: openai-oauth:gpt-terra
     fallback: openrouter:qwen-coder
     use-for: Daily coding, routine workflow orchestration, straightforward fixes.
 
   premium-reasoning:
-    primary: openai-oauth:gpt-5.5
-    future-primary: openai-oauth:gpt-5.6-sol
+    primary: openai-oauth:gpt-sol
     fallback: anthropic-oauth:claude-sonnet
     note: Claude may be metered extra usage, so use deliberately.
     use-for: Architecture, hard planning, high-risk verification, costly mistakes.
@@ -62,7 +67,7 @@ tiers:
     note: Metered; cap usage and avoid unlimited loops.
     use-for: Cheap status checks, mechanical scans, low-risk summaries.
 
-  independent-second-opinion:
+  independent-reasoning:
     primary: openrouter:qwen-reasoning
     fallback: openrouter:grok-4.5
     note: Metered; ask or cap before broad panels.
@@ -93,7 +98,8 @@ tiers:
 
 - **pi.dev:** unknown skill front matter is ignored; routing should be enforced by
   model choice/runtime config and the skill instructions.
-- **Claude Code:** if a client-specific `model` hint is reintroduced for a local
-  setup, keep it as a compatibility hint only; the canonical policy is the tier.
+- **Claude Code:** Claude Code reads the `model` frontmatter field directly, so
+  cheap-bulk skills keep `model: haiku` as an enforcement hint. Single floating
+  alias only (no lists, no dated IDs); the canonical policy is the tier.
 - **Codex:** keep provider/model selection in Codex configuration or CLI flags;
   skills should not bake in one model ID.

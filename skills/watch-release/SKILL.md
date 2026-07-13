@@ -1,7 +1,7 @@
 ---
 name: watch-release
 description: >
-model-tier: long-context-audit
+model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
   Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence

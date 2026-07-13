@@ -67,11 +67,10 @@ user has not specified one and the choice matters.
 | `all-in` | Premium reasoning + independent second opinion | High-risk, cross-service, security, data migrations |
 
 This skill declares `model-tier: premium-reasoning`, but that is semantic routing metadata,
-not a mandate to use Claude/Opus. For pi.dev, Claude Code, and Codex, prefer the best
-configured subscription/OAuth reasoning route first. In pi.dev today that means OpenAI OAuth
-(GPT-5.5); when GPT-5.6 Terra/Sol become available, use the configured premium reasoning
-route. Treat Claude OAuth as a deliberate premium judgement lane, not the default for long
-planning loops. Treat OpenRouter as metered/capped fallback or experimental routing.
+not a mandate to use Claude/Opus. Prefer the best configured subscription/OAuth reasoning
+route first; concrete route mappings live in the shared repo's `MODEL_ROUTING.md`, not here.
+Treat Claude OAuth as a deliberate premium judgement lane, not the default for long planning
+loops. Treat OpenRouter as metered/capped fallback or experimental routing.
 
 If the user names a specific model/provider, preserve that preference in the plan metadata and,
 where possible, recommend how to run the planning session with that route. If unavailable, fall
@@ -96,8 +95,8 @@ If the request is missing or too vague, ask one clarifying question before inves
 
 If no tier/model was specified:
 
-- For clearly high-risk work, default to `premium` and state why; use OpenAI OAuth/premium
-  reasoning first where available.
+- For clearly high-risk work, default to `premium` and state why; prefer the configured
+  subscription/OAuth reasoning route first.
 - For very high-risk work (security/data/cross-service), ask whether to use `premium` or
   `all-in` before adding independent/metered review.
 - For moderate work, ask with `AskUserQuestion`:

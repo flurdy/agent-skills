@@ -7,6 +7,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),Ba
 model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
+model: haiku
 effort: low
 version: "1.4.1"
 author: "flurdy"

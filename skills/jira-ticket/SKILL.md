@@ -5,6 +5,7 @@ allowed-tools: "mcp__jira__*,ToolSearch"
 model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
+model: haiku
 effort: low
 version: "1.2.0"
 author: "flurdy"

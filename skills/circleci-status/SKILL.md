@@ -5,6 +5,7 @@ allowed-tools: "Bash(~/.claude/skills/circleci-status/scripts/status.sh:*), Bash
 model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
+model: haiku
 effort: low
 version: "1.0.0"
 author: "flurdy"

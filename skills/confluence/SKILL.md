@@ -7,6 +7,7 @@ allowed-tools: "Read,AskUserQuestion,mcp__jira__jira_get,mcp__confluence__*"
 model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
+model: haiku
 effort: low
 version: "1.1.0"
 author: "flurdy"
