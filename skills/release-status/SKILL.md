@@ -5,7 +5,9 @@ description: >
   pushed-but-not-rolled-out, deployed-but-toggle-still-off, and what's blocked by deploy
   order. Passive: never prompts, never pushes. Use for a quick "where is everything" glance.
 allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*)"
-model: sonnet
+model-tier: long-context-audit
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.4.1"
 author: "flurdy"

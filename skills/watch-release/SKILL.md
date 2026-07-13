@@ -1,10 +1,12 @@
 ---
 name: watch-release
 description: >
+model-tier: long-context-audit
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
   Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence
   (fast when something is in flight, backing off when settled) until end of day in a dedicated
   tab. Prompts to push / defer / cancel as services become ready; runs attended.
-model: sonnet
 effort: medium
 version: "1.1.0"
 author: "flurdy"

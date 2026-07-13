@@ -2,7 +2,9 @@
 name: verify-task
 description: "Verify that a task's implementation meets its requirements and has adequate test coverage (happy path, sad path, edge cases). Use before /complete-task."
 allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(git:*),Grep,Glob,AskUserQuestion"
-model: opus
+model-tier: premium-reasoning
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: high
 version: "1.0.0"
 author: "flurdy"

@@ -6,7 +6,9 @@ description: >
   ready — then run a read-only smoke test scoped to the change. Goal-terminating loop — stops
   when the rollout lands and the smoke completes, or when it fails.
 allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.claude/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.claude/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.claude/skills/circleci-status/scripts/status.sh:*),Bash(git:*),Bash(gh:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.0.0"
 author: "flurdy"

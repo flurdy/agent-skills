@@ -2,7 +2,9 @@
 name: rebase-parent
 description: Rebase the current branch onto an updated parent PR branch. Use when you have stacked PRs and the parent branch has been updated (force-pushed after its own rebase or new commits added).
 allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.claude/skills/rebase-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.0.0"
 author: "flurdy"

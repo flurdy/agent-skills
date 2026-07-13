@@ -2,7 +2,9 @@
 name: start-ticket
 description: Initialize work on a Jira ticket. Creates a new branch with conventional commit prefix based on the ticket type. Use when starting work on a new ticket.
 allowed-tools: "Bash(git:*),Bash(~/.claude/skills/handoffs/scripts/list.sh:*),Read,Skill,mcp__jira__*"
-model: haiku
+model-tier: cheap-bulk
+model-cost-policy: cheapest-adequate
+model-metered-policy: cap-or-ask
 effort: low
 version: "1.2.0"
 author: "flurdy"

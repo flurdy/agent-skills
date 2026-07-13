@@ -2,7 +2,9 @@
 name: setup-multirepo-git
 description: Multi-repo git workflow rules and setup. Provides mgit wrapper for safe permission patterns across independent service repositories. Use when setting up a new multi-repo workspace or when working with multi-repo git operations.
 allowed-tools: "Read,Write,Bash(git:*),Bash(ln:*),Bash(mkdir:*),Bash(cat:*),Bash(./scripts/mgit:*),Bash(readlink:*),AskUserQuestion"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.0.0"
 author: "flurdy"

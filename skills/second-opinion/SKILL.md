@@ -2,7 +2,10 @@
 name: second-opinion
 description: Query an alternative AI CLI (Claude, Codex, or Gemini) for a second opinion on plans, PRs, bugs, or code.
 allowed-tools: "Read,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Grep,Glob,AskUserQuestion"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-before-metered-panel
+model-second-opinion-tier: independent-reasoning
 effort: medium
 version: "1.1.0"
 author: "flurdy"
@@ -44,26 +47,27 @@ Query Claude, Codex, or Gemini CLI for an independent review of plans, PRs, code
 - `gemini` CLI installed and authenticated
 - `gh` CLI for PR operations
 
-## Model Selection
+## Model Selection and Cost
 
-Default is `smart` — no flag passed, so each CLI uses whatever model it's configured
-to default to (typically the top reasoning model). Configure those in each CLI's own
-settings (`~/.codex/config.toml`, etc.) rather than here, so new models like Gemini 3
-Pro or GPT-5.x flow through without editing this skill.
+This skill declares `model-second-opinion-tier: independent-reasoning`. Exact model IDs belong in
+the invoked CLI's configuration where possible, not in this shared skill. By default, omit
+model flags and let each CLI use its configured default.
+
+Cost guardrails:
+
+- Prefer Codex/OpenAI OAuth for the first independent pass when available.
+- Use Claude deliberately for premium review/judgement, not as a default long loop.
+- Use Gemini for long-context review or repo-wide summarisation.
+- Treat OpenRouter-backed or API-key/BYOK routes as metered: use `--timeout`, cap scope, or
+  ask before broad panels.
 
 Overrides:
 
-- `--model fast` — cheap/quick tier (table below)
-- `--model <id>` — any other value is treated as a literal model ID and passed through
+- `--model fast` — request the caller's configured cheap/fast tier; do not hard-code a model
+  ID here. If the CLI has no configured fast alias, omit the flag and note the fallback.
+- `--model <id>` — any other value is treated as an explicit model ID and passed through.
 
-| CLI    | `fast` maps to    |
-|--------|-------------------|
-| claude | claude-haiku-4-5  |
-| codex  | gpt-5-mini        |
-| gemini | gemini-2.5-flash  |
-
-Refresh the `fast` table when cheaper/newer models ship. The `smart` default requires
-no maintenance here — it's whatever each CLI picks.
+The `smart` default requires no maintenance here — it is whatever each CLI/runtime picks.
 
 ## Instructions
 
@@ -74,7 +78,7 @@ Extract from the arguments:
 - **target**: PR number, plan text, bug description, or freeform question
 - **agent**: `claude`, `codex`, `gemini`, or `all` (default: `codex`)
 - **timeout**: timeout in minutes (default: `3`, max: `10`)
-- **model**: `smart` (default), `fast`, or an explicit model ID — see Model Selection
+- **model**: `smart` (default), `fast`, or an explicit model ID — see Model Selection and Cost
 
 Look for `--agent <name>` anywhere in the arguments. If not specified, default to `codex`.
 Look for `--timeout <minutes>` anywhere in the arguments. If not specified, default to `3`.
@@ -164,13 +168,14 @@ auto-approve permission patterns like `Bash(claude:*)`, `Bash(codex:*)`, and `Ba
 
 **Resolve the model flag** before building the command. Given the parsed `--model` value:
 
-- `smart` (default) → omit the model flag entirely; let the CLI use its configured default
-- `fast` → look up the `fast` row in the table under Model Selection for the current agent
-- anything else → treat as a literal model ID, pass through unchanged
+- `smart` (default) → omit the model flag entirely; let the CLI use its configured default.
+- `fast` → use the CLI's configured cheap/fast alias if one exists in that runtime; otherwise
+  omit the model flag and report that no explicit fast alias was available.
+- anything else → treat as a literal model ID, pass through unchanged.
 
-In the snippets below, `{model_flag}` expands to the relevant CLI's flag + value (e.g.
-`--model claude-haiku-4-5`, `-m gpt-5-mini`, `-m gemini-2.5-flash`) when a model was
-resolved, and to an empty string when `smart` is in effect.
+In the snippets below, `{model_flag}` expands to the relevant CLI's flag + value when a
+model was resolved, and to an empty string when `smart` or an unavailable `fast` alias is in
+effect.
 
 #### For Claude
 

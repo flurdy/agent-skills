@@ -2,7 +2,9 @@
 name: rebase-main
 description: Rebase the current branch onto an updated main branch. Use when main has been updated and you need to incorporate those changes into your feature branch.
 allowed-tools: "Read,Edit,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.0.0"
 author: "flurdy"

@@ -2,7 +2,9 @@
 name: review-pr
 description: Review a pull request by checking the code changes, PR description, and CI status against the linked Jira ticket requirements. Produces an AC checklist and flags concerns.
 allowed-tools: "Read,Grep,Glob,Bash(~/.claude/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-checks.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git:*),mcp__jira__*"
-model: opus
+model-tier: premium-review
+model-cost-policy: deliberate-premium
+model-metered-policy: ask-above-standard
 effort: high
 version: "1.0.0"
 author: "flurdy"

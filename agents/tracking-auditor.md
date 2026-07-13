@@ -1,8 +1,10 @@
 ---
 name: tracking-auditor
 description: Audit that in-flight work is correctly tracked in beads/Jira/Trello and that the branch diff matches the scope of its ticket. Read-only. Invoke before opening a PR, before pushing updates to an existing PR branch, or when you suspect the branch has drifted from the ticket it was supposed to address. Cross-references git state against whichever tracking systems the project uses. Do NOT invoke on every commit — commits are often WIP; PRs are the gate.
+model-tier: long-context-audit
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 tools: Bash, Read, Grep, Glob
-model: sonnet
 color: cyan
 ---
 

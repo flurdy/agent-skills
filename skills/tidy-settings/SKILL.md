@@ -2,7 +2,9 @@
 name: tidy-settings
 description: Sort, dedupe, and audit Claude settings.json / settings.local.json files at user and project level. Flags risky permissions, broken references, glob-subsumed entries, syntax errors, and cross-file duplicates that could be promoted up the hierarchy. Mechanical fixes auto-apply, judgment calls are presented as a triage list.
 allowed-tools: "Read, Edit, Write, Bash(~/.claude/skills/tidy-settings/scripts/resolve-files.sh:*), Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.2.0"
 author: "flurdy"

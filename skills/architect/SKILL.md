@@ -2,7 +2,9 @@
 name: architect
 description: Architecture and implementation planning gate for complex or high-blast-radius work. Gathers context, chooses an appropriate planning tier/model, evaluates alternatives and risks, and outputs an implementation-ready plan without editing code.
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
-model: opus
+model-tier: premium-reasoning
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: high
 version: "1.0.0"
 author: "flurdy"
@@ -59,19 +61,21 @@ user has not specified one and the choice matters.
 
 | Tier | Meaning | Use when |
 |------|---------|----------|
-| `standard` | Current skill model/effort only | Moderate planning, low ambiguity |
-| `premium` | Best available in-session reasoning model | Architectural uncertainty or costly mistakes |
-| `second-opinion` | Current model + `/second-opinion validate-plan` after drafting | Need independent validation |
-| `all-in` | Premium planning + second opinion | High-risk, cross-service, security, data migrations |
+| `standard` | Standard coding tier | Moderate planning, low ambiguity |
+| `premium` | Premium reasoning tier, preferring subscription/OAuth routes | Architectural uncertainty or costly mistakes |
+| `second-opinion` | Draft in-session + `/second-opinion validate-plan` after drafting | Need independent validation |
+| `all-in` | Premium reasoning + independent second opinion | High-risk, cross-service, security, data migrations |
 
-This skill itself is pinned to a strong model (`opus`, high effort). If the runtime has a
-newer/better planning model (for example future Fable/GPT/Gemini reasoning models), use the
-closest available equivalent through the client/runtime configuration rather than hard-coding
-future model names here.
+This skill declares `model-tier: premium-reasoning`, but that is semantic routing metadata,
+not a mandate to use Claude/Opus. For pi.dev, Claude Code, and Codex, prefer the best
+configured subscription/OAuth reasoning route first. In pi.dev today that means OpenAI OAuth
+(GPT-5.5); when GPT-5.6 Terra/Sol become available, use the configured premium reasoning
+route. Treat Claude OAuth as a deliberate premium judgement lane, not the default for long
+planning loops. Treat OpenRouter as metered/capped fallback or experimental routing.
 
-If the user names a specific model, preserve that preference in the plan metadata and, where
-possible, recommend how to run the planning session with that model. If unavailable, fall back
-to the best configured reasoning model and say so.
+If the user names a specific model/provider, preserve that preference in the plan metadata and,
+where possible, recommend how to run the planning session with that route. If unavailable, fall
+back to the best configured reasoning tier and say so.
 
 ## Instructions
 
@@ -92,9 +96,10 @@ If the request is missing or too vague, ask one clarifying question before inves
 
 If no tier/model was specified:
 
-- For clearly high-risk work, default to `premium` and state why.
+- For clearly high-risk work, default to `premium` and state why; use OpenAI OAuth/premium
+  reasoning first where available.
 - For very high-risk work (security/data/cross-service), ask whether to use `premium` or
-  `all-in`.
+  `all-in` before adding independent/metered review.
 - For moderate work, ask with `AskUserQuestion`:
   - `standard` — good enough, stay in-session
   - `premium` — spend stronger reasoning budget
@@ -181,8 +186,8 @@ Use this structure:
 ### Open questions
 - ...
 
-### Recommended implementation model
-<cheap/fast is safe | use normal coding model | keep strong model for implementation>
+### Recommended implementation tier
+<cheap-bulk is safe | use standard-coding | keep premium-reasoning/premium-review for implementation>
 ```
 
 ### 5. Second Opinion, When Requested

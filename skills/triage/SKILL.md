@@ -2,7 +2,9 @@
 name: triage
 description: "Create bead(s) from a user prompt or Jira ticket. Investigates relevance, checks for duplicates, and may split complex requests into multiple focused beads."
 allowed-tools: "Read,Bash(bd:*),Grep,Glob,Task,AskUserQuestion"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.1.0"
 author: "flurdy"

@@ -2,7 +2,9 @@
 name: total-review
 description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, code-review, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on Must-Fix tier findings (failing tests, security, blocking-severity bugs), emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
-model: opus
+model-tier: premium-review
+model-cost-policy: deliberate-premium
+model-metered-policy: ask-above-standard
 effort: high
 version: "0.1.0"
 author: "flurdy"
@@ -185,9 +187,13 @@ Skill /security-review
 
 If `/security-review` returns clean, continue.
 
-### 7. Phase 7 — Single External Opinion (Codex, cheap)
+### 7. Phase 7 — Single External Opinion (standard independent pass)
 
 If `--skip-external` is set, jump to Phase 9.
+
+Use the lowest responsible independent route first. Prefer Codex/OpenAI OAuth where configured.
+Do not use Claude or OpenRouter as an unbounded default loop; if the selected route is metered,
+keep the timeout/scope small and state that it is a deliberate external pass.
 
 First, check whether the scope has a reviewable PR:
 
@@ -231,7 +237,10 @@ If not iterating, proceed to Phase 9.
 
 ### 9. Phase 9 — Wide Panel Consensus
 
-If `--skip-external` is set, jump to Phase 10.
+If `--skip-external` is set, jump to Phase 10. A normal `/total-review` run approves one
+standard external pass, not necessarily an expensive panel. Because this phase may invoke
+multiple premium or metered routes, ask for confirmation unless the user explicitly requested
+`--agent all`, a wide panel, or full premium review.
 
 Same PR-detection as Phase 7. Branch with an open PR:
 
@@ -245,7 +254,10 @@ No PR (fall back to ask mode):
 Skill /second-opinion ask "Review this diff for consensus. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and a prior Codex pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent all
 ```
 
-This runs Claude + Codex + Gemini in parallel. The purpose is **consensus**, not new criticism — the code should already be clean. Treat any finding here as:
+This runs Claude + Codex + Gemini in parallel when those CLIs are configured. The purpose is
+**consensus**, not new criticism — the code should already be clean. Claude is a deliberate
+premium review lane; Gemini is especially useful for long-context review; any OpenRouter-backed
+routes must be capped or explicitly approved. Treat any finding here as:
 
 - Agreed by ≥2 agents → P1 bead (multi-agent consensus is a stronger signal)
 - Single-agent finding → P2/P3 bead, add to pile

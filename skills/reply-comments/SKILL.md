@@ -2,7 +2,9 @@
 name: reply-comments
 description: Reply to PR review comments after addressing them. Resolves conversations where changes were made. Uses polite tone for humans, terse factual responses for AI bots. IMPORTANT - Always use this skill (not raw gh api calls) when replying to PR comments, including after manually addressing review feedback.
 allowed-tools: "Read,Bash(~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
-model: sonnet
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "1.0.0"
 author: "flurdy"

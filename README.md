@@ -35,6 +35,13 @@ Units are symlinked directly into their active directories, coexisting with any 
 
 See [skills/README.md](skills/README.md) for the full list of available skills.
 
+## Model routing and cost policy
+
+These skills are shared across Claude Code, pi.dev, and Codex. Skill front
+matter should describe the capability/cost tier a workflow needs, while exact
+provider/model IDs stay in the relevant client runtime configuration where
+possible. See [MODEL_ROUTING.md](MODEL_ROUTING.md) for the shared tier policy.
+
 ## Layout
 
 - `skills/`: each skill lives in its own folder with a `SKILL.md`
@@ -146,9 +153,10 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 
 1. Create a folder under `skills/` with a descriptive kebab-case name
 2. Add a `SKILL.md` with frontmatter and instructions (see below)
-3. Add the skill to the table in [`skills/README.md`](skills/README.md)
-4. Keep it focused and general-purpose
-5. Test by running `make apply` or `make apply-codex` and verifying it appears in the target skills directory
+3. Declare semantic routing metadata (`model-tier`, `model-cost-policy`, `model-metered-policy`) instead of hard-coding one provider/model ID; see [MODEL_ROUTING.md](MODEL_ROUTING.md)
+4. Add the skill to the table in [`skills/README.md`](skills/README.md)
+5. Keep it focused and general-purpose
+6. Test by running `make apply` or `make apply-codex` and verifying it appears in the target skills directory
 
 ## Adding a new agent
 
@@ -162,12 +170,15 @@ Agents are not applied for Codex (`make apply-codex` sets `SKIP_AGENTS=1`).
 
 ### SKILL.md format
 
-Every skill needs a `SKILL.md` with YAML frontmatter:
+Every skill needs a `SKILL.md` with YAML frontmatter. Unknown routing fields are intended as portable metadata for Claude Code, pi.dev, and Codex; runners that do not understand them should ignore them while the skill body still communicates the policy in plain language:
 
 ```markdown
 ---
 name: my-skill
 description: One-line description shown in skill listings
+model-tier: standard-coding
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 version: "1.0.0"
 author: "yourname"
 ---

@@ -21,6 +21,8 @@ in `README.md`.
 
 ## Authoring conventions
 
-- A skill is `skills/<name>/SKILL.md`; pin `model`, `effort`, `version`, `author` in
-  frontmatter (see `README.md` for the full field list and the add-a-skill steps).
+- A skill is `skills/<name>/SKILL.md`; declare semantic routing metadata
+  (`model-tier`, `model-cost-policy`, `model-metered-policy`) plus `effort`, `version`, and
+  `author` in frontmatter. Avoid hard-coding provider/model IDs in shared skills;
+  see `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
 - Add a row to `skills/README.md` for any new skill, kept in alphabetical order.

@@ -2,7 +2,9 @@
 name: tracking-sweep
 description: Portfolio-wide drift sweep across Jira, beads, and GitHub PRs. Cross-references your assigned Jira tickets, in_progress/ready beads, and recent PRs to flag status drift, orphan work, parent-moved beads, and stale items. Read-only — produces recommendations only. Use ad-hoc when you want a "where is everything" reconciliation, separate from /landscape's passive snapshot.
 allowed-tools: "Bash(git:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
-model: sonnet
+model-tier: long-context-audit
+model-cost-policy: prefer-subscription-oauth
+model-metered-policy: ask-above-standard
 effort: medium
 version: "0.1.0"
 author: "flurdy"
