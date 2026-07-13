@@ -5,6 +5,7 @@ allowed-tools: "Read,Bash(bd:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.1.0"
 author: "flurdy"

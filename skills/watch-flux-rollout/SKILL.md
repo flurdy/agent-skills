@@ -9,6 +9,7 @@ allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.claude/skills/watch-flu
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.0.0"
 author: "flurdy"

@@ -5,6 +5,7 @@ allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-merged-parent
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.1.0"
 author: "flurdy"

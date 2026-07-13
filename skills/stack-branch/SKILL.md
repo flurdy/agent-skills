@@ -5,6 +5,7 @@ allowed-tools: "Read,Bash(git:*),Bash(~/.claude/skills/stack-branch/scripts/gh-p
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.0.0"
 author: "flurdy"

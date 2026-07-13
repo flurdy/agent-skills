@@ -8,6 +8,7 @@ allowed-tools: "Read,Skill,Bash(make git-status:*),Bash(make ci-status:*),Bash(m
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.2.0"
 author: "flurdy"

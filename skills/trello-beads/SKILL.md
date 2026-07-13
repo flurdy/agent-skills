@@ -5,6 +5,7 @@ allowed-tools: "Read,Write,Bash(bd:*),Bash(./scripts/trello-api:*),Bash(./script
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.0.0"
 author: "flurdy"

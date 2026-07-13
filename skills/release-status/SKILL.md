@@ -8,6 +8,7 @@ allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(make feature-toggles-
 model-tier: long-context-audit
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "1.4.1"
 author: "flurdy"

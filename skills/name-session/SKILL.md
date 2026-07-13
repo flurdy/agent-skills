@@ -5,6 +5,7 @@ allowed-tools: "Bash(git rev-parse:*), Bash(git branch:*), Bash(bd list:*), Bash
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: low
 version: "0.1.0"
 author: "flurdy"

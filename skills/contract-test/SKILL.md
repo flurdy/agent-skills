@@ -4,6 +4,7 @@ description: Run consumer-driven contract tests (pact-lite, no broker). Guides t
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "2.0.0"
 author: "flurdy"

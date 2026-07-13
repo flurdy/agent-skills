@@ -5,6 +5,7 @@ allowed-tools: "Read,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bas
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-before-metered-panel
+model: sonnet
 model-second-opinion-tier: independent-reasoning
 effort: medium
 version: "1.1.0"

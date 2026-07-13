@@ -34,9 +34,12 @@ These fields are intentionally semantic. Runners that do not understand them
 should ignore them; the skill body should still explain any important routing or
 cost guardrails in plain language.
 
-Cheap-bulk skills additionally keep `model: haiku` — Claude Code reads `model`
-directly and routes the skill to it, so without the hint those skills run on the
-(possibly premium) session model. Other runners ignore the field.
+Skills also keep a floating `model:` alias matching their tier — `haiku` for
+cheap-bulk, `sonnet` for standard-coding and long-context-audit — because Claude
+Code reads `model` directly and would otherwise run every skill on the (possibly
+premium) session model. Premium tiers omit it so the session model applies. pi
+ignores `model:` in skill files but honors it in **agent** files, so agents never
+set it (it would route pi to metered Claude).
 
 ## Tiers
 
@@ -96,10 +99,11 @@ tiers:
 
 ## Client notes
 
-- **pi.dev:** unknown skill front matter is ignored; routing should be enforced by
-  model choice/runtime config and the skill instructions.
+- **pi.dev:** skill front matter is ignored except `name`, `description`, and
+  `disable-model-invocation` (verified on 0.80.6) — skills always run on the
+  current pi session model. Agent files *can* honor `model:`, so agents omit it.
 - **Claude Code:** Claude Code reads the `model` frontmatter field directly, so
-  cheap-bulk skills keep `model: haiku` as an enforcement hint. Single floating
-  alias only (no lists, no dated IDs); the canonical policy is the tier.
+  non-premium skills keep a floating alias (`haiku`/`sonnet`) as an enforcement
+  hint. Single alias only (no lists, no dated IDs); the canonical policy is the tier.
 - **Codex:** keep provider/model selection in Codex configuration or CLI flags;
   skills should not bake in one model ID.

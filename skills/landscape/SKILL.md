@@ -5,6 +5,7 @@ allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/lan
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
 version: "0.11.0"
 author: "flurdy"

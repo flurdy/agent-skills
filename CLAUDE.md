@@ -24,6 +24,7 @@ in `README.md`.
 - A skill is `skills/<name>/SKILL.md`; declare semantic routing metadata
   (`model-tier`, `model-cost-policy`, `model-metered-policy`) plus `effort`, `version`, and
   `author` in frontmatter. Avoid hard-coding provider/model IDs in shared skills —
-  the one exception is `model: haiku` on cheap-bulk skills as a Claude Code routing
-  hint. See `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
+  the exception is a floating `model:` alias (`haiku`/`sonnet`) as a Claude Code
+  routing hint on non-premium skills; agents omit it (pi agents honor `model:`).
+  See `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
 - Add a row to `skills/README.md` for any new skill, kept in alphabetical order.
