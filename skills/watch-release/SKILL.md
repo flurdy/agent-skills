@@ -8,7 +8,7 @@ model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: medium
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -44,11 +44,18 @@ If the current time is already past the stop hour, tell the user and don't start
 
 ### Adaptive mode (no interval given)
 
-Invoke the `/loop` skill in **dynamic (self-paced)** mode with `/release-manager`:
+Invoke the `/loop` skill in **dynamic (self-paced)** mode. The loop prompt is the only text
+re-injected verbatim on every wakeup — `release-manager`'s SKILL.md is NOT re-read on wakeup turns
+unless the tick explicitly loads it — so the output contract and ordering must live inside the
+prompt string itself:
 
 ```
-/loop /release-manager
+/loop /release-manager — each tick: invoke the release-manager skill via the Skill tool (never improvise its steps from memory), render its full dashboard and any prompts as visible text, and only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
 ```
+
+Pass that whole string as the loop prompt, and echo it back unchanged in every `ScheduleWakeup`
+call so later ticks keep the contract. Each tick must render first and call `ScheduleWakeup` as
+its final action — text intended after that call is silently dropped.
 
 Then pace each next wake from the recommendation `/release-manager` prints **last** in its tick
 output:
@@ -70,10 +77,11 @@ Stop and don't reschedule once the wake would land past `{stop_hour}:00`. If a t
 ### Fixed mode (interval given)
 
 Invoke the `/loop` skill with the literal interval — `/release-manager`'s `next-tick:` line is
-ignored:
+ignored. The same per-tick contract applies (minus the `ScheduleWakeup` ordering — cron fires
+fixed ticks):
 
 ```
-/loop {interval} /release-manager
+/loop {interval} /release-manager — each tick: invoke the release-manager skill via the Skill tool and render its full dashboard as visible text; a tick that only runs scripts is a failed tick
 ```
 
 Tell the loop to stop at `{stop_hour}:00` local time.

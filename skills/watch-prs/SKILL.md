@@ -8,7 +8,7 @@ model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: medium
-version: "2.1.0"
+version: "2.1.1"
 author: "flurdy"
 ---
 
@@ -45,20 +45,28 @@ If the current time is already past the stop hour, tell the user and don't start
 ### Adaptive mode (no interval given)
 
 Invoke the `/loop` skill in **dynamic (self-paced)** mode. The loop prompt is the only text
-re-injected verbatim on every wakeup — `pr-status`'s SKILL.md is NOT re-read on wakeup turns — so
-the render contract must live inside the prompt string itself, not just here:
+re-injected verbatim on every wakeup — `pr-status`'s SKILL.md is NOT re-read on wakeup turns unless
+the tick explicitly loads it — so the render contract AND the render-before-schedule ordering must
+live inside the prompt string itself, not just here:
 
 ```
-/loop /pr-status — render the full dashboard every tick (timestamp, both tables, deltas, next-tick line); a tick that only runs scripts and reschedules is a failed tick
+/loop /pr-status — each tick: invoke the pr-status skill via the Skill tool (never run its scripts from memory), print its full dashboard (timestamp, both tables, deltas, next-tick line) as visible text, and only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
 ```
 
-Pass that whole string (including the contract after the dash) as the loop prompt, and echo it back
+Pass that whole string (including everything after the dash) as the loop prompt, and echo it back
 unchanged in every `ScheduleWakeup` call so later ticks keep the contract.
 
-**Per-tick output contract.** Every tick — including unchanged ones — must emit the full `/pr-status`
-output (timestamp line, both tables, deltas, `next-tick:` line) as visible text before ending the
-turn. Never end a tick on a bare `ScheduleWakeup` with no rendered dashboard; running the fetch
-scripts without rendering is a failed tick, not a terse one.
+**Per-tick ordering — render first, schedule last.** The dynamic loop's turn ends the moment
+`ScheduleWakeup` returns; any text intended after it is silently dropped, which reads as a tick that
+"only ran scripts". So every tick must, in order:
+
+1. **Invoke the `pr-status` skill via the Skill tool.** Its render steps (table columns, deltas,
+   `next-tick:` spec) get summarized out of context between ticks — running the fetch scripts from
+   memory yields data with no table spec, and the tick renders nothing.
+2. **Emit the full `/pr-status` output** — timestamp line, both tables, deltas, suggested actions,
+   `next-tick:` line — as visible text. Every tick, including unchanged ones.
+3. **Call `ScheduleWakeup` last.** Never before step 2; a bare `ScheduleWakeup` with no rendered
+   dashboard is a failed tick, not a terse one.
 
 Then pace each next wake from the recommendation `/pr-status` prints **last** in its tick output:
 
@@ -86,10 +94,11 @@ always rendered in full.
 ### Fixed mode (interval given)
 
 Invoke the `/loop` skill with the literal interval — `/pr-status`'s `next-tick:` line is ignored.
-The same per-tick output contract applies, embedded in the prompt for the same reason:
+The same per-tick contract applies (minus the `ScheduleWakeup` ordering — cron fires fixed ticks),
+embedded in the prompt for the same reason:
 
 ```
-/loop {interval} /pr-status — render the full dashboard every tick (timestamp, both tables, deltas); a tick that only runs scripts is a failed tick
+/loop {interval} /pr-status — each tick: invoke the pr-status skill via the Skill tool (never run its scripts from memory) and print its full dashboard (timestamp, both tables, deltas) as visible text; a tick that only runs scripts is a failed tick
 ```
 
 Tell the loop to stop at `{stop_hour}:00` local time.
