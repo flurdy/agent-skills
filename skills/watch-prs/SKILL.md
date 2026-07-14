@@ -9,7 +9,7 @@ model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 model: sonnet
 effort: medium
-version: "2.3.0"
+version: "2.3.1"
 author: "flurdy"
 ---
 
@@ -32,6 +32,15 @@ Run `/pr-status` on a self-rescheduling loop until a stop hour. Each tick is an 
 Parse arguments: an interval matching `\d+m` (absent → adaptive mode, the default), and a stop
 hour matching `\d{1,2}` (default `18`). If the current time is already past the stop hour, say so
 and don't start.
+
+**Session-model guard (adaptive mode only).** An adaptive tick must print the dashboard and then
+call `ScheduleWakeup` in the same turn. Fable-class models hold their main output for a final
+message *after* all tool calls — and `ScheduleWakeup` ends the turn the moment it returns, so on
+such a session every tick renders blank. If this session is powered by a Fable-class model, do
+not start the adaptive loop: explain this, and suggest either running the watcher in a tab
+launched with `claude --model sonnet` (session-only, leaves the saved default alone) or using
+fixed mode (`/watch-prs 10m`), whose cron ticks carry no scheduling duty and work on any model.
+Sonnet- and Opus-class sessions are fine.
 
 ### Adaptive mode (default)
 

@@ -48,11 +48,13 @@ switch. Advisory, not enforced — copy the guard block from
 `skills/architect/SKILL.md` when authoring a new premium skill.
 
 **Dynamic-loop dashboard skills** (`watch-prs`, `pr-status`) keep the alias, but
-ticks must run as standalone `/pr-status`-first turns, never composed through the
-`/loop` skill: with several instruction stacks in one turn, smaller models end
-ticks on a bare `ScheduleWakeup` one-liner instead of the dashboard, no matter
-how the render contract is worded — while the same model renders a standalone
-`/pr-status` flawlessly (observed with `sonnet`, Jul 2026).
+note it does NOT reach loop ticks: `ScheduleWakeup` wakeup prompts run on the
+*session* model, ignoring skill `model:` pins. And a tick that must render then
+self-schedule breaks on Fable-class session models — they defer their main output
+to a final message after all tool calls, which `ScheduleWakeup`'s turn-end
+discards, leaving blank ticks (verified by A/B: identical ticks render on a
+Sonnet session, blank on a Fable session, Jul 2026). Hence `watch-prs`'s
+session-model guard; Sonnet/Opus sessions and cron-fired fixed mode are fine.
 
 ## Tiers
 
