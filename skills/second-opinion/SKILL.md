@@ -8,7 +8,7 @@ model-metered-policy: ask-before-metered-panel
 model: sonnet
 model-second-opinion-tier: independent-reasoning
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -54,9 +54,16 @@ This skill declares `model-second-opinion-tier: independent-reasoning`. Exact mo
 the invoked CLI's configuration where possible, not in this shared skill. By default, omit
 model flags and let each CLI use its configured default.
 
+Independence rule: a second opinion is only independent if it comes from a **different
+vendor than the model that produced the work** (normally the current session model).
+Check which model you are running as and pick the default agent accordingly:
+
+- Claude session (Claude Code) → `codex` first, then `gemini`.
+- GPT session (pi/Codex) → `claude` first (metered — deliberate, best judgement), then `gemini`.
+
 Cost guardrails:
 
-- Prefer Codex/OpenAI OAuth for the first independent pass when available.
+- Prefer subscription/OAuth routes for the first independent pass when the rule allows.
 - Use Claude deliberately for premium review/judgement, not as a default long loop.
 - Use Gemini for long-context review or repo-wide summarisation.
 - Treat OpenRouter-backed or API-key/BYOK routes as metered: use `--timeout`, cap scope, or
@@ -77,11 +84,13 @@ The `smart` default requires no maintenance here — it is whatever each CLI/run
 Extract from the arguments:
 - **mode**: one of `review-pr`, `validate-plan`, `triage-bug`, `ask` (default: ask user)
 - **target**: PR number, plan text, bug description, or freeform question
-- **agent**: `claude`, `codex`, `gemini`, or `all` (default: `codex`)
+- **agent**: `claude`, `codex`, `gemini`, or `all` (default: per the independence rule —
+  `codex` from a Claude session, `claude` from a GPT session)
 - **timeout**: timeout in minutes (default: `3`, max: `10`)
 - **model**: `smart` (default), `fast`, or an explicit model ID — see Model Selection and Cost
 
-Look for `--agent <name>` anywhere in the arguments. If not specified, default to `codex`.
+Look for `--agent <name>` anywhere in the arguments. If not specified, apply the independence
+rule from Model Selection and Cost: `codex` in a Claude session, `claude` in a GPT session.
 Look for `--timeout <minutes>` anywhere in the arguments. If not specified, default to `3`.
 Look for `--model <value>` anywhere in the arguments. If not specified, default to `smart`.
 

@@ -86,9 +86,12 @@ tiers:
     use-for: Cheap status checks, mechanical scans, low-risk summaries.
 
   independent-reasoning:
-    primary: openrouter:qwen-reasoning
-    fallback: openrouter:grok-4.5
-    note: Metered; ask or cap before broad panels.
+    rule: choose a provider DIFFERENT from the model that produced the work;
+      prefer subscription routes first.
+    from-claude-session: openai-oauth (codex CLI), then gemini-oauth
+    from-gpt-session: anthropic-oauth (metered — deliberate, best judgement), then gemini-oauth
+    panel-extras: openrouter:qwen-reasoning, openrouter:grok-4.5
+    note: Panel extras are metered; ask or cap before broad panels.
     use-for: Cross-checking plans, PRs, root-cause analysis, independent critique.
 
   long-context-audit:
