@@ -41,6 +41,12 @@ premium) session model. Premium tiers omit it so the session model applies. pi
 ignores `model:` in skill files but honors it in **agent** files, so agents never
 set it (it would route pi to metered Claude).
 
+**Exception — dynamic-loop dashboard skills** (`watch-prs`, `pr-status`) omit the
+alias despite being standard-coding tier: under `/loop`'s instruction stack,
+downgraded models reliably skip the render contract and end ticks on a bare
+`ScheduleWakeup`, producing blank dashboards (observed with `sonnet`, Jul 2026).
+These run on the session model.
+
 ## Tiers
 
 GPT entries name the Terra/Sol/Luna capability split, not a pinned version — use the

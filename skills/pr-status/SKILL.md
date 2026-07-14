@@ -5,9 +5,8 @@ allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
-model: sonnet
 effort: medium
-version: "1.10.2"
+version: "1.10.3"
 author: "flurdy"
 ---
 
@@ -267,3 +266,9 @@ Pick the bucket from current PR state (most urgent wins):
 This line is primarily consumed by `/watch-prs` in adaptive mode — it's harmless to ignore on a one-shot `/pr-status` run. If a tick can't compute a bucket (e.g. a fetch failed), emit `next-tick: warm (~600s) — incomplete fetch` so the loop still has something to pace from.
 
 **Print this line and nothing more about pacing.** Keep the reason to a few words and do NOT wrap it in a prose sentence explaining the cadence — `/watch-prs` and the dynamic loop narrate the wake themselves, so any extra commentary here just triples the same fact.
+
+**When running under a dynamic loop (`/watch-prs`):** do not call `ScheduleWakeup` until the
+timestamp, both tables, deltas, and this `next-tick:` line have all been printed as visible text —
+the turn ends the instant `ScheduleWakeup` returns, so scheduling first silently discards the
+dashboard. Take `delaySeconds` from the `next-tick:` line you just printed; if you have not printed
+it, you have nothing to schedule from.
