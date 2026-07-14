@@ -6,7 +6,7 @@ model-tier: cheap-bulk
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
 model: haiku
-effort: low
+effort: medium
 version: "1.2.0"
 author: "flurdy"
 ---

@@ -72,7 +72,7 @@ tiers:
   cheap-bulk:
     primary: openai-oauth:gpt-luna
     fallback: openrouter:qwen-coder
-    default-effort: low
+    default-effort: medium
     use-for: Cheap status checks, mechanical scans, low-risk summaries.
 
   standard-workflow:
@@ -121,10 +121,11 @@ tiers:
 
 ## Thinking effort
 
-`effort` is orthogonal to `model-tier`. Use `low` for mechanical work, `medium` for
-routine orchestration, `high` for implementation, and `xhigh` for premium
-reasoning/review where missing a subtle issue is costly. Reserve `max` for explicit
-all-in requests; never make it a default.
+`effort` is orthogonal to `model-tier`. Use `medium` by default for cheap mechanical
+work and routine orchestration, `high` for implementation, and `xhigh` for premium
+reasoning/review where missing a subtle issue is costly. Use `low` only after
+dogfooding shows a deterministic workflow remains reliable and the latency or quota
+saving matters. Reserve `max` for explicit all-in requests; never make it a default.
 
 The pi model-tier router uses the tier's configured thinking level as a fallback,
 honors a valid skill `effort`, and allows nested skills to raise but never lower

@@ -56,13 +56,13 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 
 | Skill | Tier | Cost policy | Metered policy | `model:` pin ¹ | Effort | Tier guard ² |
 |-------|------|-------------|----------------|----------------|--------|--------------|
-| beads-check-dolt-migration | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
-| browser-screenshot | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
-| circleci-status | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
-| confluence | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
-| jira-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
-| next | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
-| start-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| beads-check-dolt-migration | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| browser-screenshot | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| circleci-status | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| confluence | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| jira-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| next | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| start-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
 | complete-task | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | contract-check | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | create-pr | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
