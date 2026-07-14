@@ -7,9 +7,8 @@ description: >
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
-model: sonnet
 effort: medium
-version: "2.3.1"
+version: "2.3.2"
 author: "flurdy"
 ---
 
@@ -33,14 +32,19 @@ Parse arguments: an interval matching `\d+m` (absent → adaptive mode, the defa
 hour matching `\d{1,2}` (default `18`). If the current time is already past the stop hour, say so
 and don't start.
 
-**Session-model guard (adaptive mode only).** An adaptive tick must print the dashboard and then
-call `ScheduleWakeup` in the same turn. Fable-class models hold their main output for a final
-message *after* all tool calls — and `ScheduleWakeup` ends the turn the moment it returns, so on
-such a session every tick renders blank. If this session is powered by a Fable-class model, do
-not start the adaptive loop: explain this, and suggest either running the watcher in a tab
-launched with `claude --model sonnet` (session-only, leaves the saved default alone) or using
-fixed mode (`/watch-prs 10m`), whose cron ticks carry no scheduling duty and work on any model.
-Sonnet- and Opus-class sessions are fine.
+**Session-model guard (adaptive mode only).** Before anything else, state which model powers this
+session — your system prompt names it ("You are powered by …"). If it is any Fable model, do NOT
+start the adaptive loop: say why, point at the alternatives below, and end the turn without
+calling `ScheduleWakeup`. This is not a capability judgment you can pass by intending to render
+first — on wakeup turns Fable-class models emit their main output as the turn's final message
+after tool calls, and `ScheduleWakeup` ends the turn the instant it returns, mechanically
+discarding that message; every tick will be blank regardless of intent. Alternatives: run the
+watcher in a tab launched with `claude --model sonnet` (session-only, leaves the saved default
+alone), or use fixed mode (`/watch-prs 10m`), whose cron ticks carry no scheduling duty and work
+on any model. Sonnet- and Opus-class sessions pass this guard.
+
+(This skill deliberately has no `model:` pin — the guard must run on the session model to be able
+to name it.)
 
 ### Adaptive mode (default)
 
