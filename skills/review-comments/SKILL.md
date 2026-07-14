@@ -5,8 +5,8 @@ allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.claude/skills/review-comments/script
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
-model: sonnet
-effort: medium
+model: opus
+effort: high
 version: "1.0.0"
 author: "flurdy"
 ---

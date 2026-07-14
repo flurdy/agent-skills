@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.claude/skills/review-pr/scripts/gh-pr-vie
 model-tier: premium-review
 model-cost-policy: deliberate-premium
 model-metered-policy: ask-above-standard
-effort: high
+effort: xhigh
 version: "1.0.0"
 author: "flurdy"
 ---

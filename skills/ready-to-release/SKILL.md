@@ -5,7 +5,7 @@ description: >
   sync, deploy-order prereqs satisfied, feature toggle present, and unpushed work vs the live
   deploy. Emits a gate table and a single verdict. Use before deciding to ship one service.
 allowed-tools: "Read,Skill,Bash(make git-status:*),Bash(make ci-status:*),Bash(make deploy-status:*),Bash(make feature-toggles:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*)"
-model-tier: standard-coding
+model-tier: standard-workflow
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 model: sonnet

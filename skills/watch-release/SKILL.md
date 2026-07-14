@@ -4,7 +4,7 @@ description: >
   Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence
   (fast when something is in flight, backing off when settled) until end of day in a dedicated
   tab. Prompts to push / defer / cancel as services become ready; runs attended.
-model-tier: standard-coding
+model-tier: standard-workflow
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 model: sonnet

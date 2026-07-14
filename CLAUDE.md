@@ -4,6 +4,9 @@ Assembles Claude Code skills and agents from layered source dirs into
 `~/.claude/{skills,agents}` as **symlinks**. See `README.md` for the full model (layers,
 profiles, machines, clients) and `make help` for every target.
 
+Also supports other LLMs and harnesses such as Codex, Gemini, Pi, and OpenRouter
+that can use the same skills and agents. See `README.md` for the full model.
+
 ## After changing skills or agents
 
 The active dirs hold symlinks *into this repo*, so editing files inside an existing
@@ -24,8 +27,8 @@ in `README.md`.
 - A skill is `skills/<name>/SKILL.md`; declare semantic routing metadata
   (`model-tier`, `model-cost-policy`, `model-metered-policy`) plus `effort`, `version`, and
   `author` in frontmatter. Avoid hard-coding provider/model IDs in shared skills —
-  the exception is a floating `model:` alias (`haiku`/`sonnet`) as a Claude Code
-  routing hint on non-premium skills; agents omit it (pi agents honor `model:`).
+  the exception is a floating `model:` alias (`haiku`/`sonnet`/`opus`) as a Claude
+  Code routing hint on non-premium skills; agents omit it (pi agents honor `model:`).
   See `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
 - Add a row to both `skills/README.md` tables for any new skill: the description table
   (alphabetical) and the model-routing table (grouped by tier, cheapest first).

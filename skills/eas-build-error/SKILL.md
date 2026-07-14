@@ -2,7 +2,7 @@
 name: eas-build-error
 description: View the latest EAS build status and errors. Fetches build details, extracts failure logs, and suggests fixes for common iOS/Android build issues.
 allowed-tools: "Read,WebFetch,Bash(npx:*)"
-model-tier: standard-coding
+model-tier: standard-workflow
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 model: sonnet

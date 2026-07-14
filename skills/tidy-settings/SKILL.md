@@ -5,7 +5,7 @@ allowed-tools: "Read, Edit, Write, Bash(~/.claude/skills/tidy-settings/scripts/r
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
-model: sonnet
+model: opus
 effort: medium
 version: "1.2.0"
 author: "flurdy"

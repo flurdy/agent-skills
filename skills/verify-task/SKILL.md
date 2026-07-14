@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(git:*)
 model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
-effort: high
+effort: xhigh
 version: "1.0.0"
 author: "flurdy"
 ---

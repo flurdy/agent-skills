@@ -179,6 +179,7 @@ description: One-line description shown in skill listings
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+effort: high
 version: "1.0.0"
 author: "yourname"
 ---

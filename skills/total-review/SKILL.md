@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Ba
 model-tier: premium-review
 model-cost-policy: deliberate-premium
 model-metered-policy: ask-above-standard
-effort: high
+effort: xhigh
 version: "0.1.0"
 author: "flurdy"
 ---

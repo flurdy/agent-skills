@@ -2,11 +2,11 @@
 name: clean-code
 description: Format, lint, and fix all warnings across the entire codebase — including test files and pre-existing issues.
 allowed-tools: "Read,Edit,Grep,Glob,Bash(make:*),AskUserQuestion"
-model-tier: cheap-bulk
+model-tier: standard-coding
 model-cost-policy: cheapest-adequate
 model-metered-policy: cap-or-ask
-model: haiku
-effort: low
+model: opus
+effort: medium
 version: "1.0.0"
 author: "flurdy"
 ---

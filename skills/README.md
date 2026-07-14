@@ -7,6 +7,7 @@
 | beads-check-dolt-migration | Detect whether a beads installation needs migration from classic format (SQLite/JSONL) to Dolt |
 | beads-migrate-to-dolt | Migrate a beads installation from classic format (SQLite/JSONL) to the new Dolt-based format |
 | browser-screenshot | Take a screenshot of the running web application for visual verification of UI/CSS changes |
+| circleci-status | Check CircleCI build status and failed job logs for the current GitHub repository |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
 | complete-task | Complete an in-progress task by running clean-code, staging, and committing; closes the bead in trunk repos or hands off to /create-pr in PR repos |
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
@@ -55,52 +56,52 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 
 | Skill | Tier | Cost policy | Metered policy | `model:` pin ¹ | Effort | Tier guard ² |
 |-------|------|-------------|----------------|----------------|--------|--------------|
-| beads-check-dolt-migration | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| browser-screenshot | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| circleci-status | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| clean-code | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| confluence | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| jira-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| next | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| start-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
-| beads-migrate-to-dolt | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| complete-task | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| contract-check | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| contract-test | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| create-pr | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| eas-build-error | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| handoffs | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| handoffs-tidy | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | low | |
-| landscape | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| name-session | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | low | |
-| pr-status | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| ready-to-merge | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| ready-to-release | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| rebase-main | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| rebase-merged-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| rebase-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| release-manager | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| reply-comments | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| review-comments | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| second-opinion ³ | standard-coding | prefer-subscription-oauth | ask-before-metered-panel | sonnet | medium | |
-| setup-multirepo-git | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| stack-branch | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| tidy-settings | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| trello-beads | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| triage | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| watch-flux-rollout | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| watch-prs ⁴ | standard-coding | prefer-subscription-oauth | ask-above-standard | — | medium | |
-| watch-release | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| watch-rollout | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| wrap-up | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| backlog-groom | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| release-status | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| tracking-sweep | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
-| architect | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | high | ✅ |
-| verify-task | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | high | ✅ |
-| pedantic-review | premium-review | deliberate-premium | ask-above-standard | — | high | ✅ |
-| review-pr | premium-review | deliberate-premium | ask-above-standard | — | high | ✅ |
-| total-review | premium-review | deliberate-premium | ask-above-standard | — | high | ✅ |
+| beads-check-dolt-migration | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| browser-screenshot | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| circleci-status | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| confluence | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| jira-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| next | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| start-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
+| complete-task | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| contract-check | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| create-pr | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| eas-build-error | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| handoffs | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| handoffs-tidy | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | low |  |
+| landscape | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| name-session | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | low |  |
+| pr-status | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| ready-to-merge | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| ready-to-release | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| release-manager | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| reply-comments | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| second-opinion ³ | standard-workflow | prefer-subscription-oauth | ask-before-metered-panel | sonnet | medium |  |
+| stack-branch | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| trello-beads | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| triage | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| watch-flux-rollout | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| watch-prs ⁴ | standard-workflow | prefer-subscription-oauth | ask-above-standard | — | medium |  |
+| watch-release | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| watch-rollout | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| wrap-up | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| beads-migrate-to-dolt | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| clean-code | standard-coding | cheapest-adequate | cap-or-ask | opus | medium |  |
+| contract-test | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| rebase-main | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| rebase-merged-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| rebase-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| review-comments | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| setup-multirepo-git | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| tidy-settings | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | medium |  |
+| backlog-groom | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| release-status | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| tracking-sweep | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+| architect | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
+| verify-task | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
+| pedantic-review | premium-review | deliberate-premium | ask-above-standard | — | xhigh | ✅ |
+| review-pr | premium-review | deliberate-premium | ask-above-standard | — | xhigh | ✅ |
+| total-review | premium-review | deliberate-premium | ask-above-standard | — | xhigh | ✅ |
 
 ¹ Claude Code-only enforcement hint (floating alias). Premium skills are deliberately
 unpinned so they ride the best session model. Agent files never set it — pi honors

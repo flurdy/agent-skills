@@ -5,8 +5,8 @@ allowed-tools: "Read,Grep,Glob,Bash(bd:*),Bash(git:*),Bash(cp:*),Bash(rm:*),Bash
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
-model: sonnet
-effort: medium
+model: opus
+effort: high
 version: "1.2.0"
 author: "flurdy"
 ---
