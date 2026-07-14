@@ -41,6 +41,12 @@ premium) session model. Premium tiers omit it so the session model applies. pi
 ignores `model:` in skill files but honors it in **agent** files, so agents never
 set it (it would route pi to metered Claude).
 
+Premium-tier skills carry no `model:` pin (they should ride the best session
+model), so each starts with a **tier guard**: if the running model is below the
+declared tier, say so and ask whether to continue at reduced depth or stop and
+switch. Advisory, not enforced — copy the guard block from
+`skills/architect/SKILL.md` when authoring a new premium skill.
+
 **Dynamic-loop dashboard skills** (`watch-prs`, `pr-status`) keep the alias, but
 ticks must run as standalone `/pr-status`-first turns, never composed through the
 `/loop` skill: with several instruction stacks in one turn, smaller models end

@@ -78,6 +78,19 @@ back to the best configured reasoning tier and say so.
 
 ## Instructions
 
+### Tier guard
+
+This skill is `model-tier: premium-reasoning`. Before starting, check which model you are
+running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
+Claude Code), say so and ask via `AskUserQuestion` whether to:
+
+- **Continue here** — accept reduced depth on this run
+- **Stop** — switch model (`/model` in Claude Code) or rerun in a premium session
+
+Skip the prompt when the user explicitly chose the current model or passed `--no-prompt`.
+On a premium model, stay silent and proceed. This guard checks the *engine*; the planning
+tier prompt below (step 2) chooses how much reasoning to *spend* — they compose.
+
 ### 1. Parse the Request
 
 Identify:

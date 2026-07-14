@@ -88,6 +88,18 @@ If the change is genuinely small and well-crafted, the verdict is "Looks good" w
 
 ## Instructions
 
+### Tier guard
+
+This skill is `model-tier: premium-review`. Before starting, check which model you are
+running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
+Claude Code), say so and ask via `AskUserQuestion` whether to:
+
+- **Continue here** — accept reduced depth on this run
+- **Stop** — switch model (`/model` in Claude Code) or rerun in a premium session
+
+Skip the prompt when the user explicitly chose the current model. On a premium model,
+stay silent and proceed.
+
 ### 1. Determine scope
 
 Parse arguments:
