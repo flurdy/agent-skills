@@ -47,3 +47,67 @@
 | watch-release | Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence (fast ~3m when a push is mid-rollout or CI is running, backing off 10→30m when settled) until end of day. Pass `\d+m` for a fixed interval instead |
 | watch-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a smoke test scoped to the change (browser for UI, GET for read-only API) against staging. Goal-terminating; staging by default, prod read-only opt-in. Generic GitHub-Actions cousin of /watch-release |
 | wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees, incl. worktree-only settings drift), and a paste-ready resume block for the next session |
+
+## Model routing
+
+Semantic tiers and cost policies per skill; see [../MODEL_ROUTING.md](../MODEL_ROUTING.md)
+for what each tier and policy value means. Sorted by tier, cheapest first.
+
+| Skill | Tier | Cost policy | Metered policy | `model:` pin ¹ | Effort | Tier guard ² |
+|-------|------|-------------|----------------|----------------|--------|--------------|
+| beads-check-dolt-migration | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| browser-screenshot | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| circleci-status | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| clean-code | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| confluence | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| jira-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| next | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| start-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low | |
+| beads-migrate-to-dolt | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| complete-task | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| contract-check | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| contract-test | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| create-pr | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| eas-build-error | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| handoffs | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| handoffs-tidy | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | low | |
+| landscape | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| name-session | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | low | |
+| pr-status | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| ready-to-merge | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| ready-to-release | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| rebase-main | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| rebase-merged-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| rebase-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| release-manager | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| reply-comments | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| review-comments | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| second-opinion ³ | standard-coding | prefer-subscription-oauth | ask-before-metered-panel | sonnet | medium | |
+| setup-multirepo-git | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| stack-branch | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| tidy-settings | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| trello-beads | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| triage | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| watch-flux-rollout | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| watch-prs ⁴ | standard-coding | prefer-subscription-oauth | ask-above-standard | — | medium | |
+| watch-release | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| watch-rollout | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| wrap-up | standard-coding | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| backlog-groom | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| release-status | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| tracking-sweep | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium | |
+| architect | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | high | ✅ |
+| verify-task | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | high | ✅ |
+| pedantic-review | premium-review | deliberate-premium | ask-above-standard | — | high | ✅ |
+| review-pr | premium-review | deliberate-premium | ask-above-standard | — | high | ✅ |
+| total-review | premium-review | deliberate-premium | ask-above-standard | — | high | ✅ |
+
+¹ Claude Code-only enforcement hint (floating alias). Premium skills are deliberately
+unpinned so they ride the best session model. Agent files never set it — pi honors
+`model:` in agents, which would route pi to metered Claude.
+² Premium skills open with a tier-guard prompt: on a sub-premium session model they
+ask whether to continue at reduced depth or stop and switch.
+³ Also declares `model-second-opinion-tier: independent-reasoning` for the external
+CLI it invokes.
+⁴ No pin: dynamic-loop ticks run on the session model regardless (`ScheduleWakeup`
+wakeups ignore skill pins), so a pin there is unenforceable.

@@ -27,4 +27,5 @@ in `README.md`.
   the exception is a floating `model:` alias (`haiku`/`sonnet`) as a Claude Code
   routing hint on non-premium skills; agents omit it (pi agents honor `model:`).
   See `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
-- Add a row to `skills/README.md` for any new skill, kept in alphabetical order.
+- Add a row to both `skills/README.md` tables for any new skill: the description table
+  (alphabetical) and the model-routing table (grouped by tier, cheapest first).
