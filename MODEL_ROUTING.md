@@ -42,10 +42,11 @@ ignores `model:` in skill files but honors it in **agent** files, so agents neve
 set it (it would route pi to metered Claude).
 
 **Dynamic-loop dashboard skills** (`watch-prs`, `pr-status`) keep the alias, but
-their loop contracts must define the dashboard as the confirmation text `/loop`
-requires before `ScheduleWakeup` — smaller models otherwise satisfy that step
-with a one-liner and end ticks on a bare `ScheduleWakeup`, producing blank
-dashboards (observed with `sonnet`, Jul 2026).
+ticks must run as standalone `/pr-status`-first turns, never composed through the
+`/loop` skill: with several instruction stacks in one turn, smaller models end
+ticks on a bare `ScheduleWakeup` one-liner instead of the dashboard, no matter
+how the render contract is worded — while the same model renders a standalone
+`/pr-status` flawlessly (observed with `sonnet`, Jul 2026).
 
 ## Tiers
 

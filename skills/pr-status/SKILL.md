@@ -7,7 +7,7 @@ model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 model: sonnet
 effort: medium
-version: "1.10.4"
+version: "1.10.5"
 author: "flurdy"
 ---
 
@@ -268,9 +268,10 @@ This line is primarily consumed by `/watch-prs` in adaptive mode — it's harmle
 
 **Print this line and nothing more about pacing.** Keep the reason to a few words and do NOT wrap it in a prose sentence explaining the cadence — `/watch-prs` and the dynamic loop narrate the wake themselves, so any extra commentary here just triples the same fact.
 
-**When running under a dynamic loop (`/watch-prs`):** the confirmation text the loop requires
-before `ScheduleWakeup` is this dashboard — timestamp, both tables, deltas, `next-tick:` line —
-not a one-line summary. Do not call `ScheduleWakeup` until all of it has been printed as visible
-text; the turn ends the instant `ScheduleWakeup` returns, so scheduling first silently discards
-the dashboard. Take `delaySeconds` from the `next-tick:` line you just printed; if you have not
-printed it, you have nothing to schedule from.
+**When the invoking prompt asks you to reschedule via `ScheduleWakeup` (a `/watch-prs` tick):**
+print the whole dashboard first — timestamp, both tables, deltas, `next-tick:` line — then call
+`ScheduleWakeup` as the turn's very last action, with `delaySeconds` taken from the `next-tick:`
+line you just printed and the invoking prompt echoed verbatim. The turn ends the instant
+`ScheduleWakeup` returns, so scheduling before the dashboard is printed silently discards it — a
+tick whose only text is a one-line summary has failed. If you have not printed the `next-tick:`
+line, you have nothing to schedule from.

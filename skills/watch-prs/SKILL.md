@@ -9,7 +9,7 @@ model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 model: sonnet
 effort: medium
-version: "2.1.3"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -45,35 +45,29 @@ If the current time is already past the stop hour, tell the user and don't start
 
 ### Adaptive mode (no interval given)
 
-Invoke the `/loop` skill in **dynamic (self-paced)** mode. The loop prompt is the only text
-re-injected verbatim on every wakeup — `pr-status`'s SKILL.md is NOT re-read on wakeup turns unless
-the tick explicitly loads it — so the render contract AND the render-before-schedule ordering must
-live inside the prompt string itself, not just here:
+Self-manage the loop with the `ScheduleWakeup` tool — do **not** route ticks through the `/loop`
+skill, and do **not** run the first tick inline. A composed turn (watch-prs + loop + pr-status
+instruction stacks in one context) reliably ends on a bare `ScheduleWakeup` with no dashboard,
+while a turn that *begins* with `/pr-status` reliably renders in full. So every tick, including
+the first, must arrive as its own wakeup turn whose prompt starts with `/pr-status`:
+
+1. Load the `ScheduleWakeup` tool if needed (via ToolSearch), then call it with
+   `delaySeconds: 60` and `prompt` set to the tick prompt below, substituting `{stop_hour}`.
+2. Confirm to the user: loop started, first dashboard lands in ~1 minute, ticks self-pace until
+   `{stop_hour}:00`. Do NOT invoke `pr-status` or run its fetch scripts in this start turn.
+
+Tick prompt — one line, and every tick's own `ScheduleWakeup` call echoes it verbatim:
 
 ```
-/loop /pr-status — each tick: invoke the pr-status skill via the Skill tool (never run its scripts from memory), then write the confirmation text the loop requires before ScheduleWakeup — and that confirmation IS the full dashboard: timestamp line, both tables, deltas, next-tick line. A one-line confirmation like "wakeup scheduled" is a failed tick. Only after the dashboard is printed, call ScheduleWakeup as the very last action; the turn ends the instant it returns
+/pr-status — print the full dashboard (timestamp, both tables, deltas, next-tick line) as visible text; then, only after the next-tick line is printed, call ScheduleWakeup with delaySeconds taken from that next-tick line (600 if it is missing) and this exact prompt verbatim. If that wake would land past {stop_hour}:00 local time, call ScheduleWakeup with stop: true instead. The turn ends the instant ScheduleWakeup returns, so a tick that schedules before the dashboard is printed shows the user nothing and has failed
 ```
 
-Pass that whole string (including everything after the dash) as the loop prompt, and echo it back
-unchanged in every `ScheduleWakeup` call so later ticks keep the contract.
+Because the prompt starts with `/pr-status`, every wakeup re-loads that skill's SKILL.md — table
+spec, deltas, `next-tick:` recommendation and all — so no tick depends on conversation memory
+surviving between wakes, and each tick runs in the same shape as a standalone `/pr-status`.
 
-**Per-tick ordering — render first, schedule last.** The dynamic loop's turn ends the moment
-`ScheduleWakeup` returns; any text intended after it is silently dropped, which reads as a tick that
-"only ran scripts". The `/loop` skill already requires confirmation text to be written *before*
-`ScheduleWakeup` — in this loop, **that confirmation text is the dashboard itself**, never a
-one-line summary. So every tick must, in order:
-
-1. **Invoke the `pr-status` skill via the Skill tool.** Its render steps (table columns, deltas,
-   `next-tick:` spec) get summarized out of context between ticks — running the fetch scripts from
-   memory yields data with no table spec, and the tick renders nothing.
-2. **Emit the full `/pr-status` output** — timestamp line, both tables, deltas, suggested actions,
-   `next-tick:` line — as visible text. Every tick, including unchanged ones. This is the
-   pre-`ScheduleWakeup` confirmation; a one-liner like "Wakeup scheduled for 10:00" in its place is
-   a failed tick.
-3. **Call `ScheduleWakeup` last.** Never before step 2; a bare `ScheduleWakeup` with no rendered
-   dashboard is a failed tick, not a terse one.
-
-Then pace each next wake from the recommendation `/pr-status` prints **last** in its tick output:
+Each tick then paces the next wake from the recommendation `/pr-status` prints **last** in its
+output (enforced by the tick prompt above; the buckets are background for readers of this skill):
 
 ```
 next-tick: {hot|warm|cold} (~{N}s) — {reason}
@@ -86,15 +80,15 @@ second-guess the bucket — `/pr-status` already weighs CI / push / transition s
 - **warm** (~600s) — PRs awaiting review, nothing time-critical.
 - **cold** (1200 → 1800s) — settled; escalating back-off via the `quietStreak` counter.
 
-Stop and don't reschedule once the wake would land past `{stop_hour}:00`. If a tick produces no
-`next-tick:` line (e.g. it errored before step 6), fall back to ~600s and continue.
+Once the next wake would land past `{stop_hour}:00`, the tick ends the loop with
+`ScheduleWakeup(stop: true)`. If a tick produces no `next-tick:` line (e.g. it errored before
+step 6), it falls back to ~600s and continues.
 
 **Keep the cadence commentary terse — never the tables.** Each tick already ends with `/pr-status`'s
-machine-readable `next-tick:` line, and the dynamic `/loop` prints its own one-line narrator for the
-next wake. Those two are the entire cadence budget — do NOT add a third prose line restating the
-bucket, CI state, or next-check time. This terseness applies ONLY to pacing commentary: the
-timestamp, tables, deltas, and suggested-actions footer are the whole point of the tick and are
-always rendered in full.
+machine-readable `next-tick:` line, and the wakeup narrator shows the scheduled delay. Those two are
+the entire cadence budget — do NOT add a third prose line restating the bucket, CI state, or
+next-check time. This terseness applies ONLY to pacing commentary: the timestamp, tables, deltas,
+and suggested-actions footer are the whole point of the tick and are always rendered in full.
 
 ### Fixed mode (interval given)
 
