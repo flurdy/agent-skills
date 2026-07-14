@@ -7,8 +7,9 @@ description: >
 model-tier: standard-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
+model: sonnet
 effort: medium
-version: "2.1.2"
+version: "2.1.3"
 author: "flurdy"
 ---
 
@@ -50,7 +51,7 @@ the tick explicitly loads it — so the render contract AND the render-before-sc
 live inside the prompt string itself, not just here:
 
 ```
-/loop /pr-status — each tick: invoke the pr-status skill via the Skill tool (never run its scripts from memory), print its full dashboard (timestamp, both tables, deltas, next-tick line) as visible text, and only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
+/loop /pr-status — each tick: invoke the pr-status skill via the Skill tool (never run its scripts from memory), then write the confirmation text the loop requires before ScheduleWakeup — and that confirmation IS the full dashboard: timestamp line, both tables, deltas, next-tick line. A one-line confirmation like "wakeup scheduled" is a failed tick. Only after the dashboard is printed, call ScheduleWakeup as the very last action; the turn ends the instant it returns
 ```
 
 Pass that whole string (including everything after the dash) as the loop prompt, and echo it back
@@ -58,13 +59,17 @@ unchanged in every `ScheduleWakeup` call so later ticks keep the contract.
 
 **Per-tick ordering — render first, schedule last.** The dynamic loop's turn ends the moment
 `ScheduleWakeup` returns; any text intended after it is silently dropped, which reads as a tick that
-"only ran scripts". So every tick must, in order:
+"only ran scripts". The `/loop` skill already requires confirmation text to be written *before*
+`ScheduleWakeup` — in this loop, **that confirmation text is the dashboard itself**, never a
+one-line summary. So every tick must, in order:
 
 1. **Invoke the `pr-status` skill via the Skill tool.** Its render steps (table columns, deltas,
    `next-tick:` spec) get summarized out of context between ticks — running the fetch scripts from
    memory yields data with no table spec, and the tick renders nothing.
 2. **Emit the full `/pr-status` output** — timestamp line, both tables, deltas, suggested actions,
-   `next-tick:` line — as visible text. Every tick, including unchanged ones.
+   `next-tick:` line — as visible text. Every tick, including unchanged ones. This is the
+   pre-`ScheduleWakeup` confirmation; a one-liner like "Wakeup scheduled for 10:00" in its place is
+   a failed tick.
 3. **Call `ScheduleWakeup` last.** Never before step 2; a bare `ScheduleWakeup` with no rendered
    dashboard is a failed tick, not a terse one.
 
