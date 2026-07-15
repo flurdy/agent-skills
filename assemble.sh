@@ -21,7 +21,7 @@ PROFILES_DIR="${PROFILES_DIR:-$PRIVATE_REPO/profiles}"
 SKILLS_DIR="${SKILLS_DIR:-$HOME/.claude/skills}"
 AGENTS_DIR="${AGENTS_DIR:-$HOME/.claude/agents}"
 
-# Set SKIP_AGENTS=1 for targets that don't support agents (e.g. Codex).
+# Set SKIP_AGENTS=1 for targets that skip this repo's Claude-style agents layer (e.g. Codex).
 SKIP_AGENTS="${SKIP_AGENTS:-0}"
 
 # shared private machine clients (later overrides earlier)
@@ -46,7 +46,7 @@ Notes:
 - Symlinks coexist with user's own skills/agents.
 - Pre-existing items not managed by us are never overwritten — apply will error.
 - Clean only removes symlinks pointing to our repos.
-- Set SKIP_AGENTS=1 for targets without agent support (e.g. Codex).
+- Set SKIP_AGENTS=1 for targets that skip this repo's Claude-style agents layer (e.g. Codex).
 
 Env:
   SHARED_REPO, PRIVATE_REPO, SKILLS_DIR, AGENTS_DIR, SKIP_AGENTS, LAYERS_ORDER

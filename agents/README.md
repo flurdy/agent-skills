@@ -8,4 +8,4 @@ See the [Claude Code sub-agents docs](https://docs.claude.com/en/docs/claude-cod
 |-------|-------------|
 | tracking-auditor | Audit that the current branch's work is tracked correctly (beads/Jira/Trello) and that the diff matches the ticket's scope. Read-only. Invoke at PR boundaries. |
 
-Agents are only applied to Claude targets — `make apply-codex` skips the agents layer (`SKIP_AGENTS=1`) because Codex has no sub-agent concept.
+These Claude-style Markdown agents are applied only to Claude targets. `make apply-codex` skips this repository's agents layer (`SKIP_AGENTS=1`); installed Codex versions may provide their own native multi-agent tools.

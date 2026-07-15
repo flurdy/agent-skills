@@ -21,7 +21,7 @@ CLAUDE_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
   ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(SKILLS_DIR)" AGENTS_DIR="$(AGENTS_DIR)" \
   COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)"
 
-# Codex has no sub-agent concept — skip the agents layer
+# Codex target skips this repo's Claude-style Markdown agents layer
 CODEX_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
   ACTIVE_DIR="$(ACTIVE_DIR)" SKILLS_DIR="$(HOME)/.codex/skills" \
   COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \

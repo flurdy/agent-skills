@@ -55,6 +55,21 @@ declared tier, say so and ask whether to continue at reduced depth or stop and
 switch. Advisory, not enforced — copy the guard block from
 `skills/architect/SKILL.md` when authoring a new premium skill.
 
+### Parent and child routing
+
+Skill routing applies to the current parent agent. Invoking a lower-tier skill from
+an already-routed parent does not downshift it: Pi's router permits nested upgrades
+but retains equal or lower tiers. A downshift happens only through a runtime-native
+child launch with an explicit verified child mapping.
+
+Treat parent and child cost approval separately. The Pi model-tier router can confirm
+the parent route but does not inspect child launches. A child mapping is verified only
+when runtime or launch evidence supplies its effective model identity and trusted
+metadata or user-approved local policy supplies `metered: true|false`; never infer
+billing from provider, model name, authentication type, or the parent route. Metered
+or unknown/inherited children require separate current-run consent. Parent consent
+never authorizes fanout, and an ad hoc child/panel approval must not be persisted.
+
 **Dynamic-loop dashboard skills** (`watch-prs`, `pr-status`) cannot rely on a
 skill alias for loop ticks: `ScheduleWakeup` wakeup prompts run on the *session*
 model, ignoring skill `model:` pins. A tick that must render then self-schedule
@@ -132,6 +147,28 @@ saving matters. Reserve `max` for explicit all-in requests; never make it a defa
 The pi model-tier router uses the tier's configured thinking level as a fallback,
 honors a valid skill `effort`, and allows nested skills to raise but never lower
 effort during a run. Runtimes that do not understand `effort` should ignore it.
+
+## Orchestrated bounded-edit exception
+
+`standard-coding` remains the default model class for every ordinary code-writing
+workflow. Inside an explicitly invoked `/orchestrate` run, one child writer may use
+a cheaper model class only when all of these conditions hold:
+
+- A full judgment packet fixes the owned files/modules, established implementation
+  pattern, explicit non-goals, acceptance criteria, exact verification, and
+  escalation/stop conditions.
+- The child mapping has verified effective identity and trusted metered
+  classification, and the `/orchestrate` child-cost gate has been satisfied.
+- The premium/strong parent retains architecture, scope, integration, review
+  synthesis, and final validation.
+- Any newly exposed product, public-contract, security, migration, destructive, or
+  architectural decision returns to the parent instead of being decided by the
+  cheaper writer.
+
+This exception does not permit ordinary code-editing skills to declare `cheap-bulk`
+or `standard-workflow`. It applies only to a bounded child launch inside explicit
+orchestration, and success must be objectively testable. Use one writer by default;
+changed-line count is not a risk proxy.
 
 ## Policy enforcement
 

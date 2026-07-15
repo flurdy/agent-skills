@@ -21,6 +21,7 @@
 | landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
+| orchestrate | Coordinate substantial multi-stage work through bounded delegation, one-writer safety, independent review, and risk-based escalation; explicit invocation only |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
@@ -98,6 +99,7 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 | release-status | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | tracking-sweep | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | architect | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
+| orchestrate ⁵ | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | high | ✅ |
 | verify-task | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
 | pedantic-review | premium-review | deliberate-premium | ask-above-standard | — | xhigh | ✅ |
 | review-pr | premium-review | deliberate-premium | ask-above-standard | — | xhigh | ✅ |
@@ -112,3 +114,5 @@ ask whether to continue at reduced depth or stop and switch.
 CLI it invokes.
 ⁴ No pin: dynamic-loop ticks run on the session model regardless (`ScheduleWakeup`
 wakeups ignore skill pins), so a pin there is unenforceable.
+⁵ `orchestrate` deliberately uses `high` for routine parent coordination; `xhigh`
+remains reserved for harder architecture, planning, and final review judgment.

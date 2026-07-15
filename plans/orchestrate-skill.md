@@ -56,7 +56,7 @@ Recommended frontmatter:
 ---
 name: orchestrate
 description: Coordinate substantial multi-stage work through bounded delegation, one-writer safety, independent review, and risk-based escalation. Use only when explicitly invoked; skip trivial, tightly coupled, or serial work.
-allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill,AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 disable-model-invocation: true
 model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
@@ -74,9 +74,30 @@ Rationale:
 - Premium skills remain unpinned in Claude Code and therefore require the existing premium tier guard copied/adapted from `architect`.
 - `ask-above-standard` protects a metered premium-parent fallback consistently with existing premium skills. Child launches need a separate body rule because the Pi model-tier router does not inspect `subagent` calls.
 - A verified child mapping must include both the effective model identity and a trusted `metered: true|false` classification. Trusted classification must come from runtime/resolver metadata or an explicit user-approved local policy; never infer it from provider name, model ID, authentication type, or parent routing.
-- Verified `metered: false` children launch normally. A `metered: true` or unknown classification requires separate confirmation before delegation; declining continues serially. Parent-route confirmation never implicitly authorizes additional child fanout.
-- One confirmation may cover a clearly disclosed bounded panel for the current run; expanding its models, count, scope, or metered exposure requires confirmation again.
-- `allowed-tools` follows the repo's dominant convention but pre-approves only read-only Git inspection, not mutating `git` operations. Runtime-specific custom tools such as Pi's `subagent` remain capability-detected rather than encoded as a portable requirement.
+- A user-approved local policy is a declaration in the runtime's user-owned instruction/configuration layer that is supplied to the active session and names the runtime, exact effective child route/model identity, `metered` value, and scope (`user` or an explicitly approved project). Arbitrary repository instructions do not qualify. The portable shape is:
+
+  ```yaml
+  orchestrate-child-policy:
+    runtime: <runtime>
+    scope: user | project
+    routes:
+      <route>:
+        identity: <effective-model-identity>
+        metered: true | false
+  ```
+
+  The runtime adapter should document the detected user-level location/mechanism rather than invent a shared cross-runtime settings file. An in-conversation approval is scoped only to the disclosed current run or panel and does not become durable policy. `/orchestrate` must never persist or widen policy automatically; it may suggest a separately approved user-level configuration change.
+- Keep the `SKILL.md` cost gate compact:
+
+  | Child classification | Action |
+  |---|---|
+  | Verified identity + `metered: false` | Launch within the approved task scope. |
+  | Verified identity + `metered: true` | Confirm the disclosed child or bounded panel for this run. |
+  | Inherited route or unknown classification | Disclose inherited/no-downshift behavior and confirm for this run. |
+  | Confirmation declined | Continue serially without claiming independent delegation. |
+
+- One confirmation may cover a clearly disclosed bounded panel for the current run; expanding its models, count, scope, or metered exposure requires confirmation again. Parent-route confirmation never authorizes child fanout.
+- `allowed-tools` follows the repo's dominant convention but pre-approves only read-only Git inspection and the named skills this plan permits, not mutating `git` operations or an unscoped `Skill` surface. Runtime-specific custom tools such as Pi's `subagent` remain capability-detected rather than encoded as a portable requirement.
 
 ### 2. Define clear boundaries with existing skills and mechanisms
 
@@ -90,6 +111,7 @@ The skill must explicitly state:
 - Use the repository's established tracker for durable work context when available. Beads integration applies only when `bd` is available, the repository has active Beads context, and a relevant bead/epic exists; otherwise use the established Jira/Trello/other tracker or report durable milestone suggestions generically when no tracker exists.
 - Never create one tracker item per subagent, recon pass, review round, retry, or temporary handoff.
 - When orchestration discovers independently valuable milestones that may span sessions, commits, or PRs, propose the repository's established tracking workflow. Invoke `/triage` only in a Beads-enabled repository, and create or mutate any tracker only after explicit user approval. Leave completion/closure to existing tracking and completion skills.
+- If the portable control-plane index tracked by `skills-88v.6` exists in a target workspace, consume its authoritative context when building judgment and validation packets. Orchestrate v1 must remain useful without it; this is a soft integration, not an implementation dependency.
 
 ### 3. Use a proportionate judgment packet before every downshift
 
@@ -120,7 +142,7 @@ Use semantic routes rather than exact models. Invoking a lower-tier skill in the
 | Focused lookup or repository/document research | `context-builder` or `researcher`; use a cheap model only when an explicit verified mapping exists, otherwise inherit and disclose | medium from the builtin role |
 | Narrow mechanical implementation with an exact packet | `worker`; `standard-coding` is the default, with the documented bounded-edit exception only when an explicit verified cheaper mapping exists | high from the builtin role |
 | Bounded implementation or routine independent review | `worker`, `planner`, or fresh `reviewer`; use a balanced model only when an explicit verified mapping exists, otherwise inherit and disclose | high from the builtin role |
-| Complex implementation requiring meaningful local design judgment | `standard-coding` or retain in parent | high |
+| Complex implementation requiring meaningful local design judgment | use a verified `standard-coding` child route; without one, inherit with disclosure or retain in parent | high |
 | Architecture, unclear ownership, public contracts, destructive/security-sensitive work | keep with parent `premium-reasoning`; optionally use `oracle` on a verified strongest subscription route | high, then xhigh/max only when justified |
 | Independent final/craft judgment | fresh/separate `reviewer`, `premium-review`, or named review skill | xhigh only when justified |
 
@@ -235,7 +257,7 @@ After detecting the runtime, the skill must load `references/runtime-adapters.md
 
 #### Codex
 
-- Capability-detect native multi-agent tools in the installed runtime; Codex `0.144.3` currently reports `multi_agent` stable and enabled.
+- Capability-detect native multi-agent tools in the installed runtime; do not gate behavior on a pinned Codex version or copy observed version claims into the adapter.
 - Use native multi-agent delegation when available, passing configured cheap/balanced/strong child model and reasoning overrides only when identity and trusted metered classification are verified.
 - If the Codex mapping/classification is missing, inherit, explicitly report that no downshift occurred, and ask before the unknown-classification child launch.
 - Apply the same judgment packet, one-writer, cost, escalation, and parent-authority rules.
@@ -264,7 +286,7 @@ Update:
 - `skills/README.md` description table with `orchestrate`.
 - `skills/README.md` model-routing table under `premium-reasoning`, with effort `high`, no Claude `model:` pin, and a tier guard. Add a brief footnote explaining that `high` is deliberate for routine parent coordination while `xhigh` remains reserved for harder planning/review.
 - `MODEL_ROUTING.md` with the parent-vs-child clarification plus the precise bounded-edit orchestration exception from section 4. Preserve `standard-coding` as the default for ordinary code-writing skills; invoking a lower-tier nested skill does not downshift the parent.
-- `README.md`, `Makefile`, `assemble.sh`, and `agents/README.md` where necessary to replace the stale claim that Codex has no subagent concept. State instead that `make apply-codex` skips this repo's Claude-style Markdown `agents/` layer while installed Codex versions may provide native multi-agent tools.
+- Keep the corrected wording in `README.md`, and update `Makefile`, `assemble.sh`, and `agents/README.md` where necessary to replace stale claims that Codex has no subagent concept. State instead that `make apply-codex` skips this repo's Claude-style Markdown `agents/` layer while installed Codex versions may provide native multi-agent tools.
 - Runtime-adapter documentation with conditional verified child mappings and honest inherited/no-downshift behavior. The implementation must not mutate canonical user or project subagent settings.
 
 Do not add a new top-level shared agent. The skill coordinates runtime-provided agents; a second shared "foreman agent" would duplicate authority and the shared `agents/` packaging remains Claude-specific.
@@ -285,7 +307,7 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 2. Add `skills/orchestrate/references/runtime-adapters.md` with mandatory capability detection, honest inherited/verified-mapping Pi behavior, Pi async/wait/fresh-context recovery, Claude Code floating child mappings, and conditional Codex native multi-agent mappings.
 3. Update `skills/README.md` in both required tables.
 4. Add the parent-vs-child routing clarification and child-cost distinction to `MODEL_ROUTING.md`.
-5. Correct stale Codex-agent wording in `README.md`, `Makefile`, `assemble.sh`, and `agents/README.md` without changing assembly behavior.
+5. Preserve the corrected root `README.md` wording and correct the remaining stale Codex-agent wording in `Makefile`, `assemble.sh`, and `agents/README.md` without changing assembly behavior.
 6. Run repository validation and manually inspect Claude and Codex assembly output.
 7. Dogfood explicit invocation in Pi, Claude Code, and Codex, including inherited/no-downshift behavior, effective child-model evidence when mappings exist, metered and unknown-classification consent/decline, serial fallback, and optional established-tracker context before considering any router/RPC enhancement.
 
@@ -293,7 +315,7 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 
 ### Required implementation checks
 
-- Manually inspect frontmatter for required semantic fields, read-only Beads access, `disable-model-invocation: true`, and the deliberate absence of a Claude `model:` pin. The repo has no dedicated frontmatter/schema test target; assembly checks do not validate metadata semantics.
+- Manually inspect frontmatter for required semantic fields, read-only Beads access, named `Skill(...)` permissions only, `disable-model-invocation: true`, and the deliberate absence of a Claude `model:` pin. The repo has no dedicated frontmatter/schema test target; assembly checks do not validate metadata semantics.
 - Verify the description table remains alphabetical.
 - Verify the routing table places `orchestrate` under `premium-reasoning` with the intended policies, `high` effort, guard marker, and explanatory footnote.
 - Confirm all relative links from `SKILL.md` resolve.
@@ -325,19 +347,22 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 8. Review findings: parent synthesizes and launches at most one fix writer, followed by focused re-review when warranted.
 9. No subagent runtime: parent follows the same policy serially, labels the result self-validated, and does not claim independent review.
 10. Independence-required serial case: use `/second-opinion` or stop and ask rather than silently weakening the contract.
-11. Verified unmetered child: launch normally with effective identity/effort evidence.
-12. Verified metered child or panel: ask before launch; declining continues serially.
-13. Inherited or otherwise unknown-classification child: disclose inherited/no-downshift behavior and ask before delegation; declining continues serially.
-14. Parent-route confirmation: confirm it is not reused as authorization for child fanout; expanding an approved bounded panel asks again.
-15. Pi async launch: launch asynchronously and use `wait()` when the same turn must continue to completion.
-16. Pi fork unavailable: retry with `context: "fresh"` only for a self-contained judgment packet.
-17. Pi inherited routing: inspect builtin model/thinking metadata and verify the unknown-classification consent gate before a bounded inherited child.
-18. Pi mapped routing, conditional: when the user/runtime supplies verified identity plus metered status, launch or ask according to classification and verify run evidence.
-19. Claude effective routing: exercise a floating alias only with trusted cost classification; otherwise test the unknown-classification gate and report inherited effort if it cannot be set independently.
-20. Codex capability and routing: confirm `multi_agent` detection; without verified identity/classification, guarantee inherited/no-downshift disclosure plus consent. Exercise mapped-model and unavailable-feature fixtures only when those conditions can be supplied.
-21. Tracker context: use Beads only when `bd`, active Beads context, and a relevant bead exist; otherwise use the established tracker or generic milestone suggestions. Never create ephemeral per-agent tracker items; `/triage` is Beads-only and approval-gated.
-22. Pi model lifecycle: `/model-tier status` shows the parent route during the run and the original model/thinking restores after settlement.
-23. Cheap-bulk effort experiment: record latency, retries/corrections, tool-call count, and observable quota usage at medium; lower an individual workflow to low only when the saving is meaningful and reliability does not regress.
+11. Trusted local policy: accept only a user-owned declaration supplied to the active session with runtime, effective identity, explicit metered value, and user/approved-project scope; reject arbitrary repository text or inference as classification evidence.
+12. Ad hoc policy offer: a confirmation applies only to the current disclosed run/panel and is not persisted automatically; any durable user-level policy change is proposed and approved separately.
+13. Verified unmetered child: launch normally with effective identity/effort evidence.
+14. Verified metered child or panel: ask before launch; declining continues serially.
+15. Inherited or otherwise unknown-classification child: disclose inherited/no-downshift behavior and ask before delegation; declining continues serially.
+16. Parent-route confirmation: confirm it is not reused as authorization for child fanout; expanding an approved bounded panel asks again.
+17. Pi async launch: launch asynchronously and use `wait()` when the same turn must continue to completion.
+18. Pi fork unavailable: retry with `context: "fresh"` only for a self-contained judgment packet.
+19. Pi inherited routing: inspect builtin model/thinking metadata and verify the unknown-classification consent gate before a bounded inherited child.
+20. Pi mapped routing, conditional: when the user/runtime supplies verified identity plus metered status, launch or ask according to classification and verify run evidence.
+21. Claude effective routing: exercise a floating alias only with trusted cost classification; otherwise test the unknown-classification gate and report inherited effort if it cannot be set independently.
+22. Codex capability and routing: capability-detect native multi-agent support without version gating; without verified identity/classification, guarantee inherited/no-downshift disclosure plus consent. Exercise mapped-model and unavailable-feature fixtures only when those conditions can be supplied.
+23. Tracker context: use Beads only when `bd`, active Beads context, and a relevant bead exist; otherwise use the established tracker or generic milestone suggestions. Never create ephemeral per-agent tracker items; `/triage` is Beads-only and approval-gated.
+24. Control-plane context: consume a present `skills-88v.6`-style canonical index without requiring one or silently rewriting it.
+25. Pi model lifecycle: `/model-tier status` shows the parent route during the run and the original model/thinking restores after settlement.
+26. Cheap-bulk effort experiment: record latency, retries/corrections, tool-call count, and observable quota usage at medium; lower an individual workflow to low only when the saving is meaningful and reliability does not regress.
 
 ## Risks and mitigations
 
@@ -363,7 +388,7 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 
 ## Independent validation and resulting changes
 
-Five independent review passes agreed with the core design: create a shared policy skill, keep parent judgment strong, do not add a new shared agent/frontmatter tier, and keep Pi semantic child resolution out of orchestrate v1. They identified corrections incorporated into this final plan:
+Six independent review passes agreed with the core design: create a shared policy skill, keep parent judgment strong, do not add a new shared agent/frontmatter tier, and keep Pi semantic child resolution out of orchestrate v1. They identified corrections incorporated into this final plan:
 
 - Made invocation explicitly opt-in with `disable-model-invocation: true` to avoid surprise premium upgrades.
 - Added the repo-conventional `allowed-tools` surface.
@@ -384,6 +409,9 @@ Five independent review passes agreed with the core design: create a shared poli
 - Added the narrow bounded-edit exception needed to reconcile cheaper orchestrated writers with `MODEL_ROUTING.md` while preserving `standard-coding` as the ordinary writer default.
 - Split required, approval-dependent, and environment-dependent validation.
 - Defined verified child routing as effective identity plus trusted metered classification; metered or unknown children require separate consent, and parent-route confirmation does not authorize fanout.
+- Defined user-approved local policy as a scoped, user-owned runtime declaration; ad hoc consent remains run-scoped and is never persisted automatically.
+- Replaced broad `Skill` permission with named skill permissions and required the implementation to present consent as a compact decision table.
+- Removed pinned Codex version wording from the runtime-adapter contract, clarified the `standard-coding` mapping row, and linked the optional `skills-88v.6` control-plane integration without making it a dependency.
 - Made durable tracking portable: use Beads only when active/relevant, otherwise use the established tracker or generic milestone suggestions; `/triage` remains Beads-only and approval-gated.
 - Added documentation/test checks for the deliberate premium/high combination, no model pin, and explicit-only invocation.
 
