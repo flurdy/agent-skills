@@ -11,7 +11,9 @@ runtime's configuration whenever possible.
   "use Claude/Opus".
 - Treat Claude via pi.dev OAuth as premium/metered extra usage: use it
   deliberately for judgement, review, architecture taste, refactor critique, and
-  maintainability concerns.
+  maintainability concerns. This is distinct from invoking `claude -p` with an
+  existing `claude.ai` subscription login, which consumes subscription usage;
+  Claude CLI API-key/BYOK authentication remains metered.
 - Treat OpenRouter as metered credits/BYOK: useful for cheap, fallback, and
   experimental models, but cap it and avoid default long-running loops.
 - Use Gemini OAuth for long-context audit, repo-wide summarisation, or broad
@@ -112,7 +114,7 @@ tiers:
     rule: choose a provider DIFFERENT from the model that produced the work;
       prefer subscription routes first.
     from-claude-session: openai-oauth (codex CLI), then gemini-oauth
-    from-gpt-session: anthropic-oauth (metered — deliberate, best judgement), then gemini-oauth
+    from-gpt-session: claude CLI (prefer claude.ai subscription; API-key/BYOK is metered), then gemini-oauth
     panel-extras: openrouter:qwen-reasoning, openrouter:grok-4.5
     note: This is not an ordinary ranked router tier. Panel extras are metered;
       ask or cap before broad panels.

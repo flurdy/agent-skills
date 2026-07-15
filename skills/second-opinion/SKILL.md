@@ -8,7 +8,7 @@ model-metered-policy: ask-before-metered-panel
 model: sonnet
 model-second-opinion-tier: independent-reasoning
 effort: medium
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 
@@ -59,15 +59,18 @@ vendor than the model that produced the work** (normally the current session mod
 Check which model you are running as and pick the default agent accordingly:
 
 - Claude session (Claude Code) → `codex` first, then `gemini`.
-- GPT session (pi/Codex) → `claude` first (metered — deliberate, best judgement), then `gemini`.
+- GPT session (pi/Codex) → `claude` first, then `gemini`.
 
 Cost guardrails:
 
 - Prefer subscription/OAuth routes for the first independent pass when the rule allows.
-- Use Claude deliberately for premium review/judgement, not as a default long loop.
+  In particular, `claude -p` uses the Claude CLI's existing authentication; a
+  `claude.ai` subscription login consumes subscription usage rather than metered API billing.
+- Treat Claude CLI API-key/BYOK authentication as metered. Use Claude deliberately for
+  premium review/judgement, not as a default long loop.
 - Use Gemini for long-context review or repo-wide summarisation.
-- Treat OpenRouter-backed or API-key/BYOK routes as metered: use `--timeout`, cap scope, or
-  ask before broad panels.
+- Treat OpenRouter-backed or other API-key/BYOK routes as metered: use `--timeout`, cap
+  scope, or ask before broad panels.
 
 Overrides:
 
@@ -189,14 +192,14 @@ effect.
 
 #### For Claude
 
-Pass the prompt via the `-p` flag:
+Pass the prompt via the `-p` flag and restrict the available tools to read-only ones:
 ```bash
-claude -p "{assembled_prompt}" --no-input {model_flag}
+claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" {model_flag}
 ```
 
 Where `{model_flag}` is `--model <id>` when resolved, or empty for `smart`.
-
-The `--no-input` flag prevents Claude from asking interactive questions. Claude runs in read-only mode by default when using `-p`.
+Omitting the model flag lets the Claude CLI choose its configured default; this skill does
+not implicitly select Opus, Fable, or Sonnet. The tool allowlist enforces read-only operation.
 
 **Timeout**: Use the parsed timeout value (default 3 min, converted to milliseconds).
 
@@ -323,7 +326,7 @@ After the assessment, offer:
 ## Rules
 
 - Never let the external agent modify files — use read-only/sandbox modes
-- Always use `--no-input` for Claude, `--sandbox` for Gemini, and default (no write) permissions for Codex
+- Always restrict Claude to `--tools "Read,Grep,Glob"`, use `--sandbox` for Gemini, and use default (no write) permissions for Codex
 - Do not send sensitive data (env vars, secrets, credentials) to external CLIs
 - Present the external agent's response faithfully in step 5 — save your own judgement for step 6
 - Make clear which agent provided which opinion
