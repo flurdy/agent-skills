@@ -9,3 +9,8 @@ CLAUDE.local.md
 .claude/CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
