@@ -7,7 +7,7 @@ Codex, and other AI agents.
 Two kinds of units are managed:
 
 - __Skills__ — folders with a `SKILL.md`, linked into `~/.claude/skills/` (and `~/.codex/skills/` for Codex).
-- __Agents__ — single `*.md` files defining Claude Code sub-agents, linked into `~/.claude/agents/`. Codex has no sub-agent concept, so agents are skipped for Codex targets.
+- __Agents__ — single `*.md` files defining Claude Code sub-agents, linked into `~/.claude/agents/`. Codex targets skip this repository's Claude-style Markdown agent layer; installed Codex versions may provide native multi-agent tools.
 
 ## Using the skills
 
@@ -41,6 +41,11 @@ These skills are shared across Claude Code, pi.dev, and Codex. Skill front
 matter should describe the capability/cost tier a workflow needs, while exact
 provider/model IDs stay in the relevant client runtime configuration where
 possible. See [MODEL_ROUTING.md](MODEL_ROUTING.md) for the shared tier policy.
+
+The portable policy lives in this repository. Pi can enforce the metadata through
+the optional [model-tier router](https://github.com/flurdy/ai-tools/tree/main/pi/model-tier-router)
+maintained in [flurdy/ai-tools](https://github.com/flurdy/ai-tools); Claude Code and
+Codex use their own runtime configuration and capabilities.
 
 ## Layout
 
