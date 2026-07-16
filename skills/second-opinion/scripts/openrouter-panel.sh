@@ -1,27 +1,31 @@
 #!/usr/bin/env bash
-# Query the two configured OpenRouter panel models with bounded input/output.
+# Query a configured OpenRouter consensus profile with bounded input/output.
 # The caller must obtain explicit per-run consent before passing --confirmed.
 set -euo pipefail
 
 readonly API_URL="https://openrouter.ai/api/v1/chat/completions"
-readonly MAX_PROMPT_BYTES=65536
-readonly MAX_OUTPUT_TOKENS=2000
-readonly MAX_TIMEOUT_SECONDS=600
+readonly DEFAULT_CONFIG_PATH="${HOME}/.agents/second-opinion/config.json"
+readonly DEFAULT_PROFILE="extreme"
+readonly HARD_MAX_MODELS=8
+readonly HARD_MAX_PARALLEL=4
+readonly HARD_MAX_PROMPT_BYTES=65536
+readonly HARD_MAX_OUTPUT_TOKENS=2000
+readonly HARD_MAX_TIMEOUT_SECONDS=600
 
 usage() {
   cat <<'USAGE'
 Usage:
-  openrouter-panel.sh check
-  openrouter-panel.sh run --confirmed --prompt-file FILE [--timeout SECONDS]
+  openrouter-panel.sh check [--profile NAME] [--config FILE]
+  openrouter-panel.sh run --confirmed --prompt-file FILE [--profile NAME]
+                          [--config FILE] [--timeout SECONDS]
 
-Environment:
-  OPENROUTER_API_KEY           Required for run; presence is checked without printing it.
-  OPENROUTER_PANEL_QWEN_MODEL  Required OpenRouter model ID with qwen/ prefix.
-  OPENROUTER_PANEL_XAI_MODEL   Required OpenRouter model ID with x-ai/ prefix.
+Configuration defaults to ~/.agents/second-opinion/config.json. A profile contains
+1-8 unique-vendor OpenRouter models and limits no greater than the compiled safety
+ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
+model, and 600 seconds per request.
 
-The run command makes exactly two requests, with at most two in flight. Input is
-capped at 65,536 bytes, output at 2,000 tokens per model, and timeout at 600
-seconds per model. It emits a JSON array and does not give models any tools.
+OPENROUTER_API_KEY is required only for run. Its presence is checked without
+printing it. The config contains model identities and limits, never credentials.
 USAGE
 }
 
@@ -34,82 +38,170 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required"
 }
 
-load_models() {
-  QWEN_MODEL="${OPENROUTER_PANEL_QWEN_MODEL:-}"
-  XAI_MODEL="${OPENROUTER_PANEL_XAI_MODEL:-}"
+append_problem() {
+  local message="$1"
+  PROBLEMS_JSON="$(jq -c --arg message "$message" '. + [$message]' <<< "$PROBLEMS_JSON")"
+}
 
-  [[ -n "$QWEN_MODEL" ]] || die "OPENROUTER_PANEL_QWEN_MODEL is not set"
-  [[ -n "$XAI_MODEL" ]] || die "OPENROUTER_PANEL_XAI_MODEL is not set"
-  [[ "$QWEN_MODEL" == qwen/* ]] || die "OPENROUTER_PANEL_QWEN_MODEL must use the qwen/ vendor prefix"
-  [[ "$XAI_MODEL" == x-ai/* ]] || die "OPENROUTER_PANEL_XAI_MODEL must use the x-ai/ vendor prefix"
-  [[ "$QWEN_MODEL" != "$XAI_MODEL" ]] || die "panel model IDs must be distinct"
+parse_location_args() {
+  CONFIG_PATH="$DEFAULT_CONFIG_PATH"
+  PROFILE_NAME="$DEFAULT_PROFILE"
+  REMAINING_ARGS=()
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --config)
+        [[ $# -ge 2 ]] || die "--config requires a path"
+        CONFIG_PATH="$2"
+        shift 2
+        ;;
+      --profile)
+        [[ $# -ge 2 ]] || die "--profile requires a name"
+        PROFILE_NAME="$2"
+        shift 2
+        ;;
+      *)
+        REMAINING_ARGS+=("$1")
+        shift
+        ;;
+    esac
+  done
+}
+
+validate_profile() {
+  PROFILE_JSON=""
+
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    PROFILE_ERROR="config file not found: $CONFIG_PATH"
+    return 1
+  fi
+  if ! jq -e . "$CONFIG_PATH" >/dev/null 2>&1; then
+    PROFILE_ERROR="config is not valid JSON: $CONFIG_PATH"
+    return 1
+  fi
+  if ! jq -e '.version == 1 and (.profiles | type == "object")' "$CONFIG_PATH" >/dev/null 2>&1; then
+    PROFILE_ERROR="config must declare version 1 and a profiles object"
+    return 1
+  fi
+
+  PROFILE_JSON="$(jq -c --arg profile "$PROFILE_NAME" '.profiles[$profile] // empty' "$CONFIG_PATH")"
+  if [[ -z "$PROFILE_JSON" ]]; then
+    PROFILE_ERROR="profile not found: $PROFILE_NAME"
+    return 1
+  fi
+
+  if ! jq -e '
+    (.models | type == "array") and
+    (.models | length >= 1) and
+    (.models | length <= 8) and
+    (all(.models[];
+      (.model | type == "string") and (.model | startswith("openrouter/")) and (.model | length > 11) and
+      (.vendor | type == "string") and (.vendor | length > 0) and
+      (.role | type == "string") and (.role | length > 0)
+    )) and
+    ([.models[].model] | unique | length) == (.models | length) and
+    ([.models[].vendor | ascii_downcase] | unique | length) == (.models | length)
+  ' <<< "$PROFILE_JSON" >/dev/null 2>&1; then
+    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs and unique non-empty vendors; each model must use openrouter/<model-id>"
+    return 1
+  fi
+
+  if ! jq -e \
+    --argjson hard_parallel "$HARD_MAX_PARALLEL" \
+    --argjson hard_prompt "$HARD_MAX_PROMPT_BYTES" \
+    --argjson hard_output "$HARD_MAX_OUTPUT_TOKENS" \
+    --argjson hard_timeout "$HARD_MAX_TIMEOUT_SECONDS" '
+      (.limits | type == "object") and
+      (.limits.maxParallel | type == "number" and floor == . and . >= 1 and . <= $hard_parallel) and
+      (.limits.maxPromptBytes | type == "number" and floor == . and . >= 1 and . <= $hard_prompt) and
+      (.limits.maxOutputTokensPerModel | type == "number" and floor == . and . >= 1 and . <= $hard_output) and
+      (.limits.defaultTimeoutSeconds | type == "number" and floor == . and . >= 1 and . <= $hard_timeout)
+    ' <<< "$PROFILE_JSON" >/dev/null 2>&1; then
+    PROFILE_ERROR="profile limits must be positive integers within compiled safety ceilings"
+    return 1
+  fi
+
+  PROFILE_ERROR=""
+  return 0
 }
 
 check_configuration() {
-  require_command jq
+  parse_location_args "$@"
+  [[ ${#REMAINING_ARGS[@]} -eq 0 ]] || die "unknown check argument: ${REMAINING_ARGS[0]}"
 
-  local -a problems=()
-  local qwen_model="${OPENROUTER_PANEL_QWEN_MODEL:-}"
-  local xai_model="${OPENROUTER_PANEL_XAI_MODEL:-}"
+  if ! command -v jq >/dev/null 2>&1; then
+    printf '%s\n' '{"ready":false,"problems":["jq is not installed; config cannot be parsed"],"auth":"unknown","curl":"unknown","models":[]}'
+    return
+  fi
+
+  PROBLEMS_JSON='[]'
   local auth_status="missing"
   local curl_status="available"
 
   command -v curl >/dev/null 2>&1 || {
     curl_status="missing"
-    problems+=("curl is not installed")
+    append_problem "curl is not installed"
   }
-  [[ -n "${OPENROUTER_API_KEY:-}" ]] && auth_status="configured (not network-verified)" || \
-    problems+=("OPENROUTER_API_KEY is not set")
-  [[ -n "$qwen_model" ]] || problems+=("OPENROUTER_PANEL_QWEN_MODEL is not set")
-  [[ -n "$xai_model" ]] || problems+=("OPENROUTER_PANEL_XAI_MODEL is not set")
-  [[ -z "$qwen_model" || "$qwen_model" == qwen/* ]] || \
-    problems+=("OPENROUTER_PANEL_QWEN_MODEL must use the qwen/ vendor prefix")
-  [[ -z "$xai_model" || "$xai_model" == x-ai/* ]] || \
-    problems+=("OPENROUTER_PANEL_XAI_MODEL must use the x-ai/ vendor prefix")
-  [[ -z "$qwen_model" || -z "$xai_model" || "$qwen_model" != "$xai_model" ]] || \
-    problems+=("panel model IDs must be distinct")
+  if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+    auth_status="configured (not network-verified)"
+  else
+    append_problem "OPENROUTER_API_KEY is not set"
+  fi
+
+  if ! validate_profile; then
+    append_problem "$PROFILE_ERROR"
+    PROFILE_JSON='{"models":[],"limits":null}'
+  fi
 
   jq -n \
     --arg auth "$auth_status" \
     --arg curl "$curl_status" \
-    --arg qwen "$qwen_model" \
-    --arg xai "$xai_model" \
-    --argjson max_prompt_bytes "$MAX_PROMPT_BYTES" \
-    --argjson max_output_tokens "$MAX_OUTPUT_TOKENS" \
-    --argjson max_parallel 2 \
-    '{
-      ready: ($ARGS.positional | length == 0),
+    --arg config "$CONFIG_PATH" \
+    --arg profile "$PROFILE_NAME" \
+    --argjson profile_data "$PROFILE_JSON" \
+    --argjson problems "$PROBLEMS_JSON" \
+    --argjson hard_max_models "$HARD_MAX_MODELS" \
+    --argjson hard_max_parallel "$HARD_MAX_PARALLEL" \
+    --argjson hard_max_prompt_bytes "$HARD_MAX_PROMPT_BYTES" \
+    --argjson hard_max_output_tokens "$HARD_MAX_OUTPUT_TOKENS" \
+    --argjson hard_max_timeout_seconds "$HARD_MAX_TIMEOUT_SECONDS" '
+    {
+      ready: ($problems | length == 0),
       auth: $auth,
       curl: $curl,
-      models: [
-        {role: "qwen-reasoning", vendor: "Qwen", id: (if $qwen == "" then null else $qwen end)},
-        {role: "xai-reasoning", vendor: "xAI", id: (if $xai == "" then null else $xai end)}
-      ],
-      problems: $ARGS.positional,
-      limits: {
-        max_prompt_bytes: $max_prompt_bytes,
-        max_output_tokens_per_model: $max_output_tokens,
-        max_parallel: $max_parallel
-      }
-    }' \
-    --args "${problems[@]}"
+      config: $config,
+      profile: $profile,
+      models: $profile_data.models,
+      profile_limits: $profile_data.limits,
+      hard_limits: {
+        max_models: $hard_max_models,
+        max_parallel: $hard_max_parallel,
+        max_prompt_bytes: $hard_max_prompt_bytes,
+        max_output_tokens_per_model: $hard_max_output_tokens,
+        max_timeout_seconds: $hard_max_timeout_seconds
+      },
+      problems: $problems
+    }'
 }
 
 write_result() {
-  local model="$1"
+  local canonical_model="$1"
   local vendor="$2"
-  local response_file="$3"
-  local curl_status="$4"
-  local result_file="$5"
+  local role="$3"
+  local response_file="$4"
+  local curl_status="$5"
+  local result_file="$6"
 
   if [[ "$curl_status" -eq 0 ]] && jq -e '.choices[0].message.content | type == "string"' "$response_file" >/dev/null 2>&1; then
     jq -n \
-      --arg model "$model" \
+      --arg model "$canonical_model" \
       --arg vendor "$vendor" \
-      --slurpfile response "$response_file" \
-      '{
+      --arg role "$role" \
+      --slurpfile response "$response_file" '
+      {
         model: $model,
         vendor: $vendor,
+        role: $role,
         status: "ok",
         response: $response[0].choices[0].message.content,
         usage: ($response[0].usage // null)
@@ -125,52 +217,68 @@ write_result() {
   fi
 
   jq -n \
-    --arg model "$model" \
+    --arg model "$canonical_model" \
     --arg vendor "$vendor" \
+    --arg role "$role" \
     --arg message "$message" \
     --argjson exit_code "$curl_status" \
-    '{model: $model, vendor: $vendor, status: "error", error: $message, curl_exit_code: $exit_code}' \
+    '{model: $model, vendor: $vendor, role: $role, status: "error", error: $message, curl_exit_code: $exit_code}' \
     > "$result_file"
 }
 
 call_model() {
-  local model="$1"
+  local canonical_model="$1"
   local vendor="$2"
-  local prompt_file="$3"
-  local timeout_seconds="$4"
-  local work_dir="$5"
-  local index="$6"
-  local request_file="$work_dir/request-$index.json"
-  local response_file="$work_dir/response-$index.json"
-  local result_file="$work_dir/result-$index.json"
+  local role="$3"
+  local prompt_file="$4"
+  local timeout_seconds="$5"
+  local max_output_tokens="$6"
+  local work_dir="$7"
+  local index="$8"
+  local api_model="${canonical_model#openrouter/}"
+  local request_file
+  local response_file
+  local result_file
+  request_file="$(printf '%s/request-%03d.json' "$work_dir" "$index")"
+  response_file="$(printf '%s/response-%03d.json' "$work_dir" "$index")"
+  result_file="$(printf '%s/result-%03d.json' "$work_dir" "$index")"
 
   jq -n \
-    --arg model "$model" \
+    --arg model "$api_model" \
     --rawfile prompt "$prompt_file" \
-    --argjson max_tokens "$MAX_OUTPUT_TOKENS" \
-    '{
+    --argjson max_tokens "$max_output_tokens" '
+    {
       model: $model,
       messages: [{role: "user", content: $prompt}],
       max_tokens: $max_tokens,
       temperature: 0.2
     }' > "$request_file"
 
+  : > "$response_file"
   local curl_status=0
-  curl --silent --show-error --fail-with-body \
+  # Do not use --fail-with-body: it requires curl 7.76. HTTP error bodies are
+  # parsed below, while transport failures still produce a nonzero exit code.
+  curl --silent --show-error \
     --max-time "$timeout_seconds" \
     --header "@$work_dir/headers" \
     --data-binary "@$request_file" \
     --output "$response_file" \
     "$API_URL" || curl_status=$?
 
-  write_result "$model" "$vendor" "$response_file" "$curl_status" "$result_file"
+  write_result "$canonical_model" "$vendor" "$role" "$response_file" "$curl_status" "$result_file"
 }
 
 run_panel() {
   local confirmed=false
   local prompt_file=""
-  local timeout_seconds=180
+  local timeout_override=""
 
+  parse_location_args "$@"
+  if [[ ${#REMAINING_ARGS[@]} -gt 0 ]]; then
+    set -- "${REMAINING_ARGS[@]}"
+  else
+    set --
+  fi
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --confirmed)
@@ -184,11 +292,11 @@ run_panel() {
         ;;
       --timeout)
         [[ $# -ge 2 ]] || die "--timeout requires seconds"
-        timeout_seconds="$2"
+        timeout_override="$2"
         shift 2
         ;;
       *)
-        die "unknown argument: $1"
+        die "unknown run argument: $1"
         ;;
     esac
   done
@@ -196,19 +304,35 @@ run_panel() {
   [[ "$confirmed" == true ]] || die "refusing metered requests without --confirmed"
   [[ -n "$prompt_file" ]] || die "--prompt-file is required"
   [[ -f "$prompt_file" ]] || die "prompt file not found: $prompt_file"
-  [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || die "timeout must be an integer number of seconds"
-  (( timeout_seconds >= 1 && timeout_seconds <= MAX_TIMEOUT_SECONDS )) || \
-    die "timeout must be between 1 and $MAX_TIMEOUT_SECONDS seconds"
+  [[ -s "$prompt_file" ]] || die "prompt file is empty; refusing metered requests"
 
   require_command curl
   require_command jq
-  load_models
+  validate_profile || die "$PROFILE_ERROR"
   [[ -n "${OPENROUTER_API_KEY:-}" ]] || die "OPENROUTER_API_KEY is not set"
+
+  local max_parallel
+  local max_prompt_bytes
+  local max_output_tokens
+  local timeout_seconds
+  local model_count
+  max_parallel="$(jq -r '.limits.maxParallel' <<< "$PROFILE_JSON")"
+  max_prompt_bytes="$(jq -r '.limits.maxPromptBytes' <<< "$PROFILE_JSON")"
+  max_output_tokens="$(jq -r '.limits.maxOutputTokensPerModel' <<< "$PROFILE_JSON")"
+  timeout_seconds="$(jq -r '.limits.defaultTimeoutSeconds' <<< "$PROFILE_JSON")"
+  model_count="$(jq -r '.models | length' <<< "$PROFILE_JSON")"
+
+  if [[ -n "$timeout_override" ]]; then
+    [[ "$timeout_override" =~ ^[0-9]+$ ]] || die "timeout must be an integer number of seconds"
+    (( timeout_override >= 1 && timeout_override <= HARD_MAX_TIMEOUT_SECONDS )) || \
+      die "timeout must be between 1 and $HARD_MAX_TIMEOUT_SECONDS seconds"
+    timeout_seconds="$timeout_override"
+  fi
 
   local prompt_bytes
   prompt_bytes="$(wc -c < "$prompt_file" | tr -d '[:space:]')"
-  (( prompt_bytes <= MAX_PROMPT_BYTES )) || \
-    die "prompt is $prompt_bytes bytes; maximum is $MAX_PROMPT_BYTES (summarize before retrying)"
+  (( prompt_bytes <= max_prompt_bytes )) || \
+    die "prompt is $prompt_bytes bytes; profile maximum is $max_prompt_bytes (summarize before retrying)"
 
   WORK_DIR="$(mktemp -d)"
   chmod 700 "$WORK_DIR"
@@ -219,15 +343,32 @@ run_panel() {
   printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$OPENROUTER_API_KEY" \
     > "$WORK_DIR/headers"
 
-  call_model "$QWEN_MODEL" "Qwen" "$prompt_file" "$timeout_seconds" "$WORK_DIR" 0 &
-  local qwen_pid=$!
-  call_model "$XAI_MODEL" "xAI" "$prompt_file" "$timeout_seconds" "$WORK_DIR" 1 &
-  local xai_pid=$!
+  local index=0
+  while (( index < model_count )); do
+    local -a pids=()
+    local launched=0
+    while (( index < model_count && launched < max_parallel )); do
+      local canonical_model
+      local vendor
+      local role
+      canonical_model="$(jq -r --argjson index "$index" '.models[$index].model' <<< "$PROFILE_JSON")"
+      vendor="$(jq -r --argjson index "$index" '.models[$index].vendor' <<< "$PROFILE_JSON")"
+      role="$(jq -r --argjson index "$index" '.models[$index].role' <<< "$PROFILE_JSON")"
 
-  wait "$qwen_pid"
-  wait "$xai_pid"
+      call_model "$canonical_model" "$vendor" "$role" "$prompt_file" "$timeout_seconds" \
+        "$max_output_tokens" "$WORK_DIR" "$index" &
+      pids+=("$!")
+      index=$((index + 1))
+      launched=$((launched + 1))
+    done
 
-  jq -s '.' "$WORK_DIR/result-0.json" "$WORK_DIR/result-1.json"
+    local pid
+    for pid in "${pids[@]}"; do
+      wait "$pid"
+    done
+  done
+
+  jq -s '.' "$WORK_DIR"/result-*.json
 }
 
 command_name="${1:-help}"
@@ -235,8 +376,7 @@ shift || true
 
 case "$command_name" in
   check)
-    [[ $# -eq 0 ]] || die "check takes no arguments"
-    check_configuration
+    check_configuration "$@"
     ;;
   run)
     run_panel "$@"
