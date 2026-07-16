@@ -35,7 +35,7 @@
 | reply-comments | Reply to PR review comments after addressing them |
 | review-comments | Address PR review comments from reviewers |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
-| second-opinion | Query an alternative AI CLI (Claude, Codex, or Gemini) for a second opinion on plans, PRs, bugs, or code |
+| second-opinion | Query independent AI CLIs for reviews, plans, bugs, or code; supports an explicitly approved, bounded OpenRouter consensus panel for high-stakes decisions |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
