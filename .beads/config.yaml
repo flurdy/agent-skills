@@ -12,6 +12,10 @@
 # When true, bd will use .beads/issues.jsonl as the source of truth
 # no-db: false
 
+# Dedicated private Git-backed Dolt remote for cross-machine bootstrap and sync.
+sync:
+  remote: git+ssh://git@github.com/flurdy/agent-skills-beads.git
+
 # Enable JSON output by default
 # json: false
 
