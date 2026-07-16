@@ -16,8 +16,8 @@ runtime's configuration whenever possible.
   Claude CLI API-key/BYOK authentication remains metered.
 - Treat OpenRouter as metered credits/BYOK: useful for cheap, fallback, and
   experimental models, but cap it and avoid default long-running loops.
-- Use Gemini OAuth for long-context audit, repo-wide summarisation, or broad
-  document review.
+- Use Gemini only as an optional secondary opinion, particularly when a different
+  provider or long-context perspective is useful.
 - Route routine workflow orchestration to Terra/Sonnet and implementation workflows
   that edit or deeply reason about code to Sol/Opus.
 - Treat model capability and thinking effort as separate choices: `model-tier` selects
@@ -111,8 +111,8 @@ tiers:
     use-for: Workflows that edit code, resolve conflicts, migrate data, or require implementation-grade reasoning.
 
   long-context-audit:
-    primary: gemini-oauth
-    fallback: openai-oauth:gpt-sol
+    primary: openai-oauth:gpt-sol
+    fallback: anthropic-oauth:claude-opus
     default-effort: high
     use-for: Repo-wide summarisation, large diffs, broad document/release audits.
 
