@@ -16,11 +16,11 @@ usage() {
   cat <<'USAGE'
 Usage:
   openrouter-panel.sh check [--profile NAME] [--config FILE]
-  openrouter-panel.sh run --confirmed --prompt-file FILE [--profile NAME]
-                          [--config FILE] [--timeout SECONDS]
+  openrouter-panel.sh run --confirmed --prompt-file FILE --profile-sha256 DIGEST
+                          [--profile NAME] [--config FILE] [--timeout SECONDS]
 
 Configuration defaults to ~/.agents/second-opinion/config.json. A profile contains
-1-8 unique-vendor OpenRouter models and limits no greater than the compiled safety
+1-8 unique-provider OpenRouter models and limits no greater than the compiled safety
 ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
 model, and 600 seconds per request.
 
@@ -41,6 +41,18 @@ require_command() {
 append_problem() {
   local message="$1"
   PROBLEMS_JSON="$(jq -c --arg message "$message" '. + [$message]' <<< "$PROBLEMS_JSON")"
+}
+
+profile_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 | awk '{print $1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -sha256 | awk '{print $NF}'
+  else
+    return 1
+  fi
 }
 
 parse_location_args() {
@@ -95,14 +107,15 @@ validate_profile() {
     (.models | length >= 1) and
     (.models | length <= 8) and
     (all(.models[];
-      (.model | type == "string") and (.model | startswith("openrouter/")) and (.model | length > 11) and
+      (.model | type == "string") and
+      (.model | test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
       (.vendor | type == "string") and (.vendor | length > 0) and
       (.role | type == "string") and (.role | length > 0)
     )) and
     ([.models[].model] | unique | length) == (.models | length) and
-    ([.models[].vendor | ascii_downcase] | unique | length) == (.models | length)
+    ([.models[].model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase] | unique | length) == (.models | length)
   ' <<< "$PROFILE_JSON" >/dev/null 2>&1; then
-    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs and unique non-empty vendors; each model must use openrouter/<model-id>"
+    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs and unique OpenRouter provider namespaces; each model must use openrouter/<provider>/<model-id>"
     return 1
   fi
 
@@ -153,12 +166,18 @@ check_configuration() {
     PROFILE_JSON='{"models":[],"limits":null}'
   fi
 
+  local digest=""
+  if ! digest="$(printf '%s' "$PROFILE_JSON" | profile_sha256)"; then
+    append_problem "a SHA-256 command is required (sha256sum, shasum, or openssl)"
+  fi
+
   jq -n \
     --arg auth "$auth_status" \
     --arg curl "$curl_status" \
     --arg config "$CONFIG_PATH" \
     --arg profile "$PROFILE_NAME" \
     --argjson profile_data "$PROFILE_JSON" \
+    --arg profile_sha256 "$digest" \
     --argjson problems "$PROBLEMS_JSON" \
     --argjson hard_max_models "$HARD_MAX_MODELS" \
     --argjson hard_max_parallel "$HARD_MAX_PARALLEL" \
@@ -171,7 +190,8 @@ check_configuration() {
       curl: $curl,
       config: $config,
       profile: $profile,
-      models: $profile_data.models,
+      profile_sha256: $profile_sha256,
+      models: ($profile_data.models | map(. + {provider: (.model | sub("^openrouter/"; "") | split("/")[0])})),
       profile_limits: $profile_data.limits,
       hard_limits: {
         max_models: $hard_max_models,
@@ -187,20 +207,23 @@ check_configuration() {
 write_result() {
   local canonical_model="$1"
   local vendor="$2"
-  local role="$3"
-  local response_file="$4"
-  local curl_status="$5"
-  local result_file="$6"
+  local provider="$3"
+  local role="$4"
+  local response_file="$5"
+  local curl_status="$6"
+  local result_file="$7"
 
   if [[ "$curl_status" -eq 0 ]] && jq -e '.choices[0].message.content | type == "string"' "$response_file" >/dev/null 2>&1; then
     jq -n \
       --arg model "$canonical_model" \
       --arg vendor "$vendor" \
+      --arg provider "$provider" \
       --arg role "$role" \
       --slurpfile response "$response_file" '
       {
         model: $model,
         vendor: $vendor,
+        provider: $provider,
         role: $role,
         status: "ok",
         response: $response[0].choices[0].message.content,
@@ -219,10 +242,11 @@ write_result() {
   jq -n \
     --arg model "$canonical_model" \
     --arg vendor "$vendor" \
+    --arg provider "$provider" \
     --arg role "$role" \
     --arg message "$message" \
     --argjson exit_code "$curl_status" \
-    '{model: $model, vendor: $vendor, role: $role, status: "error", error: $message, curl_exit_code: $exit_code}' \
+    '{model: $model, vendor: $vendor, provider: $provider, role: $role, status: "error", error: $message, curl_exit_code: $exit_code}' \
     > "$result_file"
 }
 
@@ -236,6 +260,7 @@ call_model() {
   local work_dir="$7"
   local index="$8"
   local api_model="${canonical_model#openrouter/}"
+  local provider="${api_model%%/*}"
   local request_file
   local response_file
   local result_file
@@ -256,22 +281,26 @@ call_model() {
 
   : > "$response_file"
   local curl_status=0
-  # Do not use --fail-with-body: it requires curl 7.76. HTTP error bodies are
+  # A curl config file keeps the bearer token out of argv and works on versions
+  # older than --header @file (introduced in curl 7.55). HTTP error bodies are
   # parsed below, while transport failures still produce a nonzero exit code.
-  curl --silent --show-error \
-    --max-time "$timeout_seconds" \
-    --header "@$work_dir/headers" \
-    --data-binary "@$request_file" \
-    --output "$response_file" \
-    "$API_URL" || curl_status=$?
+  {
+    printf 'silent\nshow-error\nmax-time = %s\n' "$timeout_seconds"
+    printf 'header = "Authorization: Bearer %s"\n' "$OPENROUTER_API_KEY"
+    printf 'header = "Content-Type: application/json"\n'
+    printf 'data-binary = "@%s"\noutput = "%s"\nurl = "%s"\n' \
+      "$request_file" "$response_file" "$API_URL"
+  } > "$work_dir/curl.config"
+  curl --config "$work_dir/curl.config" || curl_status=$?
 
-  write_result "$canonical_model" "$vendor" "$role" "$response_file" "$curl_status" "$result_file"
+  write_result "$canonical_model" "$vendor" "$provider" "$role" "$response_file" "$curl_status" "$result_file"
 }
 
 run_panel() {
   local confirmed=false
   local prompt_file=""
   local timeout_override=""
+  local expected_profile_sha256=""
 
   parse_location_args "$@"
   if [[ ${#REMAINING_ARGS[@]} -gt 0 ]]; then
@@ -295,6 +324,11 @@ run_panel() {
         timeout_override="$2"
         shift 2
         ;;
+      --profile-sha256)
+        [[ $# -ge 2 ]] || die "--profile-sha256 requires a digest"
+        expected_profile_sha256="$2"
+        shift 2
+        ;;
       *)
         die "unknown run argument: $1"
         ;;
@@ -305,11 +339,20 @@ run_panel() {
   [[ -n "$prompt_file" ]] || die "--prompt-file is required"
   [[ -f "$prompt_file" ]] || die "prompt file not found: $prompt_file"
   [[ -s "$prompt_file" ]] || die "prompt file is empty; refusing metered requests"
+  [[ "$expected_profile_sha256" =~ ^[a-f0-9]{64}$ ]] || die "--profile-sha256 must be the SHA-256 digest from check"
 
   require_command curl
   require_command jq
   validate_profile || die "$PROFILE_ERROR"
+  local actual_profile_sha256
+  actual_profile_sha256="$(printf '%s' "$PROFILE_JSON" | profile_sha256)" || \
+    die "a SHA-256 command is required (sha256sum, shasum, or openssl)"
+  [[ "$actual_profile_sha256" == "$expected_profile_sha256" ]] || \
+    die "profile changed since check; rerun check and obtain fresh consent"
   [[ -n "${OPENROUTER_API_KEY:-}" ]] || die "OPENROUTER_API_KEY is not set"
+  case "$OPENROUTER_API_KEY" in
+    *$'\n'*|*$'\r'*|*\"*|*\\*) die "OPENROUTER_API_KEY contains unsupported characters" ;;
+  esac
 
   local max_parallel
   local max_prompt_bytes
@@ -338,10 +381,8 @@ run_panel() {
   chmod 700 "$WORK_DIR"
   trap 'rm -rf "$WORK_DIR"' EXIT
 
-  # Keep the bearer token out of argv/process listings.
+  # Keep the bearer token out of argv/process listings and curl's config private.
   umask 077
-  printf 'Authorization: Bearer %s\nContent-Type: application/json\n' "$OPENROUTER_API_KEY" \
-    > "$WORK_DIR/headers"
 
   local index=0
   while (( index < model_count )); do

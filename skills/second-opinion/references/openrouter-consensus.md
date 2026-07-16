@@ -47,10 +47,12 @@ secret manager. Exact model IDs belong in this local config, not in the shared s
 }
 ```
 
-Profiles may contain **1-8 models**. Model IDs and case-insensitive vendor names must each be unique,
-so multiple routes from one vendor cannot inflate apparent consensus. Every model identity must use
-the canonical `openrouter/<model-id>` form; the helper strips the first `openrouter/` only when
-building the API request.
+Profiles may contain **1-8 models**. Model IDs and their case-insensitive OpenRouter provider
+namespaces (the part after `openrouter/` before the next `/`) must each be unique, so multiple routes
+from one provider cannot inflate apparent consensus. The `vendor` field is a display label only; the
+helper derives the provider used for validation and result output from the model ID. Every identity
+must use the canonical `openrouter/<provider>/<model-id>` form; the helper strips the first
+`openrouter/` only when building the API request.
 
 Local profile limits may lower but never exceed the helper's compiled ceilings:
 
@@ -91,9 +93,10 @@ presence, and prints model identities and limits without contacting OpenRouter o
 If `jq` itself is unavailable, it can report only a minimal JSON error because it cannot parse the
 config.
 
-If the result is not ready, report every listed problem. Do not install software, ask the user to
-paste a key into chat, read Pi's auth store, or fall back to a metered request. Offer `--agent all`
-or a configured single CLI instead.
+The ready result includes `profile_sha256`, a SHA-256 digest of the exact validated profile. Retain
+it alongside the disclosed models and limits. If the result is not ready, report every listed problem.
+Do not install software, ask the user to paste a key into chat, read Pi's auth store, or fall back to
+a metered request. Offer `--agent all` or a configured single CLI instead.
 
 ### 3. Obtain fresh metered consent
 
@@ -119,8 +122,9 @@ After affirmative consent:
 1. Create a path with `mktemp` and set mode `600`.
 2. Use the harness's `Write` tool to write the exact sanitized prompt to that literal path. Do not
    pass prompt content as a shell argument or leave the file empty.
-3. Invoke the helper once, passing the literal path, selected profile, `--confirmed`, and the parsed
-   timeout converted to seconds.
+3. Invoke the helper once, passing the literal path, selected profile, the `profile_sha256` returned
+   by `check`, `--confirmed`, and the parsed timeout converted to seconds. The helper rejects the run
+   without a request if the profile changed after the check/consent step.
 4. Remove the prompt file after success or failure.
 
 ```bash
@@ -140,6 +144,7 @@ status=0
 ~/.claude/skills/second-opinion/scripts/openrouter-panel.sh run \
   --confirmed \
   --profile {panel_name} \
+  --profile-sha256 {profile_sha256_from_check} \
   --prompt-file {literal_prompt_file_path} \
   --timeout {timeout_seconds} || status=$?
 rm -f {literal_prompt_file_path}
@@ -152,15 +157,16 @@ HTTP error, or malformed response becomes a model-specific error; never retry or
 
 ## Present results
 
-Preserve every configured model's success/error status. Label output with role, vendor, and exact
-model ID. Usage is post-call telemetry, not a reliable pre-run price estimate.
+Preserve every configured model's success/error status. Label output with role, display vendor,
+derived OpenRouter provider, and exact model ID. Usage is post-call telemetry, not a reliable pre-run
+price estimate.
 
 ```markdown
 ## Extreme Consensus Panel: `{profile}`
 
-| Role | Vendor | Model | Status | Result |
-|---|---|---|---|---|
-| {role} | {vendor} | `{model_id}` | ok / error | concise response or error |
+| Role | Vendor | Provider | Model | Status | Result |
+|---|---|---|---|---|---|
+| {role} | {vendor} | `{provider}` | `{model_id}` | ok / error | concise response or error |
 
 ### Agreements
 - {claims independently supported by at least two successful vendors}
