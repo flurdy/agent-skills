@@ -73,13 +73,14 @@ Rationale:
 - `premium-reasoning` with explicit `effort: high` is a settled v1 decision: this skill is explicit-only and strictly for substantial multi-stage work, so the parent should retain strong judgment without routinely spending `xhigh`. A trivial invocation should decline orchestration, but the premium parent route is accepted as the cost of explicit misuse.
 - Premium skills remain unpinned in Claude Code and therefore require the existing premium tier guard copied/adapted from `architect`.
 - `ask-above-standard` protects a metered premium-parent fallback consistently with existing premium skills. Child launches need a separate body rule because the Pi model-tier router does not inspect `subagent` calls.
-- A verified child mapping must include both the effective model identity and a trusted `metered: true|false` classification. Trusted classification must come from runtime/resolver metadata or an explicit user-approved local policy; never infer it from provider name, model ID, authentication type, or parent routing.
-- A user-approved local policy is a declaration in the runtime's user-owned instruction/configuration layer that is supplied to the active session and names the runtime, exact effective child route/model identity, `metered` value, and scope (`user` or an explicitly approved project). Arbitrary repository instructions do not qualify. The portable shape is:
+- A verified child mapping must include both the effective model identity, resolved before launch by trusted runtime/resolver evidence, and a trusted `metered: true|false` classification. Launch evidence should confirm the identity when available. If identity resolves only after exposure, classify the route as unknown and ask first; a mismatch invalidates the classification and stops further fanout until a new disclosure/decision. Trusted classification must come from runtime/resolver metadata or an explicit user-approved local policy; never infer it from provider name, model ID, authentication type, or parent routing.
+- A user-approved local policy is a declaration in the runtime's user-owned instruction/configuration layer that is supplied to the active session and names the runtime, exact effective child route/model identity, `metered` value, and scope (`user` or an explicitly approved project). Project scope must also identify the project by stable ID or absolute root; `scope: project` alone is ambiguous. Arbitrary repository instructions do not qualify. The portable shape is:
 
   ```yaml
   orchestrate-child-policy:
     runtime: <runtime>
     scope: user | project
+    project: <stable-project-id-or-absolute-root; required for project scope>
     routes:
       <route>:
         identity: <effective-model-identity>
@@ -151,8 +152,8 @@ Pi v1 routing algorithm:
 1. Call subagent discovery before execution and use only executable/non-disabled roles.
 2. Inspect builtin role/model reporting before launch so inherited behavior is visible.
 3. Do **not** parse or merge model-tier-router files inside the skill. That would duplicate trusted project/global merging, candidate availability, fallback ordering, and metered classification.
-4. Treat a mapping as verified only when it supplies both effective model identity and trusted metered classification. Pass its child `model` explicitly.
-5. Without a verified mapping, omit the model override and report inherited/no-downshift behavior, but treat billing classification as unknown and ask before launching the child. Declining continues serially.
+4. Treat a mapping as verified only when trusted runtime/resolver evidence resolves the effective model identity before launch and trusted policy supplies metered classification. Pass its child `model` explicitly and confirm the identity from launch evidence when available.
+5. If identity resolves only after launch, or no verified mapping exists, use the unknown-route consent path before exposure. For inherited Pi behavior omit the model override, report inherited/no-downshift behavior, and ask before launch. Declining continues serially; a post-launch mismatch stops further fanout and requires a new disclosure/decision.
 6. Never add an automatic metered fallback. Verified `metered: true` and unknown classifications both require child-specific confirmation; prior confirmation of the parent route does not count.
 7. If a supplied mapping is rejected, retain/inherit the parent or continue locally and report the failure without claiming a semantic route.
 
@@ -164,7 +165,7 @@ Role constraints:
 
 Cross-runtime model classes:
 
-- Claude Code: cheap → floating `haiku`, balanced → floating `sonnet`, strong → floating `opus`; use the native child model override and report when child effort cannot be independently controlled.
+- Claude Code: cheap → floating `haiku`, balanced → floating `sonnet`, strong → floating `opus`; use a native child override without another cost prompt only when the runtime resolves the alias to the policy identity before launch. Otherwise classify it as unknown and ask before exposure, then confirm the launched identity. Report when child effort cannot be independently controlled.
 - Codex: use configured cheap/balanced/strong child model and reasoning overrides only when the installed runtime exposes and verifies them. Otherwise delegate with inherited settings and explicitly report that no downshift occurred.
 - Pi: v1 guarantees orchestration and honest inherited/no-downshift behavior. Because inherited child metered status is unknown without resolver metadata, ask before that delegation. Automatic semantic downshifting and trusted classification are deferred to `skills-88v.5`.
 - Shared skill text must not contain dated or provider-qualified model IDs.
@@ -242,8 +243,9 @@ After detecting the runtime, the skill must load `references/runtime-adapters.md
 #### Pi
 
 - If `pi-subagents` is installed, load/follow its skill for agent discovery, async launch/wait, context mode, one-writer safety, review recipes, and supervisor coordination; do not duplicate those mechanics here.
-- Before launching, inspect executable roles and builtin model/thinking metadata using the installed subagent discovery/model commands. Pass `model` only when the user/runtime supplies identity plus trusted metered classification; otherwise inherit, disclose no downshift, and ask because child billing classification is unknown.
+- Immediately before every launch, inspect executable roles and builtin model/thinking metadata using the installed subagent discovery/model commands. Repeat model reporting after any skill read, router event, or manual model change; do not reuse stale preflight evidence. Pass `model` only when the user/runtime supplies identity plus trusted metered classification; otherwise inherit, disclose no downshift, and ask because child billing classification is unknown.
 - Launch asynchronously by default. When the parent must finish the orchestration in the same turn, use `wait()` rather than ending the turn or polling.
+- For prose-only review with no acceptance ledger, use the runtime's explicit disable form with a reason (currently `{ level: "none", reason: "Read-only prose review" }`); the string shorthand does not lower an inferred stronger gate. Otherwise request and satisfy review-appropriate structured evidence.
 - Prefer the role's default context. If a forked role cannot start because parent-session persistence is unavailable, retry with `context: "fresh"` only when the judgment packet is self-contained; otherwise continue in the parent.
 - This skill adds only the delegate-or-not ROI decision, child-role choice, proportionate judgment packet, cost gate, and escalation/stop policy.
 - If `pi-subagents` is unavailable, continue serially in the parent and apply the self-validation disclosure rule.
@@ -263,6 +265,8 @@ After detecting the runtime, the skill must load `references/runtime-adapters.md
 - Apply the same judgment packet, one-writer, cost, escalation, and parent-authority rules.
 - Treat this repo's skipped `agents/` assembly layer only as a packaging limitation for shared Markdown agents, not proof that Codex lacks delegation.
 - Fall back to serial parent execution only when native multi-agent capability is unavailable, and apply the self-validation disclosure rule.
+
+For unlisted runtimes, capability-detect native delegation without inventing a model mapping. Apply the same cost gate, packet, one-writer rule, fresh-review preference, and parent authority; otherwise fall back to disclosed serial self-validation. The adapter should also bridge portable cheap/balanced/strong classes to the main work-shape policy so runtime vocabularies do not drift.
 
 The adapter reference should stay short and point to runtime-owned documentation rather than copying it. Implementation must verify the currently installed Claude Code and Codex invocation syntax rather than guessing fragile command examples.
 
@@ -429,4 +433,4 @@ Use `standard-coding` for the skill implementation because it is primarily Markd
 
 ## Next concrete action
 
-Have one implementation agent claim `skills-88v.1` and work in `/home/ivar/Code/flurdy/agent-skills/shared` on `main`: create the two skill files, update routing/index/Codex-assembly documentation including the bounded-edit exception, preserve inherited Pi routing unless a verified mapping is supplied, run required checks, ask before apply targets, then collect environment-dependent Pi/Claude/Codex evidence separately. Stop before committing if runtime behavior differs from this approved plan.
+Continue `skills-88v.2` using `plans/orchestrate-dogfood-evidence.md`: preserve observed-versus-fixture labels, fix policy defects exposed by review, collect separately consented low-risk Pi/Claude/Codex evidence where trusted routing permits it, and use the results to decide whether `skills-88v.3` through `.5` are justified. Do not manufacture mapped-route evidence, persist ad hoc policy, or create tracker items per child run.

@@ -62,13 +62,19 @@ an already-routed parent does not downshift it: Pi's router permits nested upgra
 but retains equal or lower tiers. A downshift happens only through a runtime-native
 child launch with an explicit verified child mapping.
 
-Treat parent and child cost approval separately. The Pi model-tier router can confirm
-the parent route but does not inspect child launches. A child mapping is verified only
-when runtime or launch evidence supplies its effective model identity and trusted
-metadata or user-approved local policy supplies `metered: true|false`; never infer
-billing from provider, model name, authentication type, or the parent route. Metered
-or unknown/inherited children require separate current-run consent. Parent consent
-never authorizes fanout, and an ad hoc child/panel approval must not be persisted.
+Treat parent and child cost approval separately. Parent-route preferences in the
+principles above describe configured runtime policy; they are not trusted child
+billing classification. The Pi model-tier router can confirm the parent route but does
+not inspect child launches. A child mapping is verified only
+when trusted runtime/resolver evidence resolves its effective model identity before
+launch and trusted metadata or user-approved local policy supplies
+`metered: true|false`; launch evidence should confirm the identity when available.
+When identity resolves only after exposure, classify the route as unknown and ask
+first. A mismatch invalidates the classification and stops further fanout until a new
+disclosure/decision. Never infer billing from provider, model name, authentication
+type, or the parent route. Metered or unknown/inherited children require separate
+current-run consent. Parent consent never authorizes fanout, and an ad hoc child/panel
+approval must not be persisted.
 
 **Dynamic-loop dashboard skills** (`watch-prs`, `pr-status`) cannot rely on a
 skill alias for loop ticks: `ScheduleWakeup` wakeup prompts run on the *session*

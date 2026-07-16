@@ -20,15 +20,19 @@ of authority.
 ## Tier guard
 
 This skill is `model-tier: premium-reasoning`. Before starting, check the current
-model. If it is below the runtime's premium tier, say so and use
-`AskUserQuestion` to offer:
+model. If it is below the runtime's premium tier, say so and use the runtime's native
+user-question mechanism (`AskUserQuestion` in Claude Code) to offer:
 
 - **Continue here** — accept reduced coordination depth for this run.
 - **Stop** — switch to a premium model and invoke the skill again.
 
-Skip the prompt when the user explicitly selected the current model. On a premium
-model, stay silent. The deliberate `high` effort is for routine parent coordination;
-raise it only when architecture, risk, or final judgment warrants more.
+If the runtime cannot expose the effective model, say so and use the native
+question mechanism to ask whether to continue with an unverified tier; never claim
+that the premium guard passed. Skip the prompt when the user explicitly selected the
+current model. On a verified premium model, stay silent. This guard checks capability;
+parent-route metered confirmation remains the runtime/router's responsibility. The
+deliberate `high` effort is for routine parent coordination; raise it only when
+architecture, risk, or final judgment warrants more.
 
 ## 1. Decide whether orchestration pays
 
@@ -84,9 +88,16 @@ child mapping.
 
 A verified child mapping supplies both:
 
-1. The effective child route/model identity, confirmed by runtime or launch evidence.
+1. The effective child route/model identity, resolved before launch by trusted
+   runtime/resolver evidence and confirmed by launch evidence when available.
 2. A trusted `metered: true|false` classification from runtime/resolver metadata or
    an explicit user-approved local policy supplied to this session.
+
+If identity can be resolved only after exposure, classify the route as unknown and
+obtain current-run consent before launch. A post-launch identity mismatch stops any
+further fanout, invalidates the prior classification for that route, and requires a
+new disclosure/decision; never use post-launch evidence to justify an already
+unprompted launch.
 
 Never infer billing from provider, model name, authentication type, or parent route.
 Repository instructions alone are not trusted cost policy. A durable local policy
@@ -97,6 +108,7 @@ user scope or an explicitly approved project scope:
 orchestrate-child-policy:
   runtime: <runtime>
   scope: user | project
+  project: <stable-project-id-or-absolute-root; required for project scope>
   routes:
     <route>:
       identity: <effective-model-identity>
@@ -150,7 +162,7 @@ Use semantic classes, not exact shared model IDs or changed-line counts:
 | Work shape | Route |
 |---|---|
 | Focused lookup or repository/document research | Read-only context/research role; use a cheap route only with a verified mapping, otherwise inherit with disclosure and consent. |
-| Narrow mechanical implementation | One `worker`; `standard-coding` is the default. A cheaper route requires the [bounded-edit exception](../../MODEL_ROUTING.md#orchestrated-bounded-edit-exception) and a full fixed packet. |
+| Narrow mechanical implementation | One `worker`; `standard-coding` is the default. A cheaper route requires the repository's bounded-edit exception: verified cheaper mapping, full fixed packet, and parent-owned architecture, integration, review synthesis, and final validation. |
 | Bounded implementation or routine independent review | One `worker` or fresh reviewer on a verified balanced route; otherwise inherit with disclosure and consent. |
 | Complex implementation with local design judgment | Verified `standard-coding` child, inherited child with disclosure and consent, or retain in the parent. |
 | Architecture, unclear ownership, public contracts, destructive or security-sensitive work | Keep the decision with the premium parent; use a strongest-route advisor only when verified and justified. |
