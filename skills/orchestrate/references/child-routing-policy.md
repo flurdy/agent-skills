@@ -81,9 +81,11 @@ persist, widen, or write it back automatically.
 Keep runtime-local names subordinate to work shape:
 
 - **Cheap:** focused read-only lookup or reconnaissance.
-- **Balanced:** bounded implementation or routine review with objective validation.
-- **Strong / `standard-coding`:** implementation requiring meaningful local design
-  judgment.
+- **Workflow / `standard-workflow`:** routine coordination without implementation.
+- **Focused / `focused-coding`:** bounded implementation or routine review with
+  objective validation, one writer, and no unresolved design decisions.
+- **Advanced / `advanced-coding`:** implementation requiring meaningful local design
+  judgment, complex conflict resolution, or migration/compatibility decisions.
 - **Premium:** architecture, high-impact decisions, and final judgment retained by
   the parent.
 

@@ -80,6 +80,7 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 | release-manager | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | reply-comments | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | second-opinion ³ | standard-workflow | prefer-subscription-oauth | ask-before-metered-panel | sonnet | medium |  |
+| setup-multirepo-git | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | stack-branch | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | trello-beads | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | triage | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
@@ -88,15 +89,14 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 | watch-release | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | watch-rollout | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | wrap-up | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
-| beads-migrate-to-dolt | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| clean-code | standard-coding | cheapest-adequate | cap-or-ask | opus | medium |  |
-| contract-test | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| rebase-main | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| rebase-merged-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| rebase-parent | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| review-comments | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| setup-multirepo-git | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
-| tidy-settings | standard-coding | prefer-subscription-oauth | ask-above-standard | opus | medium |  |
+| clean-code | focused-coding | cheapest-adequate | cap-or-ask | sonnet | high |  |
+| tidy-settings | focused-coding | prefer-subscription-oauth | ask-above-standard | sonnet | high |  |
+| beads-migrate-to-dolt | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| contract-test | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| rebase-main | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| rebase-merged-parent | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| rebase-parent | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
+| review-comments | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
 | backlog-groom | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | release-status | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | tracking-sweep | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |

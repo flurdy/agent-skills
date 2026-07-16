@@ -6,7 +6,7 @@ model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: xhigh
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -199,7 +199,7 @@ Use this structure:
 - ...
 
 ### Recommended implementation tier
-<cheap-bulk is safe | use standard-coding | keep premium-reasoning/premium-review for implementation>
+<focused-coding is safe | use advanced-coding | keep premium-reasoning/premium-review for implementation>
 ```
 
 ### 5. Second Opinion, When Requested

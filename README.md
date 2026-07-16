@@ -181,7 +181,7 @@ Every skill needs a `SKILL.md` with YAML frontmatter. Unknown routing fields are
 ---
 name: my-skill
 description: One-line description shown in skill listings
-model-tier: standard-coding
+model-tier: focused-coding
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: high

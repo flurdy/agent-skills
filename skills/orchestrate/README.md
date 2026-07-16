@@ -84,8 +84,8 @@ tracks the next capability step:
 
 Related standalone work:
 
-- `skills-88v.3` evaluates whether focused implementation needs its own semantic
-  model tier.
+- `skills-88v.3` introduces the portable `focused-coding` tier and renames the
+  stronger implementation class to `advanced-coding`.
 - `skills-88v.6` tracks the portable control-plane project-context pattern.
 
 Do not split these capabilities into separate user-facing orchestration commands by

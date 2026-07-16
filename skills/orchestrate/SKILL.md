@@ -7,7 +7,7 @@ model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: high
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -182,9 +182,9 @@ Use semantic classes rather than exact shared model IDs or changed-line counts:
 | Work shape | Assignment |
 |---|---|
 | Focused lookup or repository/document research | Read-only context/research role; cheap route only when verified. |
-| Narrow mechanical implementation | One writer; `standard-coding` is the default. A cheaper route requires the repository's bounded-edit exception and a fully fixed packet. |
-| Bounded implementation or routine independent review | One writer or fresh reviewer on a verified balanced route; otherwise inherit with disclosure and consent. |
-| Complex implementation with local design judgment | Verified `standard-coding` child, inherited child with consent, or retain in the parent. |
+| Narrow mechanical implementation | One writer on `focused-coding` only when the packet fixes scope, pattern, non-goals, acceptance, validation, and escalation. |
+| Bounded implementation or routine independent review | One focused writer or fresh reviewer on a verified focused/balanced route; otherwise inherit with disclosure and consent. |
+| Complex implementation with local design judgment | Verified `advanced-coding` child, inherited child with consent, or retain in the parent. |
 | Architecture, unclear ownership, public contracts, destructive or security-sensitive work | Retain the decision in the premium parent; use a strongest-route advisor only when justified. |
 | Final craft judgment | Fresh reviewer, `premium-review`, or a named review skill; use extra effort only when risk warrants it. |
 

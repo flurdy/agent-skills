@@ -18,12 +18,13 @@ runtime's configuration whenever possible.
   experimental models, but cap it and avoid default long-running loops.
 - Use Gemini only as an optional secondary opinion, particularly when a different
   provider or long-context perspective is useful.
-- Route routine workflow orchestration to Terra/Sonnet and implementation workflows
-  that edit or deeply reason about code to Sol/Opus.
+- Route routine workflow orchestration to Terra/Sonnet at medium effort. Route
+  bounded, well-specified implementation to the same class at high effort, and reserve
+  Sol/Opus for advanced implementation that needs meaningful local design judgment.
 - Treat model capability and thinking effort as separate choices: `model-tier` selects
   the model class, while `effort` selects reasoning depth.
-- For implementation after a plan, prefer the standard coding tier unless the plan
-  explicitly says the implementation itself needs premium reasoning.
+- For implementation after a plan, prefer `focused-coding` when scope and validation
+  are fixed; use `advanced-coding` when implementation still carries design risk.
 
 ## Skill front matter
 
@@ -42,12 +43,12 @@ should ignore them; the skill body should still explain any important routing or
 cost guardrails in plain language.
 
 Skills also keep a floating `model:` alias matching their tier — `haiku` for
-cheap-bulk, `sonnet` for standard-workflow and long-context-audit, and `opus` for
-standard-coding — because Claude Code reads `model` directly and would otherwise
-run every skill on the (possibly premium) session model. Premium tiers omit it so
-the session model applies. pi's model-tier router ignores `model:` in skill files
-but pi honors it in **agent** files, so agents never set it (it would route pi to
-metered Claude).
+cheap-bulk, `sonnet` for standard-workflow, focused-coding, and long-context-audit,
+and `opus` for advanced-coding — because Claude Code reads `model` directly and
+would otherwise run every skill on the (possibly premium) session model. Premium
+tiers omit it so the session model applies. pi's model-tier router ignores `model:`
+in skill files but pi honors it in **agent** files, so agents never set it (it would
+route pi to metered Claude).
 
 Premium-tier skills carry no `model:` pin (they should ride the best session
 model), so each starts with a **tier guard**: if the running model is below the
@@ -104,11 +105,17 @@ tiers:
     default-effort: medium
     use-for: Git, release, tracker, status, and workflow orchestration.
 
-  standard-coding:
+  focused-coding:
+    primary: openai-oauth:gpt-terra
+    fallback: anthropic-oauth:claude-sonnet
+    default-effort: high
+    use-for: Bounded, well-specified implementation with one writer, established patterns, and objective validation.
+
+  advanced-coding:
     primary: openai-oauth:gpt-sol
     fallback: anthropic-oauth:claude-opus
     default-effort: high
-    use-for: Workflows that edit code, resolve conflicts, migrate data, or require implementation-grade reasoning.
+    use-for: Implementation with meaningful local design judgment, complex conflicts, migrations, or unclear boundaries.
 
   long-context-audit:
     primary: openai-oauth:gpt-sol
@@ -154,27 +161,26 @@ The pi model-tier router uses the tier's configured thinking level as a fallback
 honors a valid skill `effort`, and allows nested skills to raise but never lower
 effort during a run. Runtimes that do not understand `effort` should ignore it.
 
-## Orchestrated bounded-edit exception
+## Focused-coding eligibility
 
-`standard-coding` remains the default model class for every ordinary code-writing
-workflow. Inside an explicitly invoked `/orchestrate` run, one child writer may use
-a cheaper model class only when all of these conditions hold:
+`focused-coding` is the lowest ordinary code-writing class. Use it only when all of
+these conditions hold:
 
-- A full judgment packet fixes the owned files/modules, established implementation
-  pattern, explicit non-goals, acceptance criteria, exact verification, and
-  escalation/stop conditions.
-- The child mapping has verified effective identity and trusted metered
-  classification, and the `/orchestrate` child-cost gate has been satisfied.
-- The premium/strong parent retains architecture, scope, integration, review
-  synthesis, and final validation.
-- Any newly exposed product, public-contract, security, migration, destructive, or
-  architectural decision returns to the parent instead of being decided by the
-  cheaper writer.
+- Owned files/modules, established implementation pattern, explicit non-goals,
+  acceptance criteria, exact verification, and escalation/stop conditions are fixed.
+- One writer owns the shared worktree; changed-line count is not used as a risk proxy.
+- Success is objectively testable without asking the writer to invent architecture,
+  product behavior, permissions, public contracts, or migration policy.
+- Newly exposed complex conflict, compatibility, or already-decided migration
+  implementation escalates to `advanced-coding`.
+- Newly exposed product, permission, public-contract, security, destructive,
+  migration-policy, or architectural decisions return to premium parent judgment or
+  the user instead of being decided by an implementation tier.
 
-This exception does not permit ordinary code-editing skills to declare `cheap-bulk`
-or `standard-workflow`. It applies only to a bounded child launch inside explicit
-orchestration, and success must be objectively testable. Use one writer by default;
-changed-line count is not a risk proxy.
+Inside `/orchestrate`, the child mapping must still have verified effective identity
+and trusted metered classification, and the child-cost gate must be satisfied. This
+tier does not permit code-writing skills to declare `cheap-bulk` or
+`standard-workflow`. When focused eligibility is unclear, use `advanced-coding`.
 
 ## Policy enforcement
 
@@ -195,7 +201,7 @@ independent-provider rule and panel caps.
 ## `model-metered-policy` values
 
 - `ask-above-standard` — ask before using metered/premium routes beyond the
-  standard coding tier.
+  ordinary configured coding baseline.
 - `cap-or-ask` — set a small explicit cap or ask before using metered routes.
 - `ask-before-metered-panel` — ask before running multiple external/metered
   agents in parallel.
