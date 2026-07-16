@@ -11,6 +11,8 @@ conflict resolution, and final validation. The skill provides:
 
 - a delegation return-on-investment decision;
 - explicit outcome, ownership, acceptance, and stop conditions;
+- compact dependency-aware work graphs with retained decisions, material
+  uncertainties, integration seams, and declined-fanout reasoning;
 - bounded child judgment packets and result states;
 - trusted child-route and cost consent;
 - one-writer execution with safe read-only parallelism;
@@ -38,7 +40,7 @@ scope and acceptance
 | One-writer coordination | Implemented |
 | Independent review | Implemented |
 | Risk escalation and stopping | Implemented |
-| Dependency-aware decomposition | Minimal |
+| Dependency-aware decomposition | Implemented; compact parent-owned work graph, not adaptive scheduling |
 | Structured ongoing communication | Minimal; native progress when available, result envelope otherwise |
 | Dynamic replanning | Minimal |
 | Conflict adjudication | Minimal |
@@ -51,6 +53,8 @@ capabilities during a run.
 ## Boundaries and ownership
 
 - [`SKILL.md`](SKILL.md) owns the operational delegation workflow.
+- [`references/work-graph.md`](references/work-graph.md) owns dependency-aware
+  decomposition, split/collapse rules, readiness, and critical dependency paths.
 - [`references/child-routing-policy.md`](references/child-routing-policy.md) owns
   trusted identity, metered classification, consent, route changes, and semantic
   child classes.
@@ -70,7 +74,7 @@ capabilities during a run.
 Beads epic `skills-rd6`, **Evolve orchestrate into adaptive task orchestration**,
 tracks the next capability step:
 
-1. Dependency-aware task decomposition
+1. Dependency-aware task decomposition — implemented in v1.2
 2. Adaptive serial/parallel delegation strategy
 3. Child communication and handoff protocol
 4. Evidence ledger and conflict synthesis
@@ -80,8 +84,8 @@ tracks the next capability step:
 
 Related standalone work:
 
-- `skills-88v.3` evaluates whether bounded implementation needs its own semantic model
-  tier.
+- `skills-88v.3` evaluates whether focused implementation needs its own semantic
+  model tier.
 - `skills-88v.6` tracks the portable control-plane project-context pattern.
 
 Do not split these capabilities into separate user-facing orchestration commands by
@@ -92,5 +96,7 @@ planning, execution, routing, and verification owners.
 
 Initial cross-runtime dogfood and policy corrections are recorded in
 [`../../plans/orchestrate-dogfood-evidence.md`](../../plans/orchestrate-dogfood-evidence.md).
+Dependency-aware decomposition dogfood is recorded in
+[`../../plans/orchestrate-decomposition-dogfood-evidence.md`](../../plans/orchestrate-decomposition-dogfood-evidence.md).
 The original implementation plan is
 [`../../plans/orchestrate-skill.md`](../../plans/orchestrate-skill.md).

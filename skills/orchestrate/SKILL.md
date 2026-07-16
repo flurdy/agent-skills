@@ -7,7 +7,7 @@ model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: high
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -60,18 +60,31 @@ invoke them rather than copying their workflows.
 
 ## 2. Establish outcome, context, and acceptance
 
-Before delegation, state:
+Before delegation, establish the user-visible outcome, explicit non-goals, and
+acceptance evidence. If those are disputed or consequential architecture remains
+unresolved, ask the user or invoke `architect` before assigning implementation.
 
-1. The user-visible outcome and explicit non-goals.
-2. Decisions retained by the parent and unresolved questions that block execution.
-3. Bounded work units, their dependencies, and the single writer's ownership.
-4. Acceptance criteria and proportionate validation evidence.
-5. Integration points, risks, escalation triggers, and stop conditions.
+Continue directly when the work is one coherent unit with shared context, ownership,
+and validation. For work with material dependencies, uncertainties, or integration
+seams, read and follow
+[`references/work-graph.md`](references/work-graph.md). Its compact method separates:
 
-V1 supports a shallow execution shape, not a persistent dependency scheduler. Use
-parallel children only for genuinely independent read-only questions or intentionally
-isolated worktrees. If decomposition exposes unresolved architecture, return to the
-parent or invoke `architect` before assigning implementation.
+1. Decisions retained by the parent, user, or `architect`.
+2. Material uncertainties and the smallest evidence needed to resolve them.
+3. Bounded work units with hard dependencies and ownership boundaries.
+4. Integration points, ready work, and the critical dependency path or candidates.
+5. Splits whose coordination value is too low and should be collapsed.
+
+A work-graph node is not automatically a child launch or tracker item. A valid graph
+may conclude that one writer should perform all work serially. The graph exposes
+topology and readiness; later execution-shape selection decides what, if anything, to
+delegate.
+
+This version still uses a shallow execution shape, not a persistent dependency
+scheduler. Use parallel children only for genuinely independent read-only questions
+or intentionally isolated worktrees. If decomposition exposes unresolved
+architecture, return to the parent or invoke `architect`, then rebuild affected graph
+edges before assigning implementation.
 
 Read repository rules, established patterns, and current status/diff. Use tracking
 only for durable context:
@@ -88,16 +101,23 @@ only for durable context:
 
 ## 3. Choose the execution shape
 
-Give the user a short execution shape before launching children:
+Give the user a short execution shape before launching children. For a non-trivial
+work graph, include only the material fields:
 
 ```text
-retained decisions: <what stays with the parent>
-work units: <bounded delegated questions or implementation>
-order/parallelism: <dependencies and safe concurrency>
+retained decisions: <D IDs and what stays with the parent>
+material uncertainties: <U IDs, resolution evidence, and blocked work>
+work graph: <W IDs, deliverables, and hard dependencies>
+ready/critical: <ready set and dependency spine/candidates>
+integration: <seams and parent synthesis point>
+declined fanout: <collapsed units or none>
 writer: <single owner and files/worktree>
 verification: <commands, flows, and independent review>
 escalate/stop: <conditions that return control>
 ```
+
+For one coherent unit, keep this to outcome, writer ownership, verification, and stop
+conditions; do not manufacture registers or graph nodes for presentation.
 
 Default to:
 
