@@ -4,8 +4,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # Find project root (look for .mgit.conf)
 find_project_root() {
     local dir="$PWD"
@@ -44,7 +42,7 @@ check_stale() {
     echo "## Staleness Report"
     echo ""
 
-    local stale=0 ok=0 missing_consumer=0 missing_provider=0 total=0
+    local stale=0 ok=0 missing_provider=0 total=0
 
     # Find all consumer-generated pact files
     for consumer_file in */target/pacts/*-consumer-*-provider.json; do
@@ -167,10 +165,10 @@ check_sync_gaps() {
 
     # Three convention-derived sets (all from scripts/pact-pairs), no registry:
     # each intended edge is traced through its lifecycle test → built → synced.
-    local -A built synced
+    local -A built synced_edges
     local c p
     while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && built["$c->$p"]=1; done < <(./scripts/pact-pairs built)
-    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && synced["$c->$p"]=1; done < <(./scripts/pact-pairs synced)
+    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && synced_edges["$c->$p"]=1; done < <(./scripts/pact-pairs synced)
 
     local ok=0 not_built=0 not_synced=0 total=0 key
     while IFS= read -r key; do
@@ -179,7 +177,7 @@ check_sync_gaps() {
         if [[ -z "${built[$key]:-}" ]]; then
             echo "NOT_BUILT   ${key/->/ -> }  (consumer test present but no pact in target/ — tests not run?)"
             not_built=$((not_built + 1))
-        elif [[ -z "${synced[$key]:-}" ]]; then
+        elif [[ -z "${synced_edges[$key]:-}" ]]; then
             echo "NOT_SYNCED  ${key/->/ -> }  (built but not copied to provider — run scripts/sync-pacts.sh)"
             not_synced=$((not_synced + 1))
         else
@@ -261,17 +259,17 @@ check_coverage() {
         provider="$(echo "$pact_dir" | cut -d'/' -f1)"
 
         # Consumers whose pact is synced into this provider's source tree.
-        local -a synced=()
+        local -a synced_consumers=()
         for f in "$pact_dir"/*-consumer-"$provider"-provider.json; do
             [[ -f "$f" ]] || continue
-            synced+=("$(basename "$f" | sed 's/-consumer-.*//')")
+            synced_consumers+=("$(basename "$f" | sed 's/-consumer-.*//')")
         done
-        [[ ${#synced[@]} -eq 0 ]] && continue
+        [[ ${#synced_consumers[@]} -eq 0 ]] && continue
         providers=$((providers + 1))
 
         local cfg="$provider/.circleci/config.yml"
         if [[ ! -f "$cfg" ]]; then
-            echo "GAP  $provider  no .circleci/config.yml (cannot verify ${#synced[@]} consumer(s))"
+            echo "GAP  $provider  no .circleci/config.yml (cannot verify ${#synced_consumers[@]} consumer(s))"
             gaps=$((gaps + 1))
             continue
         fi
@@ -288,7 +286,7 @@ check_coverage() {
         if [[ ${#active[@]} -gt 0 ]]; then
             style="enum"
             local c a found
-            for c in "${synced[@]}"; do
+            for c in "${synced_consumers[@]}"; do
                 found=false
                 for a in "${active[@]}"; do [[ "$a" == "$c" ]] && found=true && break; done
                 $found || unverified+=("$c")
@@ -297,15 +295,15 @@ check_coverage() {
             style="tag"   # verifies every synced pact — no enumeration to miss
         else
             style="none"
-            unverified=("${synced[@]}")
+            unverified=("${synced_consumers[@]}")
         fi
 
         if [[ ${#unverified[@]} -gt 0 ]]; then
             local list; list="$(IFS=,; echo "${unverified[*]}")"
-            echo "GAP  $provider  style=$style synced=${#synced[@]} not-verified=$list"
+            echo "GAP  $provider  style=$style synced=${#synced_consumers[@]} not-verified=$list"
             gaps=$((gaps + 1))
         else
-            echo "OK   $provider  style=$style synced=${#synced[@]} verified"
+            echo "OK   $provider  style=$style synced=${#synced_consumers[@]} verified"
             ok=$((ok + 1))
         fi
     done

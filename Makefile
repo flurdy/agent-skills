@@ -27,9 +27,10 @@ CODEX_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
   COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
   SKIP_AGENTS=1
 
-.PHONY: help list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
+	@echo "make clean-code"
 	@echo "make list"
 	@echo "make doctor"
 	@echo "make doctor-codex"
@@ -47,6 +48,11 @@ help:
 	@echo "  COLLISION_MODE=$(COLLISION_MODE)  (warn|fail|allow)"
 	@echo "  LAYERS_ORDER='$(LAYERS_ORDER)'"
 	@echo "  FORCE=1  (skip safety check for user content in ACTIVE_DIR)"
+
+clean-code:
+	@command -v shellcheck >/dev/null 2>&1 || { echo "ERROR: shellcheck is required" >&2; exit 127; }
+	@find . -type f -name '*.sh' -not -path './.git/*' -exec bash -n {} \;
+	@find . -type f -name '*.sh' -not -path './.git/*' -exec shellcheck --severity=warning {} +
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list
