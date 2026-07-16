@@ -21,7 +21,7 @@
 | landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
-| orchestrate | Coordinate substantial multi-stage work through bounded delegation, one-writer safety, independent review, and risk-based escalation; explicit invocation only |
+| orchestrate | Safely coordinate bounded subagent delegation through explicit ownership, child-route consent, one-writer execution, independent review, and parent-owned validation; explicit invocation only |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |

@@ -1,5 +1,10 @@
 # Implementation Plan: Portable `orchestrate` Skill
 
+> **Status:** Implemented as the conservative delegation-governance v1. Current scope,
+> document ownership, capability maturity, and the adaptive task-orchestration roadmap
+> are maintained in [`../skills/orchestrate/README.md`](../skills/orchestrate/README.md).
+> This file preserves the original implementation rationale and dogfood constraints.
+
 ## Planning tier
 
 - Tier: all-in
