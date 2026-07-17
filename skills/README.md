@@ -14,6 +14,7 @@
 | contract-check | Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests |
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
 | create-pr | Create a pull request from the current branch following project conventions, and close the associated bead |
+| diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — so the /handoffs picker stays focused. Standalone twin of /handoffs's archive step; read-only until you confirm; archives, never deletes |
@@ -105,6 +106,7 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 | release-status | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | tracking-sweep | long-context-audit | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | architect | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
+| diagnose-bug | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
 | orchestrate ⁵ | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | high | ✅ |
 | verify-task | premium-reasoning | prefer-subscription-oauth | ask-above-standard | — | xhigh | ✅ |
 | pedantic-review | premium-review | deliberate-premium | ask-above-standard | — | xhigh | ✅ |
