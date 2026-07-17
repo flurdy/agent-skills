@@ -6,7 +6,7 @@ model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: xhigh
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -63,8 +63,8 @@ user has not specified one and the choice matters.
 |------|---------|----------|
 | `standard` | Standard coding tier | Moderate planning, low ambiguity |
 | `premium` | Premium reasoning tier, preferring subscription/OAuth routes | Architectural uncertainty or costly mistakes |
-| `second-opinion` | Draft in-session + `/second-opinion validate-plan` after drafting | Need independent validation |
-| `all-in` | Premium reasoning + independent second opinion | High-risk, cross-service, security, data migrations |
+| `second-opinion` | In-session draft + one vendor-independent `/second-opinion validate-plan` review | Need an independent validation pass |
+| `all-in` | Premium draft + one bounded `/second-opinion validate-plan --agent all` review batch | High-risk, cross-service, security, data migrations |
 
 This skill declares `model-tier: premium-reasoning`, but that is semantic routing metadata,
 not a mandate to use Claude/Opus. Prefer the best configured subscription/OAuth reasoning
@@ -111,12 +111,14 @@ If no tier/model was specified:
 - For clearly high-risk work, default to `premium` and state why; prefer the configured
   subscription/OAuth reasoning route first.
 - For very high-risk work (security/data/cross-service), ask whether to use `premium` or
-  `all-in` before adding independent/metered review.
+  `all-in` before adding a bounded multi-model review. Explain that `all-in` queries the
+  available subscription/OAuth-first CLIs and still requires explicit consent for any route
+  that `/second-opinion` classifies as metered or unknown.
 - For moderate work, ask with `AskUserQuestion`:
   - `standard` — good enough, stay in-session
   - `premium` — spend stronger reasoning budget
-  - `second-opinion` — draft then validate externally
-  - `all-in` — premium + external validation
+  - `second-opinion` — draft, then request one independent validation
+  - `all-in` — premium draft, then request one bounded multi-model validation batch
 - If `--no-prompt` was supplied, choose the lowest tier that is responsible and continue.
 
 Never block on model selection if the user has already made the intent clear.
@@ -202,20 +204,67 @@ Use this structure:
 <focused-coding is safe | use advanced-coding | keep premium-reasoning/premium-review for implementation>
 ```
 
-### 5. Second Opinion, When Requested
+### 5. External Validation, When Requested
 
-If the tier is `second-opinion` or `all-in`:
+If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revision pass:
 
-1. First draft the full architecture plan.
-2. Invoke `/second-opinion validate-plan` with the plan text and relevant context summary.
-3. Compare the response against the draft.
-4. Output:
-   - What changed after the second opinion
-   - Remaining disagreements or uncertainty
-   - Final recommended plan
+1. Complete the full architecture draft before requesting review.
+2. Build a review packet containing:
+   - A concise context summary: requirements, constraints, relevant tracker/docs, repository
+     evidence with file paths, assumptions, and open questions. Do not include secrets.
+   - The complete finalized draft.
+   - This review rubric:
+     - Requirements coverage and unsupported assumptions
+     - Technical feasibility and simpler or stronger alternatives
+     - Interfaces, ownership boundaries, and internal/external dependencies
+     - Migration, backwards compatibility, and data integrity
+     - Security, privacy, permissions, and abuse cases
+     - Reliability, failure modes, concurrency, and performance
+     - Testability and adequacy of the proposed test strategy
+     - Rollout, rollback, observability, and operational burden
+     - YAGNI, unnecessary abstractions, and decisions still missing
+3. Invoke the tier-specific route once:
+   - `second-opinion`: `/second-opinion validate-plan "<review packet>"`. Keep its default
+     vendor-independent selection; do not pass `--agent all`.
+   - `all-in`: `/second-opinion validate-plan "<review packet>" --agent all`. This is one
+     bounded parallel batch across the available subscription/OAuth-first CLIs, not a sequence
+     of follow-up reviews.
+4. Invoke only through `/second-opinion`; do not probe authentication or call the CLIs directly.
+   Let that skill apply its independence, availability, timeout, and cost rules. When it classifies
+   a selected route as metered/BYOK or unknown-cost, ask for explicit consent with
+   `AskUserQuestion` immediately before the invocation. Declining that route reduces the attempted
+   reviewer set; it does not block the plan.
+5. Treat each response as advisory. Check claims against repository, tracker, and documentation
+   evidence. Do not use majority vote as truth: one well-evidenced unique finding may outweigh
+   agreement, while repeated unsupported claims remain invalid.
+6. Revise the draft only for validated findings, then stop. Do not send the revision out for a
+   second review batch or loop until reviewers agree.
 
-If `/second-opinion` is unavailable or the requested external CLI is not configured, continue
-with the in-session plan and explicitly note that independent validation was skipped.
+`--agent all` never includes OpenRouter and must not be rewritten as `--agent consensus`.
+The explicit, metered consensus panel tracked separately from this workflow is opt-in only; use
+it only when the user separately requests that named `/second-opinion` mode and completes its
+fresh-consent flow.
+
+Append this validation record to the final plan:
+
+```markdown
+### External validation
+- Review tier: <second-opinion|all-in>
+- Coverage: <reviewers attempted, succeeded, unavailable, declined, or timed out>
+- Reviewer findings:
+  - <reviewer attribution>: <material findings>
+- Consensus / agreements: <shared findings with supporting evidence; descriptive, not a vote>
+- Disagreements: <conflicting recommendations and evidence-based resolution or uncertainty>
+- Unique findings: <single-reviewer concerns and their validation status>
+- Rejected findings: <non-actionable/incorrect suggestions and why>
+- Plan changes: <what changed and why, or "None">
+- Residual uncertainty: <unresolved risks/questions, or "None">
+```
+
+For partial results, synthesize only the reviewers that returned and identify every unavailable,
+declined, or timed-out route; never describe partial coverage as a complete panel. If no external
+reviewer succeeds or `/second-opinion` is unavailable, preserve the in-session plan, set coverage
+accordingly, and explicitly state that external validation was skipped.
 
 ### 6. Guardrails
 
