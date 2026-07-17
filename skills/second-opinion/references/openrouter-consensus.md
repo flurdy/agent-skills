@@ -190,7 +190,7 @@ actual code and list only genuinely actionable items. Agreement does not establi
 - Never call OpenRouter before the immediate consent step.
 - Never persist consent or run consensus in an unattended loop.
 - Never print credentials or put the bearer token in argv. The helper stores it in a mode-private
-  temporary header file and removes it on exit.
+  temporary curl configuration file and removes it on exit.
 - Never exceed the compiled model, concurrency, prompt, output, or timeout ceilings even if local
   config asks for more.
 - Never send models tools, repository access, environment contents, or unsanitized sensitive data.
