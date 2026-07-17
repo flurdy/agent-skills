@@ -143,9 +143,9 @@ tiers:
       prefer subscription routes first.
     from-claude-session: openai-oauth (codex CLI), then gemini-oauth
     from-gpt-session: claude CLI (prefer claude.ai subscription; API-key/BYOK is metered), then gemini-oauth
-    panel-extras: openrouter:qwen-reasoning, openrouter:grok-4.5
-    note: This is not an ordinary ranked router tier. Panel extras are metered;
-      ask or cap before broad panels.
+    panel-extras: explicit named local OpenRouter consensus profiles
+    note: This is not an ordinary ranked router tier. Exact panel model IDs live in
+      ~/.agents/second-opinion/config.json; profiles are metered and require fresh consent.
     use-for: Cross-checking plans, PRs, root-cause analysis, independent critique.
 ```
 

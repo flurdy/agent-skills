@@ -8,7 +8,7 @@ model-metered-policy: ask-before-metered-panel
 model: sonnet
 model-second-opinion-tier: independent-reasoning
 effort: medium
-version: "1.4.0"
+version: "1.4.1"
 author: "flurdy"
 ---
 
@@ -58,7 +58,8 @@ Read [references/openrouter-consensus.md](references/openrouter-consensus.md) co
 
 This skill declares `model-second-opinion-tier: independent-reasoning`. Exact model IDs belong in
 the invoked CLI's configuration where possible, not in this shared skill. By default, omit
-model flags and let each CLI use its configured default.
+model flags and let each CLI use its configured default. The rationale and precedence rules are
+recorded in [references/external-model-resolution.md](references/external-model-resolution.md).
 
 Independence rule: a second opinion is only independent if it comes from a **different
 vendor than the model that produced the work** (normally the current session model).

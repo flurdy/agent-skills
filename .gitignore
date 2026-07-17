@@ -1,5 +1,6 @@
 .env
 .envrc
+.envrc.local
 .codex
 .vscode
 .idea

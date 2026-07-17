@@ -6,7 +6,7 @@ model-tier: premium-review
 model-cost-policy: deliberate-premium
 model-metered-policy: ask-above-standard
 effort: xhigh
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 
@@ -247,7 +247,7 @@ If iterating, jump back to Phase 1 (re-lint the new state) and proceed through P
 
 If not iterating, proceed to Phase 9.
 
-### 9. Phase 9 — Wide Panel Consensus
+### 9. Phase 9 — Subscription CLI Review Panel
 
 If `--skip-external` is set, jump to Phase 10. A normal `/total-review` run approves one
 standard external pass, not necessarily an expensive panel. Because this phase may invoke
@@ -266,10 +266,11 @@ No PR (fall back to ask mode):
 Skill /second-opinion ask "Review this diff for consensus. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and a prior Codex pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent all
 ```
 
-This runs Claude + Codex + Gemini in parallel when those CLIs are configured. The purpose is
-**consensus**, not new criticism — the code should already be clean. Claude is a deliberate
-premium review lane; Gemini is especially useful for long-context review; any OpenRouter-backed
-routes must be capped or explicitly approved. Treat any finding here as:
+This runs Claude + Codex + Gemini in parallel when those CLIs are configured. It compares
+agreements and disagreements; it does not invoke the separately named OpenRouter `consensus` mode.
+The purpose is confirmation, not new criticism — the code should already be clean. Claude is a
+deliberate premium review lane; Gemini is especially useful for long-context review. Treat any
+finding here as:
 
 - Agreed by ≥2 agents → P1 bead (multi-agent consensus is a stronger signal)
 - Single-agent finding → P2/P3 bead, add to pile

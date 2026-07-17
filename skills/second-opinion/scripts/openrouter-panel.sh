@@ -264,9 +264,11 @@ call_model() {
   local request_file
   local response_file
   local result_file
+  local curl_config
   request_file="$(printf '%s/request-%03d.json' "$work_dir" "$index")"
   response_file="$(printf '%s/response-%03d.json' "$work_dir" "$index")"
   result_file="$(printf '%s/result-%03d.json' "$work_dir" "$index")"
+  curl_config="$(printf '%s/curl-%03d.config' "$work_dir" "$index")"
 
   jq -n \
     --arg model "$api_model" \
@@ -290,8 +292,8 @@ call_model() {
     printf 'header = "Content-Type: application/json"\n'
     printf 'data-binary = "@%s"\noutput = "%s"\nurl = "%s"\n' \
       "$request_file" "$response_file" "$API_URL"
-  } > "$work_dir/curl.config"
-  curl --config "$work_dir/curl.config" || curl_status=$?
+  } > "$curl_config"
+  curl --config "$curl_config" || curl_status=$?
 
   write_result "$canonical_model" "$vendor" "$provider" "$role" "$response_file" "$curl_status" "$result_file"
 }

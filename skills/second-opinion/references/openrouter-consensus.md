@@ -31,7 +31,7 @@ secret manager. Exact model IDs belong in this local config, not in the shared s
     "extreme": {
       "models": [
         {
-          "model": "openrouter/<vendor>/<model-id>",
+          "model": "openrouter/<provider>/<model-id>",
           "vendor": "Vendor name",
           "role": "independent reasoning"
         }
@@ -194,3 +194,14 @@ actual code and list only genuinely actionable items. Agreement does not establi
 - Never exceed the compiled model, concurrency, prompt, output, or timeout ceilings even if local
   config asks for more.
 - Never send models tools, repository access, environment contents, or unsanitized sensitive data.
+
+## Maintainer validation
+
+Run the no-network fixture suite after changing profile validation, consent binding, request
+construction, concurrency, or result handling:
+
+```bash
+skills/second-opinion/tests/test-openrouter-panel.sh
+```
+
+The suite uses a fake `curl`; it must never consume OpenRouter credits. Also run `make clean-code`.
