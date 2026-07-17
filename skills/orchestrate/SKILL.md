@@ -1,13 +1,13 @@
 ---
 name: orchestrate
-description: Safely coordinate bounded subagent delegation through explicit ownership, child-route consent, one-writer execution, independent review, and parent-owned validation. Use only when explicitly invoked; skip trivial, tightly coupled, or serial work.
+description: Safely coordinate bounded delegation while preserving observable outcome and acceptance-evidence pairs through one-writer execution, independent review, and parent validation. Explicit invocation only.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 disable-model-invocation: true
 model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: high
-version: "1.3.0"
+version: "1.4.0"
 author: "flurdy"
 ---
 
@@ -64,6 +64,21 @@ Before delegation, establish the user-visible outcome, explicit non-goals, and
 acceptance evidence. If those are disputed or consequential architecture remains
 unresolved, ask the user or invoke `architect` before assigning implementation.
 
+Preserve acceptance as explicit **outcome → evidence** pairs for every implementation
+slice or consequential work unit:
+
+```text
+observable outcome: <user-visible behavior or system state that must become true>
+acceptance evidence: <runnable check, named CI evidence, manual UAT flow, or source evidence>
+expected signal: <what proves the outcome rather than merely running the check>
+```
+
+Use repository-supported commands when they exist. Use named CI checks/artifacts when
+the environment owns proof, and minimal manual UAT for inherently experiential or
+external behavior. Documentation-only work may use source/render/link evidence. Never
+manufacture a shell command to make acceptance look concrete; mark unavailable proof
+and its prerequisite explicitly.
+
 Continue directly when the work is one coherent unit with shared context, ownership,
 and validation. For work with material dependencies, uncertainties, or integration
 seams, read and follow
@@ -112,7 +127,7 @@ ready/critical: <ready set and dependency spine/candidates>
 integration: <seams and parent synthesis point>
 declined fanout: <collapsed units or none>
 writer: <single owner and files/worktree>
-verification: <commands, flows, and independent review>
+verification: <per-work outcome → evidence pairs, shared gates, and independent review>
 escalate/stop: <conditions that return control>
 ```
 
@@ -162,15 +177,23 @@ expected evidence, and stop condition. A writer or consequential analyst needs:
 2. Owned files/modules or bounded read-only question.
 3. Relevant rules, context pointers, and established patterns.
 4. Non-goals and prohibited expansion.
-5. Acceptance criteria and exact validation commands or user flows.
-6. Risks, assumptions, dependencies, and unresolved questions.
-7. Required result: status, files/evidence, validation outcomes, discoveries,
-   residual risks, and decisions needed from the parent.
-8. Escalation and stop conditions.
+5. The owned outcome → evidence pairs: observable result, evidence type, exact
+   command/check/flow or source proof, and expected decisive signal.
+6. Shared integration/CI gates that supplement rather than replace those pairs.
+7. Risks, assumptions, dependencies, and unresolved questions.
+8. Required result: status, files/evidence, each pair's observed outcome and proof,
+   validation outcomes, discoveries, residual risks, and decisions needed from the parent.
+9. Escalation and stop conditions.
 
 Require the child to return one of `complete`, `blocked`, or `needs-decision`. A
 blocked or decision result must include evidence and the smallest question needed to
-continue. Do not let children silently redefine scope, architecture, or acceptance.
+continue. Do not let children silently redefine scope, architecture, acceptance, or
+substitute an easier check that cannot prove the paired outcome.
+
+Give reviewers the same outcome → evidence pairs as writers. Reviewers assess both the
+implementation and whether the returned proof is capable of demonstrating each
+outcome. If a planned command becomes invalid or a manual flow cannot be witnessed,
+the child returns `blocked` or `needs-decision`; it does not invent replacement evidence.
 
 If the packet still asks the child to discover architecture or choose a high-impact
 alternative, retain that work in the parent or use a stronger advisory/planning pass.
@@ -205,8 +228,10 @@ evidence changes the packet, requires a focused follow-up, returns to architectu
 or stops.
 
 After a writer returns, the parent must inspect the actual diff, reconcile it with
-other findings and repository state, and run or witness required validation. A child
-summary is not integration evidence.
+other findings and repository state, and run or witness required validation. Reconcile
+each planned outcome → evidence pair against what was actually observed, then run
+shared integration gates. A child summary, command invocation without its expected
+signal, or unrelated green CI is not integration evidence.
 
 Use fresh/separate context for genuine independent review where supported. Cap routine
 fanout at two or three distinct angles. The implementer cannot be the sole authority
@@ -235,11 +260,11 @@ Use the smallest responsible response: revise the bounded packet, increase effor
 the same class, use a stronger worker/advisor, return to architecture/user judgment,
 or stop. Do not automatically jump to a maximum-effort panel or silently widen scope.
 
-Finish when acceptance and validation pass and review finds no fixes worth doing now;
-remaining findings are optional/deferred; a decision needs the user; or the selected
-review gate reaches its cap. Routine orchestration normally uses one review and at
-most one focused follow-up.
+Finish when every required observable outcome has matching witnessed evidence, shared
+validation passes, and review finds no fixes worth doing now; remaining findings are
+optional/deferred; a decision needs the user; or the selected review gate reaches its
+cap. Routine orchestration normally uses one review and at most one focused follow-up.
 
-Report the execution shape, material child route evidence, changes and validation,
-conflicts or decisions, residual risks, deferred work, and whether validation was
-independent or self-validated.
+Report the execution shape, material child route evidence, each outcome and its
+acceptance evidence, shared validation, conflicts or decisions, residual risks,
+deferred work, and whether validation was independent or self-validated.

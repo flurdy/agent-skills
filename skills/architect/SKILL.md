@@ -1,12 +1,12 @@
 ---
 name: architect
-description: Architecture and implementation planning gate for complex or high-blast-radius work. Gathers context, chooses an appropriate planning tier/model, evaluates alternatives and risks, and outputs an implementation-ready plan without editing code.
+description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces reviewable slices paired with observable outcomes and acceptance evidence without editing code.
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: xhigh
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -182,8 +182,10 @@ Use this structure:
 2. ...
 
 ### Implementation slices
-1. <small, reviewable slice>
-2. ...
+| # | Slice / deliverable | Observable outcome | Acceptance evidence |
+|---|---|---|---|
+| 1 | <small, reviewable slice> | <user-visible behavior or system state that becomes true> | <runnable check, named CI evidence, manual UAT flow, or source evidence + expected signal> |
+| 2 | ... | ... | ... |
 
 ### Test strategy
 - Happy path:
@@ -204,6 +206,23 @@ Use this structure:
 <focused-coding is safe | use advanced-coding | keep premium-reasoning/premium-review for implementation>
 ```
 
+Pair every implementation slice with both an observable outcome and the evidence that proves it.
+The pair is the slice's acceptance contract, not a duplicate test plan:
+
+- **Runnable check:** give the repository-supported command and the expected decisive signal.
+- **CI evidence:** name the check/artifact and what success demonstrates; a future green status
+  without the relevant artifact or commit coverage is not enough.
+- **Manual UAT:** give the smallest necessary flow, environment, and expected observation when
+  behavior cannot responsibly be proven by automation.
+- **Source evidence:** use a rendered preview, link check, schema/config inspection, or specialist
+  review for documentation-only or inherently non-executable work.
+
+Do not manufacture a shell command merely to fill the table. If proof depends on unavailable
+infrastructure or an unresolved decision, say `TBD`, name the owner or prerequisite, and keep the
+slice blocked rather than presenting vague acceptance. The broader **Test strategy** section still
+covers cross-slice happy/sad/edge cases and project gates; it should reference rather than restate
+the per-slice evidence.
+
 ### 5. External Validation, When Requested
 
 If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revision pass:
@@ -220,7 +239,8 @@ If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revi
      - Migration, backwards compatibility, and data integrity
      - Security, privacy, permissions, and abuse cases
      - Reliability, failure modes, concurrency, and performance
-     - Testability and adequacy of the proposed test strategy
+     - Testability, adequacy of the proposed test strategy, and whether each slice's observable
+       outcome is paired with evidence capable of proving it
      - Rollout, rollback, observability, and operational burden
      - YAGNI, unnecessary abstractions, and decisions still missing
 3. Invoke the tier-specific route once:
@@ -270,7 +290,9 @@ accordingly, and explicitly state that external validation was skipped.
 
 - Do not implement code changes.
 - Do not create or mutate Jira issues/beads unless the user explicitly asks after the plan.
-- Prefer small, reversible implementation slices.
+- Prefer small, reversible implementation slices with observable outcomes and proportionate proof.
+- Do not invent commands for documentation-only or inherently manual acceptance; name the
+  necessary source evidence or UAT flow instead.
 - Flag YAGNI: avoid introducing new abstractions unless they pay for themselves now.
 - Call out when the right answer is “do the simple thing” rather than architecting.
 - If requirements are unclear, list open questions and recommend the smallest discovery step.

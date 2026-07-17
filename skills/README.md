@@ -2,7 +2,7 @@
 
 | Skill | Description |
 |-------|-------------|
-| architect | Architecture and implementation planning gate for complex or high-blast-radius work; chooses a planning tier/model, evaluates alternatives and risks, and outputs an implementation-ready plan without editing code |
+| architect | Architecture and implementation planning gate for complex or high-blast-radius work; pairs reviewable slices with observable outcomes and acceptance evidence without editing code |
 | backlog-groom | Per-bead quality audit over the open backlog — flags vague descriptions, missing acceptance criteria, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Read-only sweep; mutations apply only on approval, destructive ones confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello) |
 | beads-check-dolt-migration | Detect whether a beads installation needs migration from classic format (SQLite/JSONL) to Dolt |
 | beads-migrate-to-dolt | Migrate a beads installation from classic format (SQLite/JSONL) to the new Dolt-based format |
@@ -23,7 +23,7 @@
 | model-update-check | Read-only audit of Pi routing and second-opinion consensus model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
 | name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
-| orchestrate | Safely coordinate bounded subagent delegation through explicit ownership, child-route consent, one-writer execution, independent review, and parent-owned validation; explicit invocation only |
+| orchestrate | Safely coordinate bounded delegation while preserving observable outcome → acceptance-evidence pairs through writer, reviewer, and parent validation; explicit invocation only |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |

@@ -71,12 +71,12 @@ information value exceeds briefing and synthesis cost.
 
 ## 4. Define bounded work units
 
-Each work unit must produce an identifiable deliverable or finding and have evidence
-that lets the parent tell whether it is complete.
+Each work unit must produce an identifiable deliverable or finding, an observable
+outcome, and evidence capable of proving that outcome.
 
-| ID | Deliverable | Ownership boundary | Depends on | Integration point | Done evidence |
-|---|---|---|---|---|---|
-| W1 | <artifact/finding> | <files, module, or question> | D1, U1, W0 | <where output is consumed> | <check or observable result> |
+| ID | Deliverable | Ownership boundary | Depends on | Integration point | Observable outcome | Acceptance evidence |
+|---|---|---|---|---|---|---|
+| W1 | <artifact/finding> | <files, module, or question> | D1, U1, W0 | <where output is consumed> | <behavior/state that becomes true> | <check, CI evidence, UAT flow, or source proof + expected signal> |
 
 Field rules:
 
@@ -89,9 +89,13 @@ Field rules:
 - **Integration point:** identify the seam where this output meets another result:
   shared files, an interface, an input to another unit, or parent reconciliation.
   Use `parent synthesis` when no code seam exists.
-- **Done evidence:** name the artifact, command, user flow, or source evidence needed.
-  Detailed verification strategy remains owned by `/verify-task`, `/total-review`, or
-  the relevant specialist gate.
+- **Observable outcome:** state the user-visible behavior or system state that proves
+  the unit has value; do not restate the deliverable or implementation activity.
+- **Acceptance evidence:** name the repository-supported command and expected signal,
+  named CI check/artifact, minimal manual UAT flow, or source/render evidence that can
+  prove the outcome. Do not invent a shell command for documentation-only or inherently
+  manual work. Detailed verification strategy remains owned by `/verify-task`,
+  `/total-review`, or the relevant specialist gate.
 
 Do not create a separate integration unit unless integration itself produces
 meaningful work or evidence. The parent always owns final integration even when a

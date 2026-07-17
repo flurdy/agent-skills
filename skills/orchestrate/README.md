@@ -11,7 +11,7 @@ The parent agent retains outcome, scope, architecture, decomposition, integratio
 conflict resolution, and final validation. The skill provides:
 
 - a delegation return-on-investment decision;
-- explicit outcome, ownership, acceptance, and stop conditions;
+- explicit ownership, stop conditions, and observable outcome → acceptance-evidence pairs;
 - compact dependency-aware work graphs with retained decisions, material
   uncertainties, integration seams, and declined-fanout reasoning;
 - bounded child judgment packets and result states;
@@ -45,7 +45,7 @@ scope and acceptance
 | Structured ongoing communication | By design: native progress when available, result envelope otherwise (`skills-mcn`) |
 | Dynamic replanning | Out of scope by decision (`skills-mcn`); model-native judgment |
 | Conflict adjudication | Out of scope by decision (`skills-mcn`); model-native judgment |
-| Evidence-led verification design | Pointer only: composes `/verify-task` and `/total-review` by risk |
+| Evidence-led verification design | Outcome → evidence pairs preserved through work units and judgment packets; full gates remain in `/verify-task` and `/total-review` |
 | Cross-child shared work state | Out of scope by decision (`skills-mcn`) |
 
 These are deliberate scope statements (see [Scope decision](#scope-decision-2026-07-17)),
@@ -90,9 +90,10 @@ wrong artifact for the gain:
 - **Deterministic decisions belong in code.** Model/tier/cost routing lives in the
   `model-tier-router` (real code with tests), where the logic is encoded and verified,
   not restated as skill prose.
-- **The useful bits were already a sentence.** Proportionate verification just means
-  composing `/verify-task` and `/total-review` by risk — already in SKILL.md, no
-  subsystem needed.
+- **The useful bits were already a sentence.** Proportionate verification still means
+  composing `/verify-task` and `/total-review` by risk rather than building a subsystem.
+  The bounded addition is to preserve each planned observable outcome and its acceptance
+  evidence through work units, writer packets, reviewer packets, and parent integration.
 
 `/orchestrate` therefore stays a bounded-delegation governance skill: outcome and
 authority retained by the parent, route/cost consent, one-writer execution, independent
