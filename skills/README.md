@@ -19,6 +19,7 @@
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — so the /handoffs picker stays focused. Standalone twin of /handoffs's archive step; read-only until you confirm; archives, never deletes |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
+| model-update-check | Read-only audit of Pi routing and second-opinion consensus model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
 | name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
 | orchestrate | Safely coordinate bounded subagent delegation through explicit ownership, child-route consent, one-writer execution, independent review, and parent-owned validation; explicit invocation only |
@@ -63,6 +64,7 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 | circleci-status | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
 | confluence | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
 | jira-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
+| model-update-check | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | low |  |
 | next | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
 | start-ticket | cheap-bulk | cheapest-adequate | cap-or-ask | haiku | medium |  |
 | complete-task | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
