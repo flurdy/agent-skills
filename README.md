@@ -159,9 +159,12 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 1. Create a folder under `skills/` with a descriptive kebab-case name
 2. Add a `SKILL.md` with frontmatter and instructions (see below)
 3. Declare semantic routing metadata (`model-tier`, `model-cost-policy`, `model-metered-policy`) instead of hard-coding one provider/model ID; see [MODEL_ROUTING.md](MODEL_ROUTING.md)
-4. Add the skill to the table in [`skills/README.md`](skills/README.md)
+4. Add the skill to both tables in [`skills/README.md`](skills/README.md)
 5. Keep it focused and general-purpose
-6. Test by running `make apply` or `make apply-codex` and verifying it appears in the target skills directory
+6. Run `make validate-skills` to check metadata, catalog parity, and local references
+7. Run `make apply` or `make apply-codex` and verify it appears in the target skills directory
+
+When changing the validator itself, run `make test-validate-skills` for its fixture suite.
 
 ## Adding a new agent
 

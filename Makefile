@@ -27,10 +27,12 @@ CODEX_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
   COLLISION_MODE="$(COLLISION_MODE)" LAYERS_ORDER="$(LAYERS_ORDER)" \
   SKIP_AGENTS=1
 
-.PHONY: help clean-code list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code validate-skills test-validate-skills list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make clean-code"
+	@echo "make validate-skills"
+	@echo "make test-validate-skills"
 	@echo "make list"
 	@echo "make doctor"
 	@echo "make doctor-codex"
@@ -53,6 +55,12 @@ clean-code:
 	@command -v shellcheck >/dev/null 2>&1 || { echo "ERROR: shellcheck is required" >&2; exit 127; }
 	@find . -type f -name '*.sh' -not -path './.git/*' -exec bash -n {} \;
 	@find . -type f -name '*.sh' -not -path './.git/*' -exec shellcheck --severity=warning {} +
+
+validate-skills:
+	@python3 scripts/validate-skills.py
+
+test-validate-skills:
+	@python3 -m unittest discover -s tests -p 'test_validate_skills.py'
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

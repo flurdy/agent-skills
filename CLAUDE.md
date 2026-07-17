@@ -13,6 +13,8 @@ The active dirs hold symlinks *into this repo*, so editing files inside an exist
 skill/agent is live immediately — no re-apply needed. But **adding, renaming, or removing** a
 skill/agent dir changes the set of symlinks, so re-apply:
 
+- `make validate-skills` — check skill metadata, catalog parity, and local references
+- `make test-validate-skills` — run the validator's fixture suite after validator changes
 - `make dry-run` — preview what would change (read-only)
 - `make apply` — (re)create the symlinks; run after a new / renamed / removed unit
 - `make doctor` — check for broken or duplicate links
