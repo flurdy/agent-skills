@@ -38,6 +38,7 @@
 | review-pr | Review a pull request against the linked Jira ticket requirements |
 | second-opinion | Query independent AI CLIs for reviews, plans, bugs, or code; supports an explicitly approved, bounded OpenRouter consensus panel for high-stakes decisions |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
+| simplify-solution | Apply a lightweight common-sense YAGNI/KISS lens to find the smallest maintainable implementation before or during ordinary coding |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |
@@ -92,6 +93,7 @@ for what each tier and policy value means. Sorted by tier, cheapest first.
 | watch-rollout | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | wrap-up | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
 | clean-code | focused-coding | cheapest-adequate | cap-or-ask | sonnet | high |  |
+| simplify-solution | focused-coding | cheapest-adequate | cap-or-ask | sonnet | high |  |
 | tidy-settings | focused-coding | prefer-subscription-oauth | ask-above-standard | sonnet | high |  |
 | beads-migrate-to-dolt | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
 | contract-test | advanced-coding | prefer-subscription-oauth | ask-above-standard | opus | high |  |
