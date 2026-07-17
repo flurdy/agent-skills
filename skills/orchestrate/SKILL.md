@@ -17,9 +17,9 @@ Coordinate bounded delegated work while keeping outcome, scope, judgment,
 integration, and final validation in the parent agent. Delegation is an execution
 mechanism, not a transfer of authority.
 
-This version provides a conservative delegation workflow rather than a persistent or
-fully adaptive scheduler. See [`README.md`](README.md) for current maturity and the
-future orchestration roadmap.
+This skill is a conservative delegation workflow, not a persistent or fully adaptive
+scheduler — by decision, not as an interim step. See [`README.md`](README.md) for
+current maturity and the scope decision behind it.
 
 ## Tier guard
 

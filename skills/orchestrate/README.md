@@ -1,8 +1,9 @@
 # Orchestrate skill
 
 `/orchestrate` is the single explicit entry point for coordinating delegated work.
-Version 1 is deliberately conservative: it is a safe delegation and integration
-workflow, not yet a persistent or fully adaptive task scheduler.
+It is a safe delegation and integration workflow, and — by decision (`skills-mcn`) —
+deliberately not a persistent or adaptive task scheduler. See
+[Scope decision](#scope-decision-2026-07-17) for why the adaptive build-out was paused.
 
 ## Current scope
 
@@ -41,14 +42,14 @@ scope and acceptance
 | Independent review | Implemented |
 | Risk escalation and stopping | Implemented |
 | Dependency-aware decomposition | Implemented; compact parent-owned work graph, not adaptive scheduling |
-| Structured ongoing communication | Minimal; native progress when available, result envelope otherwise |
-| Dynamic replanning | Minimal |
-| Conflict adjudication | Minimal |
-| Evidence-led verification design | Partial |
-| Cross-child shared work state | Not implemented |
+| Structured ongoing communication | By design: native progress when available, result envelope otherwise (`skills-mcn`) |
+| Dynamic replanning | Out of scope by decision (`skills-mcn`); model-native judgment |
+| Conflict adjudication | Out of scope by decision (`skills-mcn`); model-native judgment |
+| Evidence-led verification design | Pointer only: composes `/verify-task` and `/total-review` by risk |
+| Cross-child shared work state | Out of scope by decision (`skills-mcn`) |
 
-These limitations are scope statements, not instructions to simulate unsupported
-capabilities during a run.
+These are deliberate scope statements (see [Scope decision](#scope-decision-2026-07-17)),
+not instructions to simulate unsupported capabilities during a run.
 
 ## Boundaries and ownership
 
@@ -69,28 +70,40 @@ capabilities during a run.
 - A present `/control-plane` index may provide authoritative project context, but
   orchestration must work without it and never silently rewrite it.
 
-## Roadmap
+## Scope decision (2026-07-17)
 
-Beads epic `skills-rd6`, **Evolve orchestrate into adaptive task orchestration**,
-tracks the next capability step:
+Beads epic `skills-rd6`, *Evolve orchestrate into adaptive task orchestration*, was
+**paused** (`skills-mcn`). Only its first step shipped:
 
 1. Dependency-aware task decomposition — implemented in v1.2
-2. Adaptive serial/parallel delegation strategy
-3. Child communication and handoff protocol
-4. Evidence ledger and conflict synthesis
-5. Assumption-driven replanning
-6. Proportionate verification strategy
-7. Context efficiency and reuse
 
-Related standalone work:
+The remaining steps — adaptive serial/parallel strategy, child communication protocol,
+evidence ledger, assumption-driven replanning, proportionate-verification derivation,
+context efficiency — were deferred, not because they are hard but because they are the
+wrong artifact for the gain:
+
+- **A skill is a prompt, not code.** Past a couple hundred injected lines, extra prose
+  lowers the odds the whole protocol is followed. More words describing adaptive
+  coordination do not add capability a premium reasoning model lacks — they add
+  ceremony (registers, decision records) the model may perform *instead of* doing the
+  work.
+- **Deterministic decisions belong in code.** Model/tier/cost routing lives in the
+  `model-tier-router` (real code with tests), where the logic is encoded and verified,
+  not restated as skill prose.
+- **The useful bits were already a sentence.** Proportionate verification just means
+  composing `/verify-task` and `/total-review` by risk — already in SKILL.md, no
+  subsystem needed.
+
+`/orchestrate` therefore stays a bounded-delegation governance skill: outcome and
+authority retained by the parent, route/cost consent, one-writer execution, independent
+review, escalation, and disclosed serial fallback. Any future adaptive step must be
+justified by evidence that a real coordination outcome improved — see `skills-mcn`.
+
+Related standalone work (unaffected by the pause):
 
 - `skills-88v.3` introduces the portable `focused-coding` tier and renames the
   stronger implementation class to `advanced-coding`.
 - `skills-88v.6` tracks the portable control-plane project-context pattern.
-
-Do not split these capabilities into separate user-facing orchestration commands by
-default. The intended design is one `/orchestrate` control loop that composes named
-planning, execution, routing, and verification owners.
 
 ## Evidence
 
