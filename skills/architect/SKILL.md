@@ -1,12 +1,12 @@
 ---
 name: architect
-description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces reviewable slices with observable outcomes, acceptance evidence, and conditional durable-tracking recommendations without editing code.
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
+description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed prior-art decisions, reviewable slices, acceptance evidence, and conditional tracking recommendations without editing code.
+allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: xhigh
-version: "1.4.0"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -149,12 +149,37 @@ Gather only the context needed to plan:
 3. **Existing patterns**
    - Search for similar features, APIs, migrations, tests, contracts, or components.
    - Read representative files. Prefer a few high-signal files over broad scanning.
-4. **Docs/designs**
+4. **Conditional prior-art research**
+   - Trigger this pass when the plan selects or replaces a dependency, introduces a third-party
+     integration, proposes a reusable component or abstraction, or addresses a problem likely to
+     have an established solution. Also trigger it when the user explicitly asks for buy-vs-build,
+     ecosystem options, or prior art.
+   - Skip it entirely for routine local changes whose repository pattern and implementation path
+     are already clear. Do not render a skipped-research placeholder, require a web search, or turn
+     this into a planning gate.
+   - When triggered, search in this order and stop as soon as the evidence is sufficient:
+     1. Repository code, history, dependency manifests, and nearby docs.
+     2. Capabilities, dependencies, and specialist skills already available in the current runtime.
+     3. Authoritative external sources only when the local pass leaves a material fit, support,
+        compatibility, licensing, or maintenance question unresolved.
+   - Reuse `/librarian` when it is available for open-source library internals, implementation
+     details, history, and source-backed comparisons. For package availability or public API facts,
+     use the runtime's existing search/fetch tools against official registries, vendor docs, specs,
+     or upstream source. Do not create a parallel research workflow or rely on unsourced summaries.
+   - Keep the lookup bounded to plausible candidates. For each serious candidate, record the source
+     evidence, fit, and material gaps, then recommend exactly one classification:
+     - **Adopt** — use an existing capability as-is.
+     - **Extend** — make a bounded change to the closest-fit capability.
+     - **Compose** — combine existing capabilities without introducing a new foundational solution.
+     - **Build** — add the minimum new implementation because evidenced gaps rule out the others.
+   - A **Build** recommendation must say why the inspected candidates are insufficient. Absence of a
+     search result is not evidence; narrow the claim or name the unresolved question instead.
+5. **Docs/designs**
    - If Jira or the user links to Confluence, fetch the page.
    - If Figma/design details are required, mention the needed design context and use the
      available Figma/context tooling if present in the runtime.
 
-Keep the context summary concise and cite file paths clearly.
+Keep the context summary concise and cite file paths, official URLs, or upstream source clearly.
 
 ### 4. Produce an Architecture Plan
 
@@ -181,8 +206,18 @@ Use this structure:
 ### Assumptions
 - ...
 
+### Prior-art decision
+<Include only when step 4's conditional research was triggered; otherwise omit this section entirely.>
+
+| Candidate | Source evidence | Fit / material gaps |
+|---|---|---|
+| ... | <repository path, official URL, registry entry, spec, or upstream source> | ... |
+
+- Recommendation: <Adopt|Extend|Compose|Build> — <why>
+- New implementation justification: <required for Build; otherwise omit>
+
 ### Recommended approach
-<the proposed architecture/design>
+<the proposed architecture/design, incorporating the prior-art decision when present>
 
 ### Alternatives considered
 1. <alternative> — rejected/accepted because ...
@@ -272,6 +307,8 @@ If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revi
      - Reliability, failure modes, concurrency, and performance
      - Testability, adequacy of the proposed test strategy, and whether each slice's observable
        outcome is paired with evidence capable of proving it
+     - When prior-art research was triggered, whether the candidate evidence supports the
+       Adopt/Extend/Compose/Build recommendation and justifies any new implementation
      - Whether tracking recommendations reflect independently valuable durable work, account for
        existing related items, and avoid mirroring implementation mechanics
      - Rollout, rollback, observability, and operational burden
@@ -329,6 +366,10 @@ accordingly, and explicitly state that external validation was skipped.
 - Do not invent commands for documentation-only or inherently manual acceptance; name the
   necessary source evidence or UAT flow instead.
 - Flag YAGNI: avoid introducing new abstractions unless they pay for themselves now.
+- Do not claim the ecosystem lacks a solution without bounded, source-backed research; do not run
+  that research when a routine local change already has an obvious path.
+- Prefer repository and installed-capability evidence before external lookup, and prefer official or
+  upstream evidence over commentary when external lookup is warranted.
 - Call out when the right answer is “do the simple thing” rather than architecting.
 - If requirements are unclear, list open questions and recommend the smallest discovery step.
 - End with the next concrete action the implementation agent should take.
