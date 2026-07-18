@@ -297,7 +297,7 @@ Update these active sources:
 - `agents/tracking-auditor.md` — migrate as described above.
 - `skills/model-update-check/tests/test-model-update-check.sh` — rename example tier fixtures; the implementation already treats tier names generically.
 
-Do not rewrite `plans/orchestrate-skill.md` or `plans/orchestrate-dogfood-evidence.md`; they are historical evidence. Add a short historical-taxonomy note only if readers could otherwise mistake them for current policy.
+Do not rewrite `docs/plans/orchestrate-skill.md` or `docs/plans/orchestrate-dogfood-evidence.md`; they are historical evidence. Add a short historical-taxonomy note only if readers could otherwise mistake them for current policy.
 
 ## Cross-repository/runtime prerequisite
 

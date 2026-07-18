@@ -2,12 +2,12 @@
 
 > **Status:** Implemented as the conservative delegation-governance v1. Current scope,
 > document ownership, capability maturity, and the adaptive task-orchestration roadmap
-> are maintained in [`../skills/orchestrate/README.md`](../skills/orchestrate/README.md).
+> are maintained in [`../../skills/orchestrate/README.md`](../../skills/orchestrate/README.md).
 > This file preserves the original implementation rationale and dogfood constraints.
 > **Historical taxonomy note (updated 2026-07-18):** Tier names below preserve the
 > seven-tier routing taxonomy used when this plan was implemented. Active shared skills
 > now use `economy`, `standard`, or `premium` plus independent effort. Current policy
-> lives in [`../MODEL_ROUTING.md`](../MODEL_ROUTING.md).
+> lives in [`../../MODEL_ROUTING.md`](../../MODEL_ROUTING.md).
 
 ## Planning tier
 
@@ -442,4 +442,4 @@ Use `standard-coding` for the skill implementation because it is primarily Markd
 
 ## Next concrete action
 
-Continue `skills-88v.2` using `plans/orchestrate-dogfood-evidence.md`: preserve observed-versus-fixture labels, fix policy defects exposed by review, collect separately consented low-risk Pi/Claude/Codex evidence where trusted routing permits it, and use the results to decide whether `skills-88v.3` through `.5` are justified. Do not manufacture mapped-route evidence, persist ad hoc policy, or create tracker items per child run.
+Continue `skills-88v.2` using `docs/plans/orchestrate-dogfood-evidence.md`: preserve observed-versus-fixture labels, fix policy defects exposed by review, collect separately consented low-risk Pi/Claude/Codex evidence where trusted routing permits it, and use the results to decide whether `skills-88v.3` through `.5` are justified. Do not manufacture mapped-route evidence, persist ad hoc policy, or create tracker items per child run.

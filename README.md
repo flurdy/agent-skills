@@ -51,6 +51,7 @@ Codex use their own runtime configuration and capabilities.
 
 - `skills/`: each skill lives in its own folder with a `SKILL.md`
 - `agents/`: each sub-agent is a single `*.md` file with frontmatter
+- `docs/`: repository documentation; historical and implementation plans live in [`docs/plans/`](docs/plans/)
 - Optional: `assets/`, `scripts/`, or `references/` inside a skill folder if needed
 
 ```plaintext
@@ -60,6 +61,9 @@ agent-skills/
       SKILL.md
   agents/
     my-agent.md
+  docs/
+    plans/
+      implementation-plan.md
   assemble.sh
   Makefile
 ```

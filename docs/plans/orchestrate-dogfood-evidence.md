@@ -3,7 +3,7 @@
 > **Historical taxonomy note (2026-07-18):** Tier names in this evidence log preserve
 > the routing taxonomy used during the recorded dogfood. Active shared skills now use
 > `economy`, `standard`, or `premium` plus independent effort; see
-> [`../MODEL_ROUTING.md`](../MODEL_ROUTING.md).
+> [`../../MODEL_ROUTING.md`](../../MODEL_ROUTING.md).
 
 ## Scope
 

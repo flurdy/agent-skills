@@ -109,8 +109,8 @@ Related standalone work (unaffected by the pause):
 ## Evidence
 
 Initial cross-runtime dogfood and policy corrections are recorded in
-[`../../plans/orchestrate-dogfood-evidence.md`](../../plans/orchestrate-dogfood-evidence.md).
+[`../../docs/plans/orchestrate-dogfood-evidence.md`](../../docs/plans/orchestrate-dogfood-evidence.md).
 Dependency-aware decomposition dogfood is recorded in
-[`../../plans/orchestrate-decomposition-dogfood-evidence.md`](../../plans/orchestrate-decomposition-dogfood-evidence.md).
+[`../../docs/plans/orchestrate-decomposition-dogfood-evidence.md`](../../docs/plans/orchestrate-decomposition-dogfood-evidence.md).
 The original implementation plan is
-[`../../plans/orchestrate-skill.md`](../../plans/orchestrate-skill.md).
+[`../../docs/plans/orchestrate-skill.md`](../../docs/plans/orchestrate-skill.md).
