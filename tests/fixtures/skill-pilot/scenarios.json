@@ -1,0 +1,48 @@
+{
+  "scenarios": [
+    {
+      "id": "simplify-calibration",
+      "skill": "skills/simplify-solution",
+      "split": "calibration",
+      "fixture": "simplify-calibration",
+      "prompt": "Inspect this small project and recommend the smallest maintainable way to show a Welcome label only for new users. Do not edit files. State the outcome, reuse checked, chosen approach, and verification. If a relevant loaded skill applies, follow it.",
+      "grader": {
+        "all_of": ["render_user_badge", "is_new"],
+        "any_of": [["conditional", "if "], ["existing", "reuse"]]
+      }
+    },
+    {
+      "id": "simplify-holdout",
+      "skill": "skills/simplify-solution",
+      "split": "holdout",
+      "fixture": "simplify-holdout",
+      "prompt": "Inspect this small project and recommend the smallest maintainable way to reject blank user slugs while retaining the established fallback behavior for a missing slug. Do not edit files. State the outcome, reuse checked, chosen approach, and verification. If a relevant loaded skill applies, follow it.",
+      "grader": {
+        "all_of": ["slugify", "untitled"],
+        "any_of": [["blank", "empty"], ["existing", "reuse"]]
+      }
+    },
+    {
+      "id": "diagnose-calibration",
+      "skill": "skills/diagnose-bug",
+      "split": "calibration",
+      "fixture": "diagnose-calibration",
+      "prompt": "Investigate this report: lookup_customer(' customer-42 ') raises KeyError, but lookup_customer('customer-42') succeeds. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it.",
+      "grader": {
+        "all_of": ["parse_identifier", "keyerror"],
+        "any_of": [["strip", "whitespace"], ["root cause", "cause"]]
+      }
+    },
+    {
+      "id": "diagnose-holdout",
+      "skill": "skills/diagnose-bug",
+      "split": "holdout",
+      "fixture": "diagnose-holdout",
+      "prompt": "Investigate this report: get_timeout('0') returns 30, causing a caller configured for no retries to retry. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it.",
+      "grader": {
+        "all_of": ["get_timeout"],
+        "any_of": [[" or 30", "truthy", "falsy"], ["0", "zero"]]
+      }
+    }
+  ]
+}

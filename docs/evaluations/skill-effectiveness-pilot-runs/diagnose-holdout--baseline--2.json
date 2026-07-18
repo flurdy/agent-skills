@@ -1,0 +1,57 @@
+{
+  "command": [
+    "pi",
+    "--print",
+    "--no-session",
+    "--no-context-files",
+    "--no-extensions",
+    "--no-skills",
+    "--approve",
+    "--tools",
+    "read,bash,grep,find",
+    "--model",
+    "openai-codex/gpt-5.6-luna",
+    "Investigate this report: get_timeout('0') returns 30, causing a caller configured for no retries to retry. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it."
+  ],
+  "condition": "baseline",
+  "duration_seconds": 27.443,
+  "exit_code": 0,
+  "grader": {
+    "checks": [
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "get_timeout"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          " or 30",
+          "truthy",
+          "falsy"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "0",
+          "zero"
+        ]
+      }
+    ],
+    "reason": "All deterministic checks passed",
+    "status": "passed"
+  },
+  "repetition": 2,
+  "scenario": "diagnose-holdout",
+  "schema_version": 1,
+  "skill": "skills/diagnose-bug",
+  "split": "holdout",
+  "started_at": "2026-07-18T12:56:29.534651+00:00",
+  "stderr": "",
+  "stdout": "**Status:** Confirmed in `retries.py`.\n\n- **Failure boundary:** `retries.py:4`, `return int(raw) or 30`\n- **Evidence:** `get_timeout(\"0\")`, `\"00\"`, and `\" 0 \"` all return `30`; nonzero values return themselves.\n- **Root cause:** `or 30` treats the parsed integer `0` as falsy, replacing the explicit zero configuration with the default.\n- **Uncertainty:** No caller or retry loop exists in the workspace, so downstream retry behavior cannot be independently verified. The reported contract implies zero is a valid \u201cno retries\u201d sentinel.\n- **Smallest safe next step:** Change the fallback to apply only when `raw is None`\u2014effectively return `int(raw)` after the existing `None` branch\u2014and add a regression test asserting `\"0\"` returns `0` while `None` remains `30`.\n\nNo files were edited.\n\n**Next:** Confirm that zero is intentionally the caller\u2019s no-retry sentinel before applying the one-line fix.\n"
+}

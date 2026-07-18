@@ -1,0 +1,65 @@
+{
+  "command": [
+    "pi",
+    "--print",
+    "--no-session",
+    "--no-context-files",
+    "--no-extensions",
+    "--no-skills",
+    "--approve",
+    "--tools",
+    "read,bash,grep,find",
+    "--model",
+    "openai-codex/gpt-5.6-luna",
+    "--skill",
+    "/home/ivar/Code/flurdy/agent-skills/shared/skills/diagnose-bug",
+    "Investigate this report: lookup_customer(' customer-42 ') raises KeyError, but lookup_customer('customer-42') succeeds. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it."
+  ],
+  "condition": "with_skill",
+  "duration_seconds": 60.281,
+  "exit_code": 0,
+  "grader": {
+    "checks": [
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "parse_identifier"
+        ]
+      },
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "keyerror"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "strip",
+          "whitespace"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "root cause",
+          "cause"
+        ]
+      }
+    ],
+    "reason": "All deterministic checks passed",
+    "status": "passed"
+  },
+  "repetition": 1,
+  "scenario": "diagnose-calibration",
+  "schema_version": 1,
+  "skill": "skills/diagnose-bug",
+  "split": "calibration",
+  "started_at": "2026-07-18T12:51:35.124987+00:00",
+  "stderr": "",
+  "stdout": "## Bug Diagnosis: whitespace-padded customer lookup\n\n_Checked 2026-07-18 \u00b7 Git metadata unavailable_\n\n**Status:** CONFIRMED  \n**Finding:** `parse_identifier()` lowercases identifiers but does not strip surrounding whitespace, so the lookup uses a key absent from `CUSTOMERS`.\n\n### Reproduction\n- `lookup_customer('customer-42')` \u2192 `{'name': 'Ada'}`\n- `lookup_customer(' customer-42 ')` \u2192 `KeyError`\n- Controlled comparison: uppercase input succeeds; leading/trailing whitespace fails.\n\n### Failure boundary\n`lookup_customer()` \u2192 `parse_identifier()` \u2192 `CUSTOMERS[...]`\n\n`parse_identifier(' customer-42 ')` returns the unchanged padded string. The first actual failure is dictionary access with key `' customer-42 '`; the available key is `'customer-42'`.\n\n### Evidence\n\n| ID | Observation | Source | Strength |\n|---|---|---|---|\n| E1 | `CUSTOMERS` contains only `\"customer-42\"` | `customers.py:1` | Direct |\n| E2 | Parser applies `.lower()` only | `customers.py:4-5` | Direct |\n| E3 | Canonical input succeeds; padded input raises `KeyError` | Controlled Python reproduction | Controlled |\n| E4 | Uppercase succeeds, whitespace variants fail | Controlled comparison | Controlled |\n\n### Hypotheses\n- **Incomplete whitespace normalization \u2014 supported/confirmed.**\n- Missing customer record \u2014 falsified by E1 and canonical success.\n- Case normalization defect \u2014 falsified by uppercase success.\n- Whitespace rejection may be intentional \u2014 unresolved because no API contract or documentation was present.\n\n### Fix direction\nIf the API contract requires tolerant identifiers, normalize with trimming before lookup, preserving lowercasing.\n\n### Post-fix verification\nTest canonical, uppercase, leading/trailing whitespace, and unknown identifiers.\n\n**Next:** Confirm that surrounding whitespace is intended to be ignored before authorizing the minimal parser/test change.\n"
+}

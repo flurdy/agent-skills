@@ -1,0 +1,63 @@
+{
+  "command": [
+    "pi",
+    "--print",
+    "--no-session",
+    "--no-context-files",
+    "--no-extensions",
+    "--no-skills",
+    "--approve",
+    "--tools",
+    "read,bash,grep,find",
+    "--model",
+    "openai-codex/gpt-5.6-luna",
+    "Investigate this report: lookup_customer(' customer-42 ') raises KeyError, but lookup_customer('customer-42') succeeds. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it."
+  ],
+  "condition": "baseline",
+  "duration_seconds": 21.558,
+  "exit_code": 0,
+  "grader": {
+    "checks": [
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "parse_identifier"
+        ]
+      },
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "keyerror"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "strip",
+          "whitespace"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "root cause",
+          "cause"
+        ]
+      }
+    ],
+    "reason": "All deterministic checks passed",
+    "status": "passed"
+  },
+  "repetition": 2,
+  "scenario": "diagnose-calibration",
+  "schema_version": 1,
+  "skill": "skills/diagnose-bug",
+  "split": "calibration",
+  "started_at": "2026-07-18T12:52:35.407582+00:00",
+  "stderr": "",
+  "stdout": "**Status:** Confirmed.\n\n**Evidence:**\n- `CUSTOMERS` contains only `\"customer-42\"` (`customers.py:1`).\n- `parse_identifier()` calls `.lower()` but does not trim whitespace (`customers.py:4\u20135`).\n- `' customer-42 '` therefore remains `' customer-42 '`, and the dictionary lookup at line 9 raises `KeyError`.\n- `'customer-42'` normalizes to the existing key and succeeds.\n\n**Failure boundary:** Input normalization \u2192 dictionary lookup. The failure occurs because the normalized key is absent.\n\n**Root cause:** Leading/trailing whitespace is not stripped. No remaining uncertainty from the available code.\n\n**Smallest safe next step:** If whitespace-insensitive identifiers are intended, add a regression test and change normalization to `value.strip().lower()`; otherwise reject/validate whitespace explicitly.\n\n**Next:** Confirm whether surrounding whitespace is intended to be accepted before changing normalization.\n"
+}

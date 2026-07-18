@@ -1,0 +1,57 @@
+{
+  "command": [
+    "pi",
+    "--print",
+    "--no-session",
+    "--no-context-files",
+    "--no-extensions",
+    "--no-skills",
+    "--approve",
+    "--tools",
+    "read,bash,grep,find",
+    "--model",
+    "openai-codex/gpt-5.6-luna",
+    "Investigate this report: get_timeout('0') returns 30, causing a caller configured for no retries to retry. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it."
+  ],
+  "condition": "baseline",
+  "duration_seconds": 20.7,
+  "exit_code": 0,
+  "grader": {
+    "checks": [
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "get_timeout"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          " or 30",
+          "truthy",
+          "falsy"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "0",
+          "zero"
+        ]
+      }
+    ],
+    "reason": "All deterministic checks passed",
+    "status": "passed"
+  },
+  "repetition": 3,
+  "scenario": "diagnose-holdout",
+  "schema_version": 1,
+  "skill": "skills/diagnose-bug",
+  "split": "holdout",
+  "started_at": "2026-07-18T12:57:30.421120+00:00",
+  "stderr": "",
+  "stdout": "**Status:** Confirmed.\n\n**Evidence:**\n- `retries.py:4` returns `int(raw) or 30`.\n- `int(\"0\")` evaluates to `0`; `0 or 30` evaluates to `30`.\n- Direct execution confirms `get_timeout(\"0\") == 30`; nonzero values are preserved.\n\n**Failure boundary:** `retries.py:4`, before the caller receives the configured value.\n\n**Root cause:** The fallback treats explicit `0` as missing/falsey, conflating it with `None`. No caller implementation or tests are present to assess downstream behavior.\n\n**Smallest safe next step:** Add a regression test for `get_timeout(\"0\") == 0`, then change the fallback to apply only when `raw is None` (preserving current `None` behavior).\n\n**Next:** Add the focused regression test and make the fallback `None`-specific.\n"
+}

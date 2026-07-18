@@ -1,0 +1,57 @@
+{
+  "command": [
+    "pi",
+    "--print",
+    "--no-session",
+    "--no-context-files",
+    "--no-extensions",
+    "--no-skills",
+    "--approve",
+    "--tools",
+    "read,bash,grep,find",
+    "--model",
+    "openai-codex/gpt-5.6-luna",
+    "Investigate this report: get_timeout('0') returns 30, causing a caller configured for no retries to retry. Do not edit files. Return an evidence-led diagnosis with status, failure boundary, root cause or uncertainty, and the smallest safe next step. If a relevant loaded skill applies, follow it."
+  ],
+  "condition": "baseline",
+  "duration_seconds": 32.753,
+  "exit_code": 0,
+  "grader": {
+    "checks": [
+      {
+        "kind": "all_of",
+        "passed": true,
+        "terms": [
+          "get_timeout"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          " or 30",
+          "truthy",
+          "falsy"
+        ]
+      },
+      {
+        "kind": "any_of",
+        "passed": true,
+        "terms": [
+          "0",
+          "zero"
+        ]
+      }
+    ],
+    "reason": "All deterministic checks passed",
+    "status": "passed"
+  },
+  "repetition": 1,
+  "scenario": "diagnose-holdout",
+  "schema_version": 1,
+  "skill": "skills/diagnose-bug",
+  "split": "holdout",
+  "started_at": "2026-07-18T12:55:14.943905+00:00",
+  "stderr": "",
+  "stdout": "## Status\n**Confirmed helper defect; downstream retry behavior not present in this workspace.** No files were modified.\n\n## Evidence\n`retries.py:4` contains:\n\n```python\nreturn int(raw) or 30\n```\n\nObserved behavior:\n\n- `get_timeout(None) -> 30`\n- `get_timeout(\"0\") -> 30`\n- `get_timeout(\"1\") -> 1`\n\n## Failure boundary\nThe failure occurs during timeout normalization at `retries.py:4`, before any caller receives the configured value.\n\n## Root cause\nPython treats integer `0` as falsy. Thus `int(\"0\") or 30` replaces an explicitly supplied zero with the default `30`, conflating \u201cconfigured zero\u201d with \u201cmissing/default.\u201d\n\nThe actual retry loop/caller is absent, so the reported retry consequence cannot be independently verified here.\n\n## Smallest safe next step\nAdd a regression test asserting `get_timeout(\"0\") == 0`, then change the fallback to apply only when `raw is None` (while preserving existing invalid-input behavior).\n\n**Next:** Confirm the caller\u2019s contract for zero, then add the regression test before changing the helper.\n"
+}
