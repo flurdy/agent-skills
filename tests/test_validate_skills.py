@@ -14,9 +14,7 @@ VALID_SKILL = """---
 name: alpha
 description: A valid fixture skill.
 allowed-tools: "Read,Bash(~/.claude/skills/alpha/scripts/check.sh:*)"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: medium
 version: "1.0.0"
@@ -36,9 +34,7 @@ VALID_README = """# Shared Skills
 
 ## Model routing
 
-| Skill | Tier | Cost policy | Metered policy | `model:` pin | Effort | Tier guard |
-|-------|------|-------------|----------------|--------------|--------|------------|
-| alpha | standard-workflow | prefer-subscription-oauth | ask-above-standard | sonnet | medium |  |
+See the repository model-routing policy.
 """
 
 
@@ -104,6 +100,23 @@ class ValidateSkillsTest(unittest.TestCase):
         path.write_text(VALID_SKILL.replace("name: alpha", "name: beta"), encoding="utf-8")
         self.assert_error_contains("does not match directory 'alpha'")
 
+    def test_model_tier_and_effort_are_required(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        for field in ("model-tier", "effort"):
+            with self.subTest(field=field):
+                path.write_text(
+                    "\n".join(
+                        line
+                        for line in VALID_SKILL.splitlines()
+                        if not line.startswith(f"{field}:")
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                self.assert_error_contains(
+                    f"missing required frontmatter field '{field}'"
+                )
+
     def test_missing_catalog_row_fails(self) -> None:
         readme = self.root / "skills" / "README.md"
         readme.write_text(VALID_README.replace(
@@ -111,13 +124,34 @@ class ValidateSkillsTest(unittest.TestCase):
         ), encoding="utf-8")
         self.assert_error_contains("has 0 description rows; expected exactly 1")
 
-    def test_routing_catalog_must_match_frontmatter(self) -> None:
-        readme = self.root / "skills" / "README.md"
-        readme.write_text(
-            VALID_README.replace("| alpha | standard-workflow", "| alpha | cheap-bulk"),
+    def test_old_model_tier_fails(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        old_tier = "standard" + "-workflow"
+        path.write_text(
+            VALID_SKILL.replace("model-tier: standard", f"model-tier: {old_tier}"),
             encoding="utf-8",
         )
-        self.assert_error_contains("alpha tier is 'cheap-bulk'")
+        self.assert_error_contains(f"model-tier '{old_tier}' is invalid")
+
+    def test_invalid_effort_fails(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        path.write_text(
+            VALID_SKILL.replace("effort: medium", "effort: extreme"), encoding="utf-8"
+        )
+        self.assert_error_contains("effort 'extreme' is invalid")
+
+    def test_invalid_claude_model_alias_fails(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        path.write_text(
+            VALID_SKILL.replace("model: sonnet", "model: claude-sonnet-5"),
+            encoding="utf-8",
+        )
+        self.assert_error_contains("model alias 'claude-sonnet-5' is invalid")
+
+    def test_claude_model_alias_is_optional(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        path.write_text(VALID_SKILL.replace("model: sonnet\n", ""), encoding="utf-8")
+        self.assertEqual([], self.errors())
 
     def test_broken_relative_markdown_reference_fails(self) -> None:
         path = self.root / "skills" / "alpha" / "SKILL.md"

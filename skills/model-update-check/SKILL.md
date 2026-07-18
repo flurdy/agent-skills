@@ -2,9 +2,7 @@
 name: model-update-check
 description: Read-only audit of Pi routing and second-opinion consensus model IDs against the active Pi catalog and public live model metadata; reports when Pi or configured models merit review without editing config.
 allowed-tools: "Read,Bash(~/.claude/skills/model-update-check/scripts/model-update-check.sh:*),Bash(~/.codex/skills/model-update-check/scripts/model-update-check.sh:*),Bash(~/.pi/agent/skills/model-update-check/scripts/model-update-check.sh:*),Grep,AskUserQuestion"
-model-tier: cheap-bulk
-model-cost-policy: cheapest-adequate
-model-metered-policy: cap-or-ask
+model-tier: economy
 model: haiku
 effort: low
 version: "1.0.0"

@@ -4,10 +4,10 @@
 > document ownership, capability maturity, and the adaptive task-orchestration roadmap
 > are maintained in [`../skills/orchestrate/README.md`](../skills/orchestrate/README.md).
 > This file preserves the original implementation rationale and dogfood constraints.
-> **Historical taxonomy note (2026-07-16):** `standard-coding` references below name
-> the stronger implementation class now called `advanced-coding`; the previously
-> proposed `bounded-coding` class became `focused-coding`. Current policy lives in
-> [`../MODEL_ROUTING.md`](../MODEL_ROUTING.md).
+> **Historical taxonomy note (updated 2026-07-18):** Tier names below preserve the
+> seven-tier routing taxonomy used when this plan was implemented. Active shared skills
+> now use `economy`, `standard`, or `premium` plus independent effort. Current policy
+> lives in [`../MODEL_ROUTING.md`](../MODEL_ROUTING.md).
 
 ## Planning tier
 

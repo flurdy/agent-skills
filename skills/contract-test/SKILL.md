@@ -1,9 +1,7 @@
 ---
 name: contract-test
 description: Run consumer-driven contract tests (pact-lite, no broker). Guides through generating, syncing, and verifying contracts between services. Supports both single-service and multi-service project-wide runs.
-model-tier: advanced-coding
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: premium
 model: opus
 effort: high
 version: "2.0.0"

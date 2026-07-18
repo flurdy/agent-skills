@@ -2,9 +2,7 @@
 name: handoffs-tidy
 description: Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — and archive them so the /handoffs picker stays focused. Read-only until you confirm; archives (never deletes).
 allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: low
 version: "0.3.0"

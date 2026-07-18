@@ -2,9 +2,7 @@
 name: name-session
 description: Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is actually doing — then print a paste-ready `/rename` line. Use when a session's auto-name is generic and you want it legible in the session list.
 allowed-tools: "Bash(git rev-parse:*), Bash(git branch:*), Bash(bd list:*), Bash(gh pr view:*)"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: low
 version: "0.1.0"

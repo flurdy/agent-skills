@@ -26,11 +26,10 @@ in `README.md`.
 
 ## Authoring conventions
 
-- A skill is `skills/<name>/SKILL.md`; declare semantic routing metadata
-  (`model-tier`, `model-cost-policy`, `model-metered-policy`) plus `effort`, `version`, and
-  `author` in frontmatter. Avoid hard-coding provider/model IDs in shared skills —
-  the exception is a floating `model:` alias (`haiku`/`sonnet`/`opus`) as a Claude
-  Code routing hint on non-premium skills; agents omit it (pi agents honor `model:`).
-  See `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
-- Add a row to both `skills/README.md` tables for any new skill: the description table
-  (alphabetical) and the model-routing table (grouped by tier, cheapest first).
+- A skill is `skills/<name>/SKILL.md`; declare `model-tier` (`economy`, `standard`, or
+  `premium`) plus `effort` (`low`, `medium`, `high`, or `xhigh`), `version`, and `author`
+  in frontmatter. Avoid hard-coding provider/model IDs in shared skills — the exception
+  is an optional floating `model:` alias (`haiku`/`sonnet`/`opus`) as a Claude Code
+  routing hint; agents omit it because Pi may honor `model:` in agent files. See
+  `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
+- Add one alphabetical description row to `skills/README.md` for every new skill.

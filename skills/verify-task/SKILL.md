@@ -2,9 +2,7 @@
 name: verify-task
 description: "Verify that a task's implementation meets its requirements and has adequate test coverage (happy path, sad path, edge cases). Use before /complete-task."
 allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(git:*),Grep,Glob,AskUserQuestion"
-model-tier: premium-reasoning
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: premium
 effort: xhigh
 version: "1.0.0"
 author: "flurdy"
@@ -32,7 +30,7 @@ Check that an implementation fulfills its task requirements and that tests adequ
 
 ### Tier guard
 
-This skill is `model-tier: premium-reasoning`. Before starting, check which model you are
+This skill is `model-tier: premium`. Before starting, check which model you are
 running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
 Claude Code), say so and ask via `AskUserQuestion` whether to:
 

@@ -3,9 +3,7 @@ name: orchestrate
 description: Safely coordinate bounded delegation while preserving observable outcome and acceptance-evidence pairs through one-writer execution, independent review, and parent validation. Explicit invocation only.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 disable-model-invocation: true
-model-tier: premium-reasoning
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: premium
 effort: high
 version: "1.4.0"
 author: "flurdy"
@@ -23,8 +21,8 @@ current maturity and the scope decision behind it.
 
 ## Tier guard
 
-This skill is `model-tier: premium-reasoning`. Before starting, check the current
-model. If it is below the runtime's premium tier, say so and use the runtime's native
+This skill is `model-tier: premium`. Before starting, check the current model. If it
+is below the runtime's premium tier, say so and use the runtime's native
 user-question mechanism (`AskUserQuestion` in Claude Code) to offer:
 
 - **Continue here** — accept reduced coordination depth for this run.
@@ -204,15 +202,15 @@ Use semantic classes rather than exact shared model IDs or changed-line counts:
 
 | Work shape | Assignment |
 |---|---|
-| Focused lookup or repository/document research | Read-only context/research role; cheap route only when verified. |
-| Narrow mechanical implementation | One writer on `focused-coding` only when the packet fixes scope, pattern, non-goals, acceptance, validation, and escalation. |
-| Bounded implementation or routine independent review | One focused writer or fresh reviewer on a verified focused/balanced route; otherwise inherit with disclosure and consent. |
-| Complex implementation with local design judgment | Verified `advanced-coding` child, inherited child with consent, or retain in the parent. |
+| Focused lookup or repository/document research | Read-only context/research role; an `economy` route only when verified. |
+| Narrow mechanical implementation | One writer on `standard` with `high` effort only when the packet fixes scope, pattern, non-goals, acceptance, validation, and escalation. |
+| Bounded implementation or routine independent review | One `standard`/`high` writer or fresh reviewer on a verified route; otherwise inherit with disclosure and consent. |
+| Complex implementation with local design judgment | Verified `premium`/`high` child, inherited child with consent, or retain in the parent. |
 | Architecture, unclear ownership, public contracts, destructive or security-sensitive work | Retain the decision in the premium parent; use a strongest-route advisor only when justified. |
-| Final craft judgment | Fresh reviewer, `premium-review`, or a named review skill; use extra effort only when risk warrants it. |
+| Final craft judgment | Fresh `premium`/`xhigh` reviewer or a named review skill; use extra effort only when risk warrants it. |
 
 All writes use the runtime's implementation role, named `worker` when available. Tune
-effort within a suitable class before jumping classes.
+effort within a suitable class before moving to a stronger capability tier.
 
 ## 7. Execute, communicate, and integrate
 

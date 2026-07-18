@@ -35,12 +35,12 @@ Units are symlinked directly into their active directories, coexisting with any 
 
 See [skills/README.md](skills/README.md) for the full list of available skills.
 
-## Model routing and cost policy
+## Model routing
 
-These skills are shared across Claude Code, pi.dev, and Codex. Skill front
-matter should describe the capability/cost tier a workflow needs, while exact
-provider/model IDs stay in the relevant client runtime configuration where
-possible. See [MODEL_ROUTING.md](MODEL_ROUTING.md) for the shared tier policy.
+These skills are shared across Claude Code, pi.dev, and Codex. Skill frontmatter
+declares the portable capability tier and reasoning effort a workflow needs, while
+exact providers, model IDs, fallback order, and spend controls stay in runtime-local
+configuration. See [MODEL_ROUTING.md](MODEL_ROUTING.md) for the shared policy.
 
 The portable policy lives in this repository. Pi can enforce the metadata through
 the optional [model-tier router](https://github.com/flurdy/ai-tools/tree/main/pi/model-tier-router)
@@ -158,8 +158,8 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 
 1. Create a folder under `skills/` with a descriptive kebab-case name
 2. Add a `SKILL.md` with frontmatter and instructions (see below)
-3. Declare semantic routing metadata (`model-tier`, `model-cost-policy`, `model-metered-policy`) instead of hard-coding one provider/model ID; see [MODEL_ROUTING.md](MODEL_ROUTING.md)
-4. Add the skill to both tables in [`skills/README.md`](skills/README.md)
+3. Declare a semantic `model-tier` plus `effort`; see [MODEL_ROUTING.md](MODEL_ROUTING.md). An optional floating `model:` alias is a Claude Code-only hint, not portable routing metadata
+4. Add the skill to the alphabetical description table in [`skills/README.md`](skills/README.md)
 5. Keep it focused and general-purpose
 6. Run `make validate-skills` to check metadata, catalog parity, and local references
 7. Run `make apply` or `make apply-codex` and verify it appears in the target skills directory
@@ -170,7 +170,7 @@ When changing the validator itself, run `make test-validate-skills` for its fixt
 
 Sub-agents are single markdown files with frontmatter — see the [Claude Code sub-agents docs](https://docs.claude.com/en/docs/claude-code/sub-agents) for the schema.
 
-1. Create `agents/<name>.md` with YAML frontmatter (`name`, `description`, optional `tools`, `model`, `color`) and the agent's system prompt below
+1. Create `agents/<name>.md` with YAML frontmatter (`name`, `description`, `model-tier`, `effort`, and optional `tools`/`color`) and the agent's system prompt below. Shared agents omit `model:` because Pi may honor that field directly
 2. Keep agents general-purpose; put machine- or client-specific ones in the private repo under `agents/`, `machines/<m>/agents/`, or `clients/<c>/agents/`
 3. Run `make apply` and confirm the symlink in `~/.claude/agents/`
 
@@ -178,15 +178,13 @@ Agents are not applied for Codex (`make apply-codex` sets `SKIP_AGENTS=1`).
 
 ### SKILL.md format
 
-Every skill needs a `SKILL.md` with YAML frontmatter. Unknown routing fields are intended as portable metadata for Claude Code, pi.dev, and Codex; runners that do not understand them should ignore them while the skill body still communicates the policy in plain language:
+Every skill needs a `SKILL.md` with YAML frontmatter. `model-tier` and `effort` are portable capability metadata; runners that do not understand them should ignore them. Exact providers, model IDs, billing classification, and confirmation policy remain runtime-local:
 
 ```markdown
 ---
 name: my-skill
 description: One-line description shown in skill listings
-model-tier: focused-coding
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 effort: high
 version: "1.0.0"
 author: "yourname"

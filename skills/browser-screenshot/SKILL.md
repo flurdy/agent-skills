@@ -2,9 +2,7 @@
 name: browser-screenshot
 description: Take a screenshot of the running web application for visual verification of UI/CSS changes. Use when iterating on frontend changes and need to see the result.
 allowed-tools: "Read,Bash(npm:*),Bash(npx:*),Bash(scripts/screenshot:*),Bash(ln:*)"
-model-tier: cheap-bulk
-model-cost-policy: cheapest-adequate
-model-metered-policy: cap-or-ask
+model-tier: economy
 model: haiku
 effort: medium
 version: "1.0.0"

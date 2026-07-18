@@ -1,6 +1,8 @@
-# Draft: Simplify Shared Model Routing
+# Simplify Shared Model Routing
 
-> **Status:** Proposal only — no routing metadata, runtime configuration, or validator behavior has been changed.
+> **Status:** Implemented and locally validated 2026-07-18; tracked by `ai-tools-8vx`
+> and `skills-1hp`. See
+> [`model-routing-simplification-dogfood-evidence.md`](model-routing-simplification-dogfood-evidence.md).
 > **Date:** 2026-07-18
 
 ## Decision summary

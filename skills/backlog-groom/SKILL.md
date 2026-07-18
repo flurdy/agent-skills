@@ -2,9 +2,7 @@
 name: backlog-groom
 description: "Per-bead quality audit over the open backlog — flags empty/thin descriptions, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Judges description quality, not template conformance (template-section checks are opt-in). Read-only sweep that produces a proposal report; mutations apply only on explicit approval, and the dangerous ones (close, supersede, promote, split) are confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello), calibrating to whichever tracker the project actually uses."
 allowed-tools: "Read, Grep, Glob, Task, AskUserQuestion, Bash(bd status:*), Bash(bd list:*), Bash(bd show:*), Bash(bd lint:*), Bash(bd stale:*), Bash(bd find-duplicates:*), Bash(bd children:*), Bash(bd epic:*), Bash(bd label:*), Bash(bd priority:*), Bash(bd update:*), Bash(bd note:*), Bash(bd close:*), Bash(bd supersede:*), Bash(bd dep:*), Bash(bd memories:*), mcp__jira__jira_get"
-model-tier: long-context-audit
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: medium
 version: "0.1.0"

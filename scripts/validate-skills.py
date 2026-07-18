@@ -14,12 +14,13 @@ REQUIRED_FIELDS = (
     "name",
     "description",
     "model-tier",
-    "model-cost-policy",
-    "model-metered-policy",
     "effort",
     "version",
     "author",
 )
+ALLOWED_MODEL_TIERS = ("economy", "standard", "premium")
+ALLOWED_EFFORTS = ("low", "medium", "high", "xhigh")
+ALLOWED_CLAUDE_MODELS = ("haiku", "sonnet", "opus")
 ARCHIVED_STATUSES = {"archived", "deprecated", "disabled"}
 PLACEHOLDER_LINK_PARTS = ("{", "}", "…", "<", ">", "${")
 LOCAL_SKILL_PATH = re.compile(
@@ -108,39 +109,24 @@ def normalized_header(cells: list[str]) -> list[str]:
     return [re.sub(r"\s*[¹²³⁴⁵⁶⁷⁸⁹⁰]+$", "", cell) for cell in cells]
 
 
-def catalog_rows(readme: Path) -> tuple[list[list[str]], list[list[str]]]:
+def catalog_rows(readme: Path) -> list[list[str]]:
     if not readme.is_file():
-        return [], []
+        return []
     description_rows: list[list[str]] = []
-    routing_rows: list[list[str]] = []
-    active_table = ""
+    in_description_table = False
     for line in readme.read_text(encoding="utf-8").splitlines():
         if not line.startswith("|"):
-            active_table = ""
+            in_description_table = False
             continue
         cells = split_table_row(line)
-        header = normalized_header(cells)
-        if header == ["Skill", "Description"]:
-            active_table = "description"
-            continue
-        if header == [
-            "Skill",
-            "Tier",
-            "Cost policy",
-            "Metered policy",
-            "`model:` pin",
-            "Effort",
-            "Tier guard",
-        ]:
-            active_table = "routing"
+        if normalized_header(cells) == ["Skill", "Description"]:
+            in_description_table = True
             continue
         if not cells or set(cells[0]) <= {"-", ":"}:
             continue
-        if active_table == "description" and len(cells) >= 2:
+        if in_description_table and len(cells) >= 2:
             description_rows.append(cells)
-        elif active_table == "routing" and len(cells) >= 6:
-            routing_rows.append(cells)
-    return description_rows, routing_rows
+    return description_rows
 
 
 def catalog_name(cell: str) -> str:
@@ -309,6 +295,26 @@ def validate(root: Path) -> list[str]:
         if name and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
             errors.append(f"{skill_file}: skill name '{name}' is not lowercase kebab-case")
 
+        model_tier = fields.get("model-tier", "")
+        if model_tier and model_tier not in ALLOWED_MODEL_TIERS:
+            errors.append(
+                f"{skill_file}: model-tier '{model_tier}' is invalid; expected one of "
+                f"{', '.join(ALLOWED_MODEL_TIERS)}"
+            )
+
+        effort = fields.get("effort", "")
+        if effort and effort not in ALLOWED_EFFORTS:
+            errors.append(
+                f"{skill_file}: effort '{effort}' is invalid; expected one of "
+                f"{', '.join(ALLOWED_EFFORTS)}"
+            )
+
+        if "model" in fields and fields["model"] not in ALLOWED_CLAUDE_MODELS:
+            errors.append(
+                f"{skill_file}: model alias '{fields['model']}' is invalid; expected one of "
+                f"{', '.join(ALLOWED_CLAUDE_MODELS)}"
+            )
+
         status = fields.get("status", "").lower()
         body_lines = skill_file.read_text(encoding="utf-8").splitlines()[body_start:]
         first_body_line = next((line.strip() for line in body_lines if line.strip()), "")
@@ -324,55 +330,27 @@ def validate(root: Path) -> list[str]:
         if count > 1:
             errors.append(f"duplicate frontmatter skill name '{name}' appears {count} times")
 
-    description_rows, routing_rows = catalog_rows(readme)
+    description_rows = catalog_rows(readme)
     if not readme.is_file():
         errors.append(f"{readme}: catalog not found")
         return errors
 
     description_names = [catalog_name(row[0]) for row in description_rows]
-    routing_names = [catalog_name(row[0]) for row in routing_rows]
     skill_names = sorted(metadata)
-
-    for label, catalog_names in (("description", description_names), ("model-routing", routing_names)):
-        counts = Counter(catalog_names)
-        for name in skill_names:
-            if counts[name] != 1:
-                errors.append(
-                    f"{readme}: skill '{name}' has {counts[name]} {label} rows; expected exactly 1"
-                )
-        for name in sorted(set(catalog_names) - set(skill_names)):
-            errors.append(f"{readme}: {label} row references unknown skill '{name}'")
-        for name, count in counts.items():
-            if count > 1:
-                errors.append(f"{readme}: duplicate {label} rows for skill '{name}'")
+    counts = Counter(description_names)
+    for name in skill_names:
+        if counts[name] != 1:
+            errors.append(
+                f"{readme}: skill '{name}' has {counts[name]} description rows; expected exactly 1"
+            )
+    for name in sorted(set(description_names) - set(skill_names)):
+        errors.append(f"{readme}: description row references unknown skill '{name}'")
+    for name, count in counts.items():
+        if count > 1:
+            errors.append(f"{readme}: duplicate description rows for skill '{name}'")
 
     if description_names != sorted(description_names):
         errors.append(f"{readme}: description table is not alphabetical by skill name")
-
-    routing_by_name = {
-        catalog_name(row[0]): row
-        for row in routing_rows
-        if routing_names.count(catalog_name(row[0])) == 1
-    }
-    for name, fields in metadata.items():
-        row = routing_by_name.get(name)
-        if not row or len(row) < 6:
-            continue
-        expected = (
-            fields.get("model-tier", ""),
-            fields.get("model-cost-policy", ""),
-            fields.get("model-metered-policy", ""),
-            fields.get("model", "") or "—",
-            fields.get("effort", ""),
-        )
-        actual = tuple(cell.replace("`", "").strip() for cell in row[1:6])
-        labels = ("tier", "cost policy", "metered policy", "model pin", "effort")
-        for label, expected_value, actual_value in zip(labels, expected, actual):
-            if expected_value != actual_value:
-                errors.append(
-                    f"{readme}: {name} {label} is '{actual_value}', "
-                    f"frontmatter says '{expected_value}'"
-                )
 
     markdown_files = sorted(skills_root.glob("**/*.md"))
     for markdown in markdown_files:

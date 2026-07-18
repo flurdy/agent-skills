@@ -2,9 +2,7 @@
 name: ready-to-merge
 description: Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it. Composes /pr-status, /contract-check, and /review-pr rather than reimplementing them.
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__*"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: medium
 version: "0.1.0"

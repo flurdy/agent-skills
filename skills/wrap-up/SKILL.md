@@ -2,9 +2,7 @@
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before `/exit`.
 allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: medium
 version: "0.11.0"

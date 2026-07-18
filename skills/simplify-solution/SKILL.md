@@ -2,9 +2,7 @@
 name: simplify-solution
 description: Apply a lightweight common-sense YAGNI/KISS lens to find the smallest maintainable implementation before or during ordinary coding.
 allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),AskUserQuestion"
-model-tier: focused-coding
-model-cost-policy: cheapest-adequate
-model-metered-policy: cap-or-ask
+model-tier: standard
 model: sonnet
 effort: high
 version: "1.0.0"

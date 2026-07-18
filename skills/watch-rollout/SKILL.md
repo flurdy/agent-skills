@@ -5,9 +5,7 @@ description: >
   smoke test scoped to the change (browser for UI, GET for read-only API) against staging.
   Goal-terminating loop — stops when the deploy lands and the smoke completes, or when it fails.
 allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.claude/skills/watch-rollout/scripts/run-jobs.sh:*),Bash(~/.claude/skills/watch-rollout/scripts/default-head-sha.sh:*),Bash(gh:*),Bash(git:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: medium
 version: "1.0.1"

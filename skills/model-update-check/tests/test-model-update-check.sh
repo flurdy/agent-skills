@@ -139,13 +139,13 @@ cat > "$ROUTER_CONFIG" <<'JSON'
 {
   "enabled": true,
   "tiers": {
-    "standard-workflow": {
+    "standard": {
       "candidates": [
         {"model": "openai-codex/gpt-5.6-terra", "metered": false},
         {"model": "anthropic/claude-sonnet-5", "metered": true}
       ]
     },
-    "cheap-bulk": {
+    "economy": {
       "candidates": [
         {"model": "google/gemini-3.5-flash", "metered": true},
         {"model": "custom/example-model", "metered": true}

@@ -2,9 +2,7 @@
 name: pedantic-review
 description: "Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test coverage deltas, and drift from project consensus. Principles-driven (KISS, DRY, SOLID, TDD, YAGNI, DDD) but with anti-noise guardrails. Use when you want the dreaded-but-useful senior reviewer pass before requesting human review."
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(make:*),AskUserQuestion"
-model-tier: premium-review
-model-cost-policy: deliberate-premium
-model-metered-policy: ask-above-standard
+model-tier: premium
 effort: xhigh
 version: "1.0.1"
 author: "flurdy"
@@ -90,7 +88,7 @@ If the change is genuinely small and well-crafted, the verdict is "Looks good" w
 
 ### Tier guard
 
-This skill is `model-tier: premium-review`. Before starting, check which model you are
+This skill is `model-tier: premium`. Before starting, check which model you are
 running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
 Claude Code), say so and ask via `AskUserQuestion` whether to:
 

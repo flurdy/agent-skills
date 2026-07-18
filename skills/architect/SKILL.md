@@ -2,9 +2,7 @@
 name: architect
 description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed prior-art decisions, reviewable slices, acceptance evidence, and conditional tracking recommendations without editing code.
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
-model-tier: premium-reasoning
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: premium
 effort: xhigh
 version: "1.5.0"
 author: "flurdy"
@@ -66,11 +64,11 @@ user has not specified one and the choice matters.
 | `second-opinion` | In-session draft + one vendor-independent `/second-opinion validate-plan` review | Need an independent validation pass |
 | `all-in` | Premium draft + one bounded `/second-opinion validate-plan --agent all` review batch | High-risk, cross-service, security, data migrations |
 
-This skill declares `model-tier: premium-reasoning`, but that is semantic routing metadata,
-not a mandate to use Claude/Opus. Prefer the best configured subscription/OAuth reasoning
-route first; concrete route mappings live in the shared repo's `MODEL_ROUTING.md`, not here.
-Treat Claude OAuth as a deliberate premium judgement lane, not the default for long planning
-loops. Treat OpenRouter as metered/capped fallback or experimental routing.
+This skill declares `model-tier: premium`, but that is semantic routing metadata,
+not a mandate to use a particular provider or model. Prefer the best configured premium
+route; concrete route mappings, authentication, and metered classification live in the
+runtime rather than this skill. Treat external API-backed panels as separately consented,
+bounded routes.
 
 If the user names a specific model/provider, preserve that preference in the plan metadata and,
 where possible, recommend how to run the planning session with that route. If unavailable, fall
@@ -80,7 +78,7 @@ back to the best configured reasoning tier and say so.
 
 ### Tier guard
 
-This skill is `model-tier: premium-reasoning`. Before starting, check which model you are
+This skill is `model-tier: premium`. Before starting, check which model you are
 running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
 Claude Code), say so and ask via `AskUserQuestion` whether to:
 
@@ -248,7 +246,7 @@ Use this structure:
 - ...
 
 ### Recommended implementation tier
-<focused-coding is safe | use advanced-coding | keep premium-reasoning/premium-review for implementation>
+<standard/high is safe | use premium/high | retain premium/xhigh for implementation or final review>
 ```
 
 Pair every implementation slice with both an observable outcome and the evidence that proves it.

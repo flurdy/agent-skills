@@ -2,9 +2,7 @@
 name: rebase-merged-parent
 description: Rebase after a parent PR has been merged to main. Use when your branch was stacked on another PR that has now been merged, and you need to rebase onto main while keeping only your commits.
 allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-merged-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.claude/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
-model-tier: advanced-coding
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: premium
 model: opus
 effort: high
 version: "1.1.0"

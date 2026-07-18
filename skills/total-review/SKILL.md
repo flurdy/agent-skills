@@ -2,9 +2,7 @@
 name: total-review
 description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, code-review, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on Must-Fix tier findings (failing tests, security, blocking-severity bugs), emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
-model-tier: premium-review
-model-cost-policy: deliberate-premium
-model-metered-policy: ask-above-standard
+model-tier: premium
 effort: xhigh
 version: "0.1.1"
 author: "flurdy"
@@ -71,7 +69,7 @@ Everything else — including `Should Fix` (P1) pedantic findings, generic corre
 
 ### Tier guard
 
-This skill is `model-tier: premium-review`. Before starting, check which model you are
+This skill is `model-tier: premium`. Before starting, check which model you are
 running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
 Claude Code), say so and ask via `AskUserQuestion` whether to:
 

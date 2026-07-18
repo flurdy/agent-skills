@@ -4,9 +4,7 @@ description: >
   Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence
   (fast when CI is in flight, backing off when settled) until end of day. Unattended:
   renders tables and suggested next actions, never prompts or blocks.
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 effort: medium
 version: "2.3.2"
 author: "flurdy"

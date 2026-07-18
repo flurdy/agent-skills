@@ -2,9 +2,7 @@
 name: diagnose-bug
 description: Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before any fix is proposed.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git bisect log:*),Bash(git ls-files:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(npm test:*),Bash(npm run test:*),Bash(pytest:*),Bash(cargo test:*),Bash(go test:*),Bash(./gradlew test:*),Bash(mvn test:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
-model-tier: premium-reasoning
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: premium
 effort: xhigh
 version: "1.0.0"
 author: "flurdy"
@@ -69,7 +67,7 @@ Usually skip it when:
 
 ### 0. Tier guard
 
-This skill is `model-tier: premium-reasoning`. Before starting, check the current model. If it is
+This skill is `model-tier: premium`. Before starting, check the current model. If it is
 below the runtime's premium tier, ask once whether to:
 
 - **Continue here** — accept reduced depth;

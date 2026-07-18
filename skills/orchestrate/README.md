@@ -102,8 +102,8 @@ justified by evidence that a real coordination outcome improved — see `skills-
 
 Related standalone work (unaffected by the pause):
 
-- `skills-88v.3` introduces the portable `focused-coding` tier and renames the
-  stronger implementation class to `advanced-coding`.
+- `skills-1hp` replaces the earlier seven-tier routing taxonomy with portable
+  `economy`, `standard`, and `premium` capability tiers plus independent effort.
 - `skills-88v.6` tracks the portable control-plane project-context pattern.
 
 ## Evidence

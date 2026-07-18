@@ -80,15 +80,15 @@ persist, widen, or write it back automatically.
 
 Keep runtime-local names subordinate to work shape:
 
-- **Cheap:** focused read-only lookup or reconnaissance.
-- **Workflow / `standard-workflow`:** routine coordination without implementation.
-- **Focused / `focused-coding`:** bounded implementation or routine review with
-  objective validation, one writer, and no unresolved design decisions.
-- **Advanced / `advanced-coding`:** implementation requiring meaningful local design
-  judgment, complex conflict resolution, or migration/compatibility decisions.
-- **Premium:** architecture, high-impact decisions, and final judgment retained by
-  the parent.
+- **`economy`:** focused read-only lookup or reconnaissance.
+- **`standard` / `medium`:** routine workflow coordination without implementation.
+- **`standard` / `high`:** bounded implementation or routine review with objective
+  validation, one writer, and no unresolved design decisions.
+- **`premium` / `high`:** implementation requiring meaningful local design judgment,
+  complex conflict resolution, or migration/compatibility decisions.
+- **`premium` / `xhigh`:** architecture, high-impact decisions, and final judgment
+  retained by the parent.
 
-Tune effort within a suitable class before jumping classes. If a runtime cannot map
-these classes without guessing, inherit with disclosure and unknown-route consent or
-continue serially.
+Tune effort within a suitable tier before moving to a stronger capability. If a runtime
+cannot map these classes without guessing, inherit with disclosure and unknown-route
+consent or continue serially.

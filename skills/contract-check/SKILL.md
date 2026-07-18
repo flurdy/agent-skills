@@ -2,9 +2,7 @@
 name: contract-check
 description: "Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests."
 allowed-tools: "Read,Grep,Glob,Bash(./scripts/contract-check:*),Bash(./scripts/mgit:*),Bash(ls:*),Bash(chmod:*),Skill,AskUserQuestion"
-model-tier: standard-workflow
-model-cost-policy: prefer-subscription-oauth
-model-metered-policy: ask-above-standard
+model-tier: standard
 model: sonnet
 effort: medium
 version: "1.1.0"
