@@ -1,12 +1,12 @@
 ---
 name: architect
-description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces reviewable slices paired with observable outcomes and acceptance evidence without editing code.
+description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces reviewable slices with observable outcomes, acceptance evidence, and conditional durable-tracking recommendations without editing code.
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium-reasoning
 model-cost-policy: prefer-subscription-oauth
 model-metered-policy: ask-above-standard
 effort: xhigh
-version: "1.3.0"
+version: "1.4.0"
 author: "flurdy"
 ---
 
@@ -134,6 +134,13 @@ Gather only the context needed to plan:
    - Jira key: fetch the ticket, acceptance criteria, linked Confluence/design links, and
      related issues using Jira tools or `/jira-ticket` when available.
    - Bead id: run `bd show <id>` and inspect dependencies/children when relevant.
+   - When `bd status` succeeds in the current repository, use `bd list --status=open` and
+     targeted `bd search "<keywords>" --status all` queries to check current and historical
+     work for plausible duplicates or related items. Inspect only high-signal matches; this
+     is a read-only relevance check, not a backlog audit.
+   - When Beads is unavailable, use the established Jira/Trello/other tracker when its
+     context is accessible. Otherwise retain a tracker-neutral view of independently
+     valuable durable work; do not introduce a tracker merely to satisfy the template.
 2. **Repository shape**
    - `pwd`
    - `git status --short`
@@ -187,6 +194,9 @@ Use this structure:
 | 1 | <small, reviewable slice> | <user-visible behavior or system state that becomes true> | <runnable check, named CI evidence, manual UAT flow, or source evidence + expected signal> |
 | 2 | ... | ... | ... |
 
+### Tracking recommendation
+<One compact recommendation: no additional item, one proposal marked not created, or an expanded epic/children breakdown when genuinely warranted. Include the decisive duplicate/related-work evidence.>
+
 ### Test strategy
 - Happy path:
 - Sad path:
@@ -223,6 +233,27 @@ slice blocked rather than presenting vague acceptance. The broader **Test strate
 covers cross-slice happy/sad/edge cases and project gates; it should reference rather than restate
 the per-slice evidence.
 
+Always render **Tracking recommendation**, but keep it proportionate. Choose exactly one form:
+
+- **No additional item:** the existing Jira ticket, bead, card, or request already owns the whole
+  coherent outcome. Say so in one line and cite the decisive duplicate/related-work evidence when
+  Beads is active; there is no proposal status to render.
+- **One focused item:** one independently valuable durable outcome is not already tracked. Keep it
+  to one or two lines: `Proposal — not created`, suggested title, and the essential outcome/scope.
+  Add type, priority, acceptance, or dependency detail only when it materially changes the proposal.
+- **Epic with children:** use only when several child outcomes are independently reviewable,
+  deliverable, and worth tracking even if another child changes. Label the epic and every child
+  `Proposal — not created`; give title/type/priority, scope, acceptance, and only genuine blocking
+  dependencies. Do not turn every implementation slice into a child.
+- **Tracker-neutral breakdown:** use when no tracker is established but the work genuinely needs a
+  durable multi-item shape. Keep the same outcome/dependency discipline without prescribing a
+  system.
+
+Implementation slices are delivery mechanics, not automatically tracker items. Never propose one
+item per test, review pass, commit, subagent, retry, handoff, or other ephemeral activity. If a
+proposal is useful, recommend the established creation path (`/triage`, Jira, Trello, or the
+project's tracker workflow) as a later explicit user action; the architecture run remains read-only.
+
 ### 5. External Validation, When Requested
 
 If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revision pass:
@@ -241,6 +272,8 @@ If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revi
      - Reliability, failure modes, concurrency, and performance
      - Testability, adequacy of the proposed test strategy, and whether each slice's observable
        outcome is paired with evidence capable of proving it
+     - Whether tracking recommendations reflect independently valuable durable work, account for
+       existing related items, and avoid mirroring implementation mechanics
      - Rollout, rollback, observability, and operational burden
      - YAGNI, unnecessary abstractions, and decisions still missing
 3. Invoke the tier-specific route once:
@@ -290,6 +323,8 @@ accordingly, and explicitly state that external validation was skipped.
 
 - Do not implement code changes.
 - Do not create or mutate Jira issues/beads unless the user explicitly asks after the plan.
+- Label every proposed tracker item as not created and route later creation through the established
+  triage/tracker workflow.
 - Prefer small, reversible implementation slices with observable outcomes and proportionate proof.
 - Do not invent commands for documentation-only or inherently manual acceptance; name the
   necessary source evidence or UAT flow instead.

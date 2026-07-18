@@ -2,7 +2,7 @@
 
 | Skill | Description |
 |-------|-------------|
-| architect | Architecture and implementation planning gate for complex or high-blast-radius work; pairs reviewable slices with observable outcomes and acceptance evidence without editing code |
+| architect | Architecture and implementation planning gate for complex or high-blast-radius work; pairs reviewable slices with observable outcomes, acceptance evidence, and conditional durable-tracking recommendations without editing code |
 | backlog-groom | Per-bead quality audit over the open backlog — flags vague descriptions, missing acceptance criteria, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Read-only sweep; mutations apply only on approval, destructive ones confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello) |
 | beads-check-dolt-migration | Detect whether a beads installation needs migration from classic format (SQLite/JSONL) to Dolt |
 | beads-migrate-to-dolt | Migrate a beads installation from classic format (SQLite/JSONL) to the new Dolt-based format |
