@@ -9,6 +9,8 @@ Two kinds of units are managed:
 - __Skills__ — folders with a `SKILL.md`, linked into `~/.claude/skills/` (and `~/.codex/skills/` for Codex).
 - __Agents__ — single `*.md` files defining Claude Code sub-agents, linked into `~/.claude/agents/`. Codex targets skip this repository's Claude-style Markdown agent layer; installed Codex versions may provide native multi-agent tools.
 
+Pi prompt templates are also kept in `prompts/`. They are not skills or agents, so the assembler does not install them; configure Pi to load that directory directly.
+
 ## Using the skills
 
 1. Clone this repo.
@@ -35,6 +37,27 @@ Units are symlinked directly into their active directories, coexisting with any 
 
 See [skills/README.md](skills/README.md) for the full list of available skills.
 
+## Pi prompt templates
+
+Pi expands each Markdown file in [`prompts/`](prompts/) as a slash command using its filename: for example, `about.md` becomes `/about`. Merge this property into Pi's existing global settings:
+
+```json
+{
+  "prompts": ["~/Code/flurdy/agent-skills/shared/prompts"]
+}
+```
+
+Alternatively, symlink individual templates into Pi's default prompt directory:
+
+```bash
+mkdir -p ~/.pi/agent/prompts
+ln -sfn "$PWD/prompts/about.md" ~/.pi/agent/prompts/about.md
+ln -sfn "$PWD/prompts/squash-msg.md" ~/.pi/agent/prompts/squash-msg.md
+ln -sfn "$PWD/prompts/trim-comments.md" ~/.pi/agent/prompts/trim-comments.md
+```
+
+Use one loading method, not both, to avoid duplicate command names. Keep either choice local to the user configuration; it is intentionally not a project setting that would load prompts automatically for collaborators. Restart Pi or run `/reload` after adding or changing templates.
+
 ## Model routing
 
 These skills are shared across Claude Code, pi.dev, and Codex. Skill frontmatter
@@ -51,6 +74,7 @@ Codex use their own runtime configuration and capabilities.
 
 - `skills/`: each skill lives in its own folder with a `SKILL.md`
 - `agents/`: each sub-agent is a single `*.md` file with frontmatter
+- `prompts/`: Pi prompt templates; each top-level `*.md` file becomes a `/name` command
 - `docs/`: repository documentation; historical and implementation plans live in [`docs/plans/`](docs/plans/)
 - Optional: `assets/`, `scripts/`, or `references/` inside a skill folder if needed
 
@@ -61,6 +85,8 @@ agent-skills/
       SKILL.md
   agents/
     my-agent.md
+  prompts/
+    about.md
   docs/
     plans/
       implementation-plan.md
