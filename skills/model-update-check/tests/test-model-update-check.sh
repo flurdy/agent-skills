@@ -15,7 +15,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mkdir -p "$TMP_DIR/bin" "$TMP_DIR/home"
 PI_LOG="$TMP_DIR/pi.log"
 CURL_LOG="$TMP_DIR/curl.log"
-export PI_LOG CURL_LOG
+BREW_LOG="$TMP_DIR/brew.log"
+export PI_LOG CURL_LOG BREW_LOG
 
 cat > "$TMP_DIR/bin/pi" <<'FAKE_PI'
 #!/usr/bin/env bash
@@ -41,6 +42,18 @@ MODELS
 esac
 FAKE_PI
 chmod +x "$TMP_DIR/bin/pi"
+
+cat > "$TMP_DIR/bin/brew" <<'FAKE_BREW'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$BREW_LOG"
+[[ "$1" == "info" && "$2" == "--json=v2" && "$3" == "pi-coding-agent" ]] || exit 2
+outdated="${BREW_OUTDATED:-true}"
+cat <<JSON
+{"formulae":[{"name":"pi-coding-agent","installed":[{"version":"0.80.0"}],"versions":{"stable":"0.81.0"},"outdated":$outdated}]}
+JSON
+FAKE_BREW
+chmod +x "$TMP_DIR/bin/brew"
 
 cat > "$TMP_DIR/models-dev.json" <<'JSON'
 {
@@ -193,7 +206,13 @@ jq -e '
   .sources.consensusConfig.status == "ok" and
   .sources.piCatalog.installedVersion == "0.80.0" and
   .sources.piRelease.latestVersion == "0.81.0" and
+  .sources.homebrew.status == "ok" and
+  .sources.homebrew.formula == "pi-coding-agent" and
+  .sources.homebrew.installedVersion == "0.80.0" and
+  .sources.homebrew.latestVersion == "0.81.0" and
   .piUpdateAvailable == true and
+  .piNpmUpdateAvailable == true and
+  .piHomebrewUpdateAvailable == true and
   (.configuredModels | length == 6) and
   any(.configuredModels[];
     .model == "openai-codex/gpt-5.6-terra" and
@@ -207,13 +226,25 @@ jq -e '
   any(.configuredModels[];
     .model == "openrouter/qwen/current-reasoner" and
     .piAvailable == true and .liveFound == false) and
-  any(.findings[]; .kind == "pi-update") and
+  any(.findings[]; .kind == "pi-update" and .manager == "homebrew") and
   any(.findings[]; .kind == "pi-unavailable" and .model == "openrouter/x-ai/current-critic") and
   any(.findings[]; .kind == "live-missing" and .model == "openrouter/qwen/current-reasoner") and
   (.recentOpenRouterByNamespace.qwen[0].model == "qwen/new-reasoner")
 ' <<< "$result_json" >/dev/null || fail "hybrid audit output was incorrect"
 [[ "$(wc -l < "$CURL_LOG" | tr -d '[:space:]')" -eq 3 ]] || \
   fail "hybrid mode did not make exactly three public metadata requests"
+grep -Fqx -- 'info --json=v2 pi-coding-agent' "$BREW_LOG" || \
+  fail "hybrid mode did not inspect Homebrew formula metadata"
+
+result_json="$(BREW_OUTDATED=false "${RUN_ENV[@]}" "$HELPER" "${COMMON_ARGS[@]}")"
+jq -e '
+  .sources.homebrew.status == "ok" and
+  .piNpmUpdateAvailable == true and
+  .piHomebrewUpdateAvailable == false and
+  .piUpdateAvailable == false and
+  any(.findings[]; .kind == "pi-npm-ahead-of-homebrew") and
+  all(.findings[]; .kind != "pi-update")
+' <<< "$result_json" >/dev/null || fail "Homebrew state did not override npm update availability"
 
 : > "$CURL_LOG"
 : > "$PI_LOG"
@@ -223,7 +254,10 @@ jq -e '
   .sources.modelsDev.status == "skipped" and
   .sources.openRouter.status == "skipped" and
   .sources.piRelease.status == "skipped" and
-  .piUpdateAvailable == false and
+  .sources.homebrew.status == "ok" and
+  .piUpdateAvailable == true and
+  .piNpmUpdateAvailable == false and
+  .piHomebrewUpdateAvailable == true and
   all(.configuredModels[]; .liveFound == null)
 ' <<< "$result_json" >/dev/null || fail "offline audit output was incorrect"
 [[ ! -s "$CURL_LOG" ]] || fail "offline mode invoked curl"

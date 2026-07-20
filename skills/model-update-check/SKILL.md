@@ -11,7 +11,7 @@ author: "flurdy"
 
 # Model Update Check
 
-Check whether Pi itself or model IDs in these local configurations merit updating:
+Check whether the installed Pi distribution or model IDs in these local configurations merit updating:
 
 - `~/.pi/agent/model-tier-router.json`
 - `~/.agents/second-opinion/config.json`
@@ -37,8 +37,10 @@ Resolve `scripts/model-update-check.sh` relative to this `SKILL.md` and invoke i
 ```
 
 Pass `--offline` only when the user requested it. Hybrid mode fetches public metadata from
-models.dev, OpenRouter's public model catalog, and the public npm package record. It sends no API
-keys. The helper emits JSON and degrades each source independently.
+models.dev, OpenRouter's public model catalog, and the public npm package record. When Homebrew is
+installed, it also reads local `brew info --json=v2 pi-coding-agent` metadata to determine whether
+the installed formula has an available upgrade; it does not run `brew update` or `brew upgrade`.
+It sends no API keys. The helper emits JSON and degrades each source independently.
 
 Do not replace this with ad-hoc provider API calls. In particular, do not read Pi's auth store,
 print environment variables, or send Anthropic/OpenAI/OpenRouter credentials merely to list models.
@@ -53,8 +55,12 @@ Read `sources` before interpreting models:
   staleness from the installed catalog alone.
 - `openRouter.status != "ok"` means direct OpenRouter availability/expiration evidence is unknown;
   retain models.dev as secondary evidence rather than treating silence as removal.
-- If `piUpdateAvailable` is true, recommend updating Pi and rerunning this check **before** changing
-  model IDs. Pi ships built-in model metadata, so a stale Pi release can create false config drift.
+- `homebrew.status == "ok"` is the authoritative update signal when Pi is installed from Homebrew.
+  `piHomebrewUpdateAvailable` shows whether the current local Homebrew metadata reports the formula
+  as outdated. `piNpmUpdateAvailable` is upstream-release context only in that case.
+- If `piUpdateAvailable` is true, recommend updating Pi through its installed distribution and
+  rerunning this check **before** changing model IDs. Pi ships built-in model metadata, so a stale
+  release can create false config drift.
 
 ### 3. Classify configured models
 
@@ -117,8 +123,9 @@ _Checked {generatedAt} · {hybrid|offline}_
 
 Rules for the verdict:
 
-1. `UPDATE PI FIRST` when a newer Pi release exists and any model availability/catalog question is
-   present; otherwise mention the Pi update as a separate recommendation.
+1. `UPDATE PI FIRST` when `piUpdateAvailable` is true and any model availability/catalog question is
+   present; otherwise mention the distribution-specific update as a separate recommendation. For a
+   Homebrew installation, do not treat a newer npm package as an available Homebrew upgrade.
 2. `REVIEW CONFIG` when a model is missing, unavailable, deprecated by authoritative evidence, or a
    clearly role-compatible successor merits human review.
 3. `CURRENT` when all configured IDs resolve and no evidence-backed role-compatible update is found.
