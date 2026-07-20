@@ -5,7 +5,7 @@ description: >
   the commit, then the k8s Deployment's image tag moves off its pre-push baseline and pods go
   ready — then run a read-only smoke test scoped to the change. Goal-terminating loop — stops
   when the rollout lands and the smoke completes, or when it fails.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.claude/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.claude/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.claude/skills/circleci-status/scripts/status.sh:*),Bash(git:*),Bash(gh:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git:*),Bash(gh:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -58,7 +58,7 @@ or ask — don't guess across candidates.
 Target commit: explicit sha arg, else the latest default-branch commit:
 
 ```bash
-~/.claude/skills/watch-flux-rollout/scripts/default-head-sha.sh
+~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh
 ```
 
 Fallback if the script is unavailable — two steps, never `&&`: `git fetch origin main -q`,
@@ -67,7 +67,7 @@ then `git rev-parse origin/main`.
 Capture the **pre-deploy baseline** now:
 
 ```bash
-~/.claude/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}
+~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}
 ```
 
 Emits `{context, namespace, deployment, found, ready, desired, image, tag, newestPodCreated}`.
@@ -84,7 +84,7 @@ straight to the smoke instead of watching.
 The CI leg reuses the `circleci-status` skill's script (symlinked alongside this one):
 
 ```bash
-~/.claude/skills/circleci-status/scripts/status.sh {branch}
+~/.agents/skills/circleci-status/scripts/status.sh {branch}
 ```
 
 Parse the `---CIRCLECI-STATUS---` JSON: the watch tracks the pipeline whose
@@ -116,11 +116,11 @@ scratch:
 
 ```
 /loop Watch the CircleCI+Flux rollout of {sha} on {branch} ({deployment} in {namespace}).
-Stage 1 — CI: run ~/.claude/skills/circleci-status/scripts/status.sh {branch}; parse
+Stage 1 — CI: run ~/.agents/skills/circleci-status/scripts/status.sh {branch}; parse
 ---CIRCLECI-STATUS---. If no pipeline with vcs.revision {sha} yet, or its workflows are
 still running → reschedule ~240s. If a workflow for {sha} failed → report it and stop.
 Stage 2 — rollout (only once CI is green for {sha}): run
-~/.claude/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}.
+~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}.
 Deployed when tag has moved OFF "{fromTag}" AND ready == desired. Not yet → reschedule ~240s.
 If CI has been green over ~30 min and the tag still equals "{fromTag}" → report a Flux stall
 (likely: ImagePolicy semver range excludes the new tag, or image automation interval/suspend)

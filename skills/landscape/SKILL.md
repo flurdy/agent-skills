@@ -1,7 +1,7 @@
 ---
 name: landscape
 description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
-allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/landscape/scripts/beads.sh:*), Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
+allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -36,7 +36,7 @@ Each block is independent — if one source fails, the others still render.
 
 > **MUST re-fetch on every invocation.** Each `/landscape` run MUST execute every fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `beads.sh`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
 >
-> **MUST use the dedicated helper scripts.** Never construct ad-hoc `bd …` or `git …` shell pipelines for this skill. Specifically: do NOT chain `command -v bd` probes with `bd list … && …` or `… || bd list --ready` inside a single Bash call. Always invoke `~/.claude/skills/landscape/scripts/beads.sh` instead — it handles probing, repo gating, and listing internally. Likewise, do NOT hand-walk sibling service repos with your own `for … git -C …` loop — always go through `~/.claude/skills/wrap-up/scripts/multirepo.sh` (§4b), which handles workspace detection and per-repo state. Inline chaining bypasses the per-script permission allowlist and produces noisy permission prompts.
+> **MUST use the dedicated helper scripts.** Never construct ad-hoc `bd …` or `git …` shell pipelines for this skill. Specifically: do NOT chain `command -v bd` probes with `bd list … && …` or `… || bd list --ready` inside a single Bash call. Always invoke `~/.agents/skills/landscape/scripts/beads.sh` instead — it handles probing, repo gating, and listing internally. Likewise, do NOT hand-walk sibling service repos with your own `for … git -C …` loop — always go through `~/.agents/skills/wrap-up/scripts/multirepo.sh` (§4b), which handles workspace detection and per-repo state. Inline chaining bypasses the per-script permission allowlist and produces noisy permission prompts.
 
 Render the blocks in the order listed below. Some data fetches can run in parallel at the top.
 
@@ -106,7 +106,7 @@ After the table, note whether the tickets span one sprint or multiple. Example: 
 
 **If `/landscape quick` was invoked, skip this section entirely** and add a one-line note: `_PR section skipped (quick mode). Run /pr-status for full view._`
 
-Otherwise, follow the `pr-status` skill's instructions as-is (see `~/.claude/skills/pr-status/SKILL.md`). Reuse its scripts directly — do NOT re-invoke the slash command:
+Otherwise, follow the `pr-status` skill's instructions as-is (see `~/.agents/skills/pr-status/SKILL.md`). Reuse its scripts directly — do NOT re-invoke the slash command:
 
 1. List open PRs org-wide via `gh-pr-list-open.sh`
 2. List recently closed via `gh-pr-list-closed.sh`
@@ -120,7 +120,7 @@ Head this section `### 🔀 PRs` instead of pr-status's own headings.
 Run the `beads.sh` helper. It probes for `bd`, checks for `.beads/` in the repo, and emits in-progress + ready listings as delimited sections. **Do not call `bd` directly from this skill** — always go through this script:
 
 ```bash
-~/.claude/skills/landscape/scripts/beads.sh
+~/.agents/skills/landscape/scripts/beads.sh
 ```
 
 Output sections (delimited by `---<NAME>---`):
@@ -188,7 +188,7 @@ Rendered LAST because it's the most immediate context — the branch you're sitt
 Run the `working-copy.sh` helper, which emits delimited sections for branch, dirty status, ahead/behind, last commit, and on-branch stash count:
 
 ```bash
-~/.claude/skills/landscape/scripts/working-copy.sh
+~/.agents/skills/landscape/scripts/working-copy.sh
 ```
 
 Output is grouped by `---SECTION---` markers. Parse and render from that.
@@ -222,7 +222,7 @@ Notes:
   Omit the dirty/unpushed parts that are zero (e.g. `3 modified` alone, or `2 unpushed` alone).
 - **Recent handoffs for this repo**: probe `~/.claude/handoffs/` via:
   ```bash
-  ~/.claude/skills/handoffs/scripts/list.sh --summary-only
+  ~/.agents/skills/handoffs/scripts/list.sh --summary-only
   ```
   Parse from the output:
   - `---SUMMARY---` → `current_repo_recent_live` — recent handoffs for this repo that are still live work: not superseded **and not finished** (uses the same Mon→3 / Tue→4 / else→3 weekend buffer as the closed-PR list). "Finished" here means all referenced beads are closed — a local `bd` check that runs even on this offline (`--summary-only`, no `--check-branches`) call, so a handoff whose task shipped no longer counts as a live thread to resume. Re-wraps of the same branch still collapse to one. (Merged-PR / Jira-Done detection needs the network and only applies under `/handoffs`'s `--check-branches`; landscape's offline count catches the bead-closed case.)
@@ -255,7 +255,7 @@ Notes:
 `working-copy.sh` (§4) inspects **only the cwd repo** (plus its own worktrees). In a multi-repo workspace — mgit services (`.mgit.conf`) or git submodules (`.gitmodules`) — that silently misses uncommitted/unpushed state in sibling service repos. This is the single biggest blind spot at session start: you orient on the root repo and never notice that, say, `dispatch` was left with unpushed commits last night. Roll them up:
 
 ```bash
-~/.claude/skills/wrap-up/scripts/multirepo.sh
+~/.agents/skills/wrap-up/scripts/multirepo.sh
 ```
 
 It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---REPOS---` lines:

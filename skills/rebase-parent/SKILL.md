@@ -1,7 +1,7 @@
 ---
 name: rebase-parent
 description: Rebase the current branch onto an updated parent PR branch. Use when you have stacked PRs and the parent branch has been updated (force-pushed after its own rebase or new commits added).
-allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.claude/skills/rebase-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.agents/skills/rebase-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.agents/skills/rebase-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
@@ -34,7 +34,7 @@ git branch --show-current
 Check PR base branch:
 
 ```bash
-~/.claude/skills/rebase-parent/scripts/gh-pr-base-branch.sh
+~/.agents/skills/rebase-parent/scripts/gh-pr-base-branch.sh
 ```
 
 If the script is unavailable, fall back to:
@@ -137,7 +137,7 @@ git push --force-with-lease
 If the PR base branch needs updating:
 
 ```bash
-~/.claude/skills/rebase-parent/scripts/gh-pr-edit-base.sh {parent-branch}
+~/.agents/skills/rebase-parent/scripts/gh-pr-edit-base.sh {parent-branch}
 ```
 
 If the script is unavailable, fall back to:

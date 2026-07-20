@@ -1,7 +1,7 @@
 ---
 name: circleci-status
 description: Check CircleCI build status and failed job logs for the current GitHub repository. Use when asked whether CircleCI is green, failing, pending, or when needing CircleCI job logs.
-allowed-tools: "Bash(~/.claude/skills/circleci-status/scripts/status.sh:*), Bash(~/.claude/skills/circleci-status/scripts/logs.sh:*), Bash(gh api:*), Bash(gh auth status:*), Bash(git config:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(curl:*)"
+allowed-tools: "Bash(~/.agents/skills/circleci-status/scripts/status.sh:*), Bash(~/.agents/skills/circleci-status/scripts/logs.sh:*), Bash(gh api:*), Bash(gh auth status:*), Bash(git config:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(curl:*)"
 model-tier: economy
 model: haiku
 effort: medium
@@ -45,7 +45,7 @@ Always run the helper scripts fresh; never reuse prior status output.
 For no argument, or an argument other than `logs`, run:
 
 ```bash
-~/.claude/skills/circleci-status/scripts/status.sh {optional-branch-or-ref}
+~/.agents/skills/circleci-status/scripts/status.sh {optional-branch-or-ref}
 ```
 
 Render:
@@ -69,7 +69,7 @@ If GitHub status includes CircleCI contexts with `target_url`, include links for
 For `logs` as the first argument, run:
 
 ```bash
-~/.claude/skills/circleci-status/scripts/logs.sh {optional-branch}
+~/.agents/skills/circleci-status/scripts/logs.sh {optional-branch}
 ```
 
 Render:

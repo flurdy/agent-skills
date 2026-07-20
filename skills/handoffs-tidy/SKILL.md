@@ -1,7 +1,7 @@
 ---
 name: handoffs-tidy
 description: Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — and archive them so the /handoffs picker stays focused. Read-only until you confirm; archives (never deletes).
-allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: low
@@ -43,17 +43,17 @@ ever offers candidates; it never touches a live or open-PR row.
 > **MUST use the helper scripts.** Never construct ad-hoc `ls`/`grep`/`git`/`gh`/`bd` pipelines
 > against `~/.claude/handoffs/` — they bypass the per-script permission allowlist and miss the
 > repo-matching and liveness logic. Classification and the archive flow are specified **once** in
-> `~/.claude/skills/handoffs/REFERENCE.md`; read it rather than re-deriving the rules here.
+> `~/.agents/skills/handoffs/REFERENCE.md`; read it rather than re-deriving the rules here.
 
 ### 1. Load the shared spec
 
-`Read` `~/.claude/skills/handoffs/REFERENCE.md`. It defines how to read `list.sh`'s output, classify
+`Read` `~/.agents/skills/handoffs/REFERENCE.md`. It defines how to read `list.sh`'s output, classify
 each row, and run the archive flow — the same definitions `/handoffs` uses, so the two never drift.
 
 ### 2. Run the lister with liveness
 
 ```bash
-~/.claude/skills/handoffs/scripts/list.sh --check-branches
+~/.agents/skills/handoffs/scripts/list.sh --check-branches
 ```
 
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is

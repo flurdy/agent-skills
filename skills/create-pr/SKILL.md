@@ -1,7 +1,7 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(bd:*),Bash(~/.claude/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(bd:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -91,7 +91,7 @@ git push -u origin {branch-name}
 Create the PR targeting main:
 
 ```bash
-~/.claude/skills/create-pr/scripts/gh-pr-create.sh --base main --title "{title}" --body "$(cat <<'EOF'
+~/.agents/skills/create-pr/scripts/gh-pr-create.sh --base main --title "{title}" --body "$(cat <<'EOF'
 {body}
 EOF
 )"

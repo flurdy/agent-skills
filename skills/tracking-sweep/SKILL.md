@@ -1,7 +1,7 @@
 ---
 name: tracking-sweep
 description: Portfolio-wide drift sweep across Jira, beads, and GitHub PRs. Cross-references your assigned Jira tickets, in_progress/ready beads, and recent PRs to flag status drift, orphan work, parent-moved beads, and stale items. Read-only — produces recommendations only. Use ad-hoc when you want a "where is everything" reconciliation, separate from /landscape's passive snapshot.
-allowed-tools: "Bash(git:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
+allowed-tools: "Bash(git:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -82,8 +82,8 @@ Two PR queries serve different purposes. Run both.
 Reuse `pr-status` scripts (don't re-implement). The closed-list window is **28 days** — long enough that infrequently-touched tickets aren't artificially zeroed, short enough that the orphan-detection pass stays fast:
 
 ```bash
-~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh
-~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh "" 28   # last 28 days
+~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh
+~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh "" 28   # last 28 days
 ```
 
 These return PRs across all repos in the org (the script uses `gh search prs --owner $ORG`, so e.g. `yourorg/service-a` PRs come back alongside `yourorg/monorepo`). This list feeds **orphan-PR detection** (Rule B) and the recent-PR context.
@@ -93,7 +93,7 @@ These return PRs across all repos in the org (the script uses `gh search prs --o
 The 28-day window can still miss older PRs that shipped against tickets still in flight (e.g. a PR merged 6 weeks ago for a ticket still in Code Review awaiting verification). For **every Jira ticket from step 1** (your assigned set, status != Done), do a targeted search by key — no time limit, all repos in the org:
 
 ```bash
-~/.claude/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh AB-649 AB-1107 AB-1121 ...
+~/.agents/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh AB-649 AB-1107 AB-1121 ...
 ```
 
 Pass all non-Done Jira ticket keys as arguments. The script searches each key across the org with no time limit and outputs one JSON line per key: `{"key":"AB-649","open":1,"merged":7,"prs":[...]}`. Use `open` and `merged` counts directly for the table column.

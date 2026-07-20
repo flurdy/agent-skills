@@ -1,7 +1,7 @@
 ---
 name: review-pr
 description: Review a pull request by checking the code changes, PR description, and CI status against the linked Jira ticket requirements. Produces an AC checklist and flags concerns.
-allowed-tools: "Read,Grep,Glob,Bash(~/.claude/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-checks.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git:*),mcp__jira__*,AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git:*),mcp__jira__*,AskUserQuestion"
 model-tier: premium
 effort: xhigh
 version: "1.0.0"
@@ -55,7 +55,7 @@ feedback must be surfaced **before** you form an opinion.
 If no PR number provided, resolve it first:
 
 ```bash
-~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh
+~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh
 ```
 
 If the script is unavailable, fall back to:
@@ -69,7 +69,7 @@ counts). Read the body in full — that is where the author explains intent,
 scope, and any caveats reviewers should already know about.
 
 ```bash
-~/.claude/skills/review-pr/scripts/gh-pr-view.sh {PR_NUMBER}
+~/.agents/skills/review-pr/scripts/gh-pr-view.sh {PR_NUMBER}
 ```
 
 If the script is unavailable, fall back to:
@@ -93,7 +93,7 @@ comments grouped per-file. Run it once and read the first two sections now;
 the per-file section is step 3.
 
 ```bash
-~/.claude/skills/review-pr/scripts/gh-pr-comments.sh {PR_NUMBER}
+~/.agents/skills/review-pr/scripts/gh-pr-comments.sh {PR_NUMBER}
 ```
 
 If the script is unavailable, fall back to:
@@ -151,7 +151,7 @@ verdict.
 ### 4. CI Status
 
 ```bash
-~/.claude/skills/review-pr/scripts/gh-pr-checks.sh {PR_NUMBER}
+~/.agents/skills/review-pr/scripts/gh-pr-checks.sh {PR_NUMBER}
 ```
 
 If the script is unavailable, fall back to:
@@ -194,7 +194,7 @@ Parse the description to extract:
 Now fetch the diff and read it against everything gathered above:
 
 ```bash
-~/.claude/skills/review-pr/scripts/gh-pr-diff.sh {PR_NUMBER}
+~/.agents/skills/review-pr/scripts/gh-pr-diff.sh {PR_NUMBER}
 ```
 
 If the script is unavailable, fall back to:

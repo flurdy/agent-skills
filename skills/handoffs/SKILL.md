@@ -1,7 +1,7 @@
 ---
 name: handoffs
 description: Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full (including ones whose worktree has been pruned) and summarises other repos by count. Companion to /wrap-up and /landscape.
-allowed-tools: "Bash(~/.claude/skills/handoffs/scripts/list.sh:*), Bash(~/.claude/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
+allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -44,14 +44,14 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 ### 1. Run the helper
 
 ```bash
-~/.claude/skills/handoffs/scripts/list.sh --check-branches
+~/.agents/skills/handoffs/scripts/list.sh --check-branches
 ```
 
 `--check-branches` adds branch-liveness + PR classification for current-repo handoffs. The full flag
 semantics, the 21-field `---HANDOFFS---` line format, and every field's meaning (supersede,
 branch-state, pr-state, archive-class, beads-done, deliverable-field, beads-progress, needs-review)
 are specified once in
-**`~/.claude/skills/handoffs/REFERENCE.md`** — `Read` it. Both `/handoffs` and `/handoffs-tidy` read
+**`~/.agents/skills/handoffs/REFERENCE.md`** — `Read` it. Both `/handoffs` and `/handoffs-tidy` read
 off the same definitions, so the two never drift on classification.
 
 The sections you parse here: `---CURRENT-REPO---` / `---CURRENT-REPO-DISPLAY---` (identity + label,

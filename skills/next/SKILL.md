@@ -3,7 +3,7 @@ name: next
 description: >
   Pick the next bead to work on. Shows ready tasks (no blockers), applies user
   preferences for ordering (priority, type, recency), and helps select work.
-allowed-tools: "Read,Bash(bd:*),Bash(~/.claude/skills/next/scripts/next-bd:*),Bash(~/.claude/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
+allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model-tier: economy
 model: haiku
 effort: medium
@@ -109,21 +109,15 @@ Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
 
 When invoked:
 
-1. **Get the ranked table** using the `next-bd` script (handles ready list, blocked filtering, label fetching, and ranking in one command). Always invoke it by its full install path so the command prefix is stable and allowlistable in `.claude/settings.json`. For Claude Code:
+1. **Get the ranked table** using the `next-bd` script (handles ready list, blocked filtering, label fetching, and ranking in one command). Always invoke it through the portable shared install path so the command prefix is stable and allowlistable across harnesses:
 
    ```bash
-   ~/.claude/skills/next/scripts/next-bd --in-progress
-   ```
-
-   For Codex, substitute the Codex skills path — pick one path per harness; do not combine with a conditional or env-var expansion, as compound shell expressions cannot be granted a stable permission prefix:
-
-   ```bash
-   ~/.codex/skills/next/scripts/next-bd --in-progress
+   ~/.agents/skills/next/scripts/next-bd --in-progress
    ```
 
    For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:
    ```bash
-   ~/.claude/skills/next/scripts/next-bd --in-progress --avoid-busy
+   ~/.agents/skills/next/scripts/next-bd --in-progress --avoid-busy
    ```
 
    This outputs a markdown table ranked by the priority algorithm, with labels included, blocked beads filtered out, and in-progress beads shown for awareness.
@@ -165,12 +159,12 @@ Two-step so the common case (a fresh bead with no handoff) stays cheap — no ne
 
 1. **Cheap pass (no network):**
    ```bash
-   ~/.claude/skills/handoffs/scripts/list.sh --bead <id>
+   ~/.agents/skills/handoffs/scripts/list.sh --bead <id>
    ```
    Read the `---MATCHED-HANDOFFS---` section (current-repo, supersede-filtered, newest first). **Empty → proceed straight to in_progress, say nothing.** This is the usual path.
 2. **Confirm live (only if step 1 matched):** a squash-merged branch still looks live to the cheap pass. Re-run with liveness to drop shipped/merged handoffs:
    ```bash
-   ~/.claude/skills/handoffs/scripts/list.sh --check-branches --bead <id>
+   ~/.agents/skills/handoffs/scripts/list.sh --check-branches --bead <id>
    ```
    If `---MATCHED-HANDOFFS---` is now empty, the work already shipped — **proceed silently**. Otherwise take the **newest** matched line.
 
@@ -240,7 +234,7 @@ When `/next sprint` is used, enrich each ready bead with its Jira ticket + sprin
 ### Step 1 — Fetch ranked beads as JSON
 
 ```bash
-~/.claude/skills/next/scripts/next-bd --json
+~/.agents/skills/next/scripts/next-bd --json
 ```
 
 Empty array `[]` means nothing ready — render `_No ready beads. Run /triage to add work._` and stop.

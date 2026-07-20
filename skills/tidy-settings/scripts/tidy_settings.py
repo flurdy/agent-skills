@@ -122,7 +122,7 @@ def check_ref(entry: str) -> dict | None:
     if m:
         name = m.group(1)
         candidates = [
-            os.path.expanduser(f"~/.claude/skills/{name}/SKILL.md"),
+            os.path.expanduser(f"~/.agents/skills/{name}/SKILL.md"),
             str(Path.cwd() / "skills" / name / "SKILL.md"),
             str(Path.cwd() / ".claude" / "skills" / name / "SKILL.md"),
         ]

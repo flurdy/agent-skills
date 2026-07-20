@@ -13,7 +13,7 @@ Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph
 ## §Run — invoking `list.sh`
 
 ```bash
-~/.claude/skills/handoffs/scripts/list.sh --check-branches
+~/.agents/skills/handoffs/scripts/list.sh --check-branches
 ```
 
 `--check-branches` adds branch-liveness classification (the `branch-state` field) for current-repo
@@ -212,7 +212,7 @@ described by its group:
 For the selected filenames, archive them in one call:
 
 ```bash
-~/.claude/skills/handoffs/scripts/archive.sh {file1} {file2} …
+~/.agents/skills/handoffs/scripts/archive.sh {file1} {file2} …
 ```
 
 Parse the script's `---ARCHIVED---` / `---SKIPPED---` sections and confirm:

@@ -1,7 +1,7 @@
 ---
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table, with transition-driven suggested next actions.
-allowed-tools: "Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
+allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -32,13 +32,13 @@ Re-run the fetch scripts and `date` on every invocation, even seconds after the 
 Open PRs (org-wide), one JSON object per line `{number, title, owner, repo}`:
 
 ```bash
-~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh
+~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh
 ```
 
 Recently closed PRs (3-day lookback, 4 on Tuesdays; optional second arg overrides), one JSON object per line `{number, title, owner, repo, closedAt}`:
 
 ```bash
-~/.claude/skills/pr-status/scripts/gh-pr-list-closed.sh
+~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh
 ```
 
 ### 2. Fetch PR details
@@ -46,7 +46,7 @@ Recently closed PRs (3-day lookback, 4 on Tuesdays; optional second arg override
 Group the PRs (open and closed) by `owner/repo`; one batch GraphQL call per group:
 
 ```bash
-~/.claude/skills/pr-status/scripts/gh-pr-details.sh {owner} {repo} {number1} {number2} ...
+~/.agents/skills/pr-status/scripts/gh-pr-details.sh {owner} {repo} {number1} {number2} ...
 ```
 
 Output is a JSON array, one object per PR:

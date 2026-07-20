@@ -1,7 +1,7 @@
 ---
 name: wrap-up
 description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before `/exit`.
-allowed-tools: "Bash(~/.claude/skills/wrap-up/scripts/header.sh:*), Bash(~/.claude/skills/wrap-up/scripts/activity.sh:*), Bash(~/.claude/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.claude/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.claude/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -38,14 +38,14 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 
 > **MUST re-fetch on every invocation.** Each run executes the helper scripts from scratch. Never reuse output from a prior run; state has changed since.
 >
-> **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §0 must go through `~/.claude/skills/wrap-up/scripts/header.sh`, §1 must go through `~/.claude/skills/wrap-up/scripts/activity.sh`, §3 must go through `~/.claude/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe), and §3b must go through `~/.claude/skills/wrap-up/scripts/multirepo.sh`.
+> **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §0 must go through `~/.agents/skills/wrap-up/scripts/header.sh`, §1 must go through `~/.agents/skills/wrap-up/scripts/activity.sh`, §3 must go through `~/.agents/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe), and §3b must go through `~/.agents/skills/wrap-up/scripts/multirepo.sh`.
 
 Render the sections below in order. The four helper scripts in §0, §1, §3, and §3b can run in parallel.
 
 ### 0. Header
 
 ```bash
-~/.claude/skills/wrap-up/scripts/header.sh
+~/.agents/skills/wrap-up/scripts/header.sh
 ```
 
 It emits delimited sections:
@@ -80,7 +80,7 @@ Render:
 Run the helper:
 
 ```bash
-~/.claude/skills/wrap-up/scripts/activity.sh
+~/.agents/skills/wrap-up/scripts/activity.sh
 ```
 
 It emits delimited sections:
@@ -205,7 +205,7 @@ Keep each bullet to one sentence. If the session was purely mechanical (e.g. jus
 Reuse landscape's helper (same probe — don't duplicate it here):
 
 ```bash
-~/.claude/skills/landscape/scripts/working-copy.sh
+~/.agents/skills/landscape/scripts/working-copy.sh
 ```
 
 Parse its `---BRANCH---`, `---STATUS---`, `---AHEAD-BEHIND---`, `---STASHES-ON-BRANCH---`, and `---OTHER-WORKTREES-UNSAFE---` sections.
@@ -237,7 +237,7 @@ Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSA
 The §3 probe only inspects the **cwd repo**. In a multi-repo workspace (mgit services or git submodules) that silently misses unpushed/uncommitted state in sibling repos — the single most common wrap-up blind spot. Run the roll-up:
 
 ```bash
-~/.claude/skills/wrap-up/scripts/multirepo.sh
+~/.agents/skills/wrap-up/scripts/multirepo.sh
 ```
 
 It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---REPOS---` lines:
@@ -428,7 +428,7 @@ First compute the canonical target path and the next-free path:
 - `{chosen-path}` comes from the helper:
 
 ```bash
-~/.claude/skills/wrap-up/scripts/handoff-path.sh {YYYY-MM-DD} {slug}
+~/.agents/skills/wrap-up/scripts/handoff-path.sh {YYYY-MM-DD} {slug}
 ```
 
 The helper `mkdir -p`s the handoffs dir and prints an absolute `{target-path}` when that file does not exist; otherwise it prints the first free collision suffix (`…-2.md`, `…-3.md`, …).

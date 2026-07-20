@@ -24,7 +24,7 @@ ALLOWED_CLAUDE_MODELS = ("haiku", "sonnet", "opus")
 ARCHIVED_STATUSES = {"archived", "deprecated", "disabled"}
 PLACEHOLDER_LINK_PARTS = ("{", "}", "…", "<", ">", "${")
 LOCAL_SKILL_PATH = re.compile(
-    r"(?:~/(?:\.claude/skills|\.codex/skills|\.pi/agent/skills)|\*)/"
+    r"(?:~/(?:\.agents/skills|\.claude/skills|\.codex/skills|\.pi/agent/skills)|\*)/"
     r"(?P<skill>[a-z0-9][a-z0-9-]*)/(?P<path>[^,:)\s]+)"
 )
 MARKDOWN_LINK_START = re.compile(r"!?\[[^\]]*\]\(")

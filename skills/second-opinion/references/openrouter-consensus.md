@@ -81,14 +81,13 @@ silently truncate a diff or plan.
 
 ### 2. Check configuration without a network request
 
-For Claude Code's shared installation:
+Use the portable shared installation path:
 
 ```bash
-~/.claude/skills/second-opinion/scripts/openrouter-panel.sh check --profile {panel_name}
+~/.agents/skills/second-opinion/scripts/openrouter-panel.sh check --profile {panel_name}
 ```
 
-Use the equivalent installed skill path for the active harness (for example
-`~/.codex/skills/second-opinion/...`). The check is local: it parses config, checks command/key
+The check is local: it parses config, checks command/key
 presence, and prints model identities and limits without contacting OpenRouter or exposing the key.
 If `jq` itself is unavailable, it can report only a minimal JSON error because it cannot parse the
 config.
@@ -141,7 +140,7 @@ helper reports a model error:
 
 ```bash
 status=0
-~/.claude/skills/second-opinion/scripts/openrouter-panel.sh run \
+~/.agents/skills/second-opinion/scripts/openrouter-panel.sh run \
   --confirmed \
   --profile {panel_name} \
   --profile-sha256 {profile_sha256_from_check} \

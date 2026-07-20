@@ -6,7 +6,7 @@ Codex, and other AI agents.
 
 Two kinds of units are managed:
 
-- __Skills__ — folders with a `SKILL.md`, linked into `~/.claude/skills/` (and `~/.codex/skills/` for Codex).
+- __Skills__ — folders with a `SKILL.md`, linked into the portable `~/.agents/skills/` root. Pi and Codex discover it natively; Claude Code receives per-skill aliases in `~/.claude/skills/`.
 - __Agents__ — single `*.md` files defining Claude Code sub-agents, linked into `~/.claude/agents/`. Codex targets skip this repository's Claude-style Markdown agent layer; installed Codex versions may provide native multi-agent tools.
 
 Pi prompt templates are also kept in `prompts/`. They are not skills or agents, so the assembler does not install them; configure Pi to load that directory directly.
@@ -17,21 +17,20 @@ Pi prompt templates are also kept in `prompts/`. They are not skills or agents, 
 
    `git clone https://github.com/flurdy/agent-skills.git`
 
-2. Apply the changes from the `agent-skills/` folder.
+2. Preview and apply the shared installation from the `agent-skills/` folder.
 
-   `make apply`
+   ```bash
+   make dry-run
+   make apply
+   ```
 
-   For Codex, use:
+3. Verify the installation with `make doctor`:
 
-   `make apply-codex`
+   - Canonical skills: `~/.agents/skills`
+   - Claude skill aliases: `~/.claude/skills`
+   - Claude agents: `~/.claude/agents`
 
-3. Verify units are in your active directories:
-
-   - Claude skills: `~/.claude/skills`
-   - Claude agents: `~/.claude/agents` (skipped for Codex)
-   - Codex skills:  `~/.codex/skills`
-
-Units are symlinked directly into their active directories, coexisting with any skills or agents you already have there.
+Pi and Codex discover `~/.agents/skills` natively. `make apply-codex` remains as a compatibility alias that applies the same shared skill root without touching Claude agents.
 
 ## Available Skills
 
@@ -170,10 +169,14 @@ Path to optional private repo:
 
 - `PRIVATE_REPO=/path/to/agent-skills-private`
 
-Path to skills directory:
+Path to the canonical skills directory:
 
-- Claude: `SKILLS_DIR=$HOME/.claude/skills`
-- Codex: `SKILLS_DIR=$HOME/.codex/skills`
+- `SKILLS_DIR=$HOME/.agents/skills`
+
+Compatibility and migration directories:
+
+- `CLAUDE_SKILLS_DIR=$HOME/.claude/skills` — per-skill aliases because Claude Code does not natively scan the portable root
+- `LEGACY_CODEX_SKILLS_DIR=$HOME/.codex/skills` — old managed links are removed during apply/clean; unmanaged entries are preserved
 
 Path to agents directory (Claude only):
 
@@ -192,7 +195,7 @@ and an example `.envrc.example` file if you use [direnv](https://direnv.net/).
 4. Add the skill to the alphabetical description table in [`skills/README.md`](skills/README.md)
 5. Keep it focused and general-purpose
 6. Run `make validate-skills` to check metadata, catalog parity, and local references
-7. Run `make apply` or `make apply-codex` and verify it appears in the target skills directory
+7. Run `make apply` and verify it appears in `~/.agents/skills` and through its Claude alias
 
 When changing the validator itself, run `make test-validate-skills` for its fixture suite.
 
@@ -241,7 +244,7 @@ skills/
 ---
 name: my-skill
 description: Fetch and display data from the API
-allowed-tools: "Bash(~/.claude/skills/my-skill/scripts/fetch-data.sh:*)"
+allowed-tools: "Bash(~/.agents/skills/my-skill/scripts/fetch-data.sh:*)"
 ---
 ```
 
@@ -263,24 +266,36 @@ skills/
 
 This tool is designed to coexist with skills and agents you already have:
 
-- __Apply__ creates symlinks directly in `SKILLS_DIR` and `AGENTS_DIR`, alongside existing entries
-- __Clean__ only removes symlinks that point to our repos, leaving your own skills and agents untouched
-- __Collision handling__: If a skill or agent name already exists and isn't managed by us, `apply` will error out and the pre-existing one wins. Remove it manually if you want to use the managed version instead.
+- __Apply__ creates managed links in `~/.agents/skills`, per-skill Claude aliases, and Claude agent links.
+- __Clean__ removes only repository-managed links and compatibility aliases, leaving user content untouched.
+- __Collision handling__: apply preflights every destination before mutation. An unmanaged entry with the same name causes a safe failure with the previous installation intact.
+- __Root safety__: destination roots must be real directories. The assembler refuses to traverse or replace a user-managed root symlink.
 
-After running `make apply` or `make apply-codex`, your skills folder might look like this:
+After `make apply`, the portable and Claude roots look like this:
 
 ```plaintext
-~/.claude/skills/   # or ~/.codex/skills/
-  create-pr/       -> /path/to/agent-skills/skills/create-pr       (managed symlink)
-  jira-ticket/     -> /path/to/agent-skills/skills/jira-ticket     (managed symlink)
-  rebase-main/     -> /path/to/agent-skills/skills/rebase-main     (managed symlink)
-  my-custom-skill/                                                  (your own skill)
-  another-skill/   -> /some/other/path/skill                        (your own symlink)
+~/.agents/skills/
+  create-pr/       -> /path/to/agent-skills/skills/create-pr
+  jira-ticket/     -> /path/to/agent-skills/skills/jira-ticket
+  my-custom-skill/                                            # preserved
+
+~/.claude/skills/
+  create-pr/       -> ~/.agents/skills/create-pr              # managed alias
+  jira-ticket/     -> ~/.agents/skills/jira-ticket            # managed alias
+  claude-only/                                               # preserved
 ```
+
+### Migrating existing installations
+
+`make dry-run` shows the one-time migration. `make apply` moves repository-managed skill links into `~/.agents/skills`, replaces old managed Claude links with aliases, and removes old managed links from `~/.codex/skills`. Unmanaged files, directories, and third-party symlinks remain in place.
+
+Pi already discovers `~/.agents/skills`. After `make doctor` confirms the canonical installation, remove `"~/.claude/skills"` from Pi's user-level `skills` array to avoid duplicate discovery, then restart Pi or run `/reload`. Keep unrelated configured skill paths.
+
+To roll back, check out the previous repository version and run its separate `make apply` and `make apply-codex` targets. Do not replace an existing skills root with a directory symlink unless you have manually reconciled all user-owned content.
 
 ### Cleaning up
 
-Running `make clean` will only remove the symlinks pointing to `agent-skills/` or `agent-skills-private/` — in both `~/.claude/skills/` and `~/.claude/agents/` — leaving user-owned entries untouched.
+`make clean` removes managed canonical skill links, Claude aliases, legacy managed Codex links, and managed Claude agents. User-owned entries are preserved.
 
 ## Bugs and pull requests
 

@@ -1,7 +1,7 @@
 ---
 name: ready-to-merge
 description: Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it. Composes /pr-status, /contract-check, and /review-pr rather than reimplementing them.
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.claude/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__*"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -37,7 +37,7 @@ This skill is a **synthesis layer**: it calls into `/pr-status`'s scripts, optio
 
 ```bash
 # If no number given:
-~/.claude/skills/review-pr/scripts/gh-pr-current-number.sh
+~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh
 # Fallback: gh pr view --json number --jq '.number'
 ```
 
@@ -49,15 +49,15 @@ Run these in parallel — they're independent fetches:
 
 1. **PR details** (state, mergeState, reviewDecision, checksState, approvers, threads, isDraft, base, head):
    ```bash
-   ~/.claude/skills/pr-status/scripts/gh-pr-details.sh {owner} {repo} {pr}
+   ~/.agents/skills/pr-status/scripts/gh-pr-details.sh {owner} {repo} {pr}
    ```
 2. **PR view** (title, body, additions, deletions, changedFiles, files):
    ```bash
-   ~/.claude/skills/review-pr/scripts/gh-pr-view.sh {pr}
+   ~/.agents/skills/review-pr/scripts/gh-pr-view.sh {pr}
    ```
 3. **Diff**:
    ```bash
-   ~/.claude/skills/review-pr/scripts/gh-pr-diff.sh {pr}
+   ~/.agents/skills/review-pr/scripts/gh-pr-diff.sh {pr}
    ```
 4. **Stacked children** — PRs that target THIS PR's head branch:
    ```bash
@@ -66,7 +66,7 @@ Run these in parallel — they're independent fetches:
 5. **Local working copy** — if the resolved PR matches the current branch, also:
    ```bash
    git status --porcelain
-   ~/.claude/skills/ready-to-merge/scripts/git-unpushed.sh   # unpushed commits
+   ~/.agents/skills/ready-to-merge/scripts/git-unpushed.sh   # unpushed commits
    ```
    Uncommitted/unpushed work is a hard blocker.
    Use the wrapper for the unpushed-commits check — never inline `git log @{u}..HEAD`.

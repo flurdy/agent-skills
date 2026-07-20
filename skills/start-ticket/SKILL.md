@@ -1,7 +1,7 @@
 ---
 name: start-ticket
 description: Initialize work on a Jira ticket. Creates a new branch with conventional commit prefix based on the ticket type. Use when starting work on a new ticket.
-allowed-tools: "Bash(git:*),Bash(~/.claude/skills/handoffs/scripts/list.sh:*),Read,Skill,mcp__jira__*"
+allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Read,Skill,mcp__jira__*"
 model-tier: economy
 model: haiku
 effort: medium
@@ -70,12 +70,12 @@ Two-step so the usual case (a genuinely new ticket) stays network-free:
 
 1. **Cheap pass (no network):**
    ```bash
-   ~/.claude/skills/handoffs/scripts/list.sh --ticket {TICKET-NUMBER}
+   ~/.agents/skills/handoffs/scripts/list.sh --ticket {TICKET-NUMBER}
    ```
    Read `---MATCHED-HANDOFFS---` (current-repo, supersede-filtered, newest first). **Empty → skip to step 4 and create the branch normally.** This is the usual path.
 2. **Confirm live (only if step 1 matched):**
    ```bash
-   ~/.claude/skills/handoffs/scripts/list.sh --check-branches --ticket {TICKET-NUMBER}
+   ~/.agents/skills/handoffs/scripts/list.sh --check-branches --ticket {TICKET-NUMBER}
    ```
    Still empty → the earlier work shipped; create a fresh branch (step 4). Otherwise take the **newest** matched line: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}`.
 

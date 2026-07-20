@@ -1,7 +1,7 @@
 ---
 name: tidy-settings
 description: Sort, dedupe, and audit Claude settings.json / settings.local.json files at user and project level. Flags risky permissions, broken references, glob-subsumed entries, syntax errors, and cross-file duplicates that could be promoted up the hierarchy. Mechanical fixes auto-apply, judgment calls are presented as a triage list.
-allowed-tools: "Read, Edit, Write, Bash(~/.claude/skills/tidy-settings/scripts/resolve-files.sh:*), Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
+allowed-tools: "Read, Edit, Write, Bash(~/.agents/skills/tidy-settings/scripts/resolve-files.sh:*), Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
@@ -82,7 +82,7 @@ shell for this (variable assignments and `while read` loops bypass the permissio
 trigger noisy prompts):
 
 ```bash
-~/.claude/skills/tidy-settings/scripts/resolve-files.sh
+~/.agents/skills/tidy-settings/scripts/resolve-files.sh
 ```
 
 Output is `---<ROLE>---` sections, one existing file path per line:
@@ -112,7 +112,7 @@ If there are no sibling worktrees, this degrades to exactly the old user + proje
 ### 2. Run the script
 
 ```bash
-python3 ~/.claude/skills/tidy-settings/scripts/tidy_settings.py --apply \
+python3 ~/.agents/skills/tidy-settings/scripts/tidy_settings.py --apply \
   --canonical "<canon>/settings.json" --canonical "<canon>/settings.local.json" \
   --worktree  "<wt>/.claude/settings.local.json" --worktree "<wt>/.claude/settings.json" \
   <all files including the canonical and worktree ones...>
@@ -252,7 +252,7 @@ End with a short summary:
 Applied:
   - sorted/deduped 2 files
   - removed 6 subsumed Skill(<name>) entries from ~/.claude/settings.json
-  - removed Bash(~/.claude/skills/landscape/scripts/pr-status.sh) (missing file)
+  - removed Bash(~/.agents/skills/landscape/scripts/pr-status.sh) (missing file)
   - promoted Skill(landscape) and Skill(next) to user level
   - promoted Bash(gh run watch *) from worktree zazzy → canonical (verified persisted)
 

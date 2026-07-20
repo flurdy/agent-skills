@@ -1,7 +1,7 @@
 ---
 name: reply-comments
 description: Reply to PR review comments after addressing them. Resolves conversations where changes were made. Uses polite tone for humans, terse factual responses for AI bots. IMPORTANT - Always use this skill (not raw gh api calls) when replying to PR comments, including after manually addressing review feedback.
-allowed-tools: "Read,Bash(~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
+allowed-tools: "Read,Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -27,7 +27,7 @@ Reply to PR review comments after addressing the feedback. Use this after `/revi
 If no PR number provided, get it from the current branch:
 
 ```bash
-~/.claude/skills/reply-comments/scripts/gh-pr-current-info.sh
+~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh
 ```
 
 If the script is unavailable, fall back to:
@@ -42,7 +42,7 @@ gh pr view --json number,url,title,headRepositoryOwner,headRepository \
 Get all review comments with their thread/resolution status:
 
 ```bash
-~/.claude/skills/reply-comments/scripts/gh-pr-comments.sh {owner} {repo} {pr_number}
+~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh {owner} {repo} {pr_number}
 ```
 
 If the script is unavailable, fall back to:
@@ -102,7 +102,7 @@ For comments NOT addressed (intentionally skipped):
 Reply to each comment:
 
 ```bash
-~/.claude/skills/reply-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "{reply_text}"
+~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "{reply_text}"
 ```
 
 If the script is unavailable, fall back to:
@@ -117,7 +117,7 @@ gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
 First, get the thread IDs:
 
 ```bash
-~/.claude/skills/reply-comments/scripts/gh-pr-review-threads.sh {owner} {repo} {pr_number}
+~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh {owner} {repo} {pr_number}
 ```
 
 If the script is unavailable, fall back to:
@@ -143,7 +143,7 @@ gh api graphql -f query='
 Then resolve each thread that was addressed:
 
 ```bash
-~/.claude/skills/reply-comments/scripts/gh-pr-resolve-thread.sh {thread_id}
+~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh {thread_id}
 ```
 
 If the script is unavailable, fall back to:

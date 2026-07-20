@@ -1,7 +1,7 @@
 ---
 name: token-dashboard
 description: Read-only current-session and UTC-week token telemetry dashboard for Pi, Claude Code, Codex, and optional OpenRouter management analytics.
-allowed-tools: "Read,Bash(~/.claude/skills/token-dashboard/scripts/token_dashboard.py:*),Bash(~/.codex/skills/token-dashboard/scripts/token_dashboard.py:*),AskUserQuestion"
+allowed-tools: "Read,Bash(~/.agents/skills/token-dashboard/scripts/token_dashboard.py:*),AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: low

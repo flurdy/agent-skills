@@ -1,7 +1,7 @@
 ---
 name: second-opinion
 description: Query independent AI CLIs for a second opinion; an explicit, locally configured OpenRouter consensus profile is available for high-stakes reviews.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.claude/skills/second-opinion/scripts/openrouter-panel.sh:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/second-opinion/scripts/openrouter-panel.sh:*),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium

@@ -13,7 +13,7 @@ from pathlib import Path
 VALID_SKILL = """---
 name: alpha
 description: A valid fixture skill.
-allowed-tools: "Read,Bash(~/.claude/skills/alpha/scripts/check.sh:*)"
+allowed-tools: "Read,Bash(~/.agents/skills/alpha/scripts/check.sh:*)"
 model-tier: standard
 model: sonnet
 effort: medium

@@ -1,7 +1,7 @@
 ---
 name: rebase-merged-parent
 description: Rebase after a parent PR has been merged to main. Use when your branch was stacked on another PR that has now been merged, and you need to rebase onto main while keeping only your commits.
-allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.claude/skills/rebase-merged-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.claude/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Bash(git:*),Bash(~/.agents/skills/rebase-merged-parent/scripts/gh-pr-base-branch.sh:*),Bash(~/.agents/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh:*),Bash(gh pr view:*),Bash(gh pr edit:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
@@ -34,7 +34,7 @@ Your branch was based on a parent branch (not main). That parent PR has now been
 If not provided:
 
 ```bash
-~/.claude/skills/rebase-merged-parent/scripts/gh-pr-base-branch.sh
+~/.agents/skills/rebase-merged-parent/scripts/gh-pr-base-branch.sh
 ```
 
 If the script is unavailable, fall back to:
@@ -132,7 +132,7 @@ git push --force-with-lease
 ### 10. Update PR Base to Main
 
 ```bash
-~/.claude/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh main
+~/.agents/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh main
 ```
 
 If the script is unavailable, fall back to:
