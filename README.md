@@ -9,7 +9,7 @@ Two kinds of units are managed:
 - __Skills__ — folders with a `SKILL.md`, linked into the portable `~/.agents/skills/` root. Pi and Codex discover it natively; Claude Code receives per-skill aliases in `~/.claude/skills/`.
 - __Agents__ — single `*.md` files defining Claude Code sub-agents, linked into `~/.claude/agents/`. Codex targets skip this repository's Claude-style Markdown agent layer; installed Codex versions may provide native multi-agent tools.
 
-Pi prompt templates are also kept in `prompts/`. They are not skills or agents, so the assembler does not install them; configure Pi to load that directory directly.
+Shared prompt templates for Pi and Claude Code are kept in `prompts/`. They are not skills or agents, so the assembler does not install them; configure each client manually.
 
 ## Using the skills
 
@@ -36,9 +36,13 @@ Pi and Codex discover `~/.agents/skills` natively. `make apply-codex` remains as
 
 See [skills/README.md](skills/README.md) for the full list of available skills.
 
-## Pi prompt templates
+## Prompt templates
 
-Pi expands each Markdown file in [`prompts/`](prompts/) as a slash command using its filename: for example, `about.md` becomes `/about`. Merge this property into Pi's existing global settings:
+The Markdown files in [`prompts/`](prompts/) use `$ARGUMENTS` for optional command input, a substitution supported by both Pi and Claude Code. Run them as `/about <id-or-name>`, `/squash-msg [PR-number]`, or `/trim-comments [file-or-PR]`. When an optional argument is omitted, the prompt tells the client which current context to use.
+
+### Pi
+
+Pi expands each Markdown file as a slash command using its filename: for example, `about.md` becomes `/about`. Merge this property into Pi's existing global settings:
 
 ```json
 {
@@ -55,7 +59,22 @@ ln -sfn "$PWD/prompts/squash-msg.md" ~/.pi/agent/prompts/squash-msg.md
 ln -sfn "$PWD/prompts/trim-comments.md" ~/.pi/agent/prompts/trim-comments.md
 ```
 
-Use one loading method, not both, to avoid duplicate command names. Keep either choice local to the user configuration; it is intentionally not a project setting that would load prompts automatically for collaborators. Restart Pi or run `/reload` after adding or changing templates.
+Use one Pi loading method, not both, to avoid duplicate command names. Restart Pi or run `/reload` after adding or changing templates.
+
+### Claude Code
+
+Symlink the shared templates into Claude Code's user command directory:
+
+```bash
+mkdir -p ~/.claude/commands
+ln -sfn "$PWD/prompts/about.md" ~/.claude/commands/about.md
+ln -sfn "$PWD/prompts/squash-msg.md" ~/.claude/commands/squash-msg.md
+ln -sfn "$PWD/prompts/trim-comments.md" ~/.claude/commands/trim-comments.md
+```
+
+These setup steps are intentionally manual and local to the user; `make apply` does not install prompt templates for either client. The templates only provide instructions: `/squash-msg` drafts a message for approval, and none of the commands run Git operations themselves.
+
+Codex custom-prompt installation is deferred because that feature is deprecated.
 
 ## Model routing
 
@@ -73,7 +92,7 @@ Codex use their own runtime configuration and capabilities.
 
 - `skills/`: each skill lives in its own folder with a `SKILL.md`
 - `agents/`: each sub-agent is a single `*.md` file with frontmatter
-- `prompts/`: Pi prompt templates; each top-level `*.md` file becomes a `/name` command
+- `prompts/`: shared Pi and Claude Code prompt templates; each top-level `*.md` file becomes a `/name` command
 - `docs/`: repository documentation; historical and implementation plans live in [`docs/plans/`](docs/plans/)
 - Optional: `assets/`, `scripts/`, or `references/` inside a skill folder if needed
 
