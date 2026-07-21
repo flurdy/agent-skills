@@ -1,17 +1,17 @@
 ---
 name: pr-status
-description: Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads in one table, with transition-driven suggested next actions.
-allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*)"
+description: Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion, with transition-driven suggested next actions.
+allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.11.0"
+version: "1.12.0"
 author: "flurdy"
 ---
 
 # PR Status
 
-Show enriched status for all open PRs created by you across your GitHub org: CI checks, approvals, and unresolved review threads. Also shows recently closed PRs.
+Show enriched status for all open PRs created by you across your GitHub org: CI checks, approvals, unresolved review threads, and linked Jira discussion. Also shows recently closed PRs.
 
 The GitHub org is auto-detected from the current repo's `origin` remote, or can be overridden via `PR_STATUS_ORG` env var.
 
@@ -75,7 +75,22 @@ Map `checksState` values: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PE
 
 If the batch script is unavailable, the per-PR scripts in the same directory (`gh-pr-checks.sh`, `gh-pr-reviews.sh`, `gh-pr-threads.sh`, `gh-pr-merge-state.sh`) or plain `gh pr view/checks` cover the same fields.
 
-### 3. Render as tables
+### 3. Fetch linked Jira discussion
+
+For every distinct Jira key found while rendering (open PRs: branch first, then title; recently closed PRs: title; using `/[A-Z]+-\d+/`), fetch its newest Jira comment. Include both open and recently closed PRs when they carry a ticket key; fetch each key once, even if multiple PRs use it. Calls may run in parallel:
+
+```
+mcp__jira__jira_get
+  path: /rest/api/3/issue/{key}/comment
+  queryParams:
+    orderBy: -created
+    maxResults: 1
+  jq: '{total: .total, latest: (.comments[0] // null | if . == null then null else {author: .author.displayName, accountId: .author.accountId, created: .created} end)}'
+```
+
+For a key with comments, render `💬 {total} · {latest author first name or @accountId} · {relative age}`. Render `—` for zero comments and `?` if its lookup fails. Do not show comment bodies in this status dashboard. Jira comment failures are non-fatal: render all PR data and add `_Some linked Jira discussion could not be fetched._` beneath the affected table(s).
+
+### 4. Render as tables
 
 Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local** time, 24h (`date '+%H:%M:%S'`, not `date -u`). Relative-time math against `lastPush` / `readyAt` / `closedAt` works in UTC since those are `Z`-suffixed; only the displayed timestamp is local.
 
@@ -83,8 +98,8 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 
 #### Recently closed
 
-| PR | Repo | Ticket | Title | Status | CI | Ready | Wait | Closed |
-|----|------|--------|-------|--------|----|-------|------|--------|
+| PR | Repo | Ticket | Jira 💬 | Title | Status | CI | Ready | Wait | Closed |
+|----|------|--------|---------|-------|--------|----|-------|------|--------|
 
 - **PR**: markdown link `[#123](https://github.com/{owner}/{repo}/pull/123)`
 - **Repo**: repository name
@@ -97,8 +112,8 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 
 **Open PRs** — render after closed, grouped by repo: heading `#### Open — {repo}` then a table per repo that has open PRs.
 
-| PR | Ticket | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads | LGTM |
-|----|--------|-------|--------|--------|-------|------|------|----|----------|---------|------|
+| PR | Ticket | Jira 💬 | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads | LGTM |
+|----|--------|---------|-------|--------|--------|-------|------|------|----|----------|---------|------|
 
 - **PR**: markdown link as above
 - **Ticket**: Jira ID matched against branch name first, then title, or `—`
@@ -112,13 +127,13 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 - **Threads**: `💬 N` if N > 0, else `—`
 - **LGTM**: 🚀 if not draft, `APPROVED`, CI `SUCCESS`, sync ✅, zero threads, and `mergeState` `CLEAN`; else 🚧
 
-Truncate titles: ~50 chars in the closed table, ~30 in the open table (12 columns — wide rows break Claude Code's table renderer).
+Truncate titles: ~50 chars in the closed table, ~25 in the open table (13 columns — wide rows break Claude Code's table renderer).
 
-### 4. Summarise changes
+### 5. Summarise changes
 
-After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`), or say "No changes." Render both tables in full either way — the point of repeated checks is current state at a glance.
+After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update. Otherwise say "No changes." Render both tables in full either way — the point of repeated checks is current state at a glance.
 
-### 5. Suggest next actions (transition-driven)
+### 6. Suggest next actions (transition-driven)
 
 Surface a **Suggested actions** bullet list — copy-pasteable commands for PRs that *just became* actionable this tick. Read-only: point at commands, never run them.
 
@@ -151,7 +166,7 @@ query($owner:String!,$repo:String!,$pr:Int!){
 
 If the fetch fails, fall back to the bare count (`💬 N new`).
 
-### 6. Next-tick recommendation
+### 7. Next-tick recommendation
 
 End with one cadence line for `/watch-prs` to pace from (harmless on a one-shot run):
 

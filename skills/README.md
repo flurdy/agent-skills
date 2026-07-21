@@ -20,14 +20,14 @@
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — so the /handoffs picker stays focused. Standalone twin of /handoffs's archive step; read-only until you confirm; archives, never deletes |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
-| landscape | Morning catch-up view — assigned Jira tickets, open PRs, in-progress/ready beads, and working-copy state in one glance |
+| landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | model-update-check | Read-only audit of Pi routing and second-opinion consensus model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
 | name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
 | orchestrate | Safely coordinate bounded delegation while preserving observable outcome → acceptance-evidence pairs through writer, reviewer, and parent validation; explicit invocation only |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
-| pr-status | Show enriched status of your open PRs — CI checks, approvals, and unresolved review threads |
+| pr-status | Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
 | ready-to-release | Deep release-readiness gate for a single letterbox service — CI green, contracts in sync, deploy-order prereqs, feature toggle present, unpushed work vs the live deploy. Emits a gate table and a verdict |
 | rebase-main | Rebase the current branch onto an updated main branch |

@@ -1,11 +1,11 @@
 ---
 name: landscape
-description: Morning catch-up view — assigned Jira tickets, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
+description: Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
 allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.11.0"
+version: "0.12.0"
 author: "flurdy"
 ---
 
@@ -24,7 +24,7 @@ Show a consolidated landscape of where you are and what to do next, pulling from
 
 Separate blocks, rendered from broadest context to most immediate. Order matters — the last block is the most load-bearing for "what am I doing right now":
 
-1. **📋 Jira** — tickets assigned to you, not Done (with sprint)
+1. **📋 Jira** — tickets assigned to you, not Done (with sprint and latest discussion)
 2. **🔀 PRs** — org-wide open PRs, recently closed, unresolved threads
 3. **🎯 Beads** — in-progress and top ready beads in this repo (skipped if `bd` not installed)
 4. **📍 Working copy** — current branch, uncommitted/unpushed work (plus, in a multi-repo workspace, a roll-up of sibling service repos with unsaved/unpushed state)
@@ -83,9 +83,9 @@ Render:
 ```markdown
 ### 📋 Jira — assigned to you
 
-| Key | Sprint | Type | Pri | Status | Updated | Summary |
-|-----|--------|------|-----|--------|---------|---------|
-| [AB-649](https://.../browse/AB-649) | Sprint 42 | Task | P1 | In Progress | 2h | Stabilise identity cookies |
+| Key | Sprint | Type | Pri | Status | Updated | Discussion | Summary |
+|-----|--------|------|-----|--------|---------|------------|---------|
+| [AB-649](https://.../browse/AB-649) | Sprint 42 | Task | P1 | In Progress | 2h | 💬 3 · Jane · 40m | Stabilise identity cookies |
 ```
 
 - **Key**: markdown link to the Jira issue. Use the Jira base URL from the issue's `self` field, or a site-configured base (e.g. `https://yourorg.atlassian.net/browse/{key}`).
@@ -94,6 +94,7 @@ Render:
 - **Pri**: shorten long names — `P1 Critical` → `P1`, `P2 High` → `P2`, etc.
 - **Status**: status name (In Progress / Code Review / Ready for QA / …).
 - **Updated**: relative time since `updated` (e.g. `2h`, `4d`).
+- **Discussion**: filled by the latest-discussion lookup below.
 - **Summary**: truncate to ~50 chars.
 
 If no tickets are assigned, show `_No open Jira tickets assigned to you._`
@@ -101,6 +102,31 @@ If no tickets are assigned, show `_No open Jira tickets assigned to you._`
 If the Jira API returns an error, show `_Jira unavailable: {error}_` and move on — do not fail the whole skill.
 
 After the table, note whether the tickets span one sprint or multiple. Example: `_All 6 in Sprint 42._` or `_Spans 2 sprints: Sprint 42 (4), Sprint 43 (2)._` This answers "am I focused or scattered?" at a glance.
+
+#### Latest Jira discussion
+
+After the assigned-ticket search succeeds, fetch the newest comment for **every** returned ticket. These calls may run in parallel, but do not skip tickets just because their `updated` value is old:
+
+```
+mcp__jira__jira_get
+  path: /rest/api/3/issue/{key}/comment
+  queryParams:
+    orderBy: -created
+    maxResults: 1
+  jq: '{total: .total, latest: (.comments[0] // null | if . == null then null else {author: .author.displayName, accountId: .author.accountId, created: .created} end)}'
+```
+
+Add a **Discussion** column to the assigned-ticket table:
+
+```markdown
+| Key | Sprint | Type | Pri | Status | Updated | Discussion | Summary |
+|-----|--------|------|-----|--------|---------|------------|---------|
+| [AB-649](https://.../browse/AB-649) | Sprint 42 | Task | P1 | In Progress | 2h | 💬 3 · Jane · 40m | Stabilise identity cookies |
+```
+
+- **Discussion**: `—` when `total` is zero. Otherwise show `💬 {total} · {latest author first name or @accountId} · {relative age}`. Do not render comment bodies in this compact table.
+- If a per-ticket comment request fails, show `?` for that row and append `_Some Jira discussion could not be fetched._` after the sprint note. A failed comment lookup must not hide the assigned-ticket table.
+- Keep the existing row sort; comments are awareness signals, not a reprioritisation rule.
 
 ### 2. 🔀 PRs — delegate to pr-status logic
 
