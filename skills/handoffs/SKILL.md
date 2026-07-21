@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.17.0"
+version: "0.17.1"
 author: "flurdy"
 ---
 
@@ -33,7 +33,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 ## Important — what this skill cannot do
 
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
-- It **cannot rename the session** for you. On load it prints a paste-ready `/rename {slug}` line (§5), but `/rename` is a built-in command — only you typing it triggers a rename.
+- It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
 - It **cannot pick handoffs from other repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in another repo, `cd` there and run `/handoffs` again.
 - It **never deletes** handoff files. The opt-in archive step (§3b) only *moves* superseded ones into `~/.claude/handoffs/archive/` — they stay on disk and greppable. Everything else you curate manually.
 
@@ -203,10 +203,10 @@ Then surface a paste-ready rename so the resumed session is legible in the sessi
 **Rename this session to match:**
 
 ```
-/rename {slug}
+/name {slug}
 ```
 
-(Paste it — `/rename` only fires when you run it.)
+(Paste it into Pi's command input and press Enter. In Claude Code, use `/rename {slug}` instead.)
 ```
 
 Skip the rename line only if the current session is already named for this slug.

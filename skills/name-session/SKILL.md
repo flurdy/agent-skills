@@ -1,21 +1,24 @@
 ---
 name: name-session
-description: Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is actually doing — then print a paste-ready `/rename` line. Use when a session's auto-name is generic and you want it legible in the session list.
+description: Derive a conventional session name from the branch ticket, active bead, open PR, and current work — then print the correct paste-ready rename command for the active client. Use when a session's auto-name is generic and you want it legible in the session list.
 allowed-tools: "Bash(git rev-parse:*), Bash(git branch:*), Bash(bd list:*), Bash(gh pr view:*)"
 model-tier: standard
 model: sonnet
 effort: low
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 
-# Name session — propose a conventional `/rename`
+# Name session — propose a conventional session name
 
-Build a `<scope>-<descriptive>` name from the current context and emit it as a ready-to-paste `/rename` line.
+Build a `<scope>-<descriptive>` name from the current context and emit the active client's ready-to-paste rename command.
 
-## Important — what this skill cannot do
+## Important — client command and limitation
 
-- It **cannot rename the session for you.** `/rename` is a built-in CLI command; only the user typing it triggers a rename. Slash commands emitted in model output are inert text, and there is no hook or settings mechanism for mid-session rename. So the deliverable is a single paste-ready line — you press enter.
+- It **cannot rename the session for you.** Slash commands emitted in model output are inert text; the user must enter the command in the client's command input.
+- **Pi:** use `/name {session-name}`. Never suggest `/rename` or `/settings name` in Pi.
+- **Claude Code:** use `/rename {session-name}`.
+- If the client is unknown, state both commands rather than guessing.
 
 ## Convention
 
@@ -51,23 +54,25 @@ Fail soft: any missing signal just drops to the next priority. Not in a git repo
 
 From the **current conversation**, pick the ≤4-word kebab phrase that best names what this session is for. Prefer the concrete task over the topic — `rebase-pr-status` over `maintenance`. If the session genuinely spans several unrelated things, name the dominant one; don't try to cram them all in.
 
-### 3. Emit the rename line
+### 3. Emit the rename command
 
-Render exactly:
+For Pi, render exactly:
 
 ```markdown
 **Proposed session name** — scope from {where the scope came from}, descriptive from this session:
 
 ```
-/rename {scope}-{descriptive}
+/name {scope}-{descriptive}
 ```
 
-Paste it (the rename only fires when you run it).
+Paste it into Pi's command input and press Enter.
 ```
+
+For Claude Code, substitute `/rename` for `/name`. If the client is unknown, provide both commands and label them by client.
 
 Keep the derivation note to one short clause. If you had to fall back (no ticket, no bead), say which fallback you used so the user can override.
 
 ## Notes
 
-- Pairs with `/wrap-up` and `/handoffs`, which emit the same kind of `/rename` line for end-of-session and resume respectively. This skill is the mid-session, on-demand version.
+- Pairs with `/wrap-up` and `/handoffs`, which should emit the same client-specific rename command for end-of-session and resume respectively. This skill is the mid-session, on-demand version.
 - Don't ask the user to confirm the name before printing it — printing *is* the proposal, and they can edit the line before pasting.

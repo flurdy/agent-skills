@@ -22,7 +22,7 @@
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | model-update-check | Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
-| name-session | Derive a conventional Claude Code session name from the branch ticket, active bead, open PR, and what the session is doing — prints a paste-ready `/rename` line |
+| name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
 | next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
 | orchestrate | Safely coordinate bounded delegation while preserving observable outcome → acceptance-evidence pairs through writer, reviewer, and parent validation; explicit invocation only |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |

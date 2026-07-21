@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.11.0"
+version: "0.11.1"
 author: "flurdy"
 ---
 
@@ -32,7 +32,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 ## Important — what this skill cannot do
 
 - It **cannot run `/exit`**. `/exit` is a built-in CLI command, not a model-invocable tool. After the summary renders, you exit manually.
-- It **cannot rename the Claude Code session** for you. `/rename` is a built-in command — only you typing it triggers a rename. Step 4 prints a paste-ready `/rename {slug}` line so you *can* rename before exiting, but the handoff file (step 4) remains the durable artifact you grep for tomorrow.
+- It **cannot rename the session** for you. Only you typing the command triggers a rename. Step 4 prints `/name {slug}` for Pi or `/rename {slug}` for Claude Code, but the handoff file remains the durable artifact you grep for tomorrow.
 
 ## Instructions
 
@@ -328,10 +328,10 @@ A self-contained paste that, dropped into a fresh session tomorrow, lets the nex
 **Rename this session to match:**
 
 ```
-/rename {slug}
+/name {slug}
 ```
 
-(Paste it — `/rename` is a built-in command, so it only fires when you run it. Optional; skip if the session is already named for this slug.)
+(Paste it into Pi's command input and press Enter. In Claude Code, use `/rename {slug}` instead. Optional; skip if the session is already named for this slug.)
 ```
 
 This is the explicit "what should we call this session" cue — without it, the slug is buried inside the fenced block and easy to miss.
