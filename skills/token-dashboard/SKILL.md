@@ -4,8 +4,8 @@ description: Read-only current-session and UTC-week token telemetry dashboard fo
 allowed-tools: "Read,Bash(~/.agents/skills/token-dashboard/scripts/token_dashboard.py:*),AskUserQuestion"
 model-tier: economy
 model: haiku
-effort: low
-version: "1.0.0"
+effort: medium
+version: "1.0.3"
 author: "flurdy"
 ---
 
@@ -33,8 +33,33 @@ path, and the collector remains compatible with Pi telemetry:
 /path/to/token-dashboard/scripts/token_dashboard.py --json
 ```
 
-Do not replace the collector with ad-hoc transcript reads or provider calls. Render its output as-is,
-including unavailable and partial source diagnostics. Never call this skill `/usage`.
+Do not replace the collector with ad-hoc transcript reads or provider calls. Never call this skill
+`/usage`.
+
+## Output contract
+
+The final response **must paste the collector's complete stdout verbatim** in a fenced code block.
+Do this even when the Bash tool card already contains the same output or Pi collapses earlier lines.
+Do not summarize, paraphrase, reformat, truncate, or replace stdout with a success message. Preserve
+all **Current session**, **Week**, and **Sources** rows, including unavailable and partial diagnostics.
+Use a `json` fence for `--json` and a plain-text fence otherwise. Do not alter the block itself.
+
+## Analysis contract
+
+After the verbatim block, add an **Analysis** section of two to four concise bullets (at most 120
+words total):
+
+- summarize current-session requests and recorded total; when both counters are available, identify
+  cache-read share as telemetry rather than cost;
+- identify the largest week-to-date rows whose `total` is available, without treating rows with an
+  unavailable total as zero;
+- explain partial, estimated, or unavailable data using the reported source diagnostics; and
+- mention one actionable setup issue, such as a missing OpenRouter management key, only when present.
+
+Do not call high token volume good or bad without workload context. Do not describe local telemetry as
+billing, spend, quota, or subscription allowance. Respect subset semantics: reasoning is already part
+of output where marked, and cached input may already be part of input where marked. If the harness
+requires a `Next:` line, append it after the analysis.
 
 ## Setup and source authority
 
@@ -60,10 +85,11 @@ authentication, period semantics, exactness definitions, and the prior-art decis
 
 ## Reading the report
 
-Terminal output always has **Current session**, **Week**, and **Sources** sections. Every usage row
-names its scope, source, harness, provider, model, agent, period/timezone, exactness, request count,
-and nullable token counters. Control characters in displayed model and agent values are replaced.
-Unavailable sources remain visible and do not make healthy sources fail.
+Terminal output always has **Current session**, **Week**, and **Sources** sections. Each usage section
+states its scope, period, timezone, and selection once, followed by a compact table containing source,
+harness, provider, model, agent, exactness, request count, and nullable token counters. Source status
+is tabular; complete diagnostics wrap below it. Control characters in displayed model and agent values
+are replaced. Unavailable sources remain visible and do not make healthy sources fail.
 
 JSON output uses normalized schema version `1` with:
 

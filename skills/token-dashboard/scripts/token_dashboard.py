@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import textwrap
 import unicodedata
 import urllib.error
 import urllib.request
@@ -941,27 +942,79 @@ def token_display(value: Optional[int]) -> str:
     return "unavailable" if value is None else f"{value:,}"
 
 
+def render_table(headers: list[str], rows: list[list[str]], right_aligned: set[int] | None = None) -> list[str]:
+    right_aligned = right_aligned or set()
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+
+    def render_row(row: list[str]) -> str:
+        cells = [
+            value.rjust(widths[index]) if index in right_aligned else value.ljust(widths[index])
+            for index, value in enumerate(row)
+        ]
+        return "  " + " | ".join(cells).rstrip()
+
+    return [
+        render_row(headers),
+        "  " + "-+-".join("-" * width for width in widths),
+        *(render_row(row) for row in rows),
+    ]
+
+
 def render_terminal(dashboard: dict[str, Any]) -> str:
     lines = ["Token dashboard", f"Generated {dashboard['generatedAt']}"]
+    headers = [
+        "Harness", "Source", "Provider / Model / Agent", "Exact", "Req", "Input",
+        "Output", "Cache R", "Cache W", "Reason", "Total",
+    ]
     for scope, title in (("current-session", "Current session"), ("week", "Week")):
         period = dashboard["periods"][scope]
         selection = period["selection"]["precision"]
         lines.extend(["", title, f"Period: {period['start'] or 'unavailable'} to {period['end']} | timezone UTC | selection {selection}"])
-        rows = [row for row in dashboard["usage"] if row["scope"] == scope]
-        if not rows:
+        usage_rows = [row for row in dashboard["usage"] if row["scope"] == scope]
+        if not usage_rows:
             lines.append("  No usage rows available.")
-        for row in rows:
+            continue
+        table_rows = []
+        for row in usage_rows:
             identity = "/".join(safe_identifier(value) or "unknown" for value in (row["provider"], row["model"], row["agent"]))
-            lines.append(
-                f"  harness {row['harness']} | scope {row['scope']} | period {period['start'] or 'unavailable'} to {period['end']} {period['timezone']} | "
-                f"source {row['source']} | identity {identity} | exactness {row['exactness']} | requests {token_display(row['requests'])} | "
-                f"input {token_display(row['input'])} output {token_display(row['output'])} "
-                f"cache-read {token_display(row['cacheRead'])} cache-write {token_display(row['cacheWrite'])} "
-                f"reasoning {token_display(row['reasoning'])} total {token_display(row['total'])}"
-            )
+            table_rows.append([
+                safe_text(row["harness"]) or "unknown",
+                safe_identifier(row["source"]) or "unknown",
+                identity,
+                safe_identifier(row["exactness"]) or "unknown",
+                token_display(row["requests"]),
+                token_display(row["input"]),
+                token_display(row["output"]),
+                token_display(row["cacheRead"]),
+                token_display(row["cacheWrite"]),
+                token_display(row["reasoning"]),
+                token_display(row["total"]),
+            ])
+        lines.extend(render_table(headers, table_rows, set(range(4, len(headers)))))
+
     lines.extend(["", "Sources"])
+    source_rows = [
+        [
+            safe_identifier(source["id"]) or "unknown",
+            safe_identifier(source["status"]) or "unknown",
+            safe_identifier(source["exactness"]) or "unknown",
+        ]
+        for source in dashboard["sources"]
+    ]
+    lines.extend(render_table(["Source", "Status", "Exact"], source_rows))
+    lines.append("Diagnostics:")
     for source in dashboard["sources"]:
-        lines.append(f"  {source['id']} | {source['status']} | {source['exactness']} | {safe_text(source['detail'], 300) or 'unavailable'}")
+        source_id = safe_identifier(source["id"]) or "unknown"
+        detail = safe_text(source["detail"], 300) or "unavailable"
+        lines.extend(textwrap.wrap(
+            f"{source_id}: {detail}",
+            width=120,
+            initial_indent="  ",
+            subsequent_indent="    ",
+        ))
     return "\n".join(lines) + "\n"
 
 

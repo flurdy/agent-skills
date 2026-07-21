@@ -418,6 +418,34 @@ class CliTests(unittest.TestCase):
         self.assertIn("timezone UTC", completed.stdout)
         self.assertIn("openrouter-analytics | not_configured", completed.stdout)
 
+    def test_terminal_cli_uses_compact_tables_and_complete_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            fixture = Fixture(Path(temporary))
+            fixture.line(
+                ".pi/agent/sessions/a.jsonl",
+                {"type": "session", "id": "p"},
+                pi_message("m", "2026-07-20T04:00:00Z", {
+                    "input": 2,
+                    "output": 3,
+                    "cacheRead": 4,
+                    "cacheWrite": 5,
+                    "reasoning": 1,
+                    "totalTokens": 14,
+                }),
+            )
+            env = {**os.environ, "HOME": temporary}
+            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
+                env.pop(name, None)
+            completed = subprocess.run([str(SCRIPT), "--offline"], env=env, text=True, capture_output=True, check=False, timeout=5)
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("Harness | Source", completed.stdout)
+        self.assertIn("Provider / Model / Agent", completed.stdout)
+        self.assertIn("Cache R", completed.stdout)
+        self.assertIn("Cache W", completed.stdout)
+        self.assertIn("Diagnostics:", completed.stdout)
+        self.assertIn("pi-local: Pi assistant usage collected", completed.stdout)
+        self.assertNotIn("harness Pi | scope", completed.stdout)
+
     def test_json_cli_is_normalized_and_contains_no_paths(self):
         with tempfile.TemporaryDirectory() as temporary:
             fixture = Fixture(Path(temporary))
