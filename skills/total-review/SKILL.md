@@ -4,7 +4,7 @@ description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, cod
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "0.1.1"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -201,9 +201,9 @@ If `/security-review` returns clean, continue.
 
 If `--skip-external` is set, jump to Phase 9.
 
-Use the lowest responsible independent route first. Prefer Codex/OpenAI OAuth where configured.
-Do not use Claude or OpenRouter as an unbounded default loop; if the selected route is metered,
-keep the timeout/scope small and state that it is a deliberate external pass.
+Use the lowest responsible independent route first. Let `peer` choose a provider independent from
+the current session. Do not use any route or OpenRouter as an unbounded default loop; if the selected
+route is metered, keep the timeout/scope small and state that it is a deliberate external pass.
 
 First, check whether the scope has a reviewable PR:
 
@@ -214,16 +214,18 @@ gh pr view --json number 2>/dev/null
 Branch with an open PR → invoke the review mode:
 
 ```
-Skill /second-opinion review-pr --agent codex
+Skill /second-opinion review-pr --agent peer
 ```
 
 No PR (test run on `main`, unpublished branch, `--uncommitted` scope) → fall back to ask mode, feeding the diff as the question body:
 
 ```
-Skill /second-opinion ask "Review this diff as a critical PR reviewer. Focus on internal contradictions, under-specified behaviour, wrong commands or paths, and silent failure modes. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent codex
+Skill /second-opinion ask "Review this diff as a critical PR reviewer. Focus on internal contradictions, under-specified behaviour, wrong commands or paths, and silent failure modes. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent peer
 ```
 
-**Never call `codex exec` directly from this skill.** The `/second-opinion` skill handles CLI invocation, stdin, and quoting safely; bypassing it risks shell-quoting hangs (e.g. backtick-laden diffs in `$(cat patch)` substitutions).
+**Never call an external model CLI directly from this skill.** The `/second-opinion` skill handles
+provider independence, read-only invocation, stdin, and quoting safely; bypassing it risks both
+same-vendor review and shell-quoting hangs.
 
 Parse findings either way:
 
@@ -245,35 +247,34 @@ If iterating, jump back to Phase 1 (re-lint the new state) and proceed through P
 
 If not iterating, proceed to Phase 9.
 
-### 9. Phase 9 — Subscription CLI Review Panel
+### 9. Phase 9 — Local Quorum Review Panel
 
-If `--skip-external` is set, jump to Phase 10. A normal `/total-review` run approves one
-standard external pass, not necessarily an expensive panel. Because this phase may invoke
-multiple premium or metered routes, ask for confirmation unless the user explicitly requested
-`--agent all`, a wide panel, or full premium review.
+If `--skip-external` is set, jump to Phase 10. A normal `/total-review` run approves one standard
+external pass, not necessarily a broad panel. Because this phase may invoke multiple premium local
+routes, ask for confirmation unless the user explicitly requested a wide panel or full premium
+review. This `local-legacy` panel contains no OpenRouter routes.
 
 Same PR-detection as Phase 7. Branch with an open PR:
 
 ```
-Skill /second-opinion review-pr --agent all
+Skill /second-opinion review-pr --agent quorum --panel local-legacy
 ```
 
 No PR (fall back to ask mode):
 
 ```
-Skill /second-opinion ask "Review this diff for consensus. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and a prior Codex pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent all
+Skill /second-opinion ask "Review this diff as a broad local panel. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and the prior peer pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent quorum --panel local-legacy
 ```
 
-This runs Claude + Codex + Gemini in parallel when those CLIs are configured. It compares
-agreements and disagreements; it does not invoke the separately named OpenRouter `consensus` mode.
-The purpose is confirmation, not new criticism — the code should already be clean. Claude is a
-deliberate premium review lane; Gemini is especially useful for long-context review. Treat any
-finding here as:
+This runs the configured local Claude, Codex, and Gemini routes in parallel and requires the panel's
+provider quorum. It does not invoke OpenRouter. The purpose is confirmation, not new criticism — the
+code should already be clean. Claude is a deliberate premium review lane; Gemini is especially useful
+for long-context review.
 
-- Agreed by ≥2 agents → P1 bead (multi-agent consensus is a stronger signal)
-- Single-agent finding → P2/P3 bead, add to pile
-
-If multiple agents agree on a critical finding, halt — that's a strong signal something is genuinely wrong.
+Verify every material finding against repository evidence before classifying it. Assign priority from
+the validated impact and severity, not from how many routes repeat it. Repeated support is useful
+context, but never establishes correctness; one well-evidenced unique blocker may halt while a repeated
+unsupported claim remains non-actionable.
 
 ### 10. Phase 10 — Final Report
 

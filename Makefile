@@ -21,13 +21,14 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1
 
-.PHONY: help clean-code validate-skills test-validate-skills test-assemble list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make clean-code"
 	@echo "make validate-skills"
 	@echo "make test-validate-skills"
 	@echo "make test-assemble"
+	@echo "make test-second-opinion"
 	@echo "make list"
 	@echo "make doctor"
 	@echo "make doctor-codex    # compatibility alias; same shared skill root"
@@ -58,6 +59,10 @@ test-validate-skills:
 
 test-assemble:
 	@python3 -m unittest discover -s tests -p 'test_assemble.py'
+
+test-second-opinion:
+	@skills/second-opinion/tests/test-review-panel.sh
+	@skills/second-opinion/tests/test-openrouter-panel.sh
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

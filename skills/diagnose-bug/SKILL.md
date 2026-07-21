@@ -4,7 +4,7 @@ description: Evidence-led, read-only bug diagnosis using minimal reproduction, b
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git bisect log:*),Bash(git ls-files:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(npm test:*),Bash(npm run test:*),Bash(pytest:*),Bash(cargo test:*),Bash(go test:*),Bash(./gradlew test:*),Bash(mvn test:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -235,14 +235,14 @@ contract.
 
 ### 9. Optional independent cross-check
 
-Offer one `/second-opinion triage-bug` pass when the impact is high, evidence conflicts, or two
-hypotheses remain close. Invoke it only if the user requests the cross-check or accepts the offer.
-Send a sanitized packet containing the symptom, boundary, evidence ledger, hypotheses, tests, and
-residual uncertainty.
+Offer one `/second-opinion triage-bug --agent peer` pass when the impact is high, evidence conflicts,
+or two hypotheses remain close. Invoke it only if the user requests the cross-check or accepts the
+offer. Send a sanitized packet containing the symptom, boundary, evidence ledger, hypotheses, tests,
+and residual uncertainty.
 
 Treat the response as another hypothesis source, not evidence. Verify its claims locally. Never
-infer or invoke the separately metered OpenRouter `consensus` mode; that requires the user's explicit
-named request and fresh consent under `/second-opinion`.
+infer or invoke an OpenRouter-backed `consensus` panel; that requires the user's explicit named
+request and fresh metered-subset consent under `/second-opinion`.
 
 ## Stop and escalate
 

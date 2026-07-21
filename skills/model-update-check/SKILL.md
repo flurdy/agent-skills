@@ -1,11 +1,11 @@
 ---
 name: model-update-check
-description: Read-only audit of Pi routing and second-opinion consensus model IDs against the active Pi catalog and public live model metadata; reports when Pi or configured models merit review without editing config.
+description: Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live model metadata; reports when Pi or configured models merit review without editing config.
 allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-update-check.sh:*),Grep,AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: low
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -64,8 +64,9 @@ Read `sources` before interpreting models:
 
 ### 3. Classify configured models
 
-Use both `piAvailable` and `liveFound`. For consensus entries, also use `openRouterFound` and
-`openRouterMetadata.expirationDate` as direct provider evidence:
+Use both `piAvailable` and `liveFound`. For OpenRouter panel entries, also use `openRouterFound` and
+`openRouterMetadata.expirationDate` as direct provider evidence. Local Claude/Codex/Gemini panel
+routes are intentionally omitted because their native runtime configuration owns model resolution:
 
 | State | Interpretation |
 |---|---|
@@ -92,10 +93,12 @@ For `model-tier-router.json`:
 
 For `second-opinion/config.json`:
 
-- Preserve explicit named profiles, unique OpenRouter provider namespaces, bounded fan-out, and
-  per-run metered consent.
-- Use `recentOpenRouterByNamespace` only to find same-provider candidates. Maintain cross-provider
-  independence; never replace several panel members with routes from one provider.
+- Preserve explicit named profiles, bounded fan-out, configured quorum, and per-run OpenRouter
+  consent.
+- Audit all legacy `models` entries and only `kind: "openrouter"` entries in mixed `routes` profiles.
+  Local routes retain their CLI-native model resolution and are not OpenRouter catalog entries.
+- Use `recentOpenRouterByNamespace` only to find same-provider candidates. Preserve provider
+  diversity; same-provider corroboration does not add an independent provider to quorum.
 - Exact IDs stay local. Do not write them into shared skill documentation.
 
 ### 5. Render the report

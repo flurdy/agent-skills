@@ -1,358 +1,330 @@
 ---
 name: second-opinion
-description: Query independent AI CLIs for a second opinion; an explicit, locally configured OpenRouter consensus profile is available for high-stakes reviews.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/second-opinion/scripts/openrouter-panel.sh:*),Grep,Glob,AskUserQuestion"
+description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "1.4.1"
+effort: high
+version: "2.0.0"
 author: "flurdy"
 ---
 
 # Second Opinion
 
-Query Claude, Codex, or Gemini CLI for an independent review of plans, PRs, code, or bugs. For unusually high-stakes decisions, explicit `consensus` mode uses a locally configured, bounded cross-vendor OpenRouter panel.
-
-## When to Use
-
-- You want a second opinion on a plan, architecture decision, or approach
-- You want an independent PR review from another AI
-- You want to cross-check a bug triage or root cause analysis
-- You want to validate a proposed change before committing
-- You explicitly need broad cross-vendor consensus for a high-stakes or hard-to-reverse decision
+Query one independent CLI peer or a bounded named review panel for plans, PRs, code, or bugs.
+`quorum` and `consensus` execute the same selected panel. Quorum means enough independent providers
+returned; consensus is a later claim-level interpretation that is allowed only after quorum.
+Agreement and vote count never establish correctness.
 
 ## Usage
 
+```text
+/second-opinion
+/second-opinion review-pr 123
+/second-opinion validate-plan "<plan>"
+/second-opinion triage-bug "<description>"
+/second-opinion ask "<question>"
+
+# One independent route
+/second-opinion ask "..." --agent peer       # explicit/default independent peer
+/second-opinion ask "..." --agent claude
+/second-opinion ask "..." --agent codex
+/second-opinion ask "..." --agent gemini
+/second-opinion ask "..." --agent codex --model <id>
+
+# Policy-neutral named panels
+/second-opinion review-pr --agent quorum                    # defaults to focused
+/second-opinion validate-plan "..." --agent consensus       # defaults to extreme
+/second-opinion review-pr --agent consensus --panel large
+/second-opinion ask "..." --agent quorum --panel large \
+  --route-model claude-fable=opus --route-effort claude-fable=max
+
+# Temporary compatibility
+/second-opinion review-pr --agent all   # deprecated alias: quorum --panel local-legacy
 ```
-/second-opinion                          # Interactive — asks what to review and which agent
-/second-opinion review-pr 123            # Review PR #123
-/second-opinion review-pr                # Review current branch PR
-/second-opinion validate-plan "<plan>"   # Validate a plan/approach
-/second-opinion triage-bug "<description>"  # Get bug triage input
-/second-opinion ask "<question>"         # Freeform question with repo context
-/second-opinion ask "<question>" --agent claude   # Force a specific agent
-/second-opinion ask "<question>" --agent codex
-/second-opinion ask "<question>" --agent gemini
-/second-opinion ask "<question>" --agent all      # Query the three subscription/OAuth-first CLIs
-/second-opinion validate-plan "<plan>" --agent consensus  # Explicit bounded OpenRouter panel
-/second-opinion review-pr --agent consensus --panel extreme # Select named local panel profile
-/second-opinion review-pr --timeout 5             # Allow 5 minutes (default: 3, max: 10)
-/second-opinion ask "..." --model fast            # Use the fast tier instead of smart
-/second-opinion ask "..." --model gemini-3-pro    # Pass an explicit model ID through
-```
+
+`--timeout <minutes>` defaults to 3 and is capped at 10.
 
 ## Requirements
 
-- `claude` CLI installed and authenticated (part of Claude Code)
-- `codex` CLI installed and authenticated (`codex login`)
-- `gemini` CLI installed and authenticated
-- `gh` CLI for PR operations
-- Consensus mode only: `curl`, `jq`, `OPENROUTER_API_KEY`, and a named profile in `~/.agents/second-opinion/config.json`
+- Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
+- Panel orchestration: `jq` plus `scripts/review-panel.sh`.
+- OpenRouter subset only: `curl`, `OPENROUTER_API_KEY`, and a configured panel/profile in
+  `~/.agents/second-opinion/config.json`.
+- `gh` for PR context.
 
-Read [references/openrouter-consensus.md](references/openrouter-consensus.md) completely only when the user explicitly selects `--agent consensus`.
-
-## Model Selection and Cost
-
-This skill does not use a portable tier to classify the external model it launches. Exact model
-IDs belong in the invoked CLI's configuration where possible, not in this shared skill. By
-default, omit model flags and let each CLI use its configured default. Vendor independence and
-fresh consent are enforced directly below. The rationale and precedence rules are recorded in
+Read [references/review-panels.md](references/review-panels.md) when `quorum`, `consensus`, or the
+compatibility alias `all` is selected. If the selected panel contains OpenRouter routes, also read
+[references/openrouter-consensus.md](references/openrouter-consensus.md) completely before executing.
+Model/effort precedence is in
 [references/external-model-resolution.md](references/external-model-resolution.md).
 
-Independence rule: a second opinion is only independent if it comes from a **different
-vendor than the model that produced the work** (normally the current session model).
-Check which model you are running as and pick the default agent accordingly:
+## Model independence and cost
 
-- Claude session (Claude Code) → `codex` first, then `gemini`.
-- GPT session (pi/Codex) → `claude` first, then `gemini`.
+A second opinion should come from a different vendor than the model that produced the work:
 
-Cost guardrails:
+- Claude session → Codex first, then Gemini.
+- GPT/Codex session → Claude first, then Gemini.
+- Other session → the best available independent Claude or Codex route.
 
-- Prefer subscription/OAuth routes for the first independent pass when the rule allows.
-  In particular, `claude -p` uses the Claude CLI's existing authentication; a
-  `claude.ai` subscription login consumes subscription usage rather than metered API billing.
-- Treat Claude CLI API-key/BYOK authentication as metered. Use Claude deliberately for
-  premium review/judgement, not as a default long loop.
-- Use Gemini for long-context review or repo-wide summarisation.
-- Treat OpenRouter-backed or other API-key/BYOK routes as metered: use `--timeout`, cap
-  scope, or ask before broad panels.
-- `--agent consensus` is never inferred from `all`, `smart`, a high-risk task, or a configured
-  API key. It is separately named, must ask for fresh consent immediately before the first API
-  request, and must not store that consent. Read the consensus reference before proceeding.
+`peer` is the explicit name for this selection and is also the no-`--agent` default. Direct
+`claude`, `codex`, and `gemini` remain supported.
 
-Overrides:
+Prefer subscription/OAuth routes for one peer. Treat API-key/BYOK and unknown-cost direct routes as
+metered and obtain current-run consent before invocation. A named panel does not infer billing from a
+provider name. Its configured local routes are the approved local subset; every OpenRouter route is a
+separately metered subset requiring fresh consent immediately before requests.
 
-- `--model fast` — request the caller's configured cheap/fast tier; do not hard-code a model
-  ID here. If the CLI has no configured fast alias, omit the flag and note the fallback.
-- `--model <id>` — any other value is treated as an explicit model ID and passed through.
+For a direct single agent only:
 
-The `smart` default requires no maintenance here — it is whatever each CLI/runtime picks.
+- no `--model` or `--model smart` → retain the CLI-native default;
+- `--model fast` → use a verified CLI-native fast alias, otherwise retain and report the native
+  default;
+- `--model <id>` → pass the literal ID through.
 
-## Instructions
+For panels, generic `--model` is invalid. Use repeated `--route-model ID=VALUE` and
+`--route-effort ID=VALUE`. OpenRouter identities cannot be overridden. Unsupported effort is rejected,
+never translated.
 
-### 1. Parse Arguments
+## 1. Parse arguments
 
-Extract from the arguments:
-- **mode**: one of `review-pr`, `validate-plan`, `triage-bug`, `ask` (default: ask user)
-- **target**: PR number, plan text, bug description, or freeform question
-- **agent**: `claude`, `codex`, `gemini`, `all`, or explicit `consensus` (default: per the
-  independence rule — `codex` from a Claude session, `claude` from a GPT session). `consensus`
-  must never be selected implicitly.
-- **timeout**: timeout in minutes (default: `3`, max: `10`)
-- **panel**: named local consensus profile after `--panel` (default: `extreme`; valid only with explicit `consensus`)
-- **model**: `smart` (default), `fast`, or an explicit model ID — see Model Selection and Cost
+Extract:
 
-Look for `--agent <name>` anywhere in the arguments. If not specified, apply the independence
-rule from Model Selection and Cost: `codex` in a Claude session, `claude` in a GPT session.
-Look for `--timeout <minutes>` anywhere in the arguments. If not specified, default to `3`.
-Look for `--model <value>` anywhere in the arguments. If not specified, default to `smart`.
-Look for `--panel <name>` anywhere in the arguments. Reject it unless `--agent consensus` was explicit;
-default to `extreme` only for consensus mode.
+- mode: `review-pr`, `validate-plan`, `triage-bug`, or `ask`;
+- target: PR number, plan, bug description, or question;
+- agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, `consensus`, or deprecated `all`;
+- panel: a local profile name;
+- timeout: 1–10 minutes, default 3;
+- direct model or repeated route-specific model/effort overrides.
 
-If no mode is provided, ask the user what they'd like a second opinion on.
+Defaults and compatibility:
 
-### 2. Gather Context by Mode
+- no agent → `peer`;
+- `quorum` with no panel → `focused`;
+- `consensus` with no panel → `extreme`;
+- `all` → warn once that it is deprecated, then use the reserved local-only built-in
+  `quorum --panel local-legacy`;
+- reject `--panel`, `--route-model`, or `--route-effort` for a direct single agent;
+- reject generic `--model` for `quorum` or `consensus`.
 
-#### review-pr
+If no mode is supplied, ask what to review. `consensus` must always be explicitly named; never infer
+it from task risk, panel size, `all`, or an API key.
+
+## 2. Gather and sanitize context
+
+### review-pr
 
 ```bash
-# If PR number provided:
 gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,state,baseRefName,headRefName
 gh pr diff {PR_NUMBER}
-
-# If no PR number, find current branch PR:
-gh pr view --json number,title,body,additions,deletions,changedFiles,state,baseRefName,headRefName
-gh pr diff
 ```
 
-Build a prompt:
-```
-Review this pull request. Focus on:
-- Correctness and potential bugs
-- Security concerns
-- Performance implications
-- Code quality and maintainability
-- Missing edge cases or error handling
+Without a number, use the current branch PR. Build a prompt covering correctness, security,
+performance, maintainability, and missing edge/error handling, followed by PR metadata and the exact
+diff.
 
-PR: {title}
-Description: {body}
-
-Diff:
-{diff}
-```
-
-#### validate-plan
-
-The user provides the plan text as the target. Gather additional context:
+### validate-plan
 
 ```bash
-# Get repo structure overview for context
 git ls-files | head -100
 ```
 
-Build a prompt:
-```
-Evaluate this implementation plan for the codebase in the current directory.
-Flag any concerns about:
-- Feasibility and completeness
-- Missing steps or dependencies
-- Potential risks or gotchas
-- Better alternatives
+Ask for feasibility, completeness, dependencies, risks, and simpler alternatives, followed by the
+plan.
 
-Plan:
-{plan_text}
-```
+### triage-bug
 
-#### triage-bug
+Ask for likely root causes, relevant components, investigation steps, falsification tests, and
+potential fixes, followed by the bug description.
 
-Build a prompt:
-```
-Help triage this bug in the codebase in the current directory.
-Analyze:
-- Likely root cause
-- Which files/components are probably involved
-- Suggested investigation steps
-- Potential fixes
+### ask
 
-Bug description:
-{bug_description}
-```
+Pass the question with current-repository context.
 
-#### ask
+For every mode, remove secrets, credentials, `.env` contents, private keys, and irrelevant personal
+data. Never silently truncate oversized context; summarize before route selection and say so. Local CLI
+routes are explicitly approved read-only repository reviewers and may inspect files in the current
+repository, so use them only when that repository's readable contents are safe to share with those
+providers. OpenRouter receives only the sanitized prompt bytes and no tools.
 
-Pass the question directly with repo context:
-```
-Given the codebase in the current directory, answer this question:
-{question}
-```
+## 3. Execute one peer/direct agent
 
-### 3. Invoke the Agent CLI
+Resolve `peer` using the independence rule, then invoke exactly one route. Pass an assembled prompt
+without allowing writes.
 
-#### Consensus (explicit OpenRouter panel)
+### Claude
 
-Only when the user explicitly passed `--agent consensus`, read
-[references/openrouter-consensus.md](references/openrouter-consensus.md) completely and follow it.
-That reference owns local profile validation, immediate metered consent, safe prompt transfer,
-bounded multi-model invocation, model-specific failure handling, and consensus presentation.
-
-Pass the assembled prompt directly as a positional argument to ensure commands match
-auto-approve permission patterns like `Bash(claude:*)`, `Bash(codex:*)`, and `Bash(gemini:*)`.
-
-**Resolve the model flag** before building the command. Given the parsed `--model` value:
-
-- `smart` (default) → omit the model flag entirely; let the CLI use its configured default.
-- `fast` → use the CLI's configured cheap/fast alias if one exists in that runtime; otherwise
-  omit the model flag and report that no explicit fast alias was available.
-- anything else → treat as a literal model ID, pass through unchanged.
-
-In the snippets below, `{model_flag}` expands to the relevant CLI's flag + value when a
-model was resolved, and to an empty string when `smart` or an unavailable `fast` alias is in
-effect.
-
-#### For Claude
-
-Pass the prompt via the `-p` flag and restrict the available tools to read-only ones:
 ```bash
 claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" {model_flag}
 ```
 
-Where `{model_flag}` is `--model <id>` when resolved, or empty for `smart`.
-Omitting the model flag lets the Claude CLI choose its configured default; this skill does
-not implicitly select Opus, Fable, or Sonnet. The tool allowlist enforces read-only operation.
+Use `--model <id>` only for an explicit resolved model.
 
-**Timeout**: Use the parsed timeout value (default 3 min, converted to milliseconds).
+### Codex
 
-#### For Codex
+For a PR, prefer the native review command:
 
-For `review-pr` mode, prefer the built-in review command:
 ```bash
-# PR review using codex's native review (--base and positional prompt are mutually exclusive)
-codex review --base {base_branch} {model_flag}
-
-# Or for uncommitted changes:
-codex review --uncommitted {model_flag}
+codex review --base {base_branch} {review_model_config}
 ```
 
-For all other modes, pass the prompt as a positional argument:
+`codex review` has no `--model` flag. For an explicit resolved model, expand
+`{review_model_config}` to `-c 'model="<id>"'`; otherwise omit it and report the native default.
+Do not claim an effective effort unless an explicit native Codex config override was supplied.
+
+For other modes:
+
 ```bash
-codex exec {model_flag} "{assembled_prompt}"
+codex exec --sandbox read-only {exec_model_flag} "{assembled_prompt}"
 ```
 
-Where `{model_flag}` is `-m <id>` when resolved, or empty for `smart` (which lets
-`~/.codex/config.toml` decide the model and reasoning effort).
+For `codex exec`, `{exec_model_flag}` is `--model <id>` for an explicit resolved model and empty for
+the native default.
 
-**Timeout**: Use the parsed timeout value. Codex is slow on large prompts — consider `--timeout 5` or higher for PR reviews in large repos.
+### Gemini
 
-#### For Gemini
-
-Pass the prompt via the `-p` flag:
 ```bash
 gemini -p "{assembled_prompt}" --sandbox -o text {model_flag}
 ```
 
-Where `{model_flag}` is `-m <id>` when resolved, or empty for `smart`.
+Apply the parsed timeout. If the route fails or times out, preserve the error and offer another
+independent direct route; never retry or substitute silently.
 
-The `--sandbox` flag prevents Gemini from modifying files. The `-o text` flag gives clean text output.
+## 4. Execute a named panel
 
-**Timeout**: Use the parsed timeout value (default 3 min, converted to milliseconds).
+Use the same exact sanitized prompt for every route. Create a private file with `mktemp`, set mode
+`600`, and write the prompt with `Write`. Do not put panel prompt text in shell argv.
 
-#### For All
+### 4.1 Check and bind
 
-Run all available subscription/OAuth-first agents in parallel (use parallel Bash tool calls). Present all results. `all` never includes OpenRouter; the explicit `consensus` path above is the only panel route.
-
-### 5. Present Results
-
-Format the response clearly:
-
-```markdown
-## Second Opinion ({agent_name})
-
-{agent_response}
-
----
-*Source: {agent_name} CLI, mode: {mode}*
+```bash
+~/.agents/skills/second-opinion/scripts/review-panel.sh check \
+  --panel {panel_name} \
+  --prompt-file {prompt_file} \
+  {repeated_route_overrides}
 ```
 
-If multiple agents were queried, present each under its own heading:
+Retain and display:
 
-```markdown
-## Claude Opinion
+- ordered route IDs, kinds, providers, roles, availability, effective model/effort, and provenance;
+- configured quorum and limits;
+- `panelSha256`, `openrouterSha256`, and `promptSha256`.
 
-{claude_response}
+If profile validation fails, stop before any route invocation. Missing route prerequisites degrade the
+panel; they do not authorize substitution.
 
-## Codex Opinion
+### 4.2 Run the local subset
 
-{codex_response}
-
-## Gemini Opinion
-
-{gemini_response}
-
-## Key Differences
-
-{brief comparison of where they agree/disagree}
+```bash
+~/.agents/skills/second-opinion/scripts/review-panel.sh run-local \
+  --panel {panel_name} \
+  --prompt-file {prompt_file} \
+  --panel-sha256 {panelSha256} \
+  --prompt-sha256 {promptSha256} \
+  --timeout {timeout_seconds} \
+  {repeated_route_overrides}
 ```
 
-After presenting the raw results, add your own assessment (see step 6).
+Save the returned JSON array to a mode-private result file. The coordinator invokes each configured
+local route at most once, in bounded parallel batches, with read-only tools/sandboxing and prompt
+stdin. Preserve missing CLIs, timeouts, and failures.
 
-### 6. Your Assessment
+### 4.3 Decide the OpenRouter subset
 
-Critically review the external agent's findings against the actual codebase. For each finding, verify
-whether it is correct by reading the relevant code — do not take the agent's claims at face value.
+If `openrouter.requestCount == 0`, skip this step.
 
-#### Single PR
+If prerequisites are unavailable, make no request and allow evaluation to report those routes as
+missing/unavailable. Otherwise, immediately before requests use one `AskUserQuestion` that discloses
+only the OpenRouter subset: exact routes/models/vendors, request count, concurrency, prompt cap,
+output-token cap, timeout, variable pricing, and that OpenRouter credits will be consumed.
+
+- **Approve** → invoke `run-openrouter --confirmed` with all three digests and the same profile,
+  prompt, timeout, and overrides.
+- **Decline/ambiguous/abandoned** → invoke `decline-openrouter` with all three digests. It generates
+  explicit declined results and makes no network request.
+
+Consent applies once and is never persisted. A digest mismatch requires a new check and fresh
+consent. Never retry, substitute, expand, or run a metered subset unattended.
+
+### 4.4 Evaluate mechanical quorum
+
+Write the `check`, local-result, and OpenRouter-result JSON to private files, then run:
+
+```bash
+~/.agents/skills/second-opinion/scripts/review-panel.sh evaluate \
+  --policy {quorum|consensus} \
+  --check-file {check_file} \
+  --results-file {local_results_file} \
+  --results-file {openrouter_results_file}
+```
+
+Omit a result file only when that subset did not run and produced no results. The evaluator preserves
+panel order, counts unique successful providers, reports unavailable routes and same-provider
+corroboration, and sets `consensusEligible`. It deliberately does not compare natural-language claims.
+Remove all private prompt/result files after evaluation, success or failure.
+
+## 5. Present panel results
+
+First show every route faithfully:
+
+```markdown
+## Review Panel: `{panel}` — {quorum|consensus}
+
+| Route | Kind | Provider | Role | Model / effort | Status |
+|---|---|---|---|---|---|
+| ... |
+
+**Quorum:** {successful unique providers}/{required} — met / not met
+```
+
+Then include each successful response under its route heading and every error/decline/timeout under
+Unavailable routes.
+
+### Quorum policy
+
+When quorum is met, present findings by route/provider without requiring agreement. When not met,
+state that quorum failed and identify unavailable providers. Do not relabel repeated claims as
+consensus.
+
+### Consensus policy
+
+If `consensusEligible` is false, state **no consensus assessment was made**. Preserve returned
+opinions but do not synthesize agreement.
+
+If eligible, compare claims and report all five categories:
+
+1. **Evidence-backed agreements** — independently supported claims, not repeated prompt premises.
+2. **Disagreements / uncertainty** — conflicting conclusions and unresolved evidence.
+3. **Shared assumptions** — repeated claims without independent support.
+4. **Same-provider corroboration** — explicitly separate from independent-provider agreement.
+5. **Unavailable routes** — missing, declined, failed, and timed-out perspectives.
+
+Never convert a majority into correctness.
+
+## 6. Repository-grounded assessment
+
+Critically verify every material external claim against actual repository evidence. Present a concise
+assessment table:
 
 ```markdown
 ### My Assessment
 
-| # | Finding | Verdict | Rationale |
-|---|---------|---------|-----------|
-| 1 | {short description} | Valid / Non-issue / Already handled | {one-line reason} |
-| 2 | ... | ... | ... |
-
-**Actionable items:** {list only the valid findings worth acting on, or "None."}
+| # | Finding | Verdict | Evidence |
+|---|---|---|---|
+| 1 | ... | Valid / Non-issue / Already handled / Uncertain | file/path:line or reason |
 ```
 
-#### Batch (multiple PRs)
+List only genuinely actionable items. A unique, well-evidenced concern may outweigh repeated weak
+claims; repeated unsupported claims remain invalid.
 
-When reviewing several PRs in one session, present a summary table after all individual reviews:
+## Error handling and rules
 
-```markdown
-### Batch Summary
-
-| PR | Title | Findings | Actionable |
-|----|-------|----------|------------|
-| #123 | feat: add caching | 4 | 1 — readCookie split bug |
-| #124 | fix: session init | 3 | 0 |
-| ... | ... | ... | ... |
-```
-
-Then list only the genuinely actionable items across all PRs, grouped by severity.
-
-#### Follow-up
-
-After the assessment, offer:
-- "Want me to create beads for the actionable items?"
-- Or, if nothing is actionable: "Nothing worth following up — want me to act on anything else?"
-
-## Error Handling
-
-- If a CLI is not installed or not authenticated, tell the user and suggest another available agent
-- For `consensus`, follow the reference's profile check and per-model failure handling. Report every
-  missing prerequisite without installing software, exposing a key, or making an API request; offer
-  the existing subscription/OAuth-first routes instead.
-- If a CLI times out (>3 min), report partial output if any and suggest trying another agent. A panel
-  timeout/error remains a per-model error and is never retried or substituted automatically.
-- If the prompt is too large, summarize the diff/context before sending; never silently truncate it.
-- If both agents fail, report the errors and suggest the user try manually
-
-## Rules
-
-- Never let the external agent modify files — use read-only/sandbox modes
-- Always restrict Claude to `--tools "Read,Grep,Glob"`, use `--sandbox` for Gemini, and use default (no write) permissions for Codex
-- Do not send sensitive data (env vars, secrets, credentials) to external CLIs
-- Present the external agent's response faithfully in step 5 — save your own judgement for step 6
-- Make clear which agent provided which opinion
-- For consensus, follow the reference's private prompt-file and immediate-consent protocol exactly.
-  Never persist consent, use `consensus` in a loop, expand a profile during a run, or treat it as a
-  replacement for regular independent review.
+- Never let any route modify files.
+- Never send secrets or credentials to a route.
+- Never expose OpenRouter credentials or place the bearer token in argv.
+- Never give OpenRouter routes tools or repository access.
+- Never retry/substitute a failed route or silently change a configured panel.
+- Always report effective route provenance; `native-default` is honest when the runtime does not
+  reveal a concrete setting.
+- Preserve external responses faithfully before adding your own assessment.
+- A partial panel is partial coverage, not a complete panel.

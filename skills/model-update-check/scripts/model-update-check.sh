@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only audit of configured Pi/router and OpenRouter consensus model IDs.
+# Read-only audit of configured Pi/router and second-opinion panel model IDs.
 set -euo pipefail
 
 readonly DEFAULT_ROUTER_CONFIG="${HOME}/.pi/agent/model-tier-router.json"
@@ -118,34 +118,85 @@ fi
 consensus_status="ok"
 if [[ ! -f "$consensus_config" ]]; then
   consensus_status="missing"
-elif ! jq -e '
+elif ! jq -e \
+  --argjson max_routes 8 \
+  --argjson max_parallel 4 \
+  --argjson max_prompt 65536 \
+  --argjson max_output 2000 \
+  --argjson max_timeout 600 '
+  def canonical_openrouter:
+    type == "string" and test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$");
+  def valid_limits:
+    type == "object" and
+    (.maxParallel | type == "number" and floor == . and . >= 1 and . <= $max_parallel) and
+    (.maxPromptBytes | type == "number" and floor == . and . >= 1 and . <= $max_prompt) and
+    (.maxOutputTokensPerModel | type == "number" and floor == . and . >= 1 and . <= $max_output) and
+    (.defaultTimeoutSeconds | type == "number" and floor == . and . >= 1 and . <= $max_timeout);
+  def valid_quorum($providers):
+    type == "number" and floor == . and . >= 1 and . <= $providers;
+  def route_provider:
+    if .kind == "local" then ({claude:"anthropic",codex:"openai",gemini:"google"}[.agent])
+    else (.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase)
+    end;
+  def valid_route:
+    (.id | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and
+    (.role | type == "string" and length > 0) and
+    ((.kind == "local" and
+      (.agent == "claude" or .agent == "codex" or .agent == "gemini") and
+      ((has("model") | not) or (.model | type == "string" and length > 0)) and
+      ((has("effort") | not) or
+       (.agent == "claude" and (.effort | test("^(low|medium|high|xhigh|max)$"))) or
+       (.agent == "codex" and (.effort | test("^(minimal|low|medium|high|xhigh)$"))))) or
+     (.kind == "openrouter" and
+      (.model | canonical_openrouter) and
+      (.vendor | type == "string" and length > 0) and
+      (has("agent") | not) and (has("effort") | not)));
+  def valid_legacy:
+    (.models | length >= 1 and length <= $max_routes) and
+    all(.models[];
+      (.model | canonical_openrouter) and
+      (.vendor | type == "string" and length > 0) and
+      (.role | type == "string" and length > 0)) and
+    ([.models[].model] | unique | length) == (.models | length) and
+    (([.models[].model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase] | unique | length) as $providers |
+      ((.quorum // ([2, $providers] | min)) | valid_quorum($providers)));
+  def valid_routes:
+    (.routes | length >= 1 and length <= $max_routes) and
+    all(.routes[]; valid_route) and
+    ([.routes[].id] | unique | length) == (.routes | length) and
+    ([.routes[] | if .kind == "local" then ("local/" + .agent + "/" + (.model // "native-default")) else .model end] | unique | length) == (.routes | length) and
+    (([.routes[] | route_provider] | unique | length) as $providers |
+      (.quorum | valid_quorum($providers)));
+  def valid_profile:
+    ((((.models | type) == "array") and (has("routes") | not)) or
+     (((.routes | type) == "array") and (has("models") | not))) and
+    (.limits | valid_limits) and
+    (if has("models") then valid_legacy else valid_routes end);
   (.version == 1) and
   (.profiles | type == "object") and
-  all(.profiles | to_entries[];
-    (.value.models | type == "array") and
-    all(.value.models[];
-      (.model | type == "string") and (.model | startswith("openrouter/")) and
-      (.vendor | type == "string") and (.role | type == "string")
-    )
-  )
+  all(.profiles[]; valid_profile)
 ' "$consensus_config" >/dev/null 2>&1; then
   consensus_status="invalid"
 else
   jq -c --arg config "$consensus_config" '
     [
       .profiles | to_entries[] as $profile |
-      $profile.value.models[] |
+      (if $profile.value | has("models") then
+        $profile.value.models[]
+      else
+        $profile.value.routes[] | select(.kind == "openrouter")
+      end) as $entry |
       {
         source: "second-opinion",
         config: $config,
         usage: $profile.key,
-        model: .model,
-        vendor: .vendor,
-        role: .role,
+        model: $entry.model,
+        vendor: $entry.vendor,
+        role: $entry.role,
         metered: true,
         piProvider: "openrouter",
         catalogProvider: "openrouter",
-        catalogModel: (.model | sub("^openrouter/"; ""))
+        catalogModel: ($entry.model | sub("^openrouter/"; ""))
       }
     ]
   ' "$consensus_config" > "$consensus_entries"
@@ -379,7 +430,7 @@ jq -n \
           {severity: "error", kind: "config", source: "model-tier-router", message: ("router config is " + $router_status)}
         else empty end,
         if $consensus_status != "ok" then
-          {severity: "error", kind: "config", source: "second-opinion", message: ("consensus config is " + $consensus_status)}
+          {severity: "error", kind: "config", source: "second-opinion", message: ("panel config is " + $consensus_status)}
         else empty end,
         if $brew_status == "ok" and $brew_update_available then
           {severity: "review", kind: "pi-update", manager: "homebrew", current: $brew_installed_version, candidate: $brew_latest_version, message: "a newer Pi version is available from the installed Homebrew formula"}

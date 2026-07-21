@@ -46,6 +46,10 @@ set -euo pipefail
 
 config_file="$2"
 printf '%s\n' "$config_file" >> "$FAKE_CURL_LOG"
+grep -Fq 'max-filesize = 1048576' "$config_file" || {
+  printf 'missing OpenRouter response transport cap\n' >&2
+  exit 3
+}
 # Give concurrent calls time to expose accidental sharing of one config path.
 sleep "${FAKE_CURL_DELAY:-0.05}"
 
@@ -54,7 +58,9 @@ request_file="${request_file#@}"
 response_file="$(awk -F '"' '/^output = "/{print $2}' "$config_file")"
 model="$(jq -r '.model' "$request_file")"
 
-if [[ "$model" == "${FAKE_CURL_ERROR_MODEL:-}" ]]; then
+if [[ "$model" == "${FAKE_CURL_OVERSIZED_MODEL:-}" ]]; then
+  head -c 2097152 /dev/zero | tr '\0' x > "$response_file"
+elif [[ "$model" == "${FAKE_CURL_ERROR_MODEL:-}" ]]; then
   jq -n --arg model "$model" '{error: {message: ("simulated failure for " + $model)}}' \
     > "$response_file"
 else
@@ -97,21 +103,34 @@ jq -e '
   .auth == "missing" and
   (.models | length == 4) and
   (.profile_sha256 | test("^[a-f0-9]{64}$")) and
+  .hard_limits.max_response_bytes == 1048576 and
   .problems == ["OPENROUTER_API_KEY is not set"]
 ' <<< "$check_json" >/dev/null || fail "local check output was incorrect"
 assert_no_requests
 profile_sha256="$(jq -r '.profile_sha256' <<< "$check_json")"
 
-DUPLICATE_PROVIDER_CONFIG="$TMP_DIR/duplicate-provider.json"
-jq '.profiles.test.models[1].model = "openrouter/qwen/test-b"' "$CONFIG" \
-  > "$DUPLICATE_PROVIDER_CONFIG"
+DUPLICATE_MODEL_CONFIG="$TMP_DIR/duplicate-model.json"
+jq '.profiles.test.models[1].model = "openrouter/qwen/test-a"' "$CONFIG" \
+  > "$DUPLICATE_MODEL_CONFIG"
 invalid_json="$("${CHECK_ENV[@]}" "$HELPER" check \
-  --config "$DUPLICATE_PROVIDER_CONFIG" --profile test)"
+  --config "$DUPLICATE_MODEL_CONFIG" --profile test)"
 jq -e '
   .ready == false and
   (.models | length == 0) and
-  any(.problems[]; contains("unique OpenRouter provider namespaces"))
-' <<< "$invalid_json" >/dev/null || fail "duplicate providers were accepted"
+  any(.problems[]; contains("unique model IDs"))
+' <<< "$invalid_json" >/dev/null || fail "duplicate model IDs were accepted"
+assert_no_requests
+
+REPEATED_PROVIDER_CONFIG="$TMP_DIR/repeated-provider.json"
+jq '.profiles.test.models[1].model = "openrouter/qwen/test-b"' "$CONFIG" \
+  > "$REPEATED_PROVIDER_CONFIG"
+repeated_json="$("${CHECK_ENV[@]}" "$HELPER" check \
+  --config "$REPEATED_PROVIDER_CONFIG" --profile test)"
+jq -e '
+  .ready == false and
+  (.models | length == 4) and
+  .problems == ["OPENROUTER_API_KEY is not set"]
+' <<< "$repeated_json" >/dev/null || fail "same-provider routes were rejected"
 assert_no_requests
 
 OVER_LIMIT_CONFIG="$TMP_DIR/over-limit.json"
@@ -178,5 +197,19 @@ jq -e '
 ' <<< "$result_json" >/dev/null || fail "per-model failure was not preserved"
 [[ "$(wc -l < "$FAKE_CURL_LOG" | tr -d '[:space:]')" -eq 4 ]] || \
   fail "failure run did not preserve all four calls"
+
+: > "$FAKE_CURL_LOG"
+result_json="$(FAKE_CURL_OVERSIZED_MODEL=qwen/test-a "${RUN_ENV[@]}" "$HELPER" run --confirmed \
+  --config "$CONFIG" --profile test --profile-sha256 "$profile_sha256" \
+  --prompt-file "$PROMPT")"
+jq -e '
+  length == 4 and
+  (.[0].status == "error" and .[0].provider == "qwen" and .[0].curl_exit_code == 63 and
+    (.[0].error | contains("1048576-byte transport cap"))) and
+  ([.[] | select(.status == "ok")] | length == 3)
+' <<< "$result_json" >/dev/null || fail "oversized OpenRouter response was not a bounded model error"
+(( ${#result_json} < 100000 )) || fail "oversized OpenRouter response leaked into result data"
+[[ "$(wc -l < "$FAKE_CURL_LOG" | tr -d '[:space:]')" -eq 4 ]] || \
+  fail "oversized response run did not preserve all four calls"
 
 printf '%s\n' 'openrouter-panel tests passed'

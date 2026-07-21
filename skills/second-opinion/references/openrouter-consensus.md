@@ -1,28 +1,30 @@
-# OpenRouter Consensus Panels
+# OpenRouter panel subset safety
 
-Read this file completely only when the user explicitly passes `--agent consensus`.
-The ordinary `claude`, `codex`, `gemini`, and `all` routes do not use this flow.
+Read this file completely whenever a selected `quorum` or `consensus` panel contains OpenRouter
+routes. The ordinary single-agent and local-only panel paths do not use this flow.
 
 ## Purpose and boundary
 
-Consensus is an exceptional, opt-in escalation for unusually high-stakes or hard-to-reverse
-decisions. It adds a locally configured, cross-vendor OpenRouter panel. It is not a default,
-an unattended loop, or proof by majority vote.
+OpenRouter routes are an explicit, metered subset of a policy-neutral review panel. They are never
+inferred from risk, an API key, `peer`, or a local-only panel. The same execution flow serves quorum
+and consensus; the selected policy changes interpretation, not requests.
 
-The official `@openrouter/cli` is not used: its v1 commands are SDK devtools and a Claude Code
-statusline, not chat inference. The bundled `scripts/openrouter-panel.sh` calls OpenRouter's
-OpenAI-compatible chat-completions API without giving models tools or repository access.
+The official `@openrouter/cli` is not used. The hardened `scripts/openrouter-panel.sh` calls
+OpenRouter's OpenAI-compatible chat-completions API without tools or repository access.
 
-## Local configuration
+## Configuration
 
-The harness-neutral config defaults to:
+Panel configuration defaults to:
 
 ```text
 ~/.agents/second-opinion/config.json
 ```
 
-It contains no credentials. `OPENROUTER_API_KEY` remains a secret supplied by the user's shell or
-secret manager. Exact model IDs belong in this local config, not in the shared skill.
+It contains no credentials. `OPENROUTER_API_KEY` remains in the user's shell or secret manager.
+Exact model IDs belong in local configuration, not the shared skill. See
+[review-panels.md](review-panels.md) for the mixed-route schema.
+
+The existing version-1 legacy shape remains valid:
 
 ```json
 {
@@ -47,160 +49,128 @@ secret manager. Exact model IDs belong in this local config, not in the shared s
 }
 ```
 
-Profiles may contain **1-8 models**. Model IDs and their case-insensitive OpenRouter provider
-namespaces (the part after `openrouter/` before the next `/`) must each be unique, so multiple routes
-from one provider cannot inflate apparent consensus. The `vendor` field is a display label only; the
-helper derives the provider used for validation and result output from the model ID. Every identity
-must use the canonical `openrouter/<provider>/<model-id>` form; the helper strips the first
-`openrouter/` only when building the API request.
+A panel may contain 1–8 unique model identities. Repeated provider namespaces are allowed for
+corroboration but count once toward quorum. `vendor` is display-only; the helper derives provider
+identity from canonical `openrouter/<provider>/<model-id>` values.
 
-Local profile limits may lower but never exceed the helper's compiled ceilings:
+Local limits may lower but never exceed the compiled ceilings:
 
-- 8 requests total
-- 4 concurrent requests
-- 65,536 prompt bytes
-- 2,000 output tokens per model
-- 600 seconds per request
+- 8 requests total;
+- 4 concurrent requests;
+- 65,536 prompt bytes;
+- 2,000 output tokens per model;
+- 1,048,576 response bytes per HTTP transport;
+- 600 seconds per request.
 
-Use `--panel <name>` to select a profile; the default is `extreme`. Do not choose models dynamically,
-substitute failed models, expand a profile, or edit local configuration during a run. The configured
-identities are what the user sees and approves.
+The response-byte ceiling is a transport safety bound, not a token conversion or price estimate.
+
+Models are never selected dynamically, substituted, or added during a run.
 
 ## Execution
 
-Do these steps only after parsing the ordinary second-opinion mode and assembling its prompt.
+Run these steps only after assembling one prompt for the ordinary second-opinion mode.
 
 ### 1. Sanitize and bound context
 
 Remove credentials, `.env` content, private keys, tokens, and other sensitive data. The helper sends
-prompt bytes verbatim and cannot reliably determine whether arbitrary source text is secret. This is
-a mandatory human/agent review boundary, not a guarantee supplied by regex scanning.
+prompt bytes verbatim and cannot reliably identify arbitrary secrets. If context exceeds the profile
+cap, create a focused summary before `check`; never silently truncate.
 
-If context exceeds the selected profile's prompt cap, make a focused summary before consent. Never
-silently truncate a diff or plan.
+### 2. Resolve the full panel without network access
 
-### 2. Check configuration without a network request
-
-Use the portable shared installation path:
+Write the exact sanitized prompt to a mode-`600` temporary file, then run:
 
 ```bash
-~/.agents/skills/second-opinion/scripts/openrouter-panel.sh check --profile {panel_name}
+~/.agents/skills/second-opinion/scripts/review-panel.sh check \
+  --panel {panel_name} \
+  --prompt-file {literal_prompt_file} \
+  {route_overrides}
 ```
 
-The check is local: it parses config, checks command/key
-presence, and prints model identities and limits without contacting OpenRouter or exposing the key.
-If `jq` itself is unavailable, it can report only a minimal JSON error because it cannot parse the
-config.
+Retain `panelSha256`, `openrouterSha256`, and `promptSha256`. They bind the effective panel, exactly
+the metered subset, and exactly the disclosed prompt. The result reports missing local CLIs, curl,
+and OpenRouter authentication without making a request or exposing a credential.
 
-The ready result includes `profile_sha256`, a SHA-256 digest of the exact validated profile. Retain
-it alongside the disclosed models and limits. If the result is not ready, report every listed problem.
-Do not install software, ask the user to paste a key into chat, read Pi's auth store, or fall back to
-a metered request. Offer `--agent all` or a configured single CLI instead.
+Local routes may run before the consent decision. If OpenRouter prerequisites are missing, preserve
+those routes as unavailable and continue with honest quorum degradation; do not install software,
+request a pasted key, or inspect another tool's credential store.
 
-### 3. Obtain fresh metered consent
+### 3. Obtain fresh subset-only metered consent
 
-Immediately before the API call, use one `AskUserQuestion`. Disclose:
+Immediately before requests, use one `AskUserQuestion`. Disclose:
 
-- profile name and every configured model ID/vendor;
-- exact number of requests and configured maximum concurrency;
-- prompt byte cap, output-token cap per model, and timeout;
-- that all requests consume OpenRouter credits and exact prices can change.
+- panel name and every OpenRouter route's exact model ID, vendor, provider, and role;
+- exact number of OpenRouter requests and configured maximum concurrency;
+- prompt-byte cap, output-token cap per model, and timeout;
+- that only this subset consumes OpenRouter credits and prices can change.
 
 Options:
 
-1. **Run metered panel** — recommended only when the requested decision warrants it.
-2. **Keep subscription-only review** — make no OpenRouter request and offer `--agent all`.
+1. **Run metered OpenRouter subset** — authorize only these disclosed requests.
+2. **Keep local results only** — make no OpenRouter request.
 
-A negative, abandoned, or ambiguous answer means no request. Consent is valid only for this one
-panel run; never persist or infer it.
+A negative, abandoned, or ambiguous answer means no request. Consent applies once and is never
+stored or inferred. Declining does not discard successful local results.
 
-### 4. Write the prompt safely and run once
+### 4. Execute or decline once
 
 After affirmative consent:
 
-1. Create a path with `mktemp` and set mode `600`.
-2. Use the harness's `Write` tool to write the exact sanitized prompt to that literal path. Do not
-   pass prompt content as a shell argument or leave the file empty.
-3. Invoke the helper once, passing the literal path, selected profile, the `profile_sha256` returned
-   by `check`, `--confirmed`, and the parsed timeout converted to seconds. The helper rejects the run
-   without a request if the profile changed after the check/consent step.
-4. Remove the prompt file after success or failure.
-
 ```bash
-prompt_file=$(mktemp)
-chmod 600 "$prompt_file"
-```
-
-```text
-Write tool: write the assembled sanitized prompt verbatim to the returned prompt_file path.
-```
-
-Run the helper and cleanup in one shell invocation so the prompt file is removed even when the
-helper reports a model error:
-
-```bash
-status=0
-~/.agents/skills/second-opinion/scripts/openrouter-panel.sh run \
+~/.agents/skills/second-opinion/scripts/review-panel.sh run-openrouter \
   --confirmed \
-  --profile {panel_name} \
-  --profile-sha256 {profile_sha256_from_check} \
-  --prompt-file {literal_prompt_file_path} \
-  --timeout {timeout_seconds} || status=$?
-rm -f {literal_prompt_file_path}
-exit "$status"
+  --panel {panel_name} \
+  --panel-sha256 {panelSha256} \
+  --openrouter-sha256 {openrouterSha256} \
+  --prompt-sha256 {promptSha256} \
+  --prompt-file {literal_prompt_file} \
+  {route_overrides}
 ```
 
-The helper rejects missing/empty prompts before any request. It batches configured models up to the
-profile's concurrency limit and makes each request exactly once. A timeout, bad model, rate limit,
-HTTP error, or malformed response becomes a model-specific error; never retry or substitute.
+On decline, run `decline-openrouter` with the same panel, prompt, digests, and overrides. It emits one
+`declined` result per OpenRouter route and calls no network endpoint.
 
-## Present results
+`run-openrouter` rebuilds and verifies the effective panel and prompt before delegating the exact
+subset to `openrouter-panel.sh`. The hardened helper keeps the bearer token out of argv using a
+mode-private curl config, enforces the response-byte ceiling in curl and again before JSON parsing,
+makes every configured request at most once, and preserves each error.
+A changed panel, subset, or prompt requires a new check and fresh consent.
 
-Preserve every configured model's success/error status. Label output with role, display vendor,
-derived OpenRouter provider, and exact model ID. Usage is post-call telemetry, not a reliable pre-run
-price estimate.
+Always remove private prompt/result files after evaluation, success or failure.
 
-```markdown
-## Extreme Consensus Panel: `{profile}`
+## Presentation and interpretation
 
-| Role | Vendor | Provider | Model | Status | Result |
-|---|---|---|---|---|---|
-| {role} | {vendor} | `{provider}` | `{model_id}` | ok / error | concise response or error |
+Preserve every route's status, role, vendor, derived provider, exact model, effective settings, and
+provenance. Usage is post-call telemetry, not a reliable pre-run estimate.
 
-### Agreements
-- {claims independently supported by at least two successful vendors}
+Quorum is mechanical: count unique providers with successful responses. Same-provider successes are
+reported separately and cannot inflate quorum.
 
-### Disagreements / uncertainty
-- {conflicting claims, unsupported assumptions, failures, and missing perspectives}
+Consensus is semantic and only eligible after quorum. Report:
 
-*Source: OpenRouter chat-completions API; {count} explicitly approved metered requests; mode: {mode}.*
-```
+- claim-level evidence-backed agreements;
+- disagreements and uncertainty;
+- shared assumptions repeated without independent evidence;
+- same-provider corroboration;
+- unavailable, declined, failed, or timed-out routes.
 
-A point is not consensus merely because several models repeat the prompt's premise. Distinguish
-independent evidence from shared assumptions. With fewer than two successful vendors, state that no
-consensus was established.
-
-Finally apply the main skill's repository-grounded assessment: verify each material finding against
-actual code and list only genuinely actionable items. Agreement does not establish correctness.
+A majority is not correctness. Finally verify every material finding against repository evidence and
+list only actionable items.
 
 ## Safety invariants
 
-- Never invoke this flow unless the user explicitly selected `--agent consensus`.
-- Never call OpenRouter before the immediate consent step.
-- Never persist consent or run consensus in an unattended loop.
-- Never print credentials or put the bearer token in argv. The helper stores it in a mode-private
-  temporary curl configuration file and removes it on exit.
-- Never exceed the compiled model, concurrency, prompt, output, or timeout ceilings even if local
-  config asks for more.
-- Never send models tools, repository access, environment contents, or unsanitized sensitive data.
+- Never call OpenRouter without an explicitly selected panel containing those routes and immediate
+  subset-only consent.
+- Never persist consent, retry a failed route, substitute a model, or run a metered panel unattended.
+- Never print credentials or put the bearer token in argv.
+- Never exceed compiled model, concurrency, prompt, output, or timeout ceilings.
+- Never give OpenRouter models tools, repository access, environment contents, or unsanitized data.
 
 ## Maintainer validation
 
-Run the no-network fixture suite after changing profile validation, consent binding, request
-construction, concurrency, or result handling:
-
 ```bash
+skills/second-opinion/tests/test-review-panel.sh
 skills/second-opinion/tests/test-openrouter-panel.sh
 ```
 
-The suite uses a fake `curl`; it must never consume OpenRouter credits. Also run `make clean-code`.
+Both suites use fake CLIs/curl and must consume no network credits. Also run `make clean-code`.

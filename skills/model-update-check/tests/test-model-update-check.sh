@@ -184,6 +184,21 @@ cat > "$CONSENSUS_CONFIG" <<'JSON'
         "maxOutputTokensPerModel": 100,
         "defaultTimeoutSeconds": 5
       }
+    },
+    "hybrid": {
+      "quorum": 3,
+      "routes": [
+        {"id": "claude", "kind": "local", "agent": "claude", "model": "fable", "effort": "high", "role": "reasoning"},
+        {"id": "codex", "kind": "local", "agent": "codex", "role": "critique"},
+        {"id": "qwen", "kind": "openrouter", "model": "openrouter/qwen/current-reasoner", "vendor": "Qwen", "role": "verification"},
+        {"id": "xai", "kind": "openrouter", "model": "openrouter/x-ai/current-critic", "vendor": "xAI", "role": "adversarial review"}
+      ],
+      "limits": {
+        "maxParallel": 4,
+        "maxPromptBytes": 1024,
+        "maxOutputTokensPerModel": 100,
+        "defaultTimeoutSeconds": 5
+      }
     }
   }
 }
@@ -213,7 +228,7 @@ jq -e '
   .piUpdateAvailable == true and
   .piNpmUpdateAvailable == true and
   .piHomebrewUpdateAvailable == true and
-  (.configuredModels | length == 6) and
+  (.configuredModels | length == 8) and
   any(.configuredModels[];
     .model == "openai-codex/gpt-5.6-terra" and
     .catalogProvider == "openai" and .piAvailable == true and .liveFound == true) and
@@ -224,8 +239,12 @@ jq -e '
     .model == "openrouter/x-ai/current-critic" and
     .piAvailable == false and .liveFound == true and .openRouterFound == true) and
   any(.configuredModels[];
-    .model == "openrouter/qwen/current-reasoner" and
+    .usage == "test" and .model == "openrouter/qwen/current-reasoner" and
     .piAvailable == true and .liveFound == false) and
+  any(.configuredModels[];
+    .usage == "hybrid" and .model == "openrouter/x-ai/current-critic" and
+    .piAvailable == false and .liveFound == true and .openRouterFound == true) and
+  all(.configuredModels[]; .model != "fable" and .model != "native-default") and
   any(.findings[]; .kind == "pi-update" and .manager == "homebrew") and
   any(.findings[]; .kind == "pi-unavailable" and .model == "openrouter/x-ai/current-critic") and
   any(.findings[]; .kind == "live-missing" and .model == "openrouter/qwen/current-reasoner") and
@@ -270,8 +289,41 @@ result_json="$("${RUN_ENV[@]}" "$HELPER" --offline \
   --router-config "$INVALID_ROUTER" --consensus-config "$CONSENSUS_CONFIG")"
 jq -e '
   .sources.routerConfig.status == "invalid" and
-  (.configuredModels | length == 2) and
+  (.configuredModels | length == 4) and
   any(.findings[]; .kind == "config" and .source == "model-tier-router")
 ' <<< "$result_json" >/dev/null || fail "invalid config did not degrade independently"
+
+assert_invalid_panel() {
+  local fixture="$1"
+  local label="$2"
+  result_json="$("${RUN_ENV[@]}" "$HELPER" --offline \
+    --router-config "$ROUTER_CONFIG" --consensus-config "$fixture")"
+  jq -e . <<< "$result_json" >/dev/null || fail "$label did not emit JSON"
+  jq -e '
+    .sources.routerConfig.status == "ok" and
+    .sources.consensusConfig.status == "invalid" and
+    (.configuredModels | length == 4) and
+    any(.findings[]; .kind == "config" and .source == "second-opinion" and
+      .message == "panel config is invalid")
+  ' <<< "$result_json" >/dev/null || fail "$label did not degrade independently"
+}
+
+INVALID_PANEL="$TMP_DIR/invalid-panel.json"
+jq '.profiles.hybrid.models = .profiles.test.models' "$CONSENSUS_CONFIG" > "$INVALID_PANEL"
+assert_invalid_panel "$INVALID_PANEL" "models/routes conflict"
+
+INVALID_GEMINI_EFFORT="$TMP_DIR/invalid-gemini-effort.json"
+jq '.profiles.hybrid.routes[1] = {id:"gemini",kind:"local",agent:"gemini",effort:"high",role:"critique"}' \
+  "$CONSENSUS_CONFIG" > "$INVALID_GEMINI_EFFORT"
+assert_invalid_panel "$INVALID_GEMINI_EFFORT" "unsupported Gemini effort"
+
+INVALID_OPENROUTER_ID="$TMP_DIR/invalid-openrouter-id.json"
+jq '.profiles.hybrid.routes[2].model = "openrouter//missing-provider"' \
+  "$CONSENSUS_CONFIG" > "$INVALID_OPENROUTER_ID"
+assert_invalid_panel "$INVALID_OPENROUTER_ID" "malformed OpenRouter identity"
+
+INVALID_QUORUM="$TMP_DIR/invalid-quorum.json"
+jq '.profiles.hybrid.quorum = 5' "$CONSENSUS_CONFIG" > "$INVALID_QUORUM"
+assert_invalid_panel "$INVALID_QUORUM" "quorum above provider count"
 
 printf '%s\n' 'model-update-check tests passed'

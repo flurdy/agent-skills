@@ -1,72 +1,72 @@
-# External Opinion Model Resolution
+# External opinion model and effort resolution
 
-Decision recorded for `skills-aan` (2026-07-17).
+Decision recorded for `skills-aan` (2026-07-17), extended by `skills-qg4` (2026-07-21).
 
-## Decision
+## Single-agent routes
 
-`~/.agents/second-opinion/config.json` resolves **only** OpenRouter consensus profiles.
-It must not resolve the ordinary `claude`, `codex`, or `gemini` routes.
+Ordinary `claude`, `codex`, and `gemini` commands retain each CLI's native configuration and
+authentication. The second-opinion config does not replace their mutable defaults.
 
-Those routes retain each CLI's native configuration and authentication. This keeps subscription/OAuth
-selection, organisation policy, model availability, aliases, and provider-specific reasoning controls
-with the runtime that can actually validate them. A second resolver would duplicate mutable defaults,
-make the displayed choice less reliable, and risk silently changing a subscription route into a
-metered one.
+Resolution order:
 
-No implementation bead is warranted: the current resolver would add configuration surface without
-improving reproducibility or safety.
+1. Explicit `--model <id>` wins and is passed through using the selected command's native control.
+   Claude, Gemini, and `codex exec` accept a model flag; `codex review` instead requires
+   `-c 'model="<id>"'` because it has no `--model` option.
+2. `--model fast` uses a verified CLI-native cheap/fast alias when available; otherwise the skill
+   retains and reports the native default.
+3. `smart` or no `--model` retains the CLI-native default.
 
-## Resolution order
+Report provenance from the control actually applied. A literal model override is `override`; an
+omitted control is `native-default`. Do not infer or report Codex reasoning effort unless an explicit
+native `model_reasoning_effort` override was supplied.
 
-1. **Explicit `--model <id>` wins.** The skill passes the literal ID to the selected CLI using its
-   documented model option. The user explicitly chose that identity; the skill does not remap it.
-2. **`--model fast` is intent, not a shared alias.** Use a verified cheap/fast alias in that CLI's
-   native configuration when one exists; otherwise omit a model flag and report that the native
-   default was retained.
-3. **`smart` (and no `--model`) uses the CLI-native default.** Do not add a second-opinion config
-   entry or infer a model from the parent session.
-4. **`--agent consensus` is separate.** It resolves the explicitly selected named OpenRouter profile,
-   whose exact IDs and bounds are shown by `check` before fresh metered consent.
+`peer` is the explicit name for the default one-call independent route. Claude sessions prefer Codex;
+GPT/Codex sessions prefer Claude; other sessions choose the best available independent Claude or
+Codex route. The provider-independence rule chooses a CLI, not its model.
 
-The existing provider-independence rule still selects which ordinary CLI to ask; it does not select a
-model inside that CLI.
+## Panel routes
+
+Named `quorum` and `consensus` panels may now configure local and OpenRouter routes under
+`~/.agents/second-opinion/config.json`. This is an explicit panel contract, not a second resolver for
+ordinary commands:
+
+- omitted local model/effort means `native-default` and is reported as such;
+- `--route-model ID=VALUE` and `--route-effort ID=VALUE` are explicit per-route overrides;
+- generic `--model` is invalid for panel execution;
+- OpenRouter model identities come only from the selected profile and cannot be overridden at run
+  time.
+
+The configured `extreme` OpenRouter-only profile remains valid. Mixed profiles add explicit local
+choices without changing single-agent defaults.
 
 ## Effort
 
-Effort is not portable across these external routes, so this skill does not introduce an external
-`--effort` option or an effort field in shared consensus config:
+Effort is validated only where the selected CLI exposes a verified native control:
 
-- Claude Code currently exposes `--effort` (`low`, `medium`, `high`, `xhigh`, `max`) alongside
-  `--model`; Claude-specific callers may use its native configuration or flag deliberately.
-- Codex supports `model` and `model_reasoning_effort` in its native TOML configuration and per-run
-  config overrides; retain that ownership in Codex.
-- The installed Gemini CLI exposes `--model` but no documented effort flag in its command help.
-- The OpenRouter helper deliberately sends no `reasoning` request object. Reasoning parameters and
-  accepted values vary by provider/model; a generic translation could silently downgrade, reject, or
-  change cost.
+- Claude: `low`, `medium`, `high`, `xhigh`, `max` via `--effort`;
+- Codex: `minimal`, `low`, `medium`, `high`, `xhigh` via `model_reasoning_effort`;
+- Gemini: no supported effort override;
+- OpenRouter: no generic reasoning translation.
 
-If a future interface requests effort, resolve it only through a verified provider/CLI mapping. If the
-selected model does not support it, say so and either retain that runtime's default after user approval
-or reject the requested override. Never silently translate one provider's effort level to another.
+Unsupported values are rejected. Omitted values preserve the native default; the skill never invents
+a universal effort mapping or claims to know an unreported effective default.
 
-## Cost disclosure
+## Cost and consent
 
-Ordinary routes remain subscription/OAuth-first under the parent skill policy. Do not infer billing
-from a provider name, model name, parent route, or presence of an API key. When a route is known or
-unknown to be metered, disclose its effective model and effort when available and obtain the required
-current-run approval before launch.
+Single routes remain subscription/OAuth-first under the parent skill's policy, while known or unknown
+metered single routes require current-run disclosure. Panel configuration does not infer billing from
+a provider or model name.
 
-Consensus is always metered: `check` reveals its exact profile identities and limits, and the helper
-pins the consented profile digest before allowing a request.
+Every OpenRouter subset is metered. The panel coordinator binds its exact identities and prompt before
+fresh consent, then executes only the approved subset once. Declining can still run approved local
+routes with honest quorum/consensus degradation.
 
 ## Evidence
 
-- The installed Codex CLI documents `-m/--model`, `-c/--config` overrides, and profile layering;
-  its local native config uses `model` and `model_reasoning_effort`.
-- The installed Claude Code CLI documents `--model` and `--effort`; its CLI reference is at
-  <https://docs.anthropic.com/en/docs/claude-code/cli-usage>.
-- The installed Gemini CLI documents `-m/--model` but no effort option; its configuration guide is
-  at <https://geminicli.com/docs/cli/configuration/>.
-- Codex configuration documentation: <https://developers.openai.com/codex/config-file/config-basic>.
-- Repository policy: [`MODEL_ROUTING.md`](../../../MODEL_ROUTING.md), especially its parent/child
-  routing and thinking-effort rules.
+- Claude Code CLI documents `--model` and `--effort`: <https://docs.anthropic.com/en/docs/claude-code/cli-usage>.
+- Codex documents `--model`, `--config`, and `model_reasoning_effort`:
+  <https://developers.openai.com/codex/config-file/config-basic>.
+- Gemini CLI documents `--model` but no portable effort option:
+  <https://geminicli.com/docs/cli/configuration/>.
+- Repository routing policy: [`MODEL_ROUTING.md`](../../../MODEL_ROUTING.md).
+- Panel schema and execution: [review-panels.md](review-panels.md).

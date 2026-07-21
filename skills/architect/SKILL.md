@@ -4,7 +4,7 @@ description: Architecture and implementation planning gate for complex or high-b
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
-version: "1.5.0"
+version: "1.6.0"
 author: "flurdy"
 ---
 
@@ -62,7 +62,7 @@ user has not specified one and the choice matters.
 | `standard` | Standard coding tier | Moderate planning, low ambiguity |
 | `premium` | Premium reasoning tier, preferring subscription/OAuth routes | Architectural uncertainty or costly mistakes |
 | `second-opinion` | In-session draft + one vendor-independent `/second-opinion validate-plan` review | Need an independent validation pass |
-| `all-in` | Premium draft + one bounded `/second-opinion validate-plan --agent all` review batch | High-risk, cross-service, security, data migrations |
+| `all-in` | Premium draft + one bounded `/second-opinion validate-plan --agent quorum --panel local-legacy` review batch | High-risk, cross-service, security, data migrations |
 
 This skill declares `model-tier: premium`, but that is semantic routing metadata,
 not a mandate to use a particular provider or model. Prefer the best configured premium
@@ -312,11 +312,11 @@ If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revi
      - Rollout, rollback, observability, and operational burden
      - YAGNI, unnecessary abstractions, and decisions still missing
 3. Invoke the tier-specific route once:
-   - `second-opinion`: `/second-opinion validate-plan "<review packet>"`. Keep its default
-     vendor-independent selection; do not pass `--agent all`.
-   - `all-in`: `/second-opinion validate-plan "<review packet>" --agent all`. This is one
-     bounded parallel batch across the available subscription/OAuth-first CLIs, not a sequence
-     of follow-up reviews.
+   - `second-opinion`: `/second-opinion validate-plan "<review packet>" --agent peer`. Keep its
+     vendor-independent single-route selection.
+   - `all-in`: `/second-opinion validate-plan "<review packet>" --agent quorum --panel local-legacy`.
+     This is one bounded parallel batch across the configured local subscription/OAuth-first CLIs,
+     not a sequence of follow-up reviews.
 4. Invoke only through `/second-opinion`; do not probe authentication or call the CLIs directly.
    Let that skill apply its independence, availability, timeout, and cost rules. When it classifies
    a selected route as metered/BYOK or unknown-cost, ask for explicit consent with
@@ -328,10 +328,9 @@ If the tier is `second-opinion` or `all-in`, perform exactly one review-and-revi
 6. Revise the draft only for validated findings, then stop. Do not send the revision out for a
    second review batch or loop until reviewers agree.
 
-`--agent all` never includes OpenRouter and must not be rewritten as `--agent consensus`.
-The explicit, metered consensus panel tracked separately from this workflow is opt-in only; use
-it only when the user separately requests that named `/second-opinion` mode and completes its
-fresh-consent flow.
+The `local-legacy` panel contains no OpenRouter routes. A panel with a metered OpenRouter subset is
+separately opt-in; use it only when the user explicitly requests that named `/second-opinion` panel
+and completes its fresh-consent flow.
 
 Append this validation record to the final plan:
 

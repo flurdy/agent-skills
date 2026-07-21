@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Query a configured OpenRouter consensus profile with bounded input/output.
+# Query a configured OpenRouter panel subset with bounded input/output.
 # The caller must obtain explicit per-run consent before passing --confirmed.
 set -euo pipefail
 
@@ -10,6 +10,7 @@ readonly HARD_MAX_MODELS=8
 readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
 readonly HARD_MAX_OUTPUT_TOKENS=2000
+readonly HARD_MAX_RESPONSE_BYTES=1048576
 readonly HARD_MAX_TIMEOUT_SECONDS=600
 
 usage() {
@@ -20,9 +21,9 @@ Usage:
                           [--profile NAME] [--config FILE] [--timeout SECONDS]
 
 Configuration defaults to ~/.agents/second-opinion/config.json. A profile contains
-1-8 unique-provider OpenRouter models and limits no greater than the compiled safety
+1-8 unique OpenRouter models and limits no greater than the compiled safety
 ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
-model, and 600 seconds per request.
+model, a 1,048,576-byte HTTP response transport cap, and 600 seconds per request.
 
 OPENROUTER_API_KEY is required only for run. Its presence is checked without
 printing it. The config contains model identities and limits, never credentials.
@@ -112,10 +113,9 @@ validate_profile() {
       (.vendor | type == "string") and (.vendor | length > 0) and
       (.role | type == "string") and (.role | length > 0)
     )) and
-    ([.models[].model] | unique | length) == (.models | length) and
-    ([.models[].model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase] | unique | length) == (.models | length)
+    ([.models[].model] | unique | length) == (.models | length)
   ' <<< "$PROFILE_JSON" >/dev/null 2>&1; then
-    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs and unique OpenRouter provider namespaces; each model must use openrouter/<provider>/<model-id>"
+    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs; each model must use openrouter/<provider>/<model-id>"
     return 1
   fi
 
@@ -183,6 +183,7 @@ check_configuration() {
     --argjson hard_max_parallel "$HARD_MAX_PARALLEL" \
     --argjson hard_max_prompt_bytes "$HARD_MAX_PROMPT_BYTES" \
     --argjson hard_max_output_tokens "$HARD_MAX_OUTPUT_TOKENS" \
+    --argjson hard_max_response_bytes "$HARD_MAX_RESPONSE_BYTES" \
     --argjson hard_max_timeout_seconds "$HARD_MAX_TIMEOUT_SECONDS" '
     {
       ready: ($problems | length == 0),
@@ -198,6 +199,7 @@ check_configuration() {
         max_parallel: $hard_max_parallel,
         max_prompt_bytes: $hard_max_prompt_bytes,
         max_output_tokens_per_model: $hard_max_output_tokens,
+        max_response_bytes: $hard_max_response_bytes,
         max_timeout_seconds: $hard_max_timeout_seconds
       },
       problems: $problems
@@ -287,13 +289,22 @@ call_model() {
   # older than --header @file (introduced in curl 7.55). HTTP error bodies are
   # parsed below, while transport failures still produce a nonzero exit code.
   {
-    printf 'silent\nshow-error\nmax-time = %s\n' "$timeout_seconds"
+    printf 'silent\nshow-error\nmax-time = %s\nmax-filesize = %s\n' \
+      "$timeout_seconds" "$HARD_MAX_RESPONSE_BYTES"
     printf 'header = "Authorization: Bearer %s"\n' "$OPENROUTER_API_KEY"
     printf 'header = "Content-Type: application/json"\n'
     printf 'data-binary = "@%s"\noutput = "%s"\nurl = "%s"\n' \
       "$request_file" "$response_file" "$API_URL"
   } > "$curl_config"
   curl --config "$curl_config" || curl_status=$?
+
+  local response_bytes
+  response_bytes="$(wc -c < "$response_file" | tr -d '[:space:]')"
+  if (( curl_status == 63 || response_bytes > HARD_MAX_RESPONSE_BYTES )); then
+    curl_status=63
+    printf '{"error":{"message":"OpenRouter response exceeded the %s-byte transport cap"}}\n' \
+      "$HARD_MAX_RESPONSE_BYTES" > "$response_file"
+  fi
 
   write_result "$canonical_model" "$vendor" "$provider" "$role" "$response_file" "$curl_status" "$result_file"
 }
