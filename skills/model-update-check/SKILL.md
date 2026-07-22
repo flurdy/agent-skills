@@ -4,7 +4,7 @@ description: Read-only audit of Pi routing and configured second-opinion panel m
 allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-update-check.sh:*),Grep,AskUserQuestion"
 model-tier: economy
 model: haiku
-effort: low
+effort: medium
 version: "1.1.0"
 author: "flurdy"
 ---
