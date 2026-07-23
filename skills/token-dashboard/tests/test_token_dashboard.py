@@ -270,6 +270,24 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(result.file_errors, 1)
         self.assertEqual(result.status, "partial")
 
+    def test_terminal_uses_readable_utc_times_without_changing_json_timestamps(self):
+        self.fixture.line(
+            ".pi/agent/sessions/a.jsonl",
+            {"type": "session", "id": "p"},
+            pi_message("m", "2026-07-20T04:05:06Z", {"input": 2}),
+        )
+        dashboard = self.dashboard()
+
+        terminal = td.render_terminal(dashboard)
+
+        self.assertIn("Generated: Mon 20 Jul 2026, 12:00 UTC", terminal)
+        self.assertIn(
+            "Period: Mon 20 Jul 2026, 04:05 UTC to Mon 20 Jul 2026, 12:00 UTC | timezone UTC",
+            terminal,
+        )
+        self.assertEqual(dashboard["generatedAt"], "2026-07-20T12:00:00Z")
+        self.assertEqual(dashboard["periods"]["current-session"]["start"], "2026-07-20T04:05:06Z")
+
     def test_usage_rows_include_actual_period_boundaries(self):
         self.fixture.line(".pi/agent/sessions/a.jsonl", {"type": "session", "id": "p"}, pi_message("m", "2026-07-20T04:00:00Z", {"input": 2}))
         dashboard = self.dashboard()

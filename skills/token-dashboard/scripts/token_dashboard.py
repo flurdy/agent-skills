@@ -938,6 +938,13 @@ def build_dashboard(now: dt.datetime, roots: dict[str, Path], offline: bool, bas
     }
 
 
+def human_time(value: Any) -> str:
+    parsed = parse_time(value)
+    if parsed is None:
+        return "unavailable"
+    return f"{parsed:%a} {parsed.day} {parsed:%b %Y, %H:%M UTC}"
+
+
 def token_display(value: Optional[int]) -> str:
     return "unavailable" if value is None else f"{value:,}"
 
@@ -964,7 +971,7 @@ def render_table(headers: list[str], rows: list[list[str]], right_aligned: set[i
 
 
 def render_terminal(dashboard: dict[str, Any]) -> str:
-    lines = ["Token dashboard", f"Generated {dashboard['generatedAt']}"]
+    lines = ["Token dashboard", f"Generated: {human_time(dashboard['generatedAt'])}"]
     headers = [
         "Harness", "Source", "Provider / Model / Agent", "Exact", "Req", "Input",
         "Output", "Cache R", "Cache W", "Reason", "Total",
@@ -972,7 +979,9 @@ def render_terminal(dashboard: dict[str, Any]) -> str:
     for scope, title in (("current-session", "Current session"), ("week", "Week")):
         period = dashboard["periods"][scope]
         selection = period["selection"]["precision"]
-        lines.extend(["", title, f"Period: {period['start'] or 'unavailable'} to {period['end']} | timezone UTC | selection {selection}"])
+        start = human_time(period["start"])
+        end = human_time(period["end"])
+        lines.extend(["", title, f"Period: {start} to {end} | timezone UTC | selection {selection}"])
         usage_rows = [row for row in dashboard["usage"] if row["scope"] == scope]
         if not usage_rows:
             lines.append("  No usage rows available.")

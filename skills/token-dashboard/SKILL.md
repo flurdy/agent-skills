@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/token-dashboard/scripts/token_dashboa
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.3"
+version: "1.0.4"
 author: "flurdy"
 ---
 
@@ -85,9 +85,10 @@ authentication, period semantics, exactness definitions, and the prior-art decis
 
 ## Reading the report
 
-Terminal output always has **Current session**, **Week**, and **Sources** sections. Each usage section
-states its scope, period, timezone, and selection once, followed by a compact table containing source,
-harness, provider, model, agent, exactness, request count, and nullable token counters. Source status
+Terminal output always has **Current session**, **Week**, and **Sources** sections. Generated and period
+times use readable UTC labels. Each usage section states its scope, period, timezone, and selection once,
+followed by a compact table containing source, harness, provider, model, agent, exactness, request count,
+and nullable token counters. Source status
 is tabular; complete diagnostics wrap below it. Control characters in displayed model and agent values
 are replaced. Unavailable sources remain visible and do not make healthy sources fail.
 
