@@ -5,6 +5,8 @@ skill or agent.
 
 ## Structure
 
+- [`installation.md`](installation.md) — installation destinations, prompt setup,
+  private overlays, migration, and cleanup.
 - [`evaluations/`](evaluations/) — documented, bounded skill-evaluation pilots and
   their evidence.
 - [`plans/`](plans/) — historical and implementation plans, including their supporting
