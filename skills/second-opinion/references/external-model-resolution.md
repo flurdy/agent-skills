@@ -4,8 +4,8 @@ Decision recorded for `skills-aan` (2026-07-17), extended by `skills-qg4` (2026-
 
 ## Single-agent routes
 
-Ordinary `claude`, `codex`, and `gemini` commands retain each CLI's native configuration and
-authentication. The second-opinion config does not replace their mutable defaults.
+Ordinary `claude`, `codex`, and `gemini` commands retain each CLI's native authentication. The
+second-opinion skill applies an `opus` model default only when the resolved direct route is Claude.
 
 Resolution order:
 
@@ -14,11 +14,14 @@ Resolution order:
    `-c 'model="<id>"'` because it has no `--model` option.
 2. `--model fast` uses a verified CLI-native cheap/fast alias when available; otherwise the skill
    retains and reports the native default.
-3. `smart` or no `--model` retains the CLI-native default.
+3. With no `--model`, a resolved Claude route uses `--model opus`; resolved Codex and Gemini routes
+   retain their CLI-native defaults.
+4. `--model smart` retains the CLI-native default.
 
-Report provenance from the control actually applied. A literal model override is `override`; an
-omitted control is `native-default`. Do not infer or report Codex reasoning effort unless an explicit
-native `model_reasoning_effort` override was supplied.
+Report provenance from the control actually applied. A literal caller-supplied model is `override`,
+the implicit direct-Claude `opus` selection is `skill-default`, and an omitted control is
+`native-default`. Do not infer or report Codex reasoning effort unless an explicit native
+`model_reasoning_effort` override was supplied.
 
 `peer` is the explicit name for the default one-call independent route. Claude sessions prefer Codex;
 GPT/Codex sessions prefer Claude; other sessions choose the best available independent Claude or

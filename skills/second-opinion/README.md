@@ -32,8 +32,9 @@ different from the one that produced the work:
 - Other sessions → the best available Claude or Codex route.
 
 You can choose a direct route explicitly with `--agent claude`, `--agent codex`, or
-`--agent gemini`. Direct routes use their installed CLI's normal authentication and model defaults.
-An explicit `--model <id>` is passed to that CLI; omit it unless you need a particular model.
+`--agent gemini`. Direct Claude routes default to `opus`; Codex and Gemini retain their installed
+CLI's model defaults. An explicit `--model <id>` overrides this; use `--model smart` to retain the
+Claude CLI-native default.
 
 Examples:
 
@@ -121,7 +122,8 @@ Treat the final assessment as a review checklist:
 4. Record unresolved disagreement as uncertainty, not a majority decision.
 5. Fix, defer, or track only findings that remain valid after verification.
 
-For model and effort precedence—including why omitted settings are reported as `native-default`—see
+For model and effort precedence—including the direct-Claude `opus` skill default and when omitted
+settings are reported as `native-default`—see
 [external-model-resolution.md](references/external-model-resolution.md).
 
 ## Troubleshooting

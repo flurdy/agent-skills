@@ -77,7 +77,9 @@ separately metered subset requiring fresh consent immediately before requests.
 
 For a direct single agent only:
 
-- no `--model` or `--model smart` → retain the CLI-native default;
+- no `--model` → when the resolved route is Claude, use the skill default `opus`; Codex and Gemini
+  retain their CLI-native defaults;
+- `--model smart` → retain the CLI-native default;
 - `--model fast` → use a verified CLI-native fast alias, otherwise retain and report the native
   default;
 - `--model <id>` → pass the literal ID through.
@@ -155,10 +157,11 @@ without allowing writes.
 ### Claude
 
 ```bash
-claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" {model_flag}
+claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" --model {resolved_model}
 ```
 
-Use `--model <id>` only for an explicit resolved model.
+Without `--model`, resolve `{resolved_model}` to `opus`; `--model smart` instead omits the flag and
+retains the Claude CLI-native default. Pass every other resolved model as `--model <id>`.
 
 ### Codex
 
@@ -324,7 +327,7 @@ claims; repeated unsupported claims remain invalid.
 - Never expose OpenRouter credentials or place the bearer token in argv.
 - Never give OpenRouter routes tools or repository access.
 - Never retry/substitute a failed route or silently change a configured panel.
-- Always report effective route provenance; `native-default` is honest when the runtime does not
-  reveal a concrete setting.
+- Always report effective route provenance; use `skill-default` for the implicit direct-Claude
+  `opus` selection and `native-default` when the runtime does not reveal a concrete setting.
 - Preserve external responses faithfully before adding your own assessment.
 - A partial panel is partial coverage, not a complete panel.
