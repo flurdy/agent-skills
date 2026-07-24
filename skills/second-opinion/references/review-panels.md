@@ -77,7 +77,7 @@ toward quorum.
         "maxParallel": 4,
         "maxPromptBytes": 65536,
         "maxOutputTokensPerModel": 2000,
-        "defaultTimeoutSeconds": 180
+        "defaultTimeoutSeconds": 600
       }
     }
   }

@@ -42,7 +42,7 @@ The existing version-1 legacy shape remains valid:
         "maxParallel": 4,
         "maxPromptBytes": 65536,
         "maxOutputTokensPerModel": 2000,
-        "defaultTimeoutSeconds": 180
+        "defaultTimeoutSeconds": 600
       }
     }
   }
@@ -60,7 +60,7 @@ Local limits may lower but never exceed the compiled ceilings:
 - 65,536 prompt bytes;
 - 2,000 output tokens per model;
 - 1,048,576 response bytes per HTTP transport;
-- 600 seconds per request.
+- 1,800 seconds per request.
 
 The response-byte ceiling is a transport safety bound, not a token conversion or price estimate.
 

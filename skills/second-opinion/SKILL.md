@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 
@@ -43,7 +43,7 @@ Agreement and vote count never establish correctness.
 /second-opinion review-pr --agent all   # deprecated alias: quorum --panel local-legacy
 ```
 
-`--timeout <minutes>` defaults to 3 and is capped at 10.
+`--timeout <minutes>` defaults to 10 and is capped at 30.
 
 ## Requirements
 
@@ -94,7 +94,7 @@ Extract:
 - target: PR number, plan, bug description, or question;
 - agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, `consensus`, or deprecated `all`;
 - panel: a local profile name;
-- timeout: 1–10 minutes, default 3;
+- timeout: 1–30 minutes, default 10;
 - direct model or repeated route-specific model/effort overrides.
 
 Defaults and compatibility:

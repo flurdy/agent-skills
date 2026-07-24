@@ -104,6 +104,7 @@ jq -e '
   (.models | length == 4) and
   (.profile_sha256 | test("^[a-f0-9]{64}$")) and
   .hard_limits.max_response_bytes == 1048576 and
+  .hard_limits.max_timeout_seconds == 1800 and
   .problems == ["OPENROUTER_API_KEY is not set"]
 ' <<< "$check_json" >/dev/null || fail "local check output was incorrect"
 assert_no_requests
@@ -142,6 +143,28 @@ jq -e '
   (.models | length == 0) and
   any(.problems[]; contains("compiled safety ceilings"))
 ' <<< "$invalid_json" >/dev/null || fail "an over-limit profile was accepted"
+assert_no_requests
+
+MAX_TIMEOUT_CONFIG="$TMP_DIR/max-timeout.json"
+jq '.profiles.test.limits.defaultTimeoutSeconds = 1800' "$CONFIG" > "$MAX_TIMEOUT_CONFIG"
+max_timeout_json="$("${CHECK_ENV[@]}" "$HELPER" check \
+  --config "$MAX_TIMEOUT_CONFIG" --profile test)"
+jq -e '
+  .ready == false and
+  .profile_limits.defaultTimeoutSeconds == 1800 and
+  .problems == ["OPENROUTER_API_KEY is not set"]
+' <<< "$max_timeout_json" >/dev/null || fail "the maximum timeout was rejected"
+assert_no_requests
+
+OVER_TIMEOUT_CONFIG="$TMP_DIR/over-timeout.json"
+jq '.profiles.test.limits.defaultTimeoutSeconds = 1801' "$CONFIG" > "$OVER_TIMEOUT_CONFIG"
+invalid_json="$("${CHECK_ENV[@]}" "$HELPER" check \
+  --config "$OVER_TIMEOUT_CONFIG" --profile test)"
+jq -e '
+  .ready == false and
+  (.models | length == 0) and
+  any(.problems[]; contains("compiled safety ceilings"))
+' <<< "$invalid_json" >/dev/null || fail "an over-limit timeout was accepted"
 assert_no_requests
 
 PROMPT="$TMP_DIR/prompt.txt"

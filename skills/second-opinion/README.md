@@ -68,7 +68,8 @@ Useful commands:
 ```
 
 `focused` is the local Claude-and-Codex built-in. `local-legacy` is a reserved local-only
-compatibility panel. `--agent all` is deprecated; use `--agent quorum` instead.
+compatibility panel. `--agent all` is deprecated; use `--agent quorum` instead. Timeouts default to
+10 minutes and can be set from 1 to 30 minutes with `--timeout <minutes>`.
 
 ## Setup
 

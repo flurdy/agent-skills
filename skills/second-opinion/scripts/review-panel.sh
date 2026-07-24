@@ -13,7 +13,7 @@ readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
 readonly HARD_MAX_OUTPUT_TOKENS=2000
 readonly HARD_MAX_LOCAL_OUTPUT_BYTES=65536
-readonly HARD_MAX_TIMEOUT_SECONDS=600
+readonly HARD_MAX_TIMEOUT_SECONDS=1800
 
 usage() {
   cat <<'USAGE'
@@ -66,12 +66,12 @@ built_in_panel() {
   case "$1" in
     focused)
       cat <<'JSON'
-{"quorum":2,"routes":[{"id":"claude","kind":"local","agent":"claude","role":"independent review"},{"id":"codex","kind":"local","agent":"codex","role":"independent review"}],"limits":{"maxParallel":2,"maxPromptBytes":65536,"maxOutputTokensPerModel":2000,"defaultTimeoutSeconds":180}}
+{"quorum":2,"routes":[{"id":"claude","kind":"local","agent":"claude","role":"independent review"},{"id":"codex","kind":"local","agent":"codex","role":"independent review"}],"limits":{"maxParallel":2,"maxPromptBytes":65536,"maxOutputTokensPerModel":2000,"defaultTimeoutSeconds":600}}
 JSON
       ;;
     local-legacy)
       cat <<'JSON'
-{"quorum":2,"routes":[{"id":"claude","kind":"local","agent":"claude","role":"independent review"},{"id":"codex","kind":"local","agent":"codex","role":"independent review"},{"id":"gemini","kind":"local","agent":"gemini","role":"long-context review"}],"limits":{"maxParallel":3,"maxPromptBytes":65536,"maxOutputTokensPerModel":2000,"defaultTimeoutSeconds":180}}
+{"quorum":2,"routes":[{"id":"claude","kind":"local","agent":"claude","role":"independent review"},{"id":"codex","kind":"local","agent":"codex","role":"independent review"},{"id":"gemini","kind":"local","agent":"gemini","role":"long-context review"}],"limits":{"maxParallel":3,"maxPromptBytes":65536,"maxOutputTokensPerModel":2000,"defaultTimeoutSeconds":600}}
 JSON
       ;;
     *) return 1 ;;

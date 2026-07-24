@@ -11,7 +11,7 @@ readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
 readonly HARD_MAX_OUTPUT_TOKENS=2000
 readonly HARD_MAX_RESPONSE_BYTES=1048576
-readonly HARD_MAX_TIMEOUT_SECONDS=600
+readonly HARD_MAX_TIMEOUT_SECONDS=1800
 
 usage() {
   cat <<'USAGE'
@@ -23,7 +23,7 @@ Usage:
 Configuration defaults to ~/.agents/second-opinion/config.json. A profile contains
 1-8 unique OpenRouter models and limits no greater than the compiled safety
 ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
-model, a 1,048,576-byte HTTP response transport cap, and 600 seconds per request.
+model, a 1,048,576-byte HTTP response transport cap, and 1,800 seconds per request.
 
 OPENROUTER_API_KEY is required only for run. Its presence is checked without
 printing it. The config contains model identities and limits, never credentials.

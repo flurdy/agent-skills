@@ -157,6 +157,7 @@ NO_GEMINI_ENV=(env "PATH=$TMP_DIR/bin-no-gemini:/usr/bin:/bin" "HOME=$TMP_DIR/ho
 focused_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel focused --prompt-file "$PROMPT")"
 jq -e '
   .ready and .source == "built-in" and .quorum == 2 and
+  .limits.defaultTimeoutSeconds == 600 and
   [.routes[].id] == ["claude","codex"] and .openrouter.requestCount == 0 and
   (.promptSha256 | test("^[a-f0-9]{64}$"))
 ' <<< "$focused_json" >/dev/null || fail "focused built-in was not normalized"
