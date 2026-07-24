@@ -44,6 +44,8 @@ Alternatively, symlink individual templates into Pi's default prompt directory:
 mkdir -p ~/.pi/agent/prompts
 ln -sfn "$PWD/prompts/about.md" ~/.pi/agent/prompts/about.md
 ln -sfn "$PWD/prompts/ask-claude.md" ~/.pi/agent/prompts/ask-claude.md
+ln -sfn "$PWD/prompts/ask-fable.md" ~/.pi/agent/prompts/ask-fable.md
+ln -sfn "$PWD/prompts/ask-sol.md" ~/.pi/agent/prompts/ask-sol.md
 ln -sfn "$PWD/prompts/squash-msg.md" ~/.pi/agent/prompts/squash-msg.md
 ln -sfn "$PWD/prompts/trim-comments.md" ~/.pi/agent/prompts/trim-comments.md
 ```
@@ -59,6 +61,8 @@ Symlink templates into Claude Code's user command directory:
 mkdir -p ~/.claude/commands
 ln -sfn "$PWD/prompts/about.md" ~/.claude/commands/about.md
 ln -sfn "$PWD/prompts/ask-claude.md" ~/.claude/commands/ask-claude.md
+ln -sfn "$PWD/prompts/ask-fable.md" ~/.claude/commands/ask-fable.md
+ln -sfn "$PWD/prompts/ask-sol.md" ~/.claude/commands/ask-sol.md
 ln -sfn "$PWD/prompts/squash-msg.md" ~/.claude/commands/squash-msg.md
 ln -sfn "$PWD/prompts/trim-comments.md" ~/.claude/commands/trim-comments.md
 ```
