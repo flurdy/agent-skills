@@ -7,8 +7,6 @@ skill or agent.
 
 - [`installation.md`](installation.md) — installation destinations, prompt setup,
   private overlays, migration, and cleanup.
-- [`project-workspace.md`](project-workspace.md) — deterministic project workspace
-  scaffolding, generated structure, and safety behavior.
 - [`evaluations/`](evaluations/) — documented, bounded skill-evaluation pilots and
   their evidence.
 - [`plans/`](plans/) — historical and implementation plans, including their supporting

@@ -70,8 +70,8 @@ not instructions to simulate unsupported capabilities during a run.
 - `/verify-task`, `/total-review`, and specialist review skills own their complete
   verification workflows.
 - `pi-subagents` owns Pi execution lifecycle and inter-agent mechanics.
-- A present `/control-plane` index may provide authoritative project context, but
-  delegated work must remain possible without it, and the skill never silently rewrites it.
+- A present workspace `workspace.json` index may provide authoritative project context,
+  but delegated work must remain possible without it, and the skill never silently rewrites it.
 
 ## Scope decision (2026-07-17)
 
@@ -107,7 +107,9 @@ Related standalone work (unaffected by the pause):
 
 - `skills-1hp` replaces the earlier seven-tier routing taxonomy with portable
   `economy`, `standard`, and `premium` capability tiers plus independent effort.
-- `skills-88v.6` tracks the portable control-plane project-context pattern.
+- The portable workspace scaffold is maintained in
+  [`flurdy/ai-tools`](https://github.com/flurdy/ai-tools/tree/main/shared/project-workspace);
+  `skills-88v.6` preserves the original project-context tracking history.
 
 ## Evidence
 

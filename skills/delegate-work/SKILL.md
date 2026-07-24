@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:
 disable-model-invocation: true
 model-tier: premium
 effort: high
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 
@@ -109,8 +109,8 @@ only for durable context:
 - Never create one item per child, recon pass, review, retry, or handoff.
 - Propose independently valuable tracker work only; mutate tracking after explicit
   approval. Invoke `triage` only in a Beads-enabled repository.
-- Consume a portable control-plane index when useful, but do not require, create, or
-  silently rewrite one.
+- Consume a present `workspace.json` project-context index when useful, but do not
+  require, create, or silently rewrite one.
 
 ## 3. Choose the execution shape
 
