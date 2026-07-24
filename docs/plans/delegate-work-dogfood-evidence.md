@@ -1,4 +1,4 @@
-# Orchestrate dogfood evidence
+# Delegate Work dogfood evidence
 
 > **Historical taxonomy note (2026-07-18):** Tier names in this evidence log preserve
 > the routing taxonomy used during the recorded dogfood. Active shared skills now use
@@ -13,7 +13,7 @@
 - Repository workflow: direct commits on `main`
 - Evidence policy: prefer observed runtime evidence; label synthetic decision-table checks and unavailable scenarios explicitly.
 
-This log tests the portable `/orchestrate` policy without parsing model-tier-router
+This log tests the portable `/delegate-work` policy without parsing model-tier-router
 configuration, changing runtime agent settings, persisting ad hoc consent, or creating
 tracker items for individual children/reviews/retries.
 
@@ -26,7 +26,7 @@ tracker items for individual children/reviews/retries.
 | Pi builtin routing | Same model report | All eight executable builtin roles inherit the parent model; no downshift is configured or claimed. |
 | Pi executable roles | `subagent({ action: "list" })` | `context-builder`, `delegate`, `oracle`, `planner`, `researcher`, `reviewer`, `scout`, `worker` |
 | Trusted Pi policy | User instruction-channel check | `~/.pi/agent/AGENTS.md` absent; no trusted Pi child cost declaration supplied. |
-| Trusted Claude policy | User instruction-channel check | `~/.claude/CLAUDE.md` contains no `orchestrate-child-policy` or metered declaration. |
+| Trusted Claude policy | User instruction-channel check | `~/.claude/CLAUDE.md` contains no `delegate-work-child-policy` or metered declaration. |
 | Trusted Codex policy | User instruction-channel check | `$CODEX_HOME/AGENTS.md` and `AGENTS.override.md` absent. |
 | Repository text | `CLAUDE.local.md` inspection | Contains workflow preferences only. Even a repository claim would not independently establish child billing classification. |
 | Control-plane index | Targeted filename search | None present. Orchestration remains usable without one. |
@@ -51,7 +51,7 @@ tracker items for individual children/reviews/retries.
 | Conditional mapped Pi route | Environment unavailable | Requires effective identity + trusted metered declaration | Correctly not attempted; no resolver config was parsed and no override was invented. | Gap remains until the user/runtime supplies trusted mapping evidence. |
 | Bounded cheaper writer exception | Environment unavailable | Requires a verified cheaper writer mapping plus full packet | Correctly not attempted. The only proposed writer inherited the premium parent and was declined. | No claim that the exception was exercised. |
 | Fresh independent review | Observed | Initial fresh reviewer inherited Sol; focused follow-up inherited Luna after the parent was routed to Luna; metered status unknown | The initial reviewer found one high temporal identity gap, one medium project-scope ambiguity, and two low portability/staleness notes. Parent fixed them serially. Codex and Claude native child reviews added portability findings. The focused post-fix Pi reviewer returned PASS for all five requested checks and no blocker. Session evidence shows the parent changed from Sol to Luna at `09:34:46Z` immediately after reading the cheap-bulk migration skill, and the reviewer correctly inherited Luna at `09:41:19Z`; the parent restored Sol at `09:43:22Z`. | The earlier Sol model report was stale, not a Pi reporting defect. The user had approved a Sol-inherited follow-up, so the intervening route change should have triggered fresh disclosure/consent before the Luna launch. No later child launch reused that stale preflight. The wrapper rejection was separately traced to string `acceptance: "none"`, which cannot lower inferred reviewed acceptance without an explicit reason object. |
-| Pi model restoration | Observed | Parent began on `openai-codex/gpt-5.6-sol`; a later cheap-bulk skill read routed it to `gpt-5.6-luna` at medium effort | The initial panel restored/remained Sol. Session lifecycle records show the later Luna route restored to Sol at `09:43:22Z` after the focused review settled; a later Terra route also restored to Sol. | Restoration worked. The important failure was orchestration using stale pre-route disclosure, not failure to restore. |
+| Pi model restoration | Observed | Parent began on `openai-codex/gpt-5.6-sol`; a later cheap-bulk skill read routed it to `gpt-5.6-luna` at medium effort | The initial panel restored/remained Sol. Session lifecycle records show the later Luna route restored to Sol at `09:43:22Z` after the focused review settled; a later Terra route also restored to Sol. | Restoration worked. The important failure was delegated work using stale pre-route disclosure, not failure to restore. |
 | Cheap-bulk medium baseline | Observed | Explicit Pi process with `beads-check-dolt-migration`, medium thinking; route identity not exposed in output | Completed read-only in 96.864s; correctly reported Dolt backend, `bd 0.62.0`, no sync branch/worktree, and no migration needed. | Tool-call count and quota were not observable from the one-shot output. This is one successful baseline, insufficient to recommend low effort. |
 | Claude native delegation | Observed after correcting test invocation | No trusted child classification available; child inherited parent with no claimed downshift | The first attempt incorrectly used `--bare`, which intentionally skips normal OAuth/keychain auth and therefore reported `Not logged in`; normal `claude -p ping` proved the stored login was healthy. Retrying without `--bare` launched exactly one bounded read-only `reviewer` child and completed without edits/network use. | 157.792s wall time; parent and child reported `claude-fable-5`; child used 3 tools and about 27k tokens; effort was not observable. Initial auth failure was harness misuse, not missing user authentication. |
 | Codex native delegation | Observed | Native multi-agent; parent/child model and effort not observable; billing classification unknown | Exactly one native `explorer` child launched and completed under read-only sandbox. Child reported no high-severity findings; it found two medium and two low findings. | Codex parent output reported `gpt-5.5`, medium effort, 75.963s wall time, 36,676 tokens. Child effective model/effort was not observable. |
@@ -129,7 +129,7 @@ runtime's inferred acceptance schema.
 4. Trusted-policy absence and arbitrary repository context were handled conservatively.
 5. Tracker and control-plane behavior stayed portable and low-noise.
 6. The first review caught a real pre-launch identity/cost defect, demonstrating why
-   fresh review is required. The follow-up exposed two orchestration mistakes rather
+   fresh review is required. The follow-up exposed two delegation mistakes rather
    than Pi execution defects: stale model preflight after a parent route change, and
    use of the non-disabling string `acceptance: "none"` shorthand.
 7. Verified mapped and cheaper-writer evidence remains unavailable. Cheap-bulk,

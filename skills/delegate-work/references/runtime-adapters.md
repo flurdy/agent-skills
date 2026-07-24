@@ -3,7 +3,7 @@
 Read [`child-routing-policy.md`](child-routing-policy.md) first. Load this reference
 only after detecting the active runtime. Follow installed runtime documentation and
 tools when they differ from these capability-level notes. Never mutate runtime
-settings, agent definitions, or cost policy during an orchestration run.
+settings, agent definitions, or cost policy during a delegation run.
 
 ## Pi
 
@@ -20,7 +20,7 @@ settings, agent definitions, or cost policy during an orchestration run.
 4. Without a verified mapping, omit `model`, disclose inherited/no-downshift behavior,
    classify billing as unknown, and apply the consent gate. If declined, continue
    serially.
-5. Launch asynchronously by default. If the turn must finish the orchestration, call
+5. Launch asynchronously by default. If the turn must finish the delegated work, call
    `wait()` when no independent parent work remains; do not poll or end the turn with
    required children still live.
 6. For prose-only review with no acceptance ledger, current `pi-subagents` requires an

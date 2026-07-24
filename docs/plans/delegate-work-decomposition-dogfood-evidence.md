@@ -1,10 +1,10 @@
-# Orchestrate dependency-aware decomposition dogfood
+# Delegate Work dependency-aware decomposition dogfood
 
 ## Scope
 
 - Bead: `skills-rd6.1`
 - Parent epic: `skills-rd6`
-- Method under test: `skills/orchestrate/references/work-graph.md`
+- Method under test: `skills/delegate-work/references/work-graph.md`
 - Evidence policy: preserve tracker facts, label inference, and do not create or mutate
   dependency relationships during dogfood.
 
@@ -17,7 +17,7 @@ to equate work units with child launches.
 ### Outcome frame
 
 ```text
-outcome: /orchestrate becomes outcome- and dependency-driven while retaining one
+outcome: /delegate-work becomes outcome- and dependency-driven while retaining one
 user-facing entry point and parent authority.
 non-goals: persistent scheduling; duplicated runtime routing; duplicated architect or
 verification workflows; one tracker item per child launch.
@@ -29,7 +29,7 @@ criteria are evidenced in the operational skill and documentation.
 
 | ID | Decision | Owner | Status | Blocks |
 |---|---|---|---|---|
-| D1 | Keep one explicit `/orchestrate` entry point | Parent/user | Decided in prior scope work | — |
+| D1 | Keep one explicit `/delegate-work` entry point | Parent/user | Decided in prior scope work | — |
 | D2 | Keep architecture, integration, and final judgment in the parent | Parent | Decided in v1 policy | — |
 | D3 | Runtime routing and execution mechanics stay in their existing owners | Parent | Decided in v1 policy | — |
 
@@ -59,7 +59,7 @@ not a Beads dependency.
 | W5 | Assumption-driven replanning | `skills-rd6.5` | W1, W4 | Evidence changes the graph | Replanning AC satisfied |
 | W6 | Proportionate verification strategy | `skills-rd6.6` | W1 | Work-unit acceptance → validation contract | Verification AC satisfied |
 | W7 | Context efficiency and reuse | `skills-rd6.7` | W3 | Shared state/context handoffs | Context AC satisfied |
-| W8 | Epic integration (method-derived) | Parent-owned `/orchestrate` policy and docs | W1–W7 (epic completion gate, not a tracker edge) | `SKILL.md`, references, maturity docs | Epic AC and final validation pass |
+| W8 | Epic integration (method-derived) | Parent-owned `/delegate-work` policy and docs | W1–W7 (epic completion gate, not a tracker edge) | `SKILL.md`, references, maturity docs | Epic AC and final validation pass |
 
 ### Readiness and critical dependency candidates
 
@@ -90,7 +90,7 @@ selection remains owned by `skills-rd6.2`.
 ### Outcome frame
 
 ```text
-outcome: /orchestrate gains a compact, conditional work-graph method that separates
+outcome: /delegate-work gains a compact, conditional work-graph method that separates
 decisions, uncertainties, executable deliverables, dependencies, and integration.
 non-goals: adaptive scheduling; communication protocol; evidence ledger; dynamic
 replanning; full verification-strategy design; routing/runtime changes.
@@ -135,7 +135,7 @@ I1–I3 were deliberately kept with one parent writer:
 - no independent implementation artifact could safely land before the shared method.
 
 Only I4 benefits from fresh independent context. This is a successful “decompose but
-do not fan out implementation” result, not a failure to orchestrate.
+do not fan out implementation” result, not a failure of delegation.
 
 ## Validation record
 
@@ -149,7 +149,7 @@ Validated 2026-07-16 after implementation:
 | Codex assembly preview | PASS | `make dry-run-codex` |
 | Claude managed-link health | PASS | `make doctor` |
 | Codex managed-link health | PASS | `make doctor-codex` |
-| Parallel-session scope guard | PASS | Task changes are confined to orchestrate policy/docs and this evidence file; pre-existing `skills-4xa`/`skills/README.md` work was not modified by this task |
+| Parallel-session scope guard | PASS | Task changes are confined to delegate-work policy/docs and this evidence file; pre-existing `skills-4xa`/`skills/README.md` work was not modified by this task |
 | Independent policy review | PASS after fixes | Initial review found ambiguous graph-entry precedence and unclear W8 provenance; both were corrected |
 | Focused independent re-review | PASS | Confirmed direct-work precedence, method-derived W8 labeling, sibling-capability boundaries, and no remaining must-fix AC issue |
 

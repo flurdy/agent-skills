@@ -54,7 +54,7 @@ Use a pin only when running the skill on that Claude capability class is intenti
 
 ## Parent and child routing
 
-Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered or unknown child routes require fresh current-run consent; otherwise inherit the parent route or continue serially. Runtime-specific child discovery and evidence rules belong in `/orchestrate` and its adapter references.
+Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered or unknown child routes require fresh current-run consent; otherwise inherit the parent route or continue serially. Runtime-specific child discovery and evidence rules belong in `/delegate-work` and its adapter references.
 
 ## Client behavior
 

@@ -1,6 +1,9 @@
-# Orchestrate skill
+# Delegate Work skill
 
-`/orchestrate` is the single explicit entry point for coordinating delegated work.
+`/delegate-work` is the single explicit entry point for coordinating delegated work.
+It replaces the former `/orchestrate` name, which was too broad and conflicted with
+runtime-specific orchestration concepts. No compatibility alias is retained.
+
 It is a safe delegation and integration workflow, and — by decision (`skills-mcn`) —
 deliberately not a persistent or adaptive task scheduler. See
 [Scope decision](#scope-decision-2026-07-17) for why the adaptive build-out was paused.
@@ -68,7 +71,7 @@ not instructions to simulate unsupported capabilities during a run.
   verification workflows.
 - `pi-subagents` owns Pi execution lifecycle and inter-agent mechanics.
 - A present `/control-plane` index may provide authoritative project context, but
-  orchestration must work without it and never silently rewrite it.
+  delegated work must remain possible without it, and the skill never silently rewrites it.
 
 ## Scope decision (2026-07-17)
 
@@ -95,7 +98,7 @@ wrong artifact for the gain:
   The bounded addition is to preserve each planned observable outcome and its acceptance
   evidence through work units, writer packets, reviewer packets, and parent integration.
 
-`/orchestrate` therefore stays a bounded-delegation governance skill: outcome and
+`/delegate-work` therefore stays a bounded-delegation governance skill: outcome and
 authority retained by the parent, route/cost consent, one-writer execution, independent
 review, escalation, and disclosed serial fallback. Any future adaptive step must be
 justified by evidence that a real coordination outcome improved — see `skills-mcn`.
@@ -109,8 +112,8 @@ Related standalone work (unaffected by the pause):
 ## Evidence
 
 Initial cross-runtime dogfood and policy corrections are recorded in
-[`../../docs/plans/orchestrate-dogfood-evidence.md`](../../docs/plans/orchestrate-dogfood-evidence.md).
+[`../../docs/plans/delegate-work-dogfood-evidence.md`](../../docs/plans/delegate-work-dogfood-evidence.md).
 Dependency-aware decomposition dogfood is recorded in
-[`../../docs/plans/orchestrate-decomposition-dogfood-evidence.md`](../../docs/plans/orchestrate-decomposition-dogfood-evidence.md).
+[`../../docs/plans/delegate-work-decomposition-dogfood-evidence.md`](../../docs/plans/delegate-work-decomposition-dogfood-evidence.md).
 The original implementation plan is
-[`../../docs/plans/orchestrate-skill.md`](../../docs/plans/orchestrate-skill.md).
+[`../../docs/plans/delegate-work-skill.md`](../../docs/plans/delegate-work-skill.md).

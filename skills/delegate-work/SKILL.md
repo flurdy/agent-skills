@@ -1,15 +1,15 @@
 ---
-name: orchestrate
+name: delegate-work
 description: Safely coordinate bounded delegation while preserving observable outcome and acceptance-evidence pairs through one-writer execution, independent review, and parent validation. Explicit invocation only.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 disable-model-invocation: true
 model-tier: premium
 effort: high
-version: "1.4.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
-# Orchestrate
+# Delegate Work
 
 Coordinate bounded delegated work while keeping outcome, scope, judgment,
 integration, and final validation in the parent agent. Delegation is an execution
@@ -261,7 +261,7 @@ or stop. Do not automatically jump to a maximum-effort panel or silently widen s
 Finish when every required observable outcome has matching witnessed evidence, shared
 validation passes, and review finds no fixes worth doing now; remaining findings are
 optional/deferred; a decision needs the user; or the selected review gate reaches its
-cap. Routine orchestration normally uses one review and at most one focused follow-up.
+cap. Routine delegated work normally uses one review and at most one focused follow-up.
 
 Report the execution shape, material child route evidence, each outcome and its
 acceptance evidence, shared validation, conflicts or decisions, residual risks,

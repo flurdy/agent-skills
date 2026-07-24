@@ -53,7 +53,7 @@ The shared validator currently requires and mirrors the extra metadata without p
 - Choosing exact provider/model IDs in this repository.
 - Changing Pi's one-way nested upgrade/restoration behavior.
 - Making shared skills resolve or classify child models.
-- Weakening `/second-opinion` panel consent or `/orchestrate` child consent.
+- Weakening `/second-opinion` panel consent or `/delegate-work` child consent.
 - Rewriting historical plans or evidence logs to use the new terminology.
 - Reassessing each skill's present capability requirement during the mechanical migration.
 
@@ -119,7 +119,7 @@ Use a pin only when running the skill on that Claude capability class is intenti
 
 ## Parent and child routing
 
-Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered or unknown child routes require fresh current-run consent; otherwise inherit the parent route or continue serially. Runtime-specific child discovery and evidence rules belong in `/orchestrate` and its adapter references.
+Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered or unknown child routes require fresh current-run consent; otherwise inherit the parent route or continue serially. Runtime-specific child discovery and evidence rules belong in `/delegate-work` and its adapter references.
 
 ## Client behavior
 
@@ -205,7 +205,7 @@ Map current `advanced-coding`, `premium-reasoning`, and `premium-review` skills 
 - `beads-migrate-to-dolt`
 - `contract-test`
 - `diagnose-bug`
-- `orchestrate`
+- `delegate-work`
 - `pedantic-review`
 - `rebase-main`
 - `rebase-merged-parent`
@@ -219,7 +219,7 @@ Keep current effort differences:
 
 - implementation/conflict work: usually `high`;
 - architecture, diagnosis, verification, and craft review: usually `xhigh`;
-- `orchestrate`: retain deliberate `high`.
+- `delegate-work`: retain deliberate `high`.
 
 ### Agent metadata
 
@@ -293,11 +293,11 @@ Update these active sources:
 - Premium skill bodies — rename their declared tier to `premium` and retain the advisory guard.
 - `skills/architect/SKILL.md` — change implementation-tier recommendations to `standard` or `premium`; planning tiers such as `second-opinion` remain a separate user-facing concept.
 - `skills/second-opinion/SKILL.md` — remove the pseudo-tier claim while preserving independence and consent.
-- `skills/orchestrate/SKILL.md`, `skills/orchestrate/references/child-routing-policy.md`, and active orchestrate README — describe work shape as economy/standard/premium plus effort; keep child consent locally.
+- `skills/delegate-work/SKILL.md`, `skills/delegate-work/references/child-routing-policy.md`, and active delegate-work README — describe work shape as economy/standard/premium plus effort; keep child consent locally.
 - `agents/tracking-auditor.md` — migrate as described above.
 - `skills/model-update-check/tests/test-model-update-check.sh` — rename example tier fixtures; the implementation already treats tier names generically.
 
-Do not rewrite `docs/plans/orchestrate-skill.md` or `docs/plans/orchestrate-dogfood-evidence.md`; they are historical evidence. Add a short historical-taxonomy note only if readers could otherwise mistake them for current policy.
+Do not rewrite `docs/plans/delegate-work-skill.md` or `docs/plans/delegate-work-dogfood-evidence.md`; they are historical evidence. Add a short historical-taxonomy note only if readers could otherwise mistake them for current policy.
 
 ## Cross-repository/runtime prerequisite
 
@@ -323,7 +323,7 @@ Unknown tiers currently fail safely by retaining the active model, but preloadin
 |---|-------|--------------------|---------------------|
 | 1 | Add three-tier compatibility in `ai-tools` config/docs/tests while keeping old entries. | Pi can route both old and new skill metadata during migration; metered confirmation and restoration are unchanged. | In `ai-tools/pi/model-tier-router`: `fnm exec --using=.nvmrc npm test` and `fnm exec --using=.nvmrc npm run typecheck`; inspect example config for both taxonomies. |
 | 2 | Replace shared policy, metadata, validator, authoring docs, and catalog duplication. | Every active skill declares exactly one of three tiers plus a valid effort; no active skill/agent declares removed policy fields. | `make validate-skills`; `make test-validate-skills`; targeted `rg` returns no removed fields or old tier names outside explicitly exempt historical files. |
-| 3 | Update active skill-body terminology and exceptional consent ownership. | Premium guards name `premium`; `/second-opinion` and `/orchestrate` retain enforceable consent without pseudo-tier metadata. | Source inspection plus existing skill-specific tests; `make validate-skills` confirms references. |
+| 3 | Update active skill-body terminology and exceptional consent ownership. | Premium guards name `premium`; `/second-opinion` and `/delegate-work` retain enforceable consent without pseudo-tier metadata. | Source inspection plus existing skill-specific tests; `make validate-skills` confirms references. |
 | 4 | Dogfood and clean compatibility entries. | Economy, standard, and premium skills each produce the expected Pi route/effort; rollback remains possible until evidence is accepted. | `/model-tier status` during one explicit skill from each tier; confirm a metered candidate still prompts; confirm settlement restores the prior model. Remove old local tiers only after this passes. |
 
 ## Test strategy
@@ -373,7 +373,7 @@ Rollback by reverting the shared-skill migration. The temporary old Pi tier entr
 
 ## External review record
 
-- **Codex:** recommended three tiers, retaining `effort`, removing both generic policy fields, moving child rules to `/orchestrate`, and deleting the independent-reasoning pseudo-tier.
+- **Codex:** recommended three tiers, retaining `effort`, removing both generic policy fields, moving child rules to `/delegate-work`, and deleting the independent-reasoning pseudo-tier.
 - **Claude:** agreed the policy is overbuilt; recommended three model classes plus optional `premium-review`, removing `model-cost-policy`, and retaining only enforceable metered control.
 - **Gemini:** unavailable because the local CLI failed with `SyntaxError: Invalid regular expression flags`; no Gemini opinion was inferred.
 - **Resolution:** choose three tiers. The only material disagreement is whether Claude-first premium review deserves a fourth portable tier; this draft recommends no.

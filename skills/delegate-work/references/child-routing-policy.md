@@ -2,7 +2,7 @@
 
 Read this reference before launching any child. It defines the portable launch gate;
 [`runtime-adapters.md`](runtime-adapters.md) defines runtime mechanics. Model choice is a
-constraint on orchestration, not the orchestration workflow itself.
+constraint on delegated work, not the delegation workflow itself.
 
 ## Launch invariant
 
@@ -48,7 +48,7 @@ scope. Project scope must name a stable project identity or absolute root;
 `scope: project` alone is ambiguous.
 
 ```yaml
-orchestrate-child-policy:
+delegate-work-child-policy:
   runtime: <runtime>
   scope: user | project
   project: <stable-project-id-or-absolute-root; required for project scope>

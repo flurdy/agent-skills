@@ -1,4 +1,4 @@
-# `/orchestrate`: current design and thin-core candidate
+# `/delegate-work`: current design and thin-core candidate
 
 > **Status:** Decision record, not an implementation plan. The **after** state below is a
 > candidate defined by the traceability audit in `skills-lac.2`; it has not been built,
@@ -16,10 +16,10 @@
   and nine dogfood corrections mapped to a candidate destination—is recorded in
   `skills-lac.2`.
 - The current skill's prior dogfood evidence is
-  [`orchestrate-dogfood-evidence.md`](orchestrate-dogfood-evidence.md) and
-  [`orchestrate-decomposition-dogfood-evidence.md`](orchestrate-decomposition-dogfood-evidence.md).
+  [`delegate-work-dogfood-evidence.md`](delegate-work-dogfood-evidence.md) and
+  [`delegate-work-decomposition-dogfood-evidence.md`](delegate-work-decomposition-dogfood-evidence.md).
 - The current scope decision is in
-  [`../../skills/orchestrate/README.md`](../../skills/orchestrate/README.md): adaptive
+  [`../../skills/delegate-work/README.md`](../../skills/delegate-work/README.md): adaptive
   scheduling and similar process-heavy extensions are deliberately paused.
 
 The reviews support a **bounded thin-core candidate**, not an immediate cull. They do
@@ -27,17 +27,17 @@ not establish that a shorter prompt improves adherence, cost, latency, or qualit
 
 ## Before: current artifact
 
-`/orchestrate` is an explicit-invocation, premium/high delegation-governance skill. It
+`/delegate-work` is an explicit-invocation, premium/high delegation-governance skill. It
 keeps authority and final validation with the parent, while using runtime-native child
 mechanisms.
 
 | Current artifact | Current role | Current size |
 |---|---|---:|
-| [`SKILL.md`](../../skills/orchestrate/SKILL.md) | Main policy: ROI, parent authority, outcome/evidence, packets, role/risk assignment, integration, review, escalation | 268 lines / 1,936 words |
-| [`child-routing-policy.md`](../../skills/orchestrate/references/child-routing-policy.md) | Trusted child identity, metering classification, consent, mismatches, durable policy shape, semantic bridge | 94 / 593 |
-| [`runtime-adapters.md`](../../skills/orchestrate/references/runtime-adapters.md) | Pi, Claude Code, Codex, and generic runtime mechanics | 86 / 658 |
-| [`work-graph.md`](../../skills/orchestrate/references/work-graph.md) | Conditional dependency-aware decomposition, tables, readiness, split/collapse tests | 175 / 1,159 |
-| [`README.md`](../../skills/orchestrate/README.md) | Scope/maturity/ownership explanation and adaptive-work pause | 116 / 735 |
+| [`SKILL.md`](../../skills/delegate-work/SKILL.md) | Main policy: ROI, parent authority, outcome/evidence, packets, role/risk assignment, integration, review, escalation | 268 lines / 1,936 words |
+| [`child-routing-policy.md`](../../skills/delegate-work/references/child-routing-policy.md) | Trusted child identity, metering classification, consent, mismatches, durable policy shape, semantic bridge | 94 / 593 |
+| [`runtime-adapters.md`](../../skills/delegate-work/references/runtime-adapters.md) | Pi, Claude Code, Codex, and generic runtime mechanics | 86 / 658 |
+| [`work-graph.md`](../../skills/delegate-work/references/work-graph.md) | Conditional dependency-aware decomposition, tables, readiness, split/collapse tests | 175 / 1,159 |
+| [`README.md`](../../skills/delegate-work/README.md) | Scope/maturity/ownership explanation and adaptive-work pause | 116 / 735 |
 
 ### What works today
 
@@ -79,7 +79,7 @@ they add independent value.
 
 | Candidate artifact | Intended role | Change from current |
 |---|---|---|
-| `skills/orchestrate/SKILL.md` | Portable governance core: authority, ROI, outcome/evidence, compact packet/result, one writer, integration, review, escalation, serial fallback | Condense to roughly 100–130 lines; remove duplicated routing, runtime, graph-table, and tier-assignment detail |
+| `skills/delegate-work/SKILL.md` | Portable governance core: authority, ROI, outcome/evidence, compact packet/result, one writer, integration, review, escalation, serial fallback | Condense to roughly 100–130 lines; remove duplicated routing, runtime, graph-table, and tier-assignment detail |
 | `references/launch-safety.md` | Portable child preflight and consent invariants | Replaces the current child-routing policy's normative core; does **not** define a portable settings/YAML format |
 | `references/runtime-index.md` | Short index of runtime-specific evidence hooks and canonical runtime owners | Replaces the adapter's duplicated mechanics; Pi points to `pi-subagents`, while Claude/Codex retain only capability/evidence/fallback facts |
 | `references/decomposition.md` | Optional graph-pays and split/collapse test | Replaces work-graph registers/tables; loaded only if dependencies, uncertainty, or an integration seam materially changes execution |
@@ -145,7 +145,7 @@ The optional decomposition reference keeps only questions that can change execut
 A conceptual unit is never automatically a child launch or tracker item.
 
 The runtime index does not reproduce runtime manuals. It states that runtime tools own
-launch/lifecycle/context/worktree/acceptance mechanics, while `/orchestrate` retains
+launch/lifecycle/context/worktree/acceptance mechanics, while `/delegate-work` retains
 its portable consent, one-writer, and review-cap policy for that run. For Pi, the
 canonical mechanics owner is `pi-subagents`; a Pi-specific acceptance-disable pointer
 remains until a stable runtime API makes it unnecessary.

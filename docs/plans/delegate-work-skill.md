@@ -1,8 +1,8 @@
-# Implementation Plan: Portable `orchestrate` Skill
+# Implementation Plan: Portable `delegate-work` Skill
 
 > **Status:** Implemented as the conservative delegation-governance v1. Current scope,
 > document ownership, capability maturity, and the adaptive task-orchestration roadmap
-> are maintained in [`../../skills/orchestrate/README.md`](../../skills/orchestrate/README.md).
+> are maintained in [`../../skills/delegate-work/README.md`](../../skills/delegate-work/README.md).
 > This file preserves the original implementation rationale and dogfood constraints.
 > **Historical taxonomy note (updated 2026-07-18):** Tier names below preserve the
 > seven-tier routing taxonomy used when this plan was implemented. Active shared skills
@@ -18,7 +18,7 @@
 
 ## Goal
 
-Create a portable, explicitly invoked coordination skill named `orchestrate` in the shared `agent-skills` repository. It should keep important judgment, integration, and final validation with the parent agent while delegating bounded execution through runtime-native subagents. Pi v1 should orchestrate correctly while inheriting the parent model unless the user/runtime already supplies an explicit verified child mapping; it must not reimplement model-tier resolution inside the skill. Claude Code should use native subagents with floating child-model aliases, and Codex should capability-detect native multi-agent support and use child overrides only when configured and verified, falling back to honest inherited/no-downshift or serial behavior otherwise.
+Create a portable, explicitly invoked coordination skill named `delegate-work` in the shared `agent-skills` repository. It should keep important judgment, integration, and final validation with the parent agent while delegating bounded execution through runtime-native subagents. Pi v1 should coordinate delegated work correctly while inheriting the parent model unless the user/runtime already supplies an explicit verified child mapping; it must not reimplement model-tier resolution inside the skill. Claude Code should use native subagents with floating child-model aliases, and Codex should capability-detect native multi-agent support and use child overrides only when configured and verified, falling back to honest inherited/no-downshift or serial behavior otherwise.
 
 The skill is a policy/orchestration layer, not a replacement for the Pi model-tier router or the `pi-subagents` extension.
 
@@ -38,7 +38,7 @@ The skill is a policy/orchestration layer, not a replacement for the Pi model-ti
 
 ## Assumptions
 
-- The user must explicitly invoke `/orchestrate`; invocation authorizes ordinary bounded delegation inside the requested scope, but not new external side effects or broader product decisions.
+- The user must explicitly invoke `/delegate-work`; invocation authorizes ordinary bounded delegation inside the requested scope, but not new external side effects or broader product decisions.
 - The parent remains the sole decision-maker and owns integration/final response.
 - Subagent capabilities differ by runtime and version; the shared skill must describe policy first and treat runtime-specific tooling as an adapter.
 - Exact provider/model IDs must not be embedded in shared skill text or frontmatter.
@@ -51,7 +51,7 @@ The skill is a policy/orchestration layer, not a replacement for the Pi model-ti
 Create:
 
 ```text
-skills/orchestrate/
+skills/delegate-work/
   SKILL.md
   references/
     runtime-adapters.md
@@ -63,7 +63,7 @@ Recommended frontmatter:
 
 ```yaml
 ---
-name: orchestrate
+name: delegate-work
 description: Coordinate substantial multi-stage work through bounded delegation, one-writer safety, independent review, and risk-based escalation. Use only when explicitly invoked; skip trivial, tightly coupled, or serial work.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 disable-model-invocation: true
@@ -86,7 +86,7 @@ Rationale:
 - A user-approved local policy is a declaration in the runtime's user-owned instruction/configuration layer that is supplied to the active session and names the runtime, exact effective child route/model identity, `metered` value, and scope (`user` or an explicitly approved project). Project scope must also identify the project by stable ID or absolute root; `scope: project` alone is ambiguous. Arbitrary repository instructions do not qualify. The portable shape is:
 
   ```yaml
-  orchestrate-child-policy:
+  delegate-work-child-policy:
     runtime: <runtime>
     scope: user | project
     project: <stable-project-id-or-absolute-root; required for project scope>
@@ -96,7 +96,7 @@ Rationale:
         metered: true | false
   ```
 
-  The runtime adapter should document the detected user-level location/mechanism rather than invent a shared cross-runtime settings file. An in-conversation approval is scoped only to the disclosed current run or panel and does not become durable policy. `/orchestrate` must never persist or widen policy automatically; it may suggest a separately approved user-level configuration change.
+  The runtime adapter should document the detected user-level location/mechanism rather than invent a shared cross-runtime settings file. An in-conversation approval is scoped only to the disclosed current run or panel and does not become durable policy. `/delegate-work` must never persist or widen policy automatically; it may suggest a separately approved user-level configuration change.
 - Keep the `SKILL.md` cost gate compact:
 
   | Child classification | Action |
@@ -113,15 +113,15 @@ Rationale:
 
 The skill must explicitly state:
 
-- `architect` owns architecture/implementation planning when ambiguity or blast radius warrants a plan. `orchestrate` may call it or stop for plan approval; it must not silently redo architecture in a cheap worker.
-- `orchestrate` owns execution coordination after scope and acceptance are sufficiently clear.
-- `verify-task` and `total-review` remain named gates; `orchestrate` may invoke them when requested or appropriate but must not copy their complete logic.
-- `pi-subagents` is Pi's execution mechanism. `orchestrate` decides whether, why, and at what semantic tier to delegate.
+- `architect` owns architecture/implementation planning when ambiguity or blast radius warrants a plan. `delegate-work` may call it or stop for plan approval; it must not silently redo architecture in a cheap worker.
+- `delegate-work` owns execution coordination after scope and acceptance are sufficiently clear.
+- `verify-task` and `total-review` remain named gates; `delegate-work` may invoke them when requested or appropriate but must not copy their complete logic.
+- `pi-subagents` is Pi's execution mechanism. `delegate-work` decides whether, why, and at what semantic tier to delegate.
 - The model-tier router controls skill-level routing of the current Pi agent. It does not own child scheduling.
 - Use the repository's established tracker for durable work context when available. Beads integration applies only when `bd` is available, the repository has active Beads context, and a relevant bead/epic exists; otherwise use the established Jira/Trello/other tracker or report durable milestone suggestions generically when no tracker exists.
 - Never create one tracker item per subagent, recon pass, review round, retry, or temporary handoff.
 - When orchestration discovers independently valuable milestones that may span sessions, commits, or PRs, propose the repository's established tracking workflow. Invoke `/triage` only in a Beads-enabled repository, and create or mutate any tracker only after explicit user approval. Leave completion/closure to existing tracking and completion skills.
-- If the portable control-plane index tracked by `skills-88v.6` exists in a target workspace, consume its authoritative context when building judgment and validation packets. Orchestrate v1 must remain useful without it; this is a soft integration, not an implementation dependency.
+- If the portable control-plane index tracked by `skills-88v.6` exists in a target workspace, consume its authoritative context when building judgment and validation packets. Delegate Work v1 must remain useful without it; this is a soft integration, not an implementation dependency.
 
 ### 3. Use a proportionate judgment packet before every downshift
 
@@ -182,7 +182,7 @@ Cross-runtime model classes:
 Bounded-edit exception to add to `MODEL_ROUTING.md`:
 
 - `standard-coding` remains the default model class for code-writing workflows.
-- An orchestrated child may use a cheaper model class only when its full judgment packet fixes owned files, an established implementation pattern, explicit non-goals, acceptance criteria, exact verification, and escalation conditions.
+- A delegated child may use a cheaper model class only when its full judgment packet fixes owned files, an established implementation pattern, explicit non-goals, acceptance criteria, exact verification, and escalation conditions.
 - The premium/strong parent retains architecture, integration, review synthesis, and final validation. Any newly exposed product, public-contract, security, migration, destructive, or architectural decision returns to the parent.
 - This exception does not permit ordinary code-editing skills to declare `cheap-bulk` or `standard-workflow`; it applies only to a bounded child launch inside an explicitly invoked orchestration run.
 
@@ -283,20 +283,20 @@ The adapter reference should stay short and point to runtime-owned documentation
 
 No extension code change is required for the first implementation:
 
-- Invoking `orchestrate` can route the parent through its own frontmatter.
+- Invoking `delegate-work` can route the parent through its own frontmatter.
 - Child execution is already supported by runtime-native subagent tooling and local agent/model configuration.
 - Nested upward-only routing is desirable for the parent because a coordination run should not accidentally downshift its judgment model.
 - Restoration behavior remains useful after the orchestration run settles.
 
 Avoid intercepting or rewriting `subagent` tool calls in the model-tier router. That would couple two extensions, duplicate confirmation behavior, and make shared policy dependent on Pi internals.
 
-Document one deferred enhancement, tracked by `skills-88v.5`, but do not implement it in orchestrate v1: a read-only semantic tier resolver/tool or RPC that reuses the router's trusted config merge, candidate availability, fallback ordering, and metered classification and returns model, effort, metered status, and source without launching anything. Until that integration exists, Pi v1 inherits unless an explicit verified mapping is already supplied; the skill must not duplicate resolver logic.
+Document one deferred enhancement, tracked by `skills-88v.5`, but do not implement it in delegate-work v1: a read-only semantic tier resolver/tool or RPC that reuses the router's trusted config merge, candidate availability, fallback ordering, and metered classification and returns model, effort, metered status, and source without launching anything. Until that integration exists, Pi v1 inherits unless an explicit verified mapping is already supplied; the skill must not duplicate resolver logic.
 
 ### 9. Update documentation and indexes
 
 Update:
 
-- `skills/README.md` description table with `orchestrate`.
+- `skills/README.md` description table with `delegate-work`.
 - `skills/README.md` model-routing table under `premium-reasoning`, with effort `high`, no Claude `model:` pin, and a tier guard. Add a brief footnote explaining that `high` is deliberate for routine parent coordination while `xhigh` remains reserved for harder planning/review.
 - `MODEL_ROUTING.md` with the parent-vs-child clarification plus the precise bounded-edit orchestration exception from section 4. Preserve `standard-coding` as the default for ordinary code-writing skills; invoking a lower-tier nested skill does not downshift the parent.
 - Keep the corrected wording in `README.md`, and update `Makefile`, `assemble.sh`, and `agents/README.md` where necessary to replace stale claims that Codex has no subagent concept. State instead that `make apply-codex` skips this repo's Claude-style Markdown `agents/` layer while installed Codex versions may provide native multi-agent tools.
@@ -311,13 +311,13 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 3. **Create a shared `foreman` agent instead of a skill** — rejected. This repo's shared Markdown agents are currently assembled only for Claude Code, and a second orchestration authority would conflict with the parent-agent contract. Codex native multi-agent capability does not require adding a shared agent file.
 4. **Put all Pi instructions in the main `SKILL.md`** — rejected. It would make the shared skill noisy and less portable; use a small runtime adapter reference.
 5. **Add a new balanced/bounded-coding semantic tier immediately** — deferred. It might better represent Terra/Sonnet bounded implementation, but should follow evidence from dogfooding rather than widening taxonomy and local config now.
-6. **Set global Pi `agentOverrides` for canonical roles** — rejected. It would change every Pi subagent workflow, not only `/orchestrate`.
-7. **Create namespaced duplicate orchestration roles** — deferred as unnecessary in v1. Orchestrate can reuse builtin roles with inherited settings until explicit verified mappings or a resolver are available.
+6. **Set global Pi `agentOverrides` for canonical roles** — rejected. It would change every Pi subagent workflow, not only `/delegate-work`.
+7. **Create namespaced duplicate delegation roles** — deferred as unnecessary in v1. Delegate Work can reuse builtin roles with inherited settings until explicit verified mappings or a resolver are available.
 
 ## Implementation slices
 
-1. Add `skills/orchestrate/SKILL.md` with frontmatter, explicit-only trigger, settled premium/high parent route, boundaries, proportionate judgment packet, conditional child-route policy, one-writer workflow, child metered/unknown-cost gate, escalation rules, optional established-tracker policy, serial-fallback disclosure, completion rules, and premium tier guard.
-2. Add `skills/orchestrate/references/runtime-adapters.md` with mandatory capability detection, honest inherited/verified-mapping Pi behavior, Pi async/wait/fresh-context recovery, Claude Code floating child mappings, and conditional Codex native multi-agent mappings.
+1. Add `skills/delegate-work/SKILL.md` with frontmatter, explicit-only trigger, settled premium/high parent route, boundaries, proportionate judgment packet, conditional child-route policy, one-writer workflow, child metered/unknown-cost gate, escalation rules, optional established-tracker policy, serial-fallback disclosure, completion rules, and premium tier guard.
+2. Add `skills/delegate-work/references/runtime-adapters.md` with mandatory capability detection, honest inherited/verified-mapping Pi behavior, Pi async/wait/fresh-context recovery, Claude Code floating child mappings, and conditional Codex native multi-agent mappings.
 3. Update `skills/README.md` in both required tables.
 4. Add the parent-vs-child routing clarification and child-cost distinction to `MODEL_ROUTING.md`.
 5. Preserve the corrected root `README.md` wording and correct the remaining stale Codex-agent wording in `Makefile`, `assemble.sh`, and `agents/README.md` without changing assembly behavior.
@@ -330,7 +330,7 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 
 - Manually inspect frontmatter for required semantic fields, read-only Beads access, named `Skill(...)` permissions only, `disable-model-invocation: true`, and the deliberate absence of a Claude `model:` pin. The repo has no dedicated frontmatter/schema test target; assembly checks do not validate metadata semantics.
 - Verify the description table remains alphabetical.
-- Verify the routing table places `orchestrate` under `premium-reasoning` with the intended policies, `high` effort, guard marker, and explanatory footnote.
+- Verify the routing table places `delegate-work` under `premium-reasoning` with the intended policies, `high` effort, guard marker, and explanatory footnote.
 - Confirm all relative links from `SKILL.md` resolve.
 - Verify the bounded-edit exception in `MODEL_ROUTING.md` remains narrow and does not permit ordinary coding skills to declare cheap/workflow tiers.
 - Run `make dry-run` and `make dry-run-codex`.
@@ -339,7 +339,7 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 
 - Ask before running `make apply` or `make apply-codex`, because they mutate managed symlinks.
 - After approval/application, run `make doctor` and `make doctor-codex`.
-- Verify both `~/.claude/skills/orchestrate` and `~/.codex/skills/orchestrate` resolve to the new source directory.
+- Verify both `~/.claude/skills/delegate-work` and `~/.codex/skills/delegate-work` resolve to the new source directory.
 
 ### Environment-dependent dogfood checks
 
@@ -394,14 +394,14 @@ Do not add a new top-level shared agent. The skill coordinates runtime-provided 
 
 ## Rollout and rollback
 
-- Rollout is explicit-only: add and assemble the new skill, then dogfood orchestration on low-risk tasks through the runtime's skill command (`/skill:orchestrate` in Pi). Pi inherits by default until a verified mapping or resolver exists.
+- Rollout is explicit-only: add and assemble the new skill, then dogfood orchestration on low-risk tasks through the runtime's skill command (`/skill:delegate-work` in Pi). Pi inherits by default until a verified mapping or resolver exists.
 - No model-tier-router code migration or Pi settings mutation is required; normal skill discovery/reload is the only Pi runtime change.
 - Roll back by removing the skill directory and documentation rows, then re-running Claude/Codex apply and doctor targets.
 - Router behavior remains unchanged, so rollback does not affect model selection for existing skills.
 
 ## Independent validation and resulting changes
 
-Six independent review passes agreed with the core design: create a shared policy skill, keep parent judgment strong, do not add a new shared agent/frontmatter tier, and keep Pi semantic child resolution out of orchestrate v1. They identified corrections incorporated into this final plan:
+Six independent review passes agreed with the core design: create a shared policy skill, keep parent judgment strong, do not add a new shared agent/frontmatter tier, and keep Pi semantic child resolution out of delegate-work v1. They identified corrections incorporated into this final plan:
 
 - Made invocation explicitly opt-in with `disable-model-invocation: true` to avoid surprise premium upgrades.
 - Added the repo-conventional `allowed-tools` surface.
@@ -419,7 +419,7 @@ Six independent review passes agreed with the core design: create a shared polic
 - Settled `premium-reasoning`/high for the explicit substantial-work parent rather than leaving it as a dogfooding question.
 - Defined serial fallback as disclosed self-validation and routed genuine independence through `/second-opinion`.
 - Narrowed Git preapproval, made runtime-adapter loading mandatory, and expanded Pi/Codex rollout tests.
-- Added the narrow bounded-edit exception needed to reconcile cheaper orchestrated writers with `MODEL_ROUTING.md` while preserving `standard-coding` as the ordinary writer default.
+- Added the narrow bounded-edit exception needed to reconcile cheaper delegated writers with `MODEL_ROUTING.md` while preserving `standard-coding` as the ordinary writer default.
 - Split required, approval-dependent, and environment-dependent validation.
 - Defined verified child routing as effective identity plus trusted metered classification; metered or unknown children require separate consent, and parent-route confirmation does not authorize fanout.
 - Defined user-approved local policy as a scoped, user-owned runtime declaration; ad hoc consent remains run-scoped and is never persisted automatically.
@@ -442,4 +442,4 @@ Use `standard-coding` for the skill implementation because it is primarily Markd
 
 ## Next concrete action
 
-Continue `skills-88v.2` using `docs/plans/orchestrate-dogfood-evidence.md`: preserve observed-versus-fixture labels, fix policy defects exposed by review, collect separately consented low-risk Pi/Claude/Codex evidence where trusted routing permits it, and use the results to decide whether `skills-88v.3` through `.5` are justified. Do not manufacture mapped-route evidence, persist ad hoc policy, or create tracker items per child run.
+Continue `skills-88v.2` using `docs/plans/delegate-work-dogfood-evidence.md`: preserve observed-versus-fixture labels, fix policy defects exposed by review, collect separately consented low-risk Pi/Claude/Codex evidence where trusted routing permits it, and use the results to decide whether `skills-88v.3` through `.5` are justified. Do not manufacture mapped-route evidence, persist ad hoc policy, or create tracker items per child run.
