@@ -1,39 +1,40 @@
 ---
 name: beads-migrate-to-dolt
-description: "Migrate a beads installation from classic format (SQLite/JSONL on beads-sync worktree branch) to the new Dolt-based format."
-allowed-tools: "Read,Grep,Glob,Bash(bd:*),Bash(git:*),Bash(cp:*),Bash(rm:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(wc:*),Bash(pgrep:*),Bash(kill:*),Bash(sqlite3:*),Bash(python3:*),Bash(echo:*),Bash(brew:*),AskUserQuestion"
+description: "Migrate beads from classic SQLite/JSONL to Dolt, or safely upgrade an existing Dolt schema after a bd upgrade."
+allowed-tools: "Read,Grep,Glob,Bash(bd:*),Bash(dolt:*),Bash(env:*),Bash(git:*),Bash(cp:*),Bash(rm:*),Bash(mkdir:*),Bash(ls:*),Bash(cat:*),Bash(test:*),Bash(wc:*),Bash(pgrep:*),Bash(kill:*),Bash(sqlite3:*),Bash(python3:*),Bash(echo:*),Bash(brew:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
-# Beads Migration: Classic to Dolt
+# Beads Storage and Schema Migration
 
-Migrate a beads installation from the classic format (SQLite + JSONL with git worktree sync branch) to the modern Dolt-based format. This is a one-time migration that prioritizes safety through backups and pre-flight validation.
+Safely migrate classic SQLite/JSONL data to Dolt or upgrade an existing Dolt schema after a `bd` upgrade. Both paths prioritize backups, count verification, and preservation of remote history.
 
 ## bd Version Compatibility
 
 This skill has been validated against:
-- **bd 0.59.x – 0.63.x** (server-mode Dolt: `.beads/dolt/` with a sql-server)
-- **bd 1.0.x** (embedded Dolt: `.beads/embeddeddolt/`, no separate server) — **recommended**
+- **bd 0.59.x – 0.63.x**: server-mode Dolt at `.beads/dolt/`
+- **bd 1.0.x**: embedded Dolt commonly at `.beads/embeddeddolt/`
+- **bd 1.1.0**: schema migrations through v53, remote-backed migration gate, `bd bootstrap`, and native `bd backup` subcommands
 
-Notable differences in **bd 1.0+** that change the migration flow:
-- Default storage is `.beads/embeddeddolt/`, not `.beads/dolt/`
-- `bd doctor` prints "not yet supported in embedded mode" — fall back to `bd list` counts + round-trip `bd export`
-- `bd doctor --migration=pre|post` likewise unavailable; trust on-disk inspection and counts
-- `bd sync` is removed; the replacements are `bd dolt push|pull|commit|status`
-- `bd init` auto-commits a chunk of files (see step 6) — be prepared to revert if unwanted
-- `bd init` runs interactive prompts — pass `--non-interactive` (or set `BD_NON_INTERACTIVE=1`) when running through automation
+Important differences:
+- Existing server-mode repositories remain supported after upgrading to bd 1.1; do not reinitialize merely to change storage mode.
+- `bd migrate --inspect --json` is the schema diagnostic on bd 1.1+.
+- A remote-backed database with pending migrations must have exactly one designated migrator. Independent clone migrations fork schema history unrecoverably.
+- `bd init --force` is deprecated in bd 1.1 in favor of `--reinit-local`; remote replacement additionally requires `--discard-remote` and a destroy token in non-interactive mode.
+- `bd backup` is now a command group: `bd backup init|status|sync|restore|remove`.
+- `bd export --all` includes infrastructure records and memories; use it for the broadest JSONL safety export.
+- `bd sync` is removed; use `bd dolt push|pull|commit|status` for Dolt remotes.
 
 ## When to Use
 
-- Repository has `.beads/beads.db` (SQLite) but no `.beads/dolt/` or `.beads/embeddeddolt/` directory
-- Repository has `.beads/issues.jsonl` from the classic format without Dolt
-- After upgrading `bd` CLI to v0.59.0+ which requires Dolt
-- When `bd` commands fail with backend/database errors on an old installation
-- **Partial migration**: `.beads/dolt/` exists with a running sql-server but the database it expects (e.g. `beads`) is missing — `bd list` returns "database not found"
+- Classic `.beads/beads.db` or JSONL-only data needs conversion to Dolt
+- `bd migrate --inspect` reports pending schema migrations after a bd upgrade
+- bd reports a `remote_migrate_gate`
+- Dolt initialization is partial or broken
 
 ## Usage
 
@@ -43,12 +44,143 @@ Notable differences in **bd 1.0+** that change the migration flow:
 
 ## Prerequisites
 
-- `bd` CLI installed. **Recommended: 1.0.3+** (`brew upgrade bd`). Earlier 0.59–0.63 also work but expose `bd doctor` paths the skill no longer relies on.
-- `dolt` binary on PATH only required for **server-mode** (bd ≤0.63). bd 1.0+ embedded mode bundles its own Dolt engine.
-- Git repository with existing `.beads/` directory containing classic format data
-- The repo may have a `beads-sync` (or similar) branch used as a worktree for issue commits
+- `bd` CLI installed; use the target version before inspecting or migrating
+- `dolt` binary on PATH for server-mode repositories; embedded mode bundles its engine
+- Git repository with an existing `.beads/` directory
+- Operator confirmation of the designated clone when a shared Dolt remote has pending migrations
 
-## Instructions
+## Route Selection
+
+First inspect files and schema without bypassing safety gates:
+
+```bash
+bd --version
+ls -la .beads/beads.db .beads/issues.jsonl .beads/dolt .beads/embeddeddolt 2>/dev/null
+cat .beads/metadata.json 2>/dev/null
+cat .beads/config.yaml 2>/dev/null
+bd migrate --inspect --json 2>&1 || true
+```
+
+- If classic SQLite/JSONL exists without a working Dolt store, use **Path B** below.
+- If Dolt works and no migrations are pending, stop: no migration is needed.
+- If Dolt works and migrations are pending, use **Path A**. Do not run the classic remove/reinitialize steps.
+
+## Path A: Upgrade an Existing Dolt Schema (bd 1.1+)
+
+### A1. Resolve the Remote Migration Gate
+
+If inspection reports `remote_migrate_gate`, ask the operator to choose:
+
+1. **Designated migrator**: this is the only clone that will migrate, verify, and publish.
+2. **Adopting clone**: another clone will publish; preserve local unpushed work and later run `bd bootstrap`.
+
+Never infer this choice or set `BD_ALLOW_REMOTE_MIGRATE=1` before explicit confirmation.
+
+### A2. Record Counts and Back Up
+
+Before changing schema:
+
+```bash
+bd list --status all --limit 0 --json > /tmp/bd-pre-schema-list.json
+bd export --all -o /tmp/bd-pre-schema-upgrade.jsonl
+wc -l /tmp/bd-pre-schema-upgrade.jsonl
+bd dolt stop
+test ! -e .beads-schema-migration-backup
+mkdir .beads-schema-migration-backup
+cp -a .beads/. .beads-schema-migration-backup/
+```
+
+The stopped-server raw copy is the mandatory fallback. If `bd list` or `bd export` fails because a partially applied schema references a not-yet-created column, do not reset the Dolt working set. Record direct read-only counts where possible:
+
+```bash
+bd sql 'SELECT COUNT(*) AS issues FROM issues' --json
+bd sql 'SELECT status, COUNT(*) AS count FROM issues GROUP BY status' --json
+bd sql 'SELECT COUNT(*) AS dependencies FROM dependencies' --json
+bd sql 'SELECT COUNT(*) AS comments FROM comments' --json
+```
+
+Also preserve any recent `.beads/backup/*.jsonl`. `bd dolt stop` flushes the partial working set before the raw copy; the designated migration can then finish it. If a native backup destination is already configured and schema access is not gated, also run `bd backup status` and `bd backup sync`. Never overwrite or delete an existing migration backup without confirmation.
+
+### A3. Migrate the Designated Clone
+
+For a local-only database:
+
+```bash
+bd migrate
+```
+
+For a remote-backed database, only after the operator designates this clone:
+
+```bash
+env BD_ALLOW_REMOTE_MIGRATE=1 bd migrate
+```
+
+Do not use `bd migrate schema` to evade the remote gate. The environment override records the explicit coordination decision while normal migration applies and commits all pending versions.
+
+**Old Dolt working-set guard (`gastownhall/beads#4566`)**
+
+Repositories created before `schema_migrations` may have legitimate uncommitted `config` rows or may accumulate a partial migration working set. bd then refuses with:
+
+```
+pending schema migrations alter pre-existing dirty tables: ...;
+run 'bd dolt commit' to commit the working set at the current schema
+```
+
+Try `bd dolt commit -m "checkpoint working set before schema migration"`. If that command fails with the same initialization guard:
+
+1. Confirm the mandatory raw backup exists.
+2. Stop the Dolt server cleanly.
+3. Run `dolt diff --summary` in `.beads/dolt/<database>/`.
+4. Stage only the tables named by that diff, explicitly; never use a blanket add.
+5. Commit the checkpoint with raw Dolt, then rerun `bd migrate`.
+
+```bash
+dolt add <explicit-table> [<explicit-table> ...]
+dolt commit -m "checkpoint working set before schema migration"
+bd migrate
+```
+
+A very old database may stop twice: first for pre-existing `config` rows, then for tables changed by the partial schema sequence. Inspect and checkpoint each working set separately. Never reset or discard it, never commit unexpected issue data without investigating, and never automate an unbounded retry loop.
+
+### A4. Verify Before Publishing
+
+```bash
+bd migrate --inspect --json
+bd list --status all --limit 0 --json > /tmp/bd-post-schema-list.json
+bd export --all -o /tmp/bd-post-schema-upgrade.jsonl
+wc -l /tmp/bd-post-schema-upgrade.jsonl
+bd dolt status
+```
+
+Compare pre/post issue counts, statuses, dependencies, and comments. Confirm inspection reports the target schema with no pending migrations and the Dolt working set is clean. Stop on any mismatch.
+
+### A5. Publish and Adopt
+
+A remote-backed schema upgrade is incomplete until the designated clone publishes it. Check the local push guard, then ask for explicit permission immediately before the standalone remote action:
+
+```bash
+bd config get no-push 2>/dev/null || true
+bd dolt push
+```
+
+If `no-push: true` blocks the approved push, ask again before bypassing the guard. Keep the config unchanged and use a one-command override:
+
+```bash
+env BD_NO_PUSH=false bd dolt push
+```
+
+Verify the local remote-tracking ref matches local `main`. Every other clone must preserve unpushed work, then adopt the published database:
+
+```bash
+bd export --all -o /tmp/bd-before-bootstrap.jsonl
+bd bootstrap
+```
+
+`bd bootstrap` may replace the local database. Review its plan or use `--dry-run` first; never bootstrap over unpushed work without an export or push.
+
+Keep the raw backup until the migrated remote and at least one adopter have been verified.
+
+## Path B: Classic SQLite/JSONL to Dolt
 
 ### 0. Pre-Flight: Stop Legacy Daemons
 
@@ -97,13 +229,13 @@ Classify the state:
 |-------|-----------|--------|
 | **Classic** | `beads.db` exists, no `dolt/` or `embeddeddolt/` dir | Full migration |
 | **JSONL-only** | `issues.jsonl` exists, no `beads.db`, no Dolt dir | Init + import |
-| **Already Dolt (server)** | `dolt/` exists, metadata says `"backend": "dolt"`, server reachable | Stop — no migration needed |
-| **Already Dolt (embedded)** | `embeddeddolt/` exists, metadata `"dolt_mode": "embedded"`, `bd list` works | Stop — no migration needed |
+| **Dolt (server)** | `dolt/` exists, metadata says `"backend": "dolt"`, server reachable | Run `bd migrate --inspect`; use Path A only if pending |
+| **Dolt (embedded)** | `embeddeddolt/` exists, metadata `"dolt_mode": "embedded"`, `bd list` works | Run `bd migrate --inspect`; use Path A only if pending |
 | **Partial (server)** | `dolt/` exists but empty or sql-server says `database "<name>" not found` | Resume migration |
 | **Partial (embedded)** | `embeddeddolt/` exists but `bd list` errors out | Resume migration |
 | **No beads** | No `.beads/` directory | Stop — not a beads repo |
 
-If **Already Dolt**: inform the user and suggest `bd dolt status` (1.0) or `bd doctor` (≤0.63) if they have issues.
+If **Dolt**: return to Path A. Do not remove or reinitialize a working Dolt store just because bd was upgraded.
 If **No beads**: inform the user and suggest `bd init` for a fresh installation.
 
 **For Partial (server) state**, take a last look at running processes before destroying state:
@@ -235,14 +367,7 @@ cp /tmp/bd-issues-from-sqlite.jsonl .beads-migration-backup/ 2>/dev/null || true
 
 (`cp -a .beads/.` snapshots everything — SQLite, JSONL, hooks, dolt directories, lockfiles. Cheap insurance vs. selectively copying individual files.)
 
-Then try a structured JSONL backup:
-
-```bash
-bd backup
-ls -la .beads/backup/
-```
-
-**This is expected to fail** on bd 0.62.0+ with classic data — `bd backup` errors out with "no beads database found" because the runtime backend is Dolt and there's no Dolt db yet. Continue anyway; the raw copies in `.beads-migration-backup/` are the real fallback and step 7 imports from JSONL directly.
+The raw copy is authoritative for classic data. On bd 1.1+, `bd backup` is a command group rather than a standalone backup action, and its native backup path requires a working Dolt database. Do not attempt it against classic-only files. After Dolt initialization, a separately configured destination can be managed with `bd backup init`, `bd backup sync`, and `bd backup restore`.
 
 ### 5. Remove Old Backend
 
@@ -277,14 +402,19 @@ rm -rf .beads/embeddeddolt/        # for Partial (embedded) state
 ### 6. Initialize Dolt Backend
 
 ```bash
+# bd 1.1+
+bd init --non-interactive --reinit-local
+
+# bd 1.0 and earlier
 bd init --non-interactive --force
 ```
 
-- `--force` is needed because `.beads/` already exists.
-- `--non-interactive` skips bd 1.0's wizard prompts (role, contributor, fork detection). Without it, `bd init` blocks waiting for input. (Auto-detected when stdin isn't a TTY or `CI=true`, but pass it explicitly for safety.)
-- For server-mode (bd ≤0.63 or bd 1.0 with external dolt sql-server), add `--server`.
+- `--reinit-local` is the bd 1.1 replacement for the deprecated `--force` alias.
+- If bd detects existing remote Dolt history, stop. Use `bd bootstrap` to adopt it, or obtain separate explicit approval before `--discard-remote`; non-interactive replacement also requires the destroy token documented by `bd help init-safety`.
+- `--non-interactive` skips wizard prompts. Pass it explicitly in automation.
+- Add `--server` only when intentionally retaining or selecting server mode.
 
-**What `bd init --force` does and does NOT do** (bd 1.0+):
+**What `bd init` does and does NOT do** (behavior varies by version; inspect the resulting Git diff and log):
 
 Creates the Dolt store:
 - `.beads/embeddeddolt/` (1.0 embedded, default) **or** `.beads/dolt/` (server mode)
@@ -369,13 +499,13 @@ Note the `export PATH="node_modules/.bin:$PATH"` — husky's v9 `h` dispatcher n
 
 ### 7. Restore Data
 
-**Preferred path** (works if step 4's `bd backup` succeeded, which it won't on classic data):
+**Native backup path** (only when a Dolt-native backup destination was configured and synced):
 
 ```bash
-bd backup restore .beads/backup/
+bd backup restore <configured-backup-path>
 ```
 
-**Fallback path** (the actual path for classic-data migrations): import directly from a JSONL.
+**Classic migration path**: import directly from JSONL.
 
 If step 3a's converter ran (JSONL was empty/stale), use that file. Otherwise use `.beads/issues.jsonl`:
 
@@ -587,13 +717,13 @@ Summarize the migration:
 ## Handling Edge Cases
 
 - **JSONL-only (no SQLite)**: Skip the `beads.db*` removal in step 5. Step 7's fallback (`bd import .beads/issues.jsonl`) is already the correct path. Warn that events not captured in JSONL may be lost.
-- **`bd backup` fails on old format**: Expected — step 7's fallback handles it.
+- **Native `bd backup` is unavailable on old format**: Expected. Preserve the raw copy and import JSONL after initialization.
 - **Empty/stale `.beads/issues.jsonl` in main worktree but data in SQLite**: Common with classic bd's auto-flush. Step 7's fallback would import zero rows. Use the SQLite→JSONL converter in step 3a, then `bd import /tmp/bd-issues-from-sqlite.jsonl`.
 - **Worktree's JSONL is fresher than main's but older than SQLite**: SQLite is authoritative. Use the converter; the worktree JSONL is just a snapshot of the last `bd sync` call.
 - **Schema mismatch on import (`cannot unmarshal number into ... string`)**: Legacy bd wrote certain fields as ints that newer bd expects as strings. Comment IDs (`comments[].id`) are the known case — the converter in step 3a already coerces this. Apply the same pattern for any other field that trips the import.
 - **SQLite/JSONL count mismatch in step 1**: Classic daemons had unflushed WAL writes. Re-run step 0's graceful stop; if daemons are already dead, SQLite recovers the WAL on next open (run `sqlite3 .beads/beads.db ".recover"` or just let `bd init` do it).
 - **Partial previous migration (server mode, bd 0.59–0.63)**: Symptom: `bd doctor` reports "Already using Dolt backend" but `bd list` errors with `database "<name>" not found on Dolt server at 127.0.0.1:NNNN`. The `.beads/dolt/` directory exists but is empty (no actual Dolt repo inside, just a `config.yaml` and stub `.dolt/` skeleton). Recovery: stop the running server (step 5), `rm -rf .beads/dolt/`, re-run `bd init --force`, proceed with restore.
-- **Partial previous migration (embedded mode, bd 1.0+)**: `.beads/embeddeddolt/` exists but `bd list` errors. Same fix: `rm -rf .beads/embeddeddolt/` and `bd init --non-interactive --force`.
+- **Partial previous migration (embedded mode)**: `.beads/embeddeddolt/` exists but `bd list` errors. Back it up first, then remove it and reinitialize with the version-appropriate flag (`--force` on bd 1.0, `--reinit-local` on bd 1.1+). Stop instead if remote history exists; adoption with `bd bootstrap` is safer.
 - **`bd doctor` not available in embedded mode**: bd 1.0 says "not yet supported in embedded mode". Use `bd dolt status` and `bd dolt show` for diagnostics; use `bd export` round-trip for verification.
 - **Issue count mismatch (post-migration)**: Common cause is infrastructure beads (agents, rigs) excluded from default export. Try `bd list --status all` (default filter is `open`) before assuming data loss. If genuinely missing rows, re-import with `--dedup=false` and check the import log.
 - **`bd list` reports "No issues found" right after import**: Default filter is `--status open`. Use `bd list --status all` or `--status closed` to see the rest. ~85% of imported issues are typically closed (historical data).
@@ -606,13 +736,19 @@ Summarize the migration:
 - **Husky integration broken after `bd init`**: See step 6a. bd 0.62.0 and 0.63.3 both mishandle husky helper layout — v8 needs a symlink fix, v9 needs the dispatcher inlined. Silently breaks commits if not repaired. (Status in bd 1.0.x: not verified — re-run step 6a's detection if husky is in use.)
 - **Unwanted `AGENTS.md`, `CLAUDE.md`, `.gitignore` changes from `bd init` (1.0)**: bd 1.0 makes a single auto-commit `bd init: initialize beads issue tracking` modifying these files. If the project organises Claude config under `.claude/CLAUDE.md`, the new repo-root `CLAUDE.md` is redundant. Options: `git revert HEAD` then re-stage selectively; or `git reset --soft HEAD~1` to unstage the init commit and rebuild. Ask the user before doing either.
 - **`.beads-migration-backup/` showing as untracked**: Add it to `.git/info/exclude` (not `.gitignore`) for stealth-mode users, alongside their existing `.beads/` entry.
-- **`bd init --force` blocks on prompts**: bd 1.0 has interactive wizards (role, contributor, fork-detect) that block when stdin is a TTY. Always pass `--non-interactive` (or set `BD_NON_INTERACTIVE=1` / `CI=true`) when running through automation.
+- **`bd init` blocks on prompts**: Always pass `--non-interactive` (or set `BD_NON_INTERACTIVE=1` / `CI=true`) in automation. On bd 1.1 use `--reinit-local`; do not add `--discard-remote` without a separate operator decision and the required destroy token.
+- **Remote-backed schema gate**: Exactly one clone runs `env BD_ALLOW_REMOTE_MIGRATE=1 bd migrate` and publishes. Every other clone adopts with `bd bootstrap`; independent migrations can fork schema history unrecoverably.
+- **Partial schema working set**: A blocked auto-migration may leave schema changes uncommitted and make `bd list` or `bd export` fail. Preserve it in the stopped-server raw backup; do not reset it. Use direct `bd sql` counts, then let the designated migration finish the sequence.
+- **Dirty-table guard loops on old Dolt**: If `bd dolt commit` is itself blocked by schema initialization, stop the server and use raw `dolt diff --summary`, explicit `dolt add <tables>`, and `dolt commit`. Re-run migration and repeat only for another inspected, expected working set; older pre-`schema_migrations` databases can require two checkpoints.
+- **`no-push: true`**: This is a deliberate permission guard. After explicit push approval, use `env BD_NO_PUSH=false bd dolt push` for that command only; do not persistently disable the guard.
 
 ## Rules
 
-- Never skip the backup step (step 4). If backup fails, stop and inform the user.
-- Never delete `.beads-migration-backup/` without user confirmation.
+- Never skip the applicable backup step (A2 or step 4). If backup fails, stop and inform the user.
+- Never delete `.beads-migration-backup/` or `.beads-schema-migration-backup/` without user confirmation.
 - Never proceed past verification failures without explicit user approval.
+- Never bypass `remote_migrate_gate` until the operator designates exactly one migrator.
+- Always ask for explicit permission immediately before `bd dolt push`; migration approval alone is not push approval.
 - Preserve `config.yaml` through the migration — it contains team settings.
 - Always verify post-migration counts before declaring success — `bd doctor --migration=post` on bd ≤0.63, or `bd list --status all` count + `bd export` round-trip on bd 1.0+.
 - If `.beads/issues.jsonl` is empty/stale and SQLite has more rows, MUST use the step 3a converter — never silently import a near-empty JSONL.
