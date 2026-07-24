@@ -1,0 +1,15 @@
+# {{PROJECT_NAME}} Workspace
+
+## Context
+
+- Read `README.md` for the human entry point and `workspace.json` for topology.
+- Keep cross-project PRDs, ADRs, architecture, and runbooks under `docs/`.
+- Treat linked repositories as authoritative for their implementation and local rules.
+- Read a repository's own `AGENTS.md` before changing files within it.
+
+## Work
+
+- Use the workspace Beads database for durable cross-project work.
+- Do not duplicate service or infrastructure policy into this root; link to it.
+- Do not modify linked repositories unless the active task explicitly owns those changes.
+- Use `/setup-multirepo-git` for multi-repository Git configuration and safety rules.

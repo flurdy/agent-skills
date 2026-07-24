@@ -12,6 +12,8 @@ templates in one source so workflows can be authored once and used across client
   into `~/.claude/agents/`.
 - **Prompt templates** — shared Pi and Claude Code slash commands stored in
   `prompts/` and configured manually per client.
+- **Project workspace scaffold** — a deterministic CLI that creates cross-project
+  context and tracking around existing repositories or greenfield projects.
 
 Browse the [skills catalog](skills/README.md) for the complete list.
 
@@ -92,6 +94,20 @@ installed by `make apply`; follow the
 The commands provide instructions only: `/squash-msg` drafts a message for
 approval, and none performs Git operations itself.
 
+## Project workspaces
+
+Use `project-workspace` to create a lightweight workspace for cross-project Beads,
+PRDs, ADRs, architecture, runbooks, and repository links:
+
+```bash
+./scripts/project-workspace init "Example Project" --dry-run
+./scripts/project-workspace init --repo ~/Code/example
+```
+
+It never moves or absorbs an existing repository. See the
+[project workspace guide](docs/project-workspace.md) for installation, generated
+structure, and safety behavior.
+
 ## Optional private overlays
 
 A sibling `agent-skills-private/` repository can add private shared units plus
@@ -107,6 +123,8 @@ layout and commands.
 - [Skills catalog](skills/README.md) — available workflows and descriptions
 - [Installation and configuration](docs/installation.md) — destinations, prompts,
   private layers, migrations, and cleanup
+- [Project workspace scaffold](docs/project-workspace.md) — initialise cross-project
+  context and tracking around repositories
 - [Contributing](CONTRIBUTING.md) — authoring skills and agents, metadata,
   permissions, validation, and tests
 - [Model routing](MODEL_ROUTING.md) — portable tier and effort policy
