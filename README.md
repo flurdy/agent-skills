@@ -83,6 +83,7 @@ use their own runtime configuration and capabilities.
 The shared templates currently provide:
 
 - `/about <id-or-name>`
+- `/ask-claude <question>`
 - `/squash-msg [PR-number]`
 - `/trim-comments [file-or-PR]`
 
