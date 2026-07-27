@@ -49,6 +49,7 @@ mkdir -p ~/.claude/commands
 ln -sfn "$PWD/prompts/about.md" ~/.claude/commands/about.md
 ln -sfn "$PWD/prompts/ask-claude.md" ~/.claude/commands/ask-claude.md
 ln -sfn "$PWD/prompts/ask-fable.md" ~/.claude/commands/ask-fable.md
+ln -sfn "$PWD/prompts/ask-premium.md" ~/.claude/commands/ask-premium.md
 ln -sfn "$PWD/prompts/ask-sol.md" ~/.claude/commands/ask-sol.md
 ln -sfn "$PWD/prompts/squash-msg.md" ~/.claude/commands/squash-msg.md
 ln -sfn "$PWD/prompts/trim-comments.md" ~/.claude/commands/trim-comments.md

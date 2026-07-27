@@ -85,6 +85,7 @@ The shared templates currently provide:
 - `/about <id-or-name>`
 - `/ask-claude <question>`
 - `/ask-fable <question>`
+- `/ask-premium <question>`
 - `/ask-sol <question>`
 - `/squash-msg [PR-number]`
 - `/trim-comments [file-or-PR]`
