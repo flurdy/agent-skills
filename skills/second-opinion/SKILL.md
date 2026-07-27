@@ -50,7 +50,8 @@ Agreement and vote count never establish correctness.
 - Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
 - Panel orchestration: `jq` plus `scripts/review-panel.sh`.
 - OpenRouter subset only: `curl`, `OPENROUTER_API_KEY`, and a configured panel/profile in
-  `~/.agents/second-opinion/config.json`.
+  `~/.agents/second-opinion/config.json`. Optional exact-model `modelPolicies` in that user-local
+  file may set `consent: "allow"`; absent or invalid policies remain confirmation-required.
 - `gh` for PR context.
 
 Read [references/review-panels.md](references/review-panels.md) when `quorum`, `consensus`, or the
@@ -73,7 +74,8 @@ A second opinion should come from a different vendor than the model that produce
 Prefer subscription/OAuth routes for one peer. Treat API-key/BYOK and unknown-cost direct routes as
 metered and obtain current-run consent before invocation. A named panel does not infer billing from a
 provider name. Its configured local routes are the approved local subset; every OpenRouter route is a
-separately metered subset requiring fresh consent immediately before requests.
+separately metered subset unless an exact user-local `modelPolicies` entry explicitly sets
+`consent: "allow"`.
 
 For a direct single agent only:
 
@@ -237,17 +239,22 @@ stdin. Preserve missing CLIs, timeouts, and failures.
 If `openrouter.requestCount == 0`, skip this step.
 
 If prerequisites are unavailable, make no request and allow evaluation to report those routes as
-missing/unavailable. Otherwise, immediately before requests use one `AskUserQuestion` that discloses
-only the OpenRouter subset: exact routes/models/vendors, request count, concurrency, prompt cap,
-output-token cap, timeout, variable pricing, and that OpenRouter credits will be consumed.
+missing/unavailable. If `openrouter.consentRequired` is false, every selected route has an exact,
+user-local `consent: "allow"` policy: invoke `run-openrouter --configured-consent` with all three
+digests and the same profile, prompt, timeout, and overrides. Otherwise, immediately before requests
+use one `AskUserQuestion` that discloses only the OpenRouter routes whose policies remain `ask`:
+exact routes/models/vendors, request count, concurrency, prompt cap, output-token cap, timeout,
+variable pricing, and that OpenRouter credits will be consumed.
 
 - **Approve** → invoke `run-openrouter --confirmed` with all three digests and the same profile,
   prompt, timeout, and overrides.
 - **Decline/ambiguous/abandoned** → invoke `decline-openrouter` with all three digests. It generates
   explicit declined results and makes no network request.
 
-Consent applies once and is never persisted. A digest mismatch requires a new check and fresh
-consent. Never retry, substitute, expand, or run a metered subset unattended.
+Configured authorization is exact-model and user-local; it is never inferred from a provider, panel,
+prior approval, or spend. Interactive consent applies once and is never persisted. A panel, subset,
+prompt, or policy digest mismatch requires a new check and fresh consent. Never retry, substitute,
+or expand a metered subset.
 
 ### 4.4 Evaluate mechanical quorum
 
@@ -327,6 +334,7 @@ claims; repeated unsupported claims remain invalid.
 - Never expose OpenRouter credentials or place the bearer token in argv.
 - Never give OpenRouter routes tools or repository access.
 - Never retry/substitute a failed route or silently change a configured panel.
+- Always report effective OpenRouter consent policy and basis alongside route provenance.
 - Always report effective route provenance; use `skill-default` for the implicit direct-Claude
   `opus` selection and `native-default` when the runtime does not reveal a concrete setting.
 - Preserve external responses faithfully before adding your own assessment.

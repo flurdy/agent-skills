@@ -60,9 +60,11 @@ Single routes remain subscription/OAuth-first under the parent skill's policy, w
 metered single routes require current-run disclosure. Panel configuration does not infer billing from
 a provider or model name.
 
-Every OpenRouter subset is metered. The panel coordinator binds its exact identities and prompt before
-fresh consent, then executes only the approved subset once. Declining can still run approved local
-routes with honest quorum/consensus degradation.
+Every OpenRouter subset is metered. By default, the panel coordinator binds its exact identities and
+prompt before fresh consent, then executes only the approved subset once. A root-level, user-local
+exact-model `modelPolicies` entry with `{ "metered": true, "consent": "allow" }` may pre-authorize
+that exact OpenRouter identity; missing, invalid, or non-matching policies still prompt. Declining
+can still run approved local routes with honest quorum/consensus degradation.
 
 ## Evidence
 

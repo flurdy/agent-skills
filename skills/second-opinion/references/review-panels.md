@@ -20,11 +20,18 @@ It stays at schema version 1. Each entry under `profiles` contains exactly one o
 
 A route profile requires `quorum`, measured in **unique successful providers**, and the existing
 bounded `limits` object. Routes from the same provider may corroborate each other but count once
-toward quorum.
+toward quorum. The optional root-level `modelPolicies` object is user-local spend authority for
+exact OpenRouter model IDs; it is separate from every profile.
 
 ```json
 {
   "version": 1,
+  "modelPolicies": {
+    "openrouter/moonshotai/<configured-model-id>": {
+      "metered": true,
+      "consent": "allow"
+    }
+  },
   "profiles": {
     "large": {
       "quorum": 4,
@@ -96,6 +103,29 @@ The coordinator derives local providers (`anthropic`, `openai`, `google`) and th
 namespace. Route IDs and model identities must be unique. Repeated provider namespaces are allowed
 but cannot inflate quorum.
 
+### Configured OpenRouter consent
+
+OpenRouter routes are metered by default and prompt before each run. To suppress that prompt for one
+exact model, add a root-level policy to the user-local config:
+
+```json
+{
+  "modelPolicies": {
+    "openrouter/moonshotai/kimi-k3": {
+      "metered": true,
+      "consent": "allow"
+    }
+  }
+}
+```
+
+`metered` must be `true`; `consent` is either `ask` (the default) or `allow`. Policies are matched by
+full canonical model ID, not provider or panel name. An absent, invalid, or non-matching policy is
+`ask`. A mixed subset prompts if any selected OpenRouter route is not `allow`. Effective policy and
+basis (`configured` or `confirmation-required`) are included in the check and route results. Policy
+values are included in the panel and OpenRouter subset digests, so a policy change invalidates a prior
+check.
+
 ### Built-ins and compatibility
 
 Panel availability:
@@ -133,16 +163,19 @@ The skill invokes `scripts/review-panel.sh` in four bounded stages:
    canonical panel, OpenRouter subset, and exact prompt with SHA-256 digests.
 2. `run-local` verifies the panel and prompt digests and executes only local routes. Every local route
    receives the same private prompt through stdin, runs at most once, and is read-only/sandboxed.
-3. If OpenRouter routes exist and prerequisites are available, the skill discloses **only that subset**
-   and asks for fresh metered consent. `run-openrouter --confirmed` verifies all three digests and
-   delegates the exact subset once to `openrouter-panel.sh`. Declining uses `decline-openrouter` and
-   makes no request.
+3. If OpenRouter routes exist and prerequisites are available, the skill discloses **only the routes
+   whose exact policies remain `ask`** and asks for fresh metered consent. If every selected route is
+   explicitly `allow`, it invokes `run-openrouter --configured-consent`; otherwise it invokes
+   `run-openrouter --confirmed` only after approval. Both paths verify all three digests and delegate
+   the exact subset once to `openrouter-panel.sh`. Declining uses `decline-openrouter` and makes no
+   request.
 4. `evaluate` preserves route order and failures, counts unique successful providers, and reports
    whether quorum was met. It reports same-provider corroboration separately and does no semantic
    consensus analysis.
 
 Every result reports route ID, kind, provider, effective model and effort, their source (`panel`,
-`override`, or `native-default`), status, and the bound panel and prompt digests. Local CLIs receive a
+`override`, or `native-default`), effective OpenRouter consent policy/basis when applicable, status,
+and the bound panel and prompt digests. Local CLIs receive a
 minimal environment containing native config locations but not arbitrary inherited secrets or API
 keys. Their stdout (65,536 bytes) and stderr (8,192 bytes) are bounded while streaming; empty or
 oversized output is a route error. Local routes are approved read-only repository reviewers and may

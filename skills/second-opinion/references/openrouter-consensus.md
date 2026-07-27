@@ -24,11 +24,18 @@ It contains no credentials. `OPENROUTER_API_KEY` remains in the user's shell or 
 Exact model IDs belong in local configuration, not the shared skill. See
 [review-panels.md](review-panels.md) for the mixed-route schema.
 
-The existing version-1 legacy shape remains valid:
+The existing version-1 legacy shape remains valid. The optional root-level `modelPolicies` object
+sets exact user-local authorization only; it never contains credentials:
 
 ```json
 {
   "version": 1,
+  "modelPolicies": {
+    "openrouter/moonshotai/kimi-k3": {
+      "metered": true,
+      "consent": "allow"
+    }
+  },
   "profiles": {
     "extreme": {
       "models": [
@@ -51,7 +58,9 @@ The existing version-1 legacy shape remains valid:
 
 A panel may contain 1–8 unique model identities. Repeated provider namespaces are allowed for
 corroboration but count once toward quorum. `vendor` is display-only; the helper derives provider
-identity from canonical `openrouter/<provider>/<model-id>` values.
+identity from canonical `openrouter/<provider>/<model-id>` values. Each policy must use the exact
+canonical OpenRouter model ID, declare `metered: true`, and set `consent` to `ask` or `allow`.
+`allow` does not apply to a provider, panel, renamed model, or unlisted model.
 
 Local limits may lower but never exceed the compiled ceilings:
 
@@ -97,9 +106,12 @@ request a pasted key, or inspect another tool's credential store.
 
 ### 3. Obtain fresh subset-only metered consent
 
-Immediately before requests, use one `AskUserQuestion`. Disclose:
+If every selected route has a matching `consent: "allow"` policy, the coordinator reports configured
+authorization and may execute that exact digest-bound subset without an interactive question. Otherwise,
+immediately before requests, use one `AskUserQuestion`. Disclose:
 
-- panel name and every OpenRouter route's exact model ID, vendor, provider, and role;
+- panel name and every OpenRouter route whose policy remains `ask`, with exact model ID, vendor,
+  provider, and role;
 - exact number of OpenRouter requests and configured maximum concurrency;
 - prompt-byte cap, output-token cap per model, and timeout;
 - that only this subset consumes OpenRouter credits and prices can change.
@@ -109,8 +121,9 @@ Options:
 1. **Run metered OpenRouter subset** — authorize only these disclosed requests.
 2. **Keep local results only** — make no OpenRouter request.
 
-A negative, abandoned, or ambiguous answer means no request. Consent applies once and is never
-stored or inferred. Declining does not discard successful local results.
+A negative, abandoned, or ambiguous answer means no request. Interactive consent applies once and is
+never stored or inferred. Configured authorization is exact-model, user-local, and digest-bound.
+Declining does not discard successful local results.
 
 ### 4. Execute or decline once
 
@@ -127,14 +140,18 @@ After affirmative consent:
   {route_overrides}
 ```
 
-On decline, run `decline-openrouter` with the same panel, prompt, digests, and overrides. It emits one
-`declined` result per OpenRouter route and calls no network endpoint.
+When configured authorization applies, run `run-openrouter --configured-consent` with the same panel,
+prompt, digests, and overrides. The coordinator rejects this flag unless every selected route remains
+explicitly `allow`. On interactive approval, use `run-openrouter --confirmed`. On decline, run
+`decline-openrouter` with the same panel, prompt, digests, and overrides. It emits one `declined`
+result per OpenRouter route and calls no network endpoint.
 
 `run-openrouter` rebuilds and verifies the effective panel and prompt before delegating the exact
 subset to `openrouter-panel.sh`. The hardened helper keeps the bearer token out of argv using a
 mode-private curl config, enforces the response-byte ceiling in curl and again before JSON parsing,
 makes every configured request at most once, and preserves each error.
-A changed panel, subset, or prompt requires a new check and fresh consent.
+A changed panel, subset, prompt, or effective policy requires a new check and, when any route remains
+`ask`, fresh interactive consent.
 
 Always remove private prompt/result files after evaluation, success or failure.
 
@@ -159,9 +176,10 @@ list only actionable items.
 
 ## Safety invariants
 
-- Never call OpenRouter without an explicitly selected panel containing those routes and immediate
-  subset-only consent.
-- Never persist consent, retry a failed route, substitute a model, or run a metered panel unattended.
+- Never call OpenRouter without an explicitly selected panel containing those routes and either
+  immediate subset-only consent or exact user-local configured authorization.
+- Never persist interactive consent, retry a failed route, substitute a model, or expand a metered
+  panel beyond its selected, digest-bound routes.
 - Never print credentials or put the bearer token in argv.
 - Never exceed compiled model, concurrency, prompt, output, or timeout ceilings.
 - Never give OpenRouter models tools, repository access, environment contents, or unsanitized data.

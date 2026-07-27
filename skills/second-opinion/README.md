@@ -87,7 +87,8 @@ OpenRouter routes live in:
 ~/.agents/second-opinion/config.json
 ```
 
-The configuration contains route identities and limits, not credentials. See
+The configuration contains route identities, limits, and optional user-local
+exact-model consent policies, not credentials. See
 [review-panels.md](references/review-panels.md) for the supported schema, built-ins, per-route
 model/effort overrides, and limits.
 
@@ -102,12 +103,14 @@ secrets from assembled context, but you remain responsible for not requesting re
 private keys, `.env` contents, or sensitive personal data.
 
 OpenRouter routes receive only the sanitized prompt—no tools or repository access—but consume
-credits. If the selected panel contains OpenRouter routes, the skill shows the exact metered subset,
-limits, and timeout and asks for approval immediately before the requests. Approval is one-run only.
-Declining retains any local results and records the OpenRouter routes as declined.
+credits. They prompt for approval immediately before requests by default. A user may opt in an
+exact configured model with `consent: "allow"`; it is never inferred from provider, panel, or prior
+spend. Every other route in a selected subset still requires approval. Declining retains any local
+results and records the OpenRouter routes as declined.
 
-The skill never silently retries failed routes, substitutes models, or expands a panel. See
-[openrouter-consensus.md](references/openrouter-consensus.md) for the full safety boundary.
+The skill never silently retries failed routes, substitutes models, expands a panel, or treats an
+unknown model as pre-authorized. See [openrouter-consensus.md](references/openrouter-consensus.md)
+for the full safety boundary.
 
 ## Reading the result
 

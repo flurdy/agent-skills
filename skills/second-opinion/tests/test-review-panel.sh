@@ -114,6 +114,9 @@ CONFIG="$TMP_DIR/config.json"
 cat > "$CONFIG" <<'JSON'
 {
   "version": 1,
+  "modelPolicies": {
+    "openrouter/moonshotai/allowed": {"metered": true, "consent": "allow"}
+  },
   "profiles": {
     "legacy": {
       "models": [
@@ -121,6 +124,12 @@ cat > "$CONFIG" <<'JSON'
         {"model":"openrouter/x-ai/legacy-b","vendor":"xAI","role":"critique"}
       ],
       "limits":{"maxParallel":2,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
+    },
+    "allowed": {
+      "models": [
+        {"model":"openrouter/moonshotai/allowed","vendor":"Moonshot AI","role":"authorized review"}
+      ],
+      "limits":{"maxParallel":1,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
     },
     "mixed": {
       "quorum": 2,
@@ -180,6 +189,39 @@ jq -e '
   (.unavailableRoutes | length) == 2 and all(.unavailableRoutes[]; .status == "missing")
 ' "$TMP_DIR/missing-eval.json" >/dev/null || fail "an entirely unavailable panel could not be evaluated"
 
+allowed_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel allowed --prompt-file "$PROMPT")"
+jq -e '
+  .openrouter.consentRequired == false and
+  .openrouter.runnable and
+  (.routes[0] | .availability == "configured-allow" and .meteredClassification == true and
+    .consentPolicy == "allow" and .consentBasis == "configured")
+' <<< "$allowed_json" >/dev/null || fail "configured OpenRouter consent was not normalized"
+allowed_panel_sha="$(jq -r '.panelSha256' <<< "$allowed_json")"
+allowed_openrouter_sha="$(jq -r '.openrouterSha256' <<< "$allowed_json")"
+allowed_prompt_sha="$(jq -r '.promptSha256' <<< "$allowed_json")"
+: > "$CURL_LOG"
+"${RUN_ENV[@]}" "$HELPER" run-openrouter --configured-consent --config "$CONFIG" --panel allowed \
+  --prompt-file "$PROMPT" --panel-sha256 "$allowed_panel_sha" \
+  --openrouter-sha256 "$allowed_openrouter_sha" --prompt-sha256 "$allowed_prompt_sha" \
+  > "$TMP_DIR/allowed-results.json"
+jq -e 'length == 1 and .[0].status == "ok" and .[0].consentPolicy == "allow" and .[0].consentBasis == "configured"' \
+  "$TMP_DIR/allowed-results.json" >/dev/null || fail "configured consent result provenance was missing"
+[[ "$(wc -l < "$CURL_LOG" | tr -d '[:space:]')" -eq 1 ]] || fail "configured consent did not run its one authorized request"
+
+MUTATED_ALLOWED_POLICY_CONFIG="$TMP_DIR/mutated-allowed-policy.json"
+jq '.modelPolicies["openrouter/moonshotai/allowed"].consent = "ask"' "$CONFIG" > "$MUTATED_ALLOWED_POLICY_CONFIG"
+: > "$CURL_LOG"
+expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-openrouter --configured-consent \
+  --config "$MUTATED_ALLOWED_POLICY_CONFIG" --panel allowed --prompt-file "$PROMPT" \
+  --panel-sha256 "$allowed_panel_sha" --openrouter-sha256 "$allowed_openrouter_sha" \
+  --prompt-sha256 "$allowed_prompt_sha"
+[[ ! -s "$CURL_LOG" ]] || fail "policy digest mismatch invoked curl"
+
+INVALID_POLICY_CONFIG="$TMP_DIR/invalid-policy.json"
+jq '.modelPolicies["openrouter/moonshotai/allowed"].metered = false' "$CONFIG" > "$INVALID_POLICY_CONFIG"
+expect_failure 'modelPolicies must map exact OpenRouter model IDs' "${RUN_ENV[@]}" "$HELPER" check \
+  --config "$INVALID_POLICY_CONFIG" --panel allowed --prompt-file "$PROMPT"
+
 legacy_panel_sha="$(jq -r '.panelSha256' <<< "$legacy_json")"
 legacy_openrouter_sha="$(jq -r '.openrouterSha256' <<< "$legacy_json")"
 legacy_prompt_sha="$(jq -r '.promptSha256' <<< "$legacy_json")"
@@ -207,15 +249,23 @@ mixed_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel mixed -
   --route-model claude-main=opus --route-effort claude-main=xhigh \
   --route-model codex-main=gpt-test --route-effort codex-main=high)"
 jq -e '
-  .quorum == 2 and .openrouter.requestCount == 2 and
+  .quorum == 2 and .openrouter.requestCount == 2 and .openrouter.consentRequired and
   [.routes[].id] == ["claude-main","codex-main","qwen-a","qwen-b"] and
   (.routes[] | select(.id == "claude-main") | .effectiveModel == "opus" and .modelSource == "override" and .effectiveEffort == "xhigh") and
   (.routes[] | select(.id == "codex-main") | .effectiveModel == "gpt-test" and .effectiveEffort == "high") and
+  (.routes[] | select(.id == "qwen-a") | .availability == "requires-consent" and .consentPolicy == "ask" and .consentBasis == "confirmation-required") and
   ([.routes[].provider] | unique | sort) == ["anthropic","openai","qwen"]
-' <<< "$mixed_json" >/dev/null || fail "mixed profile or route overrides were incorrect"
+' <<< "$mixed_json" >/dev/null || fail "mixed profile, consent policy, or route overrides were incorrect"
 
 panel_sha="$(jq -r '.panelSha256' <<< "$mixed_json")"
 openrouter_sha="$(jq -r '.openrouterSha256' <<< "$mixed_json")"
+expect_failure 'configured consent does not authorize every OpenRouter route' "${RUN_ENV[@]}" "$HELPER" run-openrouter \
+  --configured-consent --config "$CONFIG" --panel mixed --prompt-file "$PROMPT" \
+  --route-model claude-main=opus --route-effort claude-main=xhigh \
+  --route-model codex-main=gpt-test --route-effort codex-main=high \
+  --panel-sha256 "$panel_sha" --openrouter-sha256 "$openrouter_sha" \
+  --prompt-sha256 "$(jq -r '.promptSha256' <<< "$mixed_json")"
+
 prompt_sha="$(jq -r '.promptSha256' <<< "$mixed_json")"
 COMMON=(--config "$CONFIG" --panel mixed --prompt-file "$PROMPT" \
   --route-model claude-main=opus --route-effort claude-main=xhigh \

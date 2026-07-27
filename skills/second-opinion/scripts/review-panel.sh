@@ -22,9 +22,10 @@ Usage:
                         [--route-model ID=MODEL] [--route-effort ID=EFFORT]...
   review-panel.sh run-local --prompt-file FILE --panel-sha256 DIGEST --prompt-sha256 DIGEST
                             [panel and route override options] [--timeout SECONDS]
-  review-panel.sh run-openrouter --confirmed --prompt-file FILE --panel-sha256 DIGEST
-                                 --openrouter-sha256 DIGEST --prompt-sha256 DIGEST
-                                 [panel and route override options] [--timeout SECONDS]
+  review-panel.sh run-openrouter (--confirmed|--configured-consent) --prompt-file FILE
+                                 --panel-sha256 DIGEST --openrouter-sha256 DIGEST
+                                 --prompt-sha256 DIGEST [panel and route override options]
+                                 [--timeout SECONDS]
   review-panel.sh decline-openrouter --prompt-file FILE --panel-sha256 DIGEST
                                      --openrouter-sha256 DIGEST --prompt-sha256 DIGEST
                                      [panel and route override options]
@@ -123,9 +124,21 @@ parse_panel_options() {
 
 load_raw_profile() {
   local configured=""
+  MODEL_POLICIES='{}'
+  CONFIG_SNAPSHOT=''
   if [[ -f "$CONFIG_PATH" ]]; then
-    jq -e '.version == 1 and (.profiles | type == "object")' "$CONFIG_PATH" >/dev/null 2>&1 || \
+    CONFIG_SNAPSHOT="$(cat -- "$CONFIG_PATH")"
+    jq -e '.version == 1 and (.profiles | type == "object")' <<< "$CONFIG_SNAPSHOT" >/dev/null 2>&1 || \
       die "config must be valid JSON with version 1 and a profiles object: $CONFIG_PATH"
+    MODEL_POLICIES="$(jq -c '.modelPolicies // {}' <<< "$CONFIG_SNAPSHOT")"
+    jq -e '
+      (type == "object") and
+      all(to_entries[];
+        (.key | test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
+        (.value | type == "object" and .metered == true and (.consent == "ask" or .consent == "allow"))
+      )
+    ' <<< "$MODEL_POLICIES" >/dev/null 2>&1 || \
+      die "modelPolicies must map exact OpenRouter model IDs to {metered: true, consent: ask|allow}"
   fi
 
   if [[ "$PANEL_NAME" == "local-legacy" ]]; then
@@ -135,7 +148,7 @@ load_raw_profile() {
   fi
 
   if [[ -f "$CONFIG_PATH" ]]; then
-    configured="$(jq -c --arg panel "$PANEL_NAME" '.profiles[$panel] // empty' "$CONFIG_PATH")"
+    configured="$(jq -c --arg panel "$PANEL_NAME" '.profiles[$panel] // empty' <<< "$CONFIG_SNAPSHOT")"
   fi
 
   if [[ -n "$configured" ]]; then
@@ -232,7 +245,7 @@ validate_limits_and_routes() {
     die "panel routes or limits are invalid, duplicated, or exceed compiled ceilings"
   fi
 
-  PANEL_JSON="$(jq -c '
+  PANEL_JSON="$(jq -c --argjson model_policies "$MODEL_POLICIES" '
     .routes |= map(
       . + {
         provider: (if .kind == "local" then ({claude:"anthropic",codex:"openai",gemini:"google"}[.agent]) else (.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase) end),
@@ -240,7 +253,15 @@ validate_limits_and_routes() {
         modelSource: (if has("model") then "panel" else "native-default" end),
         effectiveEffort: (.effort // "native-default"),
         effortSource: (if has("effort") then "panel" else "native-default" end)
-      }
+      } |
+      if .kind == "openrouter" then
+        ($model_policies[.model] // {metered: true, consent: "ask"}) as $policy |
+        . + {
+          meteredClassification: $policy.metered,
+          consentPolicy: $policy.consent,
+          consentBasis: (if $policy.consent == "allow" then "configured" else "confirmation-required" end)
+        }
+      else . end
     )
   ' <<< "$PANEL_JSON")"
 
@@ -356,13 +377,19 @@ check_panel() {
   [[ -n "${OPENROUTER_API_KEY:-}" ]] && openrouter_auth="configured (not network-verified)"
   command -v curl >/dev/null 2>&1 && openrouter_curl="available"
   if [[ "$openrouter_auth" != "missing" && "$openrouter_curl" == "available" ]]; then
-    openrouter_availability="requires-consent"
+    openrouter_availability="available"
   fi
 
   local routes
   routes="$(jq -c --arg openrouter_availability "$openrouter_availability" '
     [.routes[] | . + {
-      availability: (if .kind == "openrouter" then $openrouter_availability else "unchecked" end)
+      availability: (
+        if .kind != "openrouter" then "unchecked"
+        elif $openrouter_availability != "available" then "unavailable"
+        elif .consentPolicy == "allow" then "configured-allow"
+        else "requires-consent"
+        end
+      )
     }]
   ' <<< "$PANEL_JSON")"
   local local_routes openrouter_routes
@@ -412,8 +439,8 @@ check_panel() {
         requestCount: ($openrouter_routes | length),
         auth: (if ($openrouter_routes | length) == 0 then "not-required" else $openrouter_auth end),
         curl: (if ($openrouter_routes | length) == 0 then "not-required" else $openrouter_curl end),
-        runnable: (($openrouter_routes | length) == 0 or $openrouter_availability == "requires-consent"),
-        consentRequired: (($openrouter_routes | length) > 0)
+        runnable: (($openrouter_routes | length) == 0 or $openrouter_availability == "available"),
+        consentRequired: any($openrouter_routes[]; .consentPolicy != "allow")
       }
     }'
 }
@@ -422,6 +449,7 @@ parse_run_args() {
   local require_openrouter_digest="$1"
   shift
   CONFIRMED=false
+  CONFIGURED_CONSENT=false
   EXPECTED_PANEL_SHA=""
   EXPECTED_OPENROUTER_SHA=""
   EXPECTED_PROMPT_SHA=""
@@ -432,6 +460,7 @@ parse_run_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --confirmed) CONFIRMED=true; shift ;;
+      --configured-consent) CONFIGURED_CONSENT=true; shift ;;
       --panel-sha256) [[ $# -ge 2 ]] || die "--panel-sha256 requires a digest"; EXPECTED_PANEL_SHA="$2"; shift 2 ;;
       --openrouter-sha256) [[ $# -ge 2 ]] || die "--openrouter-sha256 requires a digest"; EXPECTED_OPENROUTER_SHA="$2"; shift 2 ;;
       --prompt-sha256) [[ $# -ge 2 ]] || die "--prompt-sha256 requires a digest"; EXPECTED_PROMPT_SHA="$2"; shift 2 ;;
@@ -677,7 +706,13 @@ openrouter_config() {
 
 run_openrouter() {
   parse_run_args true "$@"
-  [[ "$CONFIRMED" == true ]] || die "refusing metered OpenRouter requests without --confirmed"
+  if [[ "$CONFIRMED" != true && "$CONFIGURED_CONSENT" != true ]]; then
+    die "refusing metered OpenRouter requests without --confirmed or --configured-consent"
+  fi
+  if [[ "$CONFIGURED_CONSENT" == true ]] \
+    && ! jq -e 'all(.routes[]; .consentPolicy == "allow" and .consentBasis == "configured")' <<< "$OPENROUTER_JSON" >/dev/null; then
+    die "configured consent does not authorize every OpenRouter route"
+  fi
   local count
   count="$(jq '.routes | length' <<< "$OPENROUTER_JSON")"
   [[ "$count" -gt 0 ]] || { printf '[]\n'; return; }
@@ -720,6 +755,9 @@ run_openrouter() {
         modelSource: "panel",
         effectiveEffort: "native-default",
         effortSource: "native-default",
+        meteredClassification: $panel_routes[$i].meteredClassification,
+        consentPolicy: $panel_routes[$i].consentPolicy,
+        consentBasis: $panel_routes[$i].consentBasis,
         panelSha256: $panel_sha256,
         promptSha256: $prompt_sha256
       }
@@ -736,6 +774,9 @@ decline_openrouter() {
     modelSource: "panel",
     effectiveEffort: "native-default",
     effortSource: "native-default",
+    meteredClassification: .meteredClassification,
+    consentPolicy: .consentPolicy,
+    consentBasis: .consentBasis,
     panelSha256: $panel_sha256,
     promptSha256: $prompt_sha256
   }]' <<< "$OPENROUTER_JSON"
