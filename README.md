@@ -11,7 +11,7 @@ templates in one source so workflows can be authored once and used across client
 - **Agents** — Claude-style sub-agent definitions stored in `agents/` and installed
   into `~/.claude/agents/`.
 - **Prompt templates** — shared Pi and Claude Code slash commands stored in
-  `prompts/` and configured manually per client.
+  `prompts/`; Pi links are managed automatically and Claude Code setup remains manual.
 
 Browse the [skills catalog](skills/README.md) for the complete list.
 
@@ -21,23 +21,23 @@ Browse the [skills catalog](skills/README.md) for the complete list.
 git clone https://github.com/flurdy/agent-skills.git
 cd agent-skills
 make dry-run   # preview managed symlink changes
-make apply     # install skills, Claude aliases, and Claude agents
+make apply     # install skills, Claude aliases/agents, and Pi prompts
 make doctor    # verify the installation
 ```
 
 The installer manages individual symlinks rather than replacing destination
-roots, so unrelated user-owned skills and agents remain untouched.
+roots, so unrelated user-owned skills, agents, and prompts remain untouched.
 
 ## Client support
 
 | Client | Skills | Agents | Prompt templates |
 |---|---|---|---|
-| Pi | Discovers `~/.agents/skills/` | Not managed by this repository | Manual configuration |
+| Pi | Discovers `~/.agents/skills/` | Not managed by this repository | Managed links in `~/.pi/agent/prompts/` |
 | Codex | Discovers `~/.agents/skills/` | Uses Codex-native agent support | Not installed; custom prompts are deprecated |
 | Claude Code | Managed aliases in `~/.claude/skills/` | Managed links in `~/.claude/agents/` | Manual configuration |
 
 `make apply-codex` remains as a compatibility alias for applying the shared skill
-root without the Claude-style agent layer.
+root and Claude compatibility aliases, without Claude-style agents or Pi prompts.
 
 ## How it works
 
@@ -89,11 +89,11 @@ The shared templates currently provide:
 - `/squash-msg [PR-number]`
 - `/trim-comments [file-or-PR]`
 
-They use `$ARGUMENTS`, which Pi and Claude Code both expand. Templates are not
-installed by `make apply`; follow the
-[prompt-template setup](docs/installation.md#prompt-templates) for either client.
-The commands provide instructions only: `/squash-msg` drafts a message for
-approval, and none performs Git operations itself.
+They use `$ARGUMENTS`, which Pi and Claude Code both expand. `make apply` installs
+managed Pi links for every top-level template; run `/reload` in Pi afterward.
+Follow the [prompt-template setup](docs/installation.md#prompt-templates) for
+Claude Code. The commands provide instructions only: `/squash-msg` drafts a
+message for approval, and none performs Git operations itself.
 
 ## Optional private overlays
 

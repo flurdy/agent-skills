@@ -19,9 +19,11 @@ The default destinations are:
 - Canonical skills: `~/.agents/skills`
 - Claude skill aliases: `~/.claude/skills`
 - Claude agents: `~/.claude/agents`
+- Pi prompt templates: `~/.pi/agent/prompts`
 
 Pi and Codex discover `~/.agents/skills` natively. `make apply-codex` is a
-compatibility alias that applies the same shared skill root with `SKIP_AGENTS=1`.
+compatibility alias that applies the shared skill root and Claude compatibility
+aliases with `SKIP_AGENTS=1` and `SKIP_PROMPTS=1`.
 
 ## Prompt templates
 
@@ -30,28 +32,13 @@ filename. They use `$ARGUMENTS` for optional input.
 
 ### Pi
 
-Merge the repository prompt directory into Pi's existing global settings:
+`make apply` creates one managed symlink in `~/.pi/agent/prompts` for every
+top-level template. New templates are picked up on the next apply. Existing
+unmanaged prompts are preserved, and collisions fail before any changes are made.
+Restart Pi or run `/reload` after applying.
 
-```json
-{
-  "prompts": ["~/Code/flurdy/agent-skills/prompts"]
-}
-```
-
-Alternatively, symlink individual templates into Pi's default prompt directory:
-
-```bash
-mkdir -p ~/.pi/agent/prompts
-ln -sfn "$PWD/prompts/about.md" ~/.pi/agent/prompts/about.md
-ln -sfn "$PWD/prompts/ask-claude.md" ~/.pi/agent/prompts/ask-claude.md
-ln -sfn "$PWD/prompts/ask-fable.md" ~/.pi/agent/prompts/ask-fable.md
-ln -sfn "$PWD/prompts/ask-sol.md" ~/.pi/agent/prompts/ask-sol.md
-ln -sfn "$PWD/prompts/squash-msg.md" ~/.pi/agent/prompts/squash-msg.md
-ln -sfn "$PWD/prompts/trim-comments.md" ~/.pi/agent/prompts/trim-comments.md
-```
-
-Use one loading method, not both, to avoid duplicate command names. Restart Pi or
-run `/reload` after changing templates.
+If Pi's `prompts` settings array already loads this repository's `prompts/`
+directory, remove that entry before applying to avoid duplicate command names.
 
 ### Claude Code
 
@@ -67,9 +54,8 @@ ln -sfn "$PWD/prompts/squash-msg.md" ~/.claude/commands/squash-msg.md
 ln -sfn "$PWD/prompts/trim-comments.md" ~/.claude/commands/trim-comments.md
 ```
 
-Prompt setup is intentionally manual and local. `make apply` does not install
-prompt templates. Codex custom-prompt installation is deferred because that
-feature is deprecated.
+Claude Code prompt setup remains manual and local. Codex custom-prompt
+installation is deferred because that feature is deprecated.
 
 ## Private overlays
 
@@ -134,7 +120,9 @@ Set these as environment variables or accept the defaults:
 | `CLAUDE_SKILLS_DIR` | Claude per-skill aliases | `~/.claude/skills` |
 | `LEGACY_CODEX_SKILLS_DIR` | Old managed Codex links removed during apply/clean | `~/.codex/skills` |
 | `AGENTS_DIR` | Claude agent links | `~/.claude/agents` |
+| `PI_PROMPTS_DIR` | Pi prompt template links | `~/.pi/agent/prompts` |
 | `SKIP_AGENTS` | Skip the Claude-style agent layer when `1` | `0` |
+| `SKIP_PROMPTS` | Skip the Pi prompt layer when `1` | `0` |
 
 See `.env.example` and `.envrc.example` for shell and direnv examples.
 
@@ -142,8 +130,8 @@ See `.env.example` and `.envrc.example` for shell and direnv examples.
 
 The assembler is designed to preserve user-owned content:
 
-- `apply` creates managed links in the canonical skills root, Claude aliases, and
-  Claude agent directory.
+- `apply` creates managed links in the canonical skills root, Claude aliases,
+  Claude agent directory, and Pi prompt directory.
 - `clean` removes only repository-managed links and compatibility aliases.
 - An unmanaged entry with the same name causes a preflight failure before mutation.
 - Destination roots must be real directories; the assembler refuses to traverse or
@@ -157,6 +145,10 @@ After `make apply`, a typical installation looks like:
   jira-ticket/     -> /path/to/agent-skills/skills/jira-ticket
   my-custom-skill/                                            # preserved
 
+~/.pi/agent/prompts/
+  about.md         -> /path/to/agent-skills/prompts/about.md
+  my-command.md                                               # preserved
+
 ~/.claude/skills/
   create-pr/       -> ~/.agents/skills/create-pr              # managed alias
   jira-ticket/     -> ~/.agents/skills/jira-ticket            # managed alias
@@ -166,9 +158,9 @@ After `make apply`, a typical installation looks like:
 ## Migrating an existing installation
 
 `make dry-run` previews the migration. `make apply` moves repository-managed skill
-links into `~/.agents/skills`, replaces old managed Claude links with aliases, and
-removes old managed links from `~/.codex/skills`. Unmanaged files, directories, and
-third-party symlinks remain in place.
+links into `~/.agents/skills`, replaces old managed Claude links with aliases,
+removes old managed links from `~/.codex/skills`, and installs managed Pi prompt
+links. Unmanaged files, directories, and third-party symlinks remain in place.
 
 Pi already discovers `~/.agents/skills`. After `make doctor` confirms the canonical
 installation, remove `"~/.claude/skills"` from Pi's user-level `skills` array to
@@ -187,4 +179,5 @@ make clean
 ```
 
 `make clean` removes managed canonical skill links, Claude aliases, legacy managed
-Codex links, and managed Claude agents. User-owned entries are preserved.
+Codex links, managed Claude agents, and managed Pi prompt links. User-owned entries
+are preserved.

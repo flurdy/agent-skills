@@ -18,7 +18,9 @@ MANAGED_ENV = (
     "CLAUDE_SKILLS_DIR",
     "LEGACY_CODEX_SKILLS_DIR",
     "AGENTS_DIR",
+    "PI_PROMPTS_DIR",
     "SKIP_AGENTS",
+    "SKIP_PROMPTS",
     "LAYERS_ORDER",
     "MACHINE",
     "CLIENTS",
@@ -39,6 +41,7 @@ class AssembleTest(unittest.TestCase):
         self.private.mkdir()
         self.skill(self.shared / "skills", "alpha", "shared")
         self.agent(self.shared / "agents", "reviewer.md", "shared")
+        self.prompt(self.shared / "prompts", "about.md", "shared")
 
     @property
     def canonical(self) -> Path:
@@ -56,6 +59,10 @@ class AssembleTest(unittest.TestCase):
     def agents(self) -> Path:
         return self.home / ".claude" / "agents"
 
+    @property
+    def pi_prompts(self) -> Path:
+        return self.home / ".pi" / "agent" / "prompts"
+
     def skill(self, root: Path, name: str, marker: str) -> Path:
         path = root / name
         path.mkdir(parents=True)
@@ -65,6 +72,12 @@ class AssembleTest(unittest.TestCase):
         return path
 
     def agent(self, root: Path, name: str, marker: str) -> Path:
+        root.mkdir(parents=True, exist_ok=True)
+        path = root / name
+        path.write_text(marker, encoding="utf-8")
+        return path
+
+    def prompt(self, root: Path, name: str, marker: str) -> Path:
         root.mkdir(parents=True, exist_ok=True)
         path = root / name
         path.write_text(marker, encoding="utf-8")
@@ -133,6 +146,7 @@ class AssembleTest(unittest.TestCase):
         self.assert_link(self.canonical / "alpha", self.shared / "skills" / "alpha")
         self.assert_link(self.claude / "alpha", self.canonical / "alpha")
         self.assert_link(self.agents / "reviewer.md", self.shared / "agents" / "reviewer.md")
+        self.assert_link(self.pi_prompts / "about.md", self.shared / "prompts" / "about.md")
         self.assertTrue((self.canonical / "personal").is_dir())
         self.assertTrue((self.claude / "claude-only").is_dir())
         self.assertTrue((self.codex / ".system").is_dir())
@@ -196,11 +210,15 @@ class AssembleTest(unittest.TestCase):
         self.assertFalse((self.claude / "alpha").is_symlink())
         self.assertFalse((self.canonical / "alpha").is_symlink())
         self.assertFalse((self.agents / "reviewer.md").is_symlink())
+        self.assertFalse((self.pi_prompts / "about.md").is_symlink())
 
     def test_apply_is_idempotent_and_clean_preserves_unmanaged_entries(self) -> None:
         self.canonical.mkdir(parents=True)
         personal = self.canonical / "personal"
         personal.mkdir()
+        self.pi_prompts.mkdir(parents=True)
+        personal_prompt = self.pi_prompts / "personal.md"
+        personal_prompt.write_text("keep", encoding="utf-8")
 
         self.run_assembler("apply")
         self.run_assembler("apply")
@@ -209,6 +227,7 @@ class AssembleTest(unittest.TestCase):
 
         self.assertTrue(personal.is_dir())
         self.assertEqual([personal], list(self.canonical.iterdir()))
+        self.assertEqual("keep", personal_prompt.read_text(encoding="utf-8"))
 
     def test_third_party_symlinks_are_preserved(self) -> None:
         self.canonical.mkdir(parents=True)
@@ -216,6 +235,12 @@ class AssembleTest(unittest.TestCase):
         personal.mkdir()
         bookmark = self.canonical / "bookmark"
         bookmark.symlink_to(personal, target_is_directory=True)
+        private_prompt = self.prompt(
+            self.private / "personal-prompts", "private.md", "keep"
+        )
+        self.pi_prompts.mkdir(parents=True)
+        prompt_link = self.pi_prompts / "private.md"
+        prompt_link.symlink_to(private_prompt)
 
         self.run_assembler("apply")
         self.codex.mkdir(parents=True, exist_ok=True)
@@ -227,6 +252,8 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(str(personal), os.readlink(bookmark))
         self.assertTrue(codex_alias.is_symlink())
         self.assertEqual(str(self.canonical / "alpha"), os.readlink(codex_alias))
+        self.assertTrue(prompt_link.is_symlink())
+        self.assertEqual(str(private_prompt), os.readlink(prompt_link))
 
     def test_all_links_stage_before_existing_installation_is_replaced(self) -> None:
         self.run_assembler("apply")
@@ -241,6 +268,19 @@ class AssembleTest(unittest.TestCase):
         self.assertEqual(existing_target, os.readlink(self.canonical / "alpha"))
         self.assertFalse((self.canonical / "beta").exists())
         self.assertFalse((self.canonical / "beta").is_symlink())
+
+    def test_nested_prompt_destination_is_rejected_before_changes(self) -> None:
+        result = self.run_assembler(
+            "apply",
+            check=False,
+            PI_PROMPTS_DIR=str(self.home / ".agents"),
+        )
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("PI_PROMPTS_DIR must not overlap", result.stderr)
+        self.assertFalse(self.canonical.exists())
+        self.assertFalse(self.claude.exists())
+        self.assertFalse(self.agents.exists())
 
     def test_physical_root_alias_cannot_overlap_agents_root(self) -> None:
         home_alias = self.root / "home-alias"
@@ -272,6 +312,7 @@ class AssembleTest(unittest.TestCase):
         self.assert_link(self.canonical / "alpha", self.shared / "skills" / "alpha")
         self.assert_link(self.claude / "alpha", self.canonical / "alpha")
         self.assertFalse(self.agents.exists())
+        self.assertFalse(self.pi_prompts.exists())
 
     def test_clean_dry_run_is_read_only_and_clean_migrates_legacy_link(self) -> None:
         self.run_assembler("apply")
@@ -294,16 +335,50 @@ class AssembleTest(unittest.TestCase):
 
         self.assertIn("DRY: mkdir -p", result.stdout)
         self.assertIn(str(self.canonical), result.stdout)
+        self.assertIn(str(self.pi_prompts), result.stdout)
         self.assertFalse((self.home / ".agents").exists())
         self.assertFalse((self.home / ".claude").exists())
+        self.assertFalse((self.home / ".pi").exists())
 
-    def test_doctor_reports_legacy_codex_links_and_pi_duplicate_setting(self) -> None:
+    def test_prompt_collision_preflight_leaves_installation_unchanged(self) -> None:
+        self.pi_prompts.mkdir(parents=True)
+        existing = self.pi_prompts / "about.md"
+        existing.write_text("keep", encoding="utf-8")
+
+        result = self.run_assembler("apply", check=False)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Collision", result.stderr)
+        self.assertEqual("keep", existing.read_text(encoding="utf-8"))
+        self.assertFalse(self.canonical.exists())
+
+    def test_configured_prompt_directory_blocks_apply_without_changes(self) -> None:
+        settings = self.home / ".pi" / "agent" / "settings.json"
+        settings.parent.mkdir(parents=True)
+        settings.write_text(
+            '{"prompts":["' + str(self.shared / "prompts") + '"]}\n',
+            encoding="utf-8",
+        )
+
+        result = self.run_assembler("apply", check=False)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("already load", result.stderr)
+        self.assertFalse(self.canonical.exists())
+        self.assertFalse(self.pi_prompts.exists())
+
+    def test_doctor_reports_legacy_codex_links_and_pi_duplicate_settings(self) -> None:
         self.codex.mkdir(parents=True)
         (self.codex / "alpha").symlink_to(self.shared / "skills" / "alpha")
         settings = self.home / ".pi" / "agent" / "settings.json"
         settings.parent.mkdir(parents=True)
         settings.write_text(
-            '{"skills":["' + str(self.claude) + '/"]}\n', encoding="utf-8"
+            '{"skills":["'
+            + str(self.claude)
+            + '/"],"prompts":["'
+            + str(self.shared / "prompts")
+            + '"]}\n',
+            encoding="utf-8",
         )
 
         result = self.run_assembler("doctor", check=False)
@@ -311,6 +386,7 @@ class AssembleTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("legacy managed Codex link", result.stdout)
         self.assertIn("Pi settings still load", result.stdout)
+        self.assertIn("Pi settings also load managed prompts", result.stdout)
         self.assertIn("Doctor: FAIL", result.stdout)
 
     def test_doctor_rejects_incorrect_claude_alias_target(self) -> None:

@@ -12,6 +12,7 @@ SHARED_SKILLS_DIR="${SHARED_SKILLS_DIR:-$SHARED_REPO/skills}"
 PRIVATE_SKILLS_DIR="${PRIVATE_SKILLS_DIR:-$PRIVATE_REPO/skills}"
 SHARED_AGENTS_DIR="${SHARED_AGENTS_DIR:-$SHARED_REPO/agents}"
 PRIVATE_AGENTS_DIR="${PRIVATE_AGENTS_DIR:-$PRIVATE_REPO/agents}"
+SHARED_PROMPTS_DIR="${SHARED_PROMPTS_DIR:-$SHARED_REPO/prompts}"
 PRIVATE_MACHINES_DIR="${PRIVATE_MACHINES_DIR:-$PRIVATE_REPO/machines}"
 PRIVATE_CLIENTS_DIR="${PRIVATE_CLIENTS_DIR:-$PRIVATE_REPO/clients}"
 PROFILES_DIR="${PROFILES_DIR:-$PRIVATE_REPO/profiles}"
@@ -20,7 +21,9 @@ SKILLS_DIR="${SKILLS_DIR:-$HOME/.agents/skills}"
 CLAUDE_SKILLS_DIR="${CLAUDE_SKILLS_DIR:-$HOME/.claude/skills}"
 LEGACY_CODEX_SKILLS_DIR="${LEGACY_CODEX_SKILLS_DIR:-$HOME/.codex/skills}"
 AGENTS_DIR="${AGENTS_DIR:-$HOME/.claude/agents}"
+PI_PROMPTS_DIR="${PI_PROMPTS_DIR:-$HOME/.pi/agent/prompts}"
 SKIP_AGENTS="${SKIP_AGENTS:-0}"
+SKIP_PROMPTS="${SKIP_PROMPTS:-0}"
 LAYERS_ORDER="${LAYERS_ORDER:-shared private machine clients}"
 PI_SETTINGS_FILE="${PI_SETTINGS_FILE:-$HOME/.pi/agent/settings.json}"
 
@@ -40,13 +43,14 @@ Notes:
 - Creates per-skill Claude compatibility aliases in CLAUDE_SKILLS_DIR.
 - Removes old managed links from LEGACY_CODEX_SKILLS_DIR during apply/clean.
 - Installs Claude-style agents in AGENTS_DIR unless SKIP_AGENTS=1.
+- Installs Pi prompt templates in PI_PROMPTS_DIR unless SKIP_PROMPTS=1.
 - Preserves unmanaged files, directories, and third-party symlinks.
 - Refuses symlinked destination roots and collisions before making changes.
 
 Env:
-  SHARED_REPO, PRIVATE_REPO, SKILLS_DIR, CLAUDE_SKILLS_DIR,
-  LEGACY_CODEX_SKILLS_DIR, AGENTS_DIR, SKIP_AGENTS, LAYERS_ORDER,
-  PI_SETTINGS_FILE
+  SHARED_REPO, PRIVATE_REPO, SHARED_PROMPTS_DIR, SKILLS_DIR,
+  CLAUDE_SKILLS_DIR, LEGACY_CODEX_SKILLS_DIR, AGENTS_DIR, PI_PROMPTS_DIR, SKIP_AGENTS,
+  SKIP_PROMPTS, LAYERS_ORDER, PI_SETTINGS_FILE
 EOF
 }
 
@@ -112,14 +116,20 @@ is_claude_compat_symlink() {
   path_is_lexically_within "$(symlink_target_path "$link")" "$SKILLS_DIR"
 }
 
+is_prompt_managed_symlink() {
+  local link="$1"
+  [[ -L "$link" ]] || return 1
+  path_is_lexically_within "$(symlink_target_path "$link")" "$SHARED_PROMPTS_DIR"
+}
+
 is_managed_symlink() {
   local ownership="$1"
   local link="$2"
-  if [[ "$ownership" == "claude" ]]; then
-    is_repo_managed_symlink "$link" || is_claude_compat_symlink "$link"
-  else
-    is_repo_managed_symlink "$link"
-  fi
+  case "$ownership" in
+    claude) is_repo_managed_symlink "$link" || is_claude_compat_symlink "$link" ;;
+    prompt) is_prompt_managed_symlink "$link" ;;
+    *) is_repo_managed_symlink "$link" ;;
+  esac
 }
 
 assert_safe_root() {
@@ -142,6 +152,17 @@ assert_distinct_roots() {
       err "AGENTS_DIR must differ from CLAUDE_SKILLS_DIR"
     fi
   fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    local destination
+    for destination in "$SKILLS_DIR" "$CLAUDE_SKILLS_DIR" "$LEGACY_CODEX_SKILLS_DIR"; do
+      if paths_overlap "$PI_PROMPTS_DIR" "$destination"; then
+        err "PI_PROMPTS_DIR must not overlap other managed destinations"
+      fi
+    done
+    if [[ "$SKIP_AGENTS" -eq 0 ]] && paths_overlap "$PI_PROMPTS_DIR" "$AGENTS_DIR"; then
+      err "PI_PROMPTS_DIR must not overlap other managed destinations"
+    fi
+  fi
 
   local root
   for root in "$SKILLS_DIR" "$CLAUDE_SKILLS_DIR" "$LEGACY_CODEX_SKILLS_DIR"; do
@@ -153,6 +174,10 @@ assert_distinct_roots() {
     && { paths_overlap "$AGENTS_DIR" "$SHARED_REPO" || paths_overlap "$AGENTS_DIR" "$PRIVATE_REPO"; }; then
     err "Managed destination overlaps a source repository: $AGENTS_DIR"
   fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]] \
+    && { paths_overlap "$PI_PROMPTS_DIR" "$SHARED_REPO" || paths_overlap "$PI_PROMPTS_DIR" "$PRIVATE_REPO"; }; then
+    err "Managed destination overlaps a source repository: $PI_PROMPTS_DIR"
+  fi
 }
 
 preflight_roots() {
@@ -163,6 +188,9 @@ preflight_roots() {
   fi
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     assert_safe_root "Agents root" "$AGENTS_DIR"
+  fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    assert_safe_root "Pi prompts root" "$PI_PROMPTS_DIR"
   fi
   if ! same_path "$LEGACY_CODEX_SKILLS_DIR" "$SKILLS_DIR" \
     && ! same_path "$LEGACY_CODEX_SKILLS_DIR" "$CLAUDE_SKILLS_DIR"; then
@@ -211,6 +239,8 @@ declare -A DESIRED_SKILLS=()
 declare -A DESIRED_SKILL_LABELS=()
 declare -A DESIRED_AGENTS=()
 declare -A DESIRED_AGENT_LABELS=()
+declare -A DESIRED_PROMPTS=()
+declare -A DESIRED_PROMPT_LABELS=()
 
 collect_skill_units() {
   local source_dir="$1"
@@ -253,6 +283,25 @@ collect_agent_units() {
   shopt -u nullglob dotglob
 }
 
+collect_prompt_units() {
+  local child
+  local name
+
+  [[ "$SKIP_PROMPTS" -eq 1 || ! -d "$SHARED_PROMPTS_DIR" ]] && return 0
+  log "Selecting Pi prompts: shared ($SHARED_PROMPTS_DIR)"
+  shopt -s nullglob dotglob
+  for child in "$SHARED_PROMPTS_DIR"/*.md; do
+    [[ -f "$child" ]] || continue
+    name="$(basename -- "$child")"
+    [[ "$name" == "README.md" ]] && continue
+    # shellcheck disable=SC2034  # Read later through a nameref.
+    DESIRED_PROMPTS["$name"]="$child"
+    # shellcheck disable=SC2034  # Read later through a nameref.
+    DESIRED_PROMPT_LABELS["$name"]="shared"
+  done
+  shopt -u nullglob dotglob
+}
+
 collect_layer() {
   local skills_dir="$1"
   local agents_dir="$2"
@@ -267,6 +316,7 @@ collect_desired_units() {
   local layer
   local client
 
+  collect_prompt_units
   for layer in $LAYERS_ORDER; do
     case "$layer" in
       shared)
@@ -318,12 +368,18 @@ No changes were made. Move or remove the existing entry before retrying."
 
 preflight_apply() {
   preflight_roots
+  if [[ "$SKIP_PROMPTS" -eq 0 ]] && pi_uses_shared_prompts; then
+    err "Pi settings already load $SHARED_PROMPTS_DIR; remove that prompts entry before applying managed prompt links."
+  fi
   preflight_collisions "$SKILLS_DIR" repo "skill" DESIRED_SKILLS
   if ! same_path "$CLAUDE_SKILLS_DIR" "$SKILLS_DIR"; then
     preflight_collisions "$CLAUDE_SKILLS_DIR" claude "Claude skill alias" DESIRED_SKILLS
   fi
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     preflight_collisions "$AGENTS_DIR" repo "agent" DESIRED_AGENTS
+  fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    preflight_collisions "$PI_PROMPTS_DIR" prompt "Pi prompt" DESIRED_PROMPTS
   fi
 }
 
@@ -442,6 +498,7 @@ install_desired_units() {
   local canonical_stage
   local claude_stage=""
   local agents_stage=""
+  local prompts_stage=""
   local removed
 
   if [[ "$dry_run" -eq 1 ]]; then
@@ -451,6 +508,9 @@ install_desired_units() {
     fi
     if [[ "$SKIP_AGENTS" -eq 0 ]]; then
       log_desired_units "$AGENTS_DIR" DESIRED_AGENTS DESIRED_AGENT_LABELS repo
+    fi
+    if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+      log_desired_units "$PI_PROMPTS_DIR" DESIRED_PROMPTS DESIRED_PROMPT_LABELS prompt
     fi
   else
     trap cleanup_stages EXIT
@@ -464,10 +524,15 @@ install_desired_units() {
       stage_desired_units "$AGENTS_DIR" DESIRED_AGENTS repo
       agents_stage="$LAST_STAGE_DIR"
     fi
+    if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+      stage_desired_units "$PI_PROMPTS_DIR" DESIRED_PROMPTS prompt
+      prompts_stage="$LAST_STAGE_DIR"
+    fi
 
     commit_staged_units "$SKILLS_DIR" repo "$canonical_stage"
     [[ -n "$claude_stage" ]] && commit_staged_units "$CLAUDE_SKILLS_DIR" claude "$claude_stage"
     [[ -n "$agents_stage" ]] && commit_staged_units "$AGENTS_DIR" repo "$agents_stage"
+    [[ -n "$prompts_stage" ]] && commit_staged_units "$PI_PROMPTS_DIR" prompt "$prompts_stage"
   fi
 
   removed="$(remove_stale_managed_links "$SKILLS_DIR" repo DESIRED_SKILLS "$dry_run")"
@@ -479,6 +544,10 @@ install_desired_units() {
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     removed="$(remove_stale_managed_links "$AGENTS_DIR" repo DESIRED_AGENTS "$dry_run")"
     log "Removed $removed stale managed agent link(s) from $AGENTS_DIR"
+  fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    removed="$(remove_stale_managed_links "$PI_PROMPTS_DIR" prompt DESIRED_PROMPTS "$dry_run")"
+    log "Removed $removed stale managed Pi prompt link(s) from $PI_PROMPTS_DIR"
   fi
   if ! same_path "$LEGACY_CODEX_SKILLS_DIR" "$SKILLS_DIR" \
     && ! same_path "$LEGACY_CODEX_SKILLS_DIR" "$CLAUDE_SKILLS_DIR"; then
@@ -513,6 +582,11 @@ clean_installation() {
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     removed="$(clean_managed_symlinks_in "$AGENTS_DIR" "$dry_run" repo)"
     log "Cleaned $removed managed agent link(s) from $AGENTS_DIR"
+  fi
+
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    removed="$(clean_managed_symlinks_in "$PI_PROMPTS_DIR" "$dry_run" prompt)"
+    log "Cleaned $removed managed Pi prompt link(s) from $PI_PROMPTS_DIR"
   fi
 }
 
@@ -561,9 +635,11 @@ report_target_dir() {
   log "  Unmanaged: $unmanaged"
 }
 
-pi_uses_claude_skills() {
+pi_settings_uses_path() {
+  local setting="$1"
+  local expected_path="$2"
   [[ -f "$PI_SETTINGS_FILE" ]] || return 1
-  python3 - "$PI_SETTINGS_FILE" "$CLAUDE_SKILLS_DIR" <<'PY'
+  python3 - "$PI_SETTINGS_FILE" "$setting" "$expected_path" <<'PY'
 import json
 import os
 import sys
@@ -573,17 +649,28 @@ try:
     settings = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 except (OSError, ValueError):
     raise SystemExit(1)
-expected = Path(os.path.expanduser(sys.argv[2])).resolve(strict=False)
-for entry in settings.get("skills", []):
+expected = Path(os.path.expanduser(sys.argv[3])).resolve(strict=False)
+for entry in settings.get(sys.argv[2], []):
     if isinstance(entry, str) and Path(os.path.expanduser(entry)).resolve(strict=False) == expected:
         raise SystemExit(0)
 raise SystemExit(1)
 PY
 }
 
+pi_uses_claude_skills() {
+  pi_settings_uses_path skills "$CLAUDE_SKILLS_DIR"
+}
+
+pi_uses_shared_prompts() {
+  pi_settings_uses_path prompts "$SHARED_PROMPTS_DIR"
+}
+
 warn_pi_legacy_setting() {
   if pi_uses_claude_skills; then
     log "WARN: Pi settings still load $CLAUDE_SKILLS_DIR; remove that entry after verifying $SKILLS_DIR discovery to avoid duplicate skills."
+  fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]] && pi_uses_shared_prompts; then
+    log "WARN: Pi settings also load managed prompts from $SHARED_PROMPTS_DIR; remove that entry to avoid duplicate prompts."
   fi
 }
 
@@ -662,6 +749,7 @@ cmd_doctor() {
   log "Private repo:  $PRIVATE_REPO"
   log "Shared skills: $SHARED_SKILLS_DIR"
   log "Shared agents: $SHARED_AGENTS_DIR"
+  log "Shared prompts: $SHARED_PROMPTS_DIR"
   log "Layer order:   $LAYERS_ORDER"
   log ""
 
@@ -692,8 +780,18 @@ cmd_doctor() {
       verify_desired_links "$AGENTS_DIR" repo DESIRED_AGENTS repo
     fi
   fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    if ! report_target_dir "Pi prompts" "$PI_PROMPTS_DIR" prompt; then
+      doctor_error "Pi prompts root is missing or unsafe: $PI_PROMPTS_DIR"
+    else
+      verify_desired_links "$PI_PROMPTS_DIR" prompt DESIRED_PROMPTS prompt
+    fi
+  fi
   if pi_uses_claude_skills; then
     doctor_error "Pi settings still load $CLAUDE_SKILLS_DIR; remove that entry to avoid duplicate skills."
+  fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]] && pi_uses_shared_prompts; then
+    doctor_error "Pi settings also load managed prompts from $SHARED_PROMPTS_DIR; remove that entry to avoid duplicate prompts."
   fi
   if [[ "$DOCTOR_ERRORS" -gt 0 ]]; then
     log "Doctor: FAIL ($DOCTOR_ERRORS error(s))"
@@ -749,6 +847,9 @@ cmd_apply() {
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     ensure_target_dir "$AGENTS_DIR" "$dry_run"
   fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    ensure_target_dir "$PI_PROMPTS_DIR" "$dry_run"
+  fi
 
   log "Installing managed links..."
   install_desired_units "$dry_run"
@@ -763,6 +864,9 @@ cmd_apply() {
   fi
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     log "Agents:  $AGENTS_DIR"
+  fi
+  if [[ "$SKIP_PROMPTS" -eq 0 ]]; then
+    log "Prompts: $PI_PROMPTS_DIR"
   fi
   warn_pi_legacy_setting
 }

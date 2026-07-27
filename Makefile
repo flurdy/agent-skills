@@ -8,6 +8,7 @@ SKILLS_DIR ?= $(HOME)/.agents/skills
 CLAUDE_SKILLS_DIR ?= $(HOME)/.claude/skills
 LEGACY_CODEX_SKILLS_DIR ?= $(HOME)/.codex/skills
 AGENTS_DIR ?= $(HOME)/.claude/agents
+PI_PROMPTS_DIR ?= $(HOME)/.pi/agent/prompts
 
 # shared private machine clients
 LAYERS_ORDER ?= shared private machine clients
@@ -17,9 +18,9 @@ ASSEMBLE := ./assemble.sh
 COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
   SKILLS_DIR="$(SKILLS_DIR)" CLAUDE_SKILLS_DIR="$(CLAUDE_SKILLS_DIR)" \
   LEGACY_CODEX_SKILLS_DIR="$(LEGACY_CODEX_SKILLS_DIR)" \
-  LAYERS_ORDER="$(LAYERS_ORDER)"
+  PI_PROMPTS_DIR="$(PI_PROMPTS_DIR)" LAYERS_ORDER="$(LAYERS_ORDER)"
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
-CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1
+CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
 .PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
@@ -34,7 +35,7 @@ help:
 	@echo "make doctor-codex    # compatibility alias; same shared skill root"
 	@echo "make apply PROFILE=my-machine"
 	@echo "make apply MACHINE=my-machine CLIENTS='my-client my-other-client'"
-	@echo "make apply-codex PROFILE=my-machine  # compatibility alias; skips agents"
+	@echo "make apply-codex PROFILE=my-machine  # compatibility alias; skips agents and Pi prompts"
 	@echo "make dry-run PROFILE=my-machine"
 	@echo "make dry-run-codex PROFILE=my-machine"
 	@echo "make clean"
@@ -44,6 +45,7 @@ help:
 	@echo "  SKILLS_DIR=$(SKILLS_DIR)"
 	@echo "  CLAUDE_SKILLS_DIR=$(CLAUDE_SKILLS_DIR)"
 	@echo "  LEGACY_CODEX_SKILLS_DIR=$(LEGACY_CODEX_SKILLS_DIR)"
+	@echo "  PI_PROMPTS_DIR=$(PI_PROMPTS_DIR)"
 	@echo "  LAYERS_ORDER='$(LAYERS_ORDER)'"
 
 clean-code:
