@@ -1,0 +1,37 @@
+---TIMESTAMP---
+data=2026-07-28 12:00 UTC
+---WORKSPACE-DOCTOR---
+status=OK
+---TOPOLOGY---
+status=OK
+data=workspace=Export Workspace
+data=repository_total=2
+data=repository_included=2
+data=repository_omitted=0
+---SCOPE---
+status=OK
+---GIT-STATUS---
+status=OK
+---BEADS-STATUS---
+status=OK
+---BEADS-IN-PROGRESS---
+status=OK
+data=id=workspace-101 links=ABC-101 priority=P2 acceptance=Export endpoint and audit event.
+---BEADS-OPEN---
+status=OK
+data=[]
+---BEADS-BLOCKED---
+status=OK
+data=[]
+---INTENT-DOCUMENTS---
+status=OK
+data=path=docs/prds/export.md
+data=Outcome: expose audited customer exports. Linked work: workspace-101 and ABC-101.
+---JIRA---
+status=CURRENT QUERY
+data=ABC-101 status=In Progress priority=P2 updated=2026-07-28T10:00:00Z
+---GITHUB---
+status=CURRENT QUERY
+data=PR #12 links=workspace-101,ABC-101 head=def456 state=OPEN review=APPROVED ci_sha=def456 ci=SUCCESS
+---RELEASE---
+status=NOT ASSESSED

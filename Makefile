@@ -69,6 +69,7 @@ test-second-opinion:
 
 test-project-brief:
 	@skills/project-brief/tests/test-collect.sh
+	@python3 -m unittest discover -s skills/project-brief/tests -p 'test_evaluation.py'
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

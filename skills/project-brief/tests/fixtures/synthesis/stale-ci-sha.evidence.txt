@@ -1,0 +1,37 @@
+---TIMESTAMP---
+data=2026-07-28 12:00 UTC
+---WORKSPACE-DOCTOR---
+status=OK
+---TOPOLOGY---
+status=OK
+data=workspace=Audit Workspace
+data=repository_total=1
+data=repository_included=1
+data=repository_omitted=0
+---SCOPE---
+status=OK
+---GIT-STATUS---
+status=OK
+---BEADS-STATUS---
+status=OK
+---BEADS-IN-PROGRESS---
+status=OK
+data=id=workspace-505 links=ABC-505 priority=P2 acceptance=Audit export passes required CI.
+---BEADS-OPEN---
+status=OK
+data=[]
+---BEADS-BLOCKED---
+status=OK
+data=[]
+---INTENT-DOCUMENTS---
+status=OK
+data=path=docs/prds/audit.md
+data=Outcome: ship audit export through workspace-505 and PR #44.
+---GITHUB---
+status=CURRENT QUERY
+data=PR #44 links=workspace-505 head=def456 state=OPEN ci=SUCCESS ci_sha=abc123
+---JIRA---
+status=CURRENT QUERY
+data=ABC-505 status=In Progress
+---RELEASE---
+status=NOT ASSESSED

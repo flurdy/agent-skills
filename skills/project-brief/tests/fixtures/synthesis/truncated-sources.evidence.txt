@@ -1,0 +1,42 @@
+---TIMESTAMP---
+data=2026-07-28 12:00 UTC
+---WORKSPACE-DOCTOR---
+status=OK
+---TOPOLOGY---
+status=TRUNCATED
+data=workspace=Oversized Workspace
+data=repository_total=12
+data=repository_included=10
+data=repository_omitted=2
+---SCOPE---
+status=OK
+---GIT-STATUS---
+status=TRUNCATED
+---BEADS-STATUS---
+status=TRUNCATED
+---BEADS-IN-PROGRESS---
+status=OK
+data=total=0
+data=included=0
+data=omitted=0
+data=[]
+---BEADS-OPEN---
+status=TRUNCATED
+data=total=63
+data=included=50
+data=omitted=13
+---BEADS-BLOCKED---
+status=OK
+data=total=0
+data=included=0
+data=omitted=0
+data=[]
+---INTENT-DOCUMENTS---
+status=TRUNCATED
+data=document_total=11
+data=document_included=8
+data=document_omitted=3
+---GITHUB---
+status=UNAVAILABLE
+---RELEASE---
+status=NOT ASSESSED

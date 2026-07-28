@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/project-bri
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.0"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -254,7 +254,7 @@ outcome rows and five coordination actions. Summarise overflow and name the owni
 |---|---|---|---|---|
 
 ### Coordination actions
-- `BLOCK|DECIDE|RECONCILE|LINK|COMMUNICATE` — {fact, impact, and citations}
+- `BLOCK|DECIDE|RECONCILE|LINK|VERIFY|COMMUNICATE` — {fact, impact, and citations}
 
 ### Delivery and release confidence
 | Dimension | State | Current evidence |
@@ -278,6 +278,20 @@ repository activity as project progress.
 - **No release source:** report release `NOT ASSESSED`; do not infer readiness.
 - **Truncated source:** show the cap and omitted count; do not generalise from the subset.
 - **Conflicting evidence:** preserve it under `RECONCILE`; do not choose a winner.
+
+## Maintainer validation
+
+Run the focused collector and synthesis-contract checks after changing evidence collection, verdicts,
+action ranking, source safety, or rendering:
+
+```bash
+make test-project-brief
+```
+
+The collector suite validates actual command and framing behavior. The synthesis fixtures are frozen
+rendered examples checked for verdict, citations, forbidden overclaims, hostile-instruction leakage,
+and `Next` precedence. They do not prove that every future model invocation will produce the same
+output; use real workspace dogfood and review before relying on a new model or source combination.
 
 ## Version 1 exclusions
 

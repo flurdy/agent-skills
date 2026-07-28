@@ -1,0 +1,40 @@
+---TIMESTAMP---
+data=2026-07-28 12:00 UTC
+---WORKSPACE-DOCTOR---
+status=OK
+---TOPOLOGY---
+status=OK
+data=workspace=Migration Workspace
+data=repository_total=3
+data=repository_included=3
+data=repository_omitted=0
+---SCOPE---
+status=OK
+---GIT-STATUS---
+status=OK
+---BEADS-STATUS---
+status=OK
+---BEADS-IN-PROGRESS---
+status=OK
+data=[]
+---BEADS-OPEN---
+status=OK
+data=id=repo-402 links=ABC-402 status=open
+---BEADS-BLOCKED---
+status=OK
+data=id=workspace-401 priority=P1 blocked_by=DEC-9 impact="migration cannot start"
+---INTENT-DOCUMENTS---
+status=OK
+data=path=docs/prds/migration.md
+data=P1 outcome: migrate customer records by 2026-08-01. Status channel: #migration-status.
+---DECISIONS---
+status=CURRENT QUERY
+data=id=DEC-9 status=OPEN owner=Data Council
+---JIRA---
+status=CURRENT QUERY
+data=ABC-402 status=Done but linked repository task remains open
+---COMMUNICATION---
+status=CURRENT QUERY
+data=channel=#migration-status last_update=2026-07-25
+---RELEASE---
+status=NOT ASSESSED

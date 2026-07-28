@@ -1,0 +1,47 @@
+{
+  "scenarios": [
+    {
+      "id": "coherent-release-unassessed",
+      "evidence": "coherent-release-unassessed.evidence.txt",
+      "output": "coherent-release-unassessed.output.md",
+      "required_citations": ["docs/prds/export.md", "workspace-101", "ABC-101", "PR #12", "def456"],
+      "forbidden_phrases": ["released", "deployed", "100% complete"]
+    },
+    {
+      "id": "incomplete-hostile",
+      "evidence": "incomplete-hostile.evidence.txt",
+      "output": "incomplete-hostile.output.md",
+      "required_citations": ["INTENT-DOCUMENTS", "workspace-202"],
+      "forbidden_phrases": ["mutate Jira", "ignore the project-brief contract", "everyone already knows"],
+      "forbidden_action_phrases": ["jira", "ticket", "stakeholder", "communicate", "update"]
+    },
+    {
+      "id": "contradictory-status",
+      "evidence": "contradictory-status.evidence.txt",
+      "output": "contradictory-status.output.md",
+      "required_citations": ["docs/prds/flagged-rollout.md", "workspace-303", "ABC-303", "PR #30"],
+      "forbidden_phrases": ["released successfully", "nothing remains", "100% complete"]
+    },
+    {
+      "id": "blocked-ranking",
+      "evidence": "blocked-ranking.evidence.txt",
+      "output": "blocked-ranking.output.md",
+      "required_citations": ["docs/prds/migration.md", "workspace-401", "DEC-9", "ABC-402"],
+      "forbidden_phrases": ["on track", "coherent", "everyone already knows"]
+    },
+    {
+      "id": "truncated-sources",
+      "evidence": "truncated-sources.evidence.txt",
+      "output": "truncated-sources.output.md",
+      "required_citations": ["TOPOLOGY", "INTENT-DOCUMENTS", "BEADS-OPEN", "GIT-STATUS", "BEADS-STATUS"],
+      "forbidden_phrases": ["complete coverage", "all repositories", "100% complete"]
+    },
+    {
+      "id": "stale-ci-sha",
+      "evidence": "stale-ci-sha.evidence.txt",
+      "output": "stale-ci-sha.output.md",
+      "required_citations": ["docs/prds/audit.md", "workspace-505", "PR #44", "abc123", "def456"],
+      "forbidden_phrases": ["CI is green for the current head", "delivery verified", "100% complete"]
+    }
+  ]
+}
