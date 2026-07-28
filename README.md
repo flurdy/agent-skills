@@ -79,21 +79,12 @@ and Codex use their own runtime configuration and capabilities.
 
 ## Prompt templates
 
-The shared templates currently provide:
-
-- `/about <id-or-name>`
-- `/ask-claude <question>`
-- `/ask-fable <question>`
-- `/ask-premium <question>`
-- `/ask-sol <question>`
-- `/squash-msg [PR-number]`
-- `/trim-comments [file-or-PR]`
-
-They use `$ARGUMENTS`, which Pi and Claude Code both expand. `make apply` installs
-managed Pi links for every top-level template; run `/reload` in Pi afterward.
-Follow the [prompt-template setup](docs/installation.md#prompt-templates) for
-Claude Code. The commands provide instructions only: `/squash-msg` drafts a
-message for approval, and none performs Git operations itself.
+Browse the [prompt catalog](prompts/README.md) for the available slash commands.
+Templates use `$ARGUMENTS`, which Pi and Claude Code both expand. `make apply`
+installs managed Pi links for every top-level template; run `/reload` in Pi
+afterward. Follow the
+[prompt-template setup](docs/installation.md#prompt-templates) for Claude Code.
+The commands provide instructions only; none performs Git operations itself.
 
 ## Optional private overlays
 
