@@ -74,9 +74,8 @@ classification, and spend controls remain runtime-local.
 
 See [MODEL_ROUTING.md](MODEL_ROUTING.md) for the policy. Pi can optionally enforce
 this metadata with the
-[model-tier router](https://github.com/flurdy/ai-tools/tree/main/pi/model-tier-router)
-from [flurdy/ai-tools](https://github.com/flurdy/ai-tools); Claude Code and Codex
-use their own runtime configuration and capabilities.
+[Pi skill model router](https://github.com/flurdy/pi-skill-model-router). Claude Code
+and Codex use their own runtime configuration and capabilities.
 
 ## Prompt templates
 
