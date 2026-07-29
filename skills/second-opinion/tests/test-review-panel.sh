@@ -60,6 +60,9 @@ case "$mode" in
     head -c 2097152 /dev/zero | tr '\0' e >&2
     exit 9
     ;;
+  noisy-success)
+    head -c 16384 /dev/zero | tr '\0' n >&2
+    ;;
   ignore-term)
     trap '' TERM
     sleep 30
@@ -376,13 +379,20 @@ jq -e '.[0].status == "error" and .[0].exitCode == 66 and .[0].response == null 
   "$TMP_DIR/oversized-local.json" >/dev/null || fail "oversized local output was not bounded"
 (( $(wc -c < "$TMP_DIR/oversized-local.json") < 70000 )) || fail "oversized stdout leaked into result data"
 
-# Multi-megabyte stderr is capped while streaming as well.
+# Multi-megabyte stderr is drained and capped while preserving the route's exit code.
 printf '%s\n' oversized-stderr > "$TMP_DIR/home/fake-agent-mode-codex"
 "${RUN_ENV[@]}" "$HELPER" run-local "${COMMON[@]}" > "$TMP_DIR/oversized-stderr-local.json"
 rm -f "$TMP_DIR/home/fake-agent-mode-codex"
-jq -e '.[1].status == "error" and .[1].exitCode == 67 and ((.[1].error | length) == 8192)' \
+jq -e '.[1].status == "error" and .[1].exitCode == 9 and ((.[1].error | length) == 8192)' \
   "$TMP_DIR/oversized-stderr-local.json" >/dev/null || fail "oversized local stderr was not bounded"
 (( $(wc -c < "$TMP_DIR/oversized-stderr-local.json") < 20000 )) || fail "oversized stderr leaked into result data"
+
+# Successful routes may log more than the capture limit to stderr.
+printf '%s\n' noisy-success > "$TMP_DIR/home/fake-agent-mode-codex"
+"${RUN_ENV[@]}" "$HELPER" run-local "${COMMON[@]}" > "$TMP_DIR/noisy-success-local.json"
+rm -f "$TMP_DIR/home/fake-agent-mode-codex"
+jq -e '.[1].status == "ok" and .[1].exitCode == 0 and .[1].response == "codex-response\n"' \
+  "$TMP_DIR/noisy-success-local.json" >/dev/null || fail "successful noisy route was rejected"
 
 # A TERM-ignoring local route is forcibly killed after the timeout grace period.
 printf '%s\n' ignore-term > "$TMP_DIR/home/fake-agent-mode-codex"

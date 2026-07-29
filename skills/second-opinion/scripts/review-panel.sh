@@ -581,7 +581,10 @@ run_local_route() {
   mkfifo "$response_pipe" "$error_pipe"
   head -c $((HARD_MAX_LOCAL_OUTPUT_BYTES + 1)) < "$response_pipe" > "$response_file" &
   local response_reader_pid=$!
-  head -c $((error_limit + 1)) < "$error_pipe" > "$error_file" &
+  {
+    head -c $((error_limit + 1))
+    cat >/dev/null
+  } < "$error_pipe" > "$error_file" &
   local error_reader_pid=$!
 
   local signal_target
@@ -647,16 +650,15 @@ run_local_route() {
     exit_code=66
     : > "$response_file"
     printf 'route output exceeded the %s-byte local capture limit' "$HARD_MAX_LOCAL_OUTPUT_BYTES" > "$error_file"
-  elif (( error_bytes > error_limit )); then
-    status="error"
-    exit_code=67
-    truncate_file "$error_file" "$error_limit"
   elif (( exit_code != 0 )); then
     status="error"
   elif [[ ! -s "$response_file" ]]; then
     status="error"
     exit_code=65
     printf 'route returned an empty response' > "$error_file"
+  fi
+  if (( error_bytes > error_limit )); then
+    truncate_file "$error_file" "$error_limit"
   fi
   write_local_result "$route_json" "$status" "$response_file" "$error_file" "$exit_code" "$result_file"
 }
