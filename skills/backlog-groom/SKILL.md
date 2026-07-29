@@ -18,6 +18,7 @@ This is the hygiene counterpart to the intake/reconciliation skills — it is th
 ## Relationship to other tools
 
 - **`/triage`** is *forward intake*: prompt/Jira → new bead(s), with dup-check and splitting **at creation time**. The groomer does not create beads from prompts and does not re-implement splitting — when a bead obviously needs splitting, it hands the bead to `/triage`.
+  - **`/triage <bead-id>`** (refine mode) is the *depth* counterpart to this sweep: it investigates one existing bead against the code, then deepens, corrects, or splits it. Hand a bead there whenever grooming it needs real investigation rather than a one-shot edit — see the "be fast" rule below.
 - **`/tracking-sweep`** is *cross-system drift* (Jira ↔ beads ↔ PRs), read-only. The groomer does not re-implement cross-system linking — when a bead lacks a Jira/Trello link, it flags it and points at `/tracking-sweep` (or `/trello-beads`).
 - **`tracking-auditor`** (agent) is *per-branch*: does THIS diff match its ticket? Unrelated.
 - **`/backlog-groom`** (this skill) is *per-bead quality of the backlog itself*: descriptions, labels, priority, lifecycle, structure, duplicates.
@@ -51,7 +52,7 @@ Default is **report-only**. Mutation never happens without either `apply` or a p
 - **Closing is the riskiest verb.** A wrongly-closed bead is invisible afterward. Only ever *propose* a close with a one-line rationale; require explicit per-bead confirmation; close with `bd close --reason="…"` so the judgement is recorded.
 - **Don't restate healthy beads.** A bead with a good description, correct labels, sane priority and no duplicate is uninteresting — skip it. A short report is a good report.
 - **Delegate, don't duplicate.** Splitting → `/triage`. Cross-system linking → `/tracking-sweep` / `/trello-beads`. Branch-vs-ticket → `tracking-auditor`.
-- **Be fast.** This is a sweep. If a single bead needs real investigation, flag it and move on.
+- **Be fast.** This is a sweep. If a single bead needs real investigation, flag it and move on — recommend `/triage <bead-id>` for it rather than investigating here.
 
 ## Procedure
 
