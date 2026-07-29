@@ -41,7 +41,7 @@
 | review-pr | Review a pull request against the linked Jira ticket requirements |
 | second-opinion | Query one independent peer or configurable local/OpenRouter panels with distinct quorum and evidence-backed consensus policies |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
-| simplify-solution | Apply a lightweight common-sense YAGNI/KISS lens to find the smallest maintainable implementation before or during ordinary coding |
+| simplify-solution | Explicitly invoked premium coding workflow for the smallest maintainable implementation, applying repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |

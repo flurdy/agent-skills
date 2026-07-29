@@ -17,7 +17,7 @@ Allowed tiers:
 |------|---------|
 | `economy` | Deterministic status checks, retrieval, mechanical scans, and low-risk summaries. |
 | `standard` | Normal workflow orchestration, bounded implementation, and broad audits with established patterns and objective validation. This is the default. |
-| `premium` | Work where substantial judgment or a costly mistake justifies the strongest configured capability: unclear design boundaries, complex migrations/conflicts, architecture, high-risk verification, and final craft review. |
+| `premium` | Work where substantial judgment, a costly mistake, or an explicitly requested strongest-capability pass justifies the premium route: unclear design boundaries, complex migrations/conflicts, architecture, deliberate high-judgment implementation, high-risk verification, and final craft review. |
 
 Allowed shared defaults for `effort` are `low`, `medium`, `high`, and `xhigh`:
 
@@ -68,6 +68,6 @@ Choose the lowest tier that can responsibly complete the work:
 
 1. Use `economy` only for low-risk, mostly deterministic work.
 2. Use `standard` by default, including bounded coding with fixed scope and objective validation.
-3. Use `premium` when unresolved design judgment or the cost of a mistake is material.
+3. Use `premium` when unresolved design judgment or the cost of a mistake is material, or when an explicitly invoked skill deliberately promises the strongest configured judgment throughout the work. Do not promote all tasks of that type by default.
 4. Express reasoning depth with `effort`, not another tier.
 5. Put exceptional consent or runtime behavior in the skill that performs it.

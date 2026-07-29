@@ -1,38 +1,38 @@
 ---
 name: simplify-solution
-description: Apply a lightweight common-sense YAGNI/KISS lens to find the smallest maintainable implementation before or during ordinary coding.
+description: Explicitly invoked premium coding workflow that applies repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP to the smallest maintainable implementation.
 allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),AskUserQuestion"
-model-tier: standard
-model: sonnet
+model-tier: premium
+model: opus
 effort: high
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
 # Simplify Solution
 
-Find and implement the smallest maintainable solution that meets the requested outcome. Use common-sense YAGNI and KISS: reduce concepts, dependencies, and long-term maintenance burden — not character count.
+Implement the smallest maintainable solution that meets the requested outcome. Apply strong engineering judgment before and during coding without replacing the model's native coding ability with a principle checklist.
 
-This is an explicit, lightweight implementation lens. It is not an always-on gate and should not add ceremony when the simplest path is already obvious.
+This is an explicit premium/high implementation route. Invoking it deliberately spends stronger configured capability on the implementation; ordinary bounded coding does not automatically require premium. It is not an always-on gate and should not add ceremony when the repository already makes the right change obvious.
 
 ## When to Use
 
-Use `/simplify-solution` when the user asks for:
+Route through this skill only when the user explicitly invokes `/simplify-solution` or explicitly asks for a premium or strongest-capability implementation pass. After that opt-in, use it to:
 
-- the simplest solution or a no-nonsense approach
-- a YAGNI/KISS check before implementing
-- a check for over-engineering or unnecessary dependencies
-- a smaller alternative while implementing an ordinary change
+- apply engineering principles from the start rather than inspect them only afterward;
+- find the simplest solution or apply a no-nonsense YAGNI/KISS check;
+- avoid over-engineering, unnecessary dependencies, or speculative abstractions;
+- simplify an implementation already in progress.
 
-Usually skip it when the task is already a clear, local edit with an established pattern, or when the user needs architecture-level decisions. Do not invoke it merely to make a solution look shorter.
+Do not auto-invoke it merely because a request changes code or asks for simplicity. Skip a clearly mechanical edit unless the user explicitly requests this route.
 
 ## Boundaries
 
-- `/architect` owns ambiguous, high-blast-radius, security-sensitive, public-contract, migration, and hard-to-reverse decisions. Escalate rather than deciding those trade-offs here.
-- `/pedantic-review` is the post-implementation craft review. This skill is the proactive, lightweight lens before or during implementation.
-- `/verify-task` verifies that a finished implementation meets its requirements and has enough coverage.
-- The conditional prior-art planning work (`skills-ym4`) may require external research when local evidence is insufficient. This skill starts with local reuse and does not broaden into external research unless the user asks or the planning workflow requires it.
-- The effectiveness-evaluation work (`skills-fdy`) measures whether this skill changes outcomes; do not invent outcome metrics or debt tracking during ordinary use.
+- `/architect` owns ambiguous, high-blast-radius, security-sensitive, public-contract, migration, and hard-to-reverse decisions. Escalate rather than making those decisions under the banner of simplicity.
+- `/diagnose-bug` owns evidence-led diagnosis when the cause of an observed failure is unknown. Return here once the cause and verification contract are established.
+- `/pedantic-review` is the post-implementation craft review. This skill shapes the implementation proactively but does not duplicate that report.
+- `/verify-task` verifies that finished work meets its requirements and has enough coverage.
+- `/clean-code` owns whole-codebase formatting, linting, and warning cleanup. This skill keeps its own change clean without broadening scope to unrelated warnings.
 
 ## Usage
 
@@ -42,46 +42,78 @@ Usually skip it when the task is already a clear, local edit with an established
 /simplify-solution --review-current    # simplify the current uncommitted approach
 ```
 
+## Engineering Judgment
+
+Apply these rules in order when principles conflict:
+
+1. **Required behavior and safety** — correctness, explicit requirements, security, accessibility, compatibility, and data integrity are not simplification opportunities.
+2. **Repository consensus** — follow established local architecture, naming, error handling, testing, and language idioms unless the task explicitly changes them.
+3. **YAGNI and KISS** — prefer fewer concepts, dependencies, indirections, and extension points while keeping the code readable.
+4. **Observable behavior** — design the change so its important behavior can be demonstrated and failures remain diagnosable.
+5. **DRY where knowledge is shared** — remove demonstrated duplication of logic or policy whose copies must change together; do not abstract incidental similarity.
+6. **SOLID, DDD, and FP where they pay now** — use them to solve a concrete responsibility, dependency, domain-boundary, state, or mutation problem. Do not impose them as style doctrine.
+
+Prefer self-explanatory names, cohesive units, explicit data flow, and existing error conventions over comments or cleverness. A direct local implementation is often better than a reusable abstraction with one consumer.
+
+## Proportional TDD
+
+For new or changed behavior, define the evidence before editing production code.
+
+- For a bug fix, add the smallest regression test that reproduces the failure and confirm it fails for the intended reason before fixing it.
+- For new behavior, write a focused behavioral test first when the repository has suitable test infrastructure and the behavior is observable at that boundary.
+- For a behavior-preserving refactor, establish that relevant existing tests pass; add tests only for material behavior that is currently unprotected.
+- For docs, config, generated files, or mechanical changes, use the repository's appropriate static or direct check rather than manufacturing a unit test.
+- For `--review-current` or other existing production changes, do not reconstruct or claim a red phase. Verify the changed behavior now and disclose that test-first evidence is unavailable.
+
+If test-first work is impractical, state the concrete reason and establish the next-best evidence before implementing. TDD is a feedback discipline, not a ceremony or a demand to test implementation details.
+
 ## Decision Ladder
 
 After understanding the requested outcome and relevant flow, prefer the first responsible option:
 
-1. **No new work** — the request is genuinely unnecessary, already satisfied, or can be met by removing an accidental complication.
+1. **No new work** — the request is unnecessary, already satisfied, or can be met by removing an accidental complication.
 2. **Existing repository capability** — reuse an established module, component, helper, convention, or configuration.
 3. **Standard library** — use language-provided capability.
 4. **Native capability** — use browser, platform, framework, or database capability already available to the project.
 5. **Installed dependency** — use an existing dependency according to local conventions.
 6. **Minimum readable new code** — add only the code needed, in the existing architectural home.
 
-Do not treat the ladder as a rule to contort code around. A direct, readable local implementation is better than awkward reuse or an abstraction that hides the behavior.
+Do not contort code to climb this ladder. Direct, readable new code is better than awkward reuse or an abstraction that hides the behavior.
 
 ## Workflow
 
 ### 1. Confirm the outcome and constraints
 
-Read the request, acceptance criteria, and relevant local instructions. Identify:
+Read the request, acceptance criteria, and relevant local instructions. Identify the observable outcome, explicit non-goals, important constraints, and whether a consequential decision belongs with the user or `/architect`.
 
-- the observable outcome and explicit non-goals;
-- safety, compatibility, accessibility, operational, and domain constraints;
-- whether an existing pattern makes the solution obvious.
-
-If the goal or a consequential trade-off is unclear, ask one focused question or escalate to `/architect`. Do not ask questions merely to create process.
+Ask one focused question only when the answer materially changes the implementation. Do not ask questions merely to create process.
 
 ### 2. Trace the relevant flow
 
-Read the smallest useful set of files: the entry point, affected behavior, and nearby tests or peers. Search for existing names, capabilities, and dependencies before proposing new code.
+Read the smallest useful set of files: the entry point, affected behavior, nearby tests, and one or two representative peers. Use targeted Grep/Glob searches for existing names, capabilities, and dependencies before proposing new code. Inspect focused repository history when it adds material context.
 
 ```bash
-# Use targeted searches based on the request and relevant directories.
-rg "<relevant concept>" <relevant paths>
 git log --oneline -10 -- <relevant paths>
 ```
 
-Do not infer that a dependency or helper is absent without checking the repository. Do not start broad external research by default.
+Do not infer that a helper or dependency is absent without checking. Do not start broad external research unless the user asks or a material dependency/integration question remains unresolved.
 
-### 3. Choose the smallest responsible approach
+### 3. Establish the verification contract
 
-Apply the decision ladder and state the choice concisely:
+Decide what evidence will prove the outcome before editing:
+
+- the focused test and expected initial failure for behavioral work;
+- the existing tests that protect a refactor;
+- the static, build, or direct check appropriate for non-behavioral work;
+- any relevant sad path, boundary, or regression case.
+
+Keep this proportional. Do not turn an obvious local change into a test plan document.
+
+### 4. Choose the smallest responsible approach
+
+Apply the engineering judgment rules and decision ladder. State the approach only when the choice is non-obvious; otherwise proceed without producing a faux design document.
+
+For `--plan`, report concisely:
 
 ```markdown
 ## Simplest responsible approach
@@ -93,30 +125,27 @@ Apply the decision ladder and state the choice concisely:
 - **Verification:** ...
 ```
 
-If the request is already satisfied or unnecessary, say so clearly and make no change unless the user asks for cleanup.
+If the request is already satisfied or unnecessary, say so and make no change unless cleanup was explicitly requested.
 
-When the choice is obvious after local inspection, keep this to a few sentences and proceed. Do not produce a faux design document.
+### 5. Implement in a tight feedback loop
 
-### 4. Implement only what the request needs
+When implementation is requested:
 
-When implementation is requested, use existing conventions and place the change where its peers live. Prefer:
+1. Add or identify the focused failing evidence when applicable.
+2. Make the minimum readable production change that satisfies it.
+3. Run the focused check.
+4. Refactor only when it reduces present complexity, demonstrated duplication, or unclear responsibility.
+5. Repeat only for the next required behavior.
 
-- direct code over a one-consumer abstraction;
-- local composition over a new framework, registry, factory, adapter, or extension point without a current consumer;
-- an existing dependency over adding a new one, but not a tortured use of a dependency that does not fit;
-- deletion or a smaller edit when it genuinely meets the outcome.
+Use existing conventions and place symbols where their peers live. Preserve error handling and edge cases. Prefer local composition over a new framework, registry, factory, adapter, base class, or extension point without a current need.
 
-Keep the work scoped. If the investigation exposes architecture, authorization, migration, public-contract, or irreversible compatibility decisions, stop and escalate rather than simplifying away the decision.
+Stop and escalate if implementation exposes an unapproved architecture, authorization, migration, public-contract, destructive, or irreversible compatibility decision.
 
-### 5. Verify proportionately
+### 6. Verify proportionately
 
-State and run the smallest checks that demonstrate the outcome:
+Run the focused evidence first, then the smallest repository-supported lint, type, build, or test checks needed for confidence. Inspect the resulting diff for unrelated changes, accidental complexity, and missing required behavior.
 
-- a targeted test or existing test suite for behavioral changes;
-- lint/type/build checks when relevant to the project;
-- a direct manual or command-line check when that is the repository's appropriate evidence.
-
-A docs-only or demonstrably no-op decision may need no automated test; say why. Use `/verify-task` before completion when the task needs a full requirements-and-coverage gate.
+Use `/verify-task` when the task needs a full requirements-and-coverage gate. Do not automatically invoke every review workflow; `/pedantic-review` remains an optional independent craft pass.
 
 ## Guardrails
 
@@ -132,12 +161,13 @@ Never simplify away or weaken:
 Do not:
 
 - optimise for one-line solutions, LOC counts, cleverness, or code golf;
-- add special comments, debt ledgers, scoring, personas, modes, or an always-on extension;
-- replace evidence with generic “YAGNI” claims;
+- add special comments, debt ledgers, scoring, personas, principle reports, modes, or an always-on extension;
+- replace evidence with generic principle names;
 - create abstractions for imagined future consumers;
 - claim repository reuse without reading the candidate;
+- force FP, OOP, SOLID, DDD, or a design pattern against local consensus;
 - make the solution smaller by silently dropping a required edge case.
 
 ## Output
 
-For a recommendation, report the outcome, reuse checked, chosen approach, and proportional verification in no more detail than the task needs. For an implementation, also list changed paths and checks run. Name any decision that was escalated to `/architect` or deferred to the user.
+For a recommendation, report only the outcome, reuse checked, chosen approach, and proportional verification needed. For an implementation, list changed paths, checks with outcomes, and any residual risk or escalated decision. Keep principle application visible in the code and evidence, not in a lecture about the principles.
