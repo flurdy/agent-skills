@@ -20,6 +20,15 @@ class NextBdTest(WorkspaceFixture):
     def run_next(self, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
         return self.run_script(SCRIPT, directory, *arguments)
 
+    def test_help_prints_supported_options_without_collecting(self) -> None:
+        result = self.run_next(self.base, "--help")
+
+        self.assertIn("Usage: next-bd [OPTIONS]", result.stdout)
+        for option in ("--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
+            self.assertIn(option, result.stdout)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(self.recorded_calls(), [])
+
     def test_workspace_candidates_are_globally_ranked_and_owned(self) -> None:
         workspace = self.create_workspace(
             root_data={

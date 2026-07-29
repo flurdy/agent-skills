@@ -1,7 +1,20 @@
 #!/usr/bin/env bash
 # next-bd: Show ready beads ranked by priority, with labels, filtered against blocked.
-# Usage: next-bd [--in-progress] [--avoid-busy] [--json] [--type=TYPE]
+# Usage: next-bd [OPTIONS]
 set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: next-bd [OPTIONS]
+
+Options:
+  --in-progress  Include an in-progress work summary
+  --avoid-busy   Exclude ready beads whose labels are busy in their store
+  --json         Print ranked candidates as JSON
+  --type=TYPE    Include only candidates of the given issue type
+  --help         Show this help and exit
+EOF
+}
 
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
@@ -13,6 +26,7 @@ for arg in "$@"; do
     --avoid-busy)  AVOID_BUSY=true ;;
     --json)        JSON_OUTPUT=true ;;
     --type=*)      TYPE_FILTER=${arg#--type=} ;;
+    --help)        usage; exit 0 ;;
   esac
 done
 
