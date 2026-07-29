@@ -1,11 +1,11 @@
 ---
 name: triage
-description: "Create bead(s) from a user prompt or Jira ticket. Investigates relevance, checks for duplicates, and may split complex requests into multiple focused beads."
+description: "Create bead(s) from a raw user prompt or Jira ticket. Investigates relevance, checks for duplicates, may split complex requests, and delegates approved structured plans to plan-to-backlog."
 allowed-tools: "Read,Bash(bd:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -20,6 +20,18 @@ Analyze user requests and create appropriate beads with intelligent investigatio
 - Raw idea needs analysis before becoming actionable work
 - Need to check if work is already tracked or duplicated
 - Complex request might need to be split into multiple beads
+
+## Relationship to approved plans
+
+This skill owns raw prompt and Jira intake. When input clearly cites an approved
+architecture or implementation plan and asks for durable materialization, stop with a
+paste-ready `/plan-to-backlog <plan-source>` handoff. Do not invoke the opt-in-only skill
+on the user's behalf. Do not classify plan children or create beads first.
+`/plan-to-backlog` owns source citation, no-item versus single-item versus epic disposition,
+proposal preview, confirmation, apply, and recovery.
+
+If the plan is not approved or the user is asking to improve it, route to `/architect`
+instead of creating tracking from an unstable plan.
 
 ## Usage
 
@@ -90,6 +102,10 @@ After triage, provide:
 When invoked:
 
 1. Parse the input to determine the source:
+   - **Approved structured plan**: A cited architecture/implementation plan plus a request
+     to create or reconcile durable tracking. Return a paste-ready
+     `/plan-to-backlog <plan-source>` handoff and stop; do not run triage's duplicate,
+     split, or create procedure first.
    - **Jira ticket**: Input matches pattern `[A-Z]{2,4}-\d+` (e.g., `SP-123`, `ABC-45`)
    - **Free text**: Everything else — a description of a feature, bug, or task
 

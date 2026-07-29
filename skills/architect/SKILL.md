@@ -4,7 +4,7 @@ description: Architecture and implementation planning gate for complex or high-b
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
-version: "1.6.0"
+version: "1.7.0"
 author: "flurdy"
 ---
 
@@ -283,9 +283,19 @@ Always render **Tracking recommendation**, but keep it proportionate. Choose exa
   system.
 
 Implementation slices are delivery mechanics, not automatically tracker items. Never propose one
-item per test, review pass, commit, subagent, retry, handoff, or other ephemeral activity. If a
-proposal is useful, recommend the established creation path (`/triage`, Jira, Trello, or the
-project's tracker workflow) as a later explicit user action; the architecture run remains read-only.
+item per test, review pass, commit, subagent, retry, handoff, or other ephemeral activity.
+
+For an approved structured plan in an active Beads repository:
+
+- A one-focused-item or epic recommendation with a stable source should end with a paste-ready
+  `/plan-to-backlog <plan-source>` handoff.
+- A no-additional-item recommendation needs no materialization handoff.
+- Architect must not invoke `/plan-to-backlog` automatically or reproduce its proposal/apply logic;
+  the architecture run remains read-only.
+
+Use `/triage` for raw prompt or Jira intake, not approved-plan materialization. For Jira, Trello, or
+other established trackers without Beads, recommend that tracker's normal creation workflow as a
+later explicit user action.
 
 ### 5. External Validation, When Requested
 
