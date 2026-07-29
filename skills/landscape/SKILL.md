@@ -273,8 +273,23 @@ Notes:
   - **Branch**: the `{branch}`; render `—` when it is `?` or empty.
   - **When**: relative age of `{date}` (e.g. `today`, `2d`).
   - Cap at **5 rows** (newest first). When `N > 5`, render the first 5 and replace the caption with `_+{N − 5} more — `/handoffs` to browse._`
+  - `---SUMMARY---` → `workspace_member_handoffs` (`M`) — handoffs owned by **workspace member** repos, `0` outside a multi-repo workspace. When `M > 0`, add a second caption line:
 
-  Suppress the section entirely when `current_repo_recent_live == 0` — silence is shorter. Older, superseded, or finished handoffs are still browsable via `/handoffs`; this table is just a fresh-work hint, deliberately offline (no `--check-branches`, so no branch-staleness here). This call can run in parallel with `working-copy.sh`.
+    ```markdown
+    _{M} in workspace members — `/handoffs` to see them._
+    ```
+
+    Deliberately a **raw count, not a live count**. Member rows are only classified under `--check-branches`, which this call does not pass (`workspace_classified=0`), so every member row arrives unclassified — and unclassified reads as live. Rendering them as a liveness figure would report already-shipped member work as resumable, the exact failure `current_repo_recent_live` exists to prevent. The count itself is computed on this call regardless of the flag, so it adds no work and no network.
+
+  Suppress the **table** when `current_repo_recent_live == 0` — silence is shorter. But when `M > 0`, still render the heading and the member caption line alone, with no table:
+
+  ```markdown
+  ### 📥 Recent handoffs
+
+  _17 in workspace members — `/handoffs` to see them._
+  ```
+
+  From a workspace root the current repo is usually the emptiest one, so an empty count there means "the threads are in the members", not "nothing to resume" — suppressing outright is what made the root's silence misleading. Older, superseded, or finished handoffs are still browsable via `/handoffs`; this table is just a fresh-work hint, deliberately offline (no `--check-branches`, so no branch-staleness here). This call can run in parallel with `working-copy.sh`.
 
 ### 4b. 🗂️ Other repos in this workspace
 
