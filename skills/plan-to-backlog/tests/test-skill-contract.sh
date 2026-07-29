@@ -84,6 +84,7 @@ for invariant in \
     'utf8-lf-final-newline-v1' \
     'stable proposal refs' \
     'ledger-based reference resolution' \
+    'bd list --metadata-field plan_source_sha256=<source-fingerprint>' \
     'Nothing has been changed.' \
     'proposal fingerprint' \
     'bd create --dry-run' \
@@ -97,6 +98,7 @@ for invariant in \
 done
 
 assert_not_contains "$SKILL" 'plan_proposal_sha256'
+assert_not_contains "$SKILL" 'bd search --metadata-field'
 assert_contains "$ARCHITECT" '/plan-to-backlog <plan-source>'
 assert_contains "$ARCHITECT" 'must not invoke `/plan-to-backlog` automatically'
 assert_not_contains "$TRIAGE" 'Skill(plan-to-backlog)'

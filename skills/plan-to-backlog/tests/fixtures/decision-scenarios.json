@@ -1,0 +1,688 @@
+{
+  "scenarioVersion": 1,
+  "scenarios": [
+    {
+      "id": "no-item-existing-owner",
+      "covers": ["no-item", "existing-owner"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/already-owned.md",
+          "fingerprint": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "unresolvedQuestions": [],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [
+          {
+            "id": "fixture-101",
+            "classification": "owner",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "Acceptance criteria cover the complete cited outcome."
+          }
+        ],
+        "candidateOutcomes": []
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "no-item",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "reuse",
+            "existingId": "fixture-101",
+            "type": "task",
+            "title": "Existing complete owner"
+          }
+        ],
+        "relationships": [],
+        "logicalWrites": []
+      },
+      "confirmation": {
+        "decision": "not-required"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": [
+          {
+            "ref": "owner",
+            "status": "reused",
+            "actualId": "fixture-101"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mechanical-single-outcome",
+      "covers": ["single-item", "mechanical-collapse"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/cache-header.md",
+          "fingerprint": "2222222222222222222222222222222222222222222222222222222222222222"
+        },
+        "unresolvedQuestions": [],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [],
+        "mechanicalSteps": ["write test", "implement header", "review", "commit", "roll out"],
+        "candidateOutcomes": [
+          {
+            "ref": "owner",
+            "title": "Serve immutable assets with the approved cache policy",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "single-item",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "create",
+            "existingId": null,
+            "type": "task",
+            "title": "Serve immutable assets with the approved cache policy",
+            "sourceCitation": "Source plan: docs/plans/cache-header.md",
+            "metadata": {
+              "plan_source": "docs/plans/cache-header.md",
+              "plan_source_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+              "plan_proposal_ref": "owner"
+            }
+          }
+        ],
+        "relationships": [],
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "owner"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "proposal-only"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "bounded-epic-conversion",
+      "covers": ["epic", "owner-conversion", "genuine-blocker"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "bead:fixture-201",
+          "fingerprint": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        "unresolvedQuestions": [],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [
+          {
+            "id": "fixture-201",
+            "classification": "owner",
+            "exactCompleteOutcome": false,
+            "convertible": true,
+            "matchEvidence": "The feature owns the aggregate outcome but has no durable child boundaries."
+          }
+        ],
+        "candidateOutcomes": [
+          {
+            "ref": "child-1",
+            "title": "Aggregate ready work from every registered store",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-2",
+            "title": "Route selection and mutation to the owning store",
+            "acceptanceRequires": ["child-1"],
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-3",
+            "title": "Preserve single-store compatibility and isolate source failures",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "epic",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "update-type",
+            "existingId": "fixture-201",
+            "type": "epic",
+            "title": "Workspace-aware work selection"
+          },
+          {
+            "ref": "child-1",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Aggregate ready work from every registered store",
+            "sourceCitation": "Source plan: bead:fixture-201",
+            "metadata": {
+              "plan_source": "bead:fixture-201",
+              "plan_source_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "plan_proposal_ref": "child-1"
+            }
+          },
+          {
+            "ref": "child-2",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Route selection and mutation to the owning store",
+            "sourceCitation": "Source plan: bead:fixture-201",
+            "metadata": {
+              "plan_source": "bead:fixture-201",
+              "plan_source_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "plan_proposal_ref": "child-2"
+            }
+          },
+          {
+            "ref": "child-3",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Preserve single-store compatibility and isolate source failures",
+            "sourceCitation": "Source plan: bead:fixture-201",
+            "metadata": {
+              "plan_source": "bead:fixture-201",
+              "plan_source_sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+              "plan_proposal_ref": "child-3"
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "kind": "parent",
+            "from": "child-1",
+            "to": "owner",
+            "rationale": "The outcome contributes to the aggregate workspace capability."
+          },
+          {
+            "kind": "parent",
+            "from": "child-2",
+            "to": "owner",
+            "rationale": "The outcome contributes to the aggregate workspace capability."
+          },
+          {
+            "kind": "parent",
+            "from": "child-3",
+            "to": "owner",
+            "rationale": "The outcome contributes to the aggregate workspace capability."
+          },
+          {
+            "kind": "blocking",
+            "from": "child-2",
+            "to": "child-1",
+            "rationale": "Owner-routed selection cannot satisfy its acceptance criteria until collection preserves owning-store identity.",
+            "acceptanceCondition": "Every selectable row exposes an unambiguous owning repository and store."
+          }
+        ],
+        "logicalWrites": [
+          {
+            "action": "update-type",
+            "ref": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-1",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-3",
+            "parent": "owner"
+          },
+          {
+            "action": "add-blocker",
+            "dependent": "child-2",
+            "prerequisite": "child-1"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "proposal-only"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "duplicate-reuse",
+      "covers": ["duplicate", "existing-owner", "no-item"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/search-index.md",
+          "fingerprint": "4444444444444444444444444444444444444444444444444444444444444444"
+        },
+        "unresolvedQuestions": [],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [
+          {
+            "id": "fixture-301",
+            "proposalRef": "owner",
+            "classification": "owner",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "Source fingerprint and acceptance criteria match the complete plan."
+          },
+          {
+            "id": "fixture-302",
+            "proposalRef": "duplicate-1",
+            "classification": "duplicate",
+            "exactCompleteOutcome": false,
+            "matchEvidence": "Title overlaps, but fixture-301 has the authoritative source fingerprint."
+          }
+        ],
+        "candidateOutcomes": []
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "no-item",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "reuse",
+            "existingId": "fixture-301",
+            "type": "feature",
+            "title": "Authoritative search-index owner"
+          }
+        ],
+        "relationships": [],
+        "logicalWrites": []
+      },
+      "confirmation": {
+        "decision": "not-required"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": [
+          {
+            "ref": "owner",
+            "status": "reused",
+            "actualId": "fixture-301"
+          },
+          {
+            "ref": "duplicate-1",
+            "status": "skipped",
+            "actualId": "fixture-302"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unresolved-plan",
+      "covers": ["needs-clarification", "no-mutation"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "session:ambiguous-queue-plan",
+          "fingerprint": "5555555555555555555555555555555555555555555555555555555555555555"
+        },
+        "unresolvedQuestions": [
+          "Whether retry ownership belongs to the producer or consumer service"
+        ],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [
+          {
+            "id": "fixture-401",
+            "classification": "related",
+            "exactCompleteOutcome": false,
+            "matchEvidence": "Related queue work does not resolve the ownership boundary."
+          }
+        ],
+        "candidateOutcomes": []
+      },
+      "expected": {
+        "readiness": "needs-clarification",
+        "disposition": null,
+        "items": [],
+        "relationships": [],
+        "logicalWrites": []
+      },
+      "confirmation": {
+        "decision": "unavailable"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "declined-apply",
+      "covers": ["decline", "single-item", "no-mutation"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/audit-log.md",
+          "fingerprint": "6666666666666666666666666666666666666666666666666666666666666666"
+        },
+        "unresolvedQuestions": [],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [],
+        "candidateOutcomes": [
+          {
+            "ref": "owner",
+            "title": "Retain immutable audit events for the required period",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "single-item",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Retain immutable audit events for the required period",
+            "sourceCitation": "Source plan: docs/plans/audit-log.md",
+            "metadata": {
+              "plan_source": "docs/plans/audit-log.md",
+              "plan_source_sha256": "6666666666666666666666666666666666666666666666666666666666666666",
+              "plan_proposal_ref": "owner"
+            }
+          }
+        ],
+        "relationships": [],
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "owner"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "decline"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": [
+          {
+            "ref": "owner",
+            "status": "declined",
+            "actualId": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "partial-failure-recovery",
+      "covers": ["partial-failure", "recovery", "epic", "duplicate-safe-rerun"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/multi-region.md",
+          "fingerprint": "7777777777777777777777777777777777777777777777777777777777777777"
+        },
+        "unresolvedQuestions": [],
+        "twoOutcomeEpicBoundary": false,
+        "existingItems": [],
+        "candidateOutcomes": [
+          {
+            "ref": "child-1",
+            "title": "Replicate durable state to the secondary region",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-2",
+            "title": "Promote the secondary region during a declared outage",
+            "acceptanceRequires": ["child-1"],
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-3",
+            "title": "Expose regional health and recovery objectives",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "epic",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "create",
+            "existingId": null,
+            "type": "epic",
+            "title": "Operate the service across two regions",
+            "sourceCitation": "Source plan: docs/plans/multi-region.md",
+            "metadata": {
+              "plan_source": "docs/plans/multi-region.md",
+              "plan_source_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+              "plan_proposal_ref": "owner"
+            }
+          },
+          {
+            "ref": "child-1",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Replicate durable state to the secondary region",
+            "sourceCitation": "Source plan: docs/plans/multi-region.md",
+            "metadata": {
+              "plan_source": "docs/plans/multi-region.md",
+              "plan_source_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+              "plan_proposal_ref": "child-1"
+            }
+          },
+          {
+            "ref": "child-2",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Promote the secondary region during a declared outage",
+            "sourceCitation": "Source plan: docs/plans/multi-region.md",
+            "metadata": {
+              "plan_source": "docs/plans/multi-region.md",
+              "plan_source_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+              "plan_proposal_ref": "child-2"
+            }
+          },
+          {
+            "ref": "child-3",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Expose regional health and recovery objectives",
+            "sourceCitation": "Source plan: docs/plans/multi-region.md",
+            "metadata": {
+              "plan_source": "docs/plans/multi-region.md",
+              "plan_source_sha256": "7777777777777777777777777777777777777777777777777777777777777777",
+              "plan_proposal_ref": "child-3"
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "kind": "parent",
+            "from": "child-1",
+            "to": "owner",
+            "rationale": "The outcome contributes to multi-region operation."
+          },
+          {
+            "kind": "parent",
+            "from": "child-2",
+            "to": "owner",
+            "rationale": "The outcome contributes to multi-region operation."
+          },
+          {
+            "kind": "parent",
+            "from": "child-3",
+            "to": "owner",
+            "rationale": "The outcome contributes to multi-region operation."
+          },
+          {
+            "kind": "blocking",
+            "from": "child-2",
+            "to": "child-1",
+            "rationale": "Promotion cannot satisfy its recovery criteria until replicated state is available.",
+            "acceptanceCondition": "A bounded-lag replica is available in the secondary region."
+          }
+        ],
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-1",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-3",
+            "parent": "owner"
+          },
+          {
+            "action": "add-blocker",
+            "dependent": "child-2",
+            "prerequisite": "child-1"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "apply"
+      },
+      "observed": {
+        "writeCalls": [
+          {
+            "action": "create",
+            "ref": "owner",
+            "status": "created",
+            "actualId": "fixture-501"
+          },
+          {
+            "action": "create",
+            "ref": "child-1",
+            "parent": "owner",
+            "status": "created",
+            "actualId": "fixture-501.1"
+          },
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner",
+            "status": "failed",
+            "actualId": null
+          },
+          {
+            "action": "create",
+            "ref": "child-3",
+            "parent": "owner",
+            "status": "created",
+            "actualId": "fixture-501.2"
+          },
+          {
+            "action": "add-blocker",
+            "ref": "blocker-1",
+            "dependent": "child-2",
+            "prerequisite": "child-1",
+            "status": "skipped",
+            "actualId": null
+          }
+        ],
+        "ledger": [
+          {
+            "ref": "owner",
+            "status": "created",
+            "actualId": "fixture-501"
+          },
+          {
+            "ref": "child-1",
+            "status": "created",
+            "actualId": "fixture-501.1"
+          },
+          {
+            "ref": "child-2",
+            "status": "failed",
+            "actualId": null,
+            "error": "synthetic create failure"
+          },
+          {
+            "ref": "child-3",
+            "status": "created",
+            "actualId": "fixture-501.2"
+          },
+          {
+            "ref": "blocker-1",
+            "status": "skipped",
+            "actualId": null,
+            "error": "missing child-2 ID"
+          }
+        ]
+      },
+      "recovery": {
+        "reuseMappings": {
+          "owner": "fixture-501",
+          "child-1": "fixture-501.1",
+          "child-3": "fixture-501.2"
+        },
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner"
+          },
+          {
+            "action": "add-blocker",
+            "dependent": "child-2",
+            "prerequisite": "child-1"
+          }
+        ]
+      }
+    }
+  ]
+}

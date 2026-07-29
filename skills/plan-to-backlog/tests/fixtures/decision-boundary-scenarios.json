@@ -1,0 +1,724 @@
+{
+  "scenarioVersion": 1,
+  "scenarios": [
+    {
+      "id": "tightly-coupled-two-outcomes",
+      "covers": ["single-item", "two-tight-outcomes"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/coupled-schema-rollout.md",
+          "fingerprint": "8888888888888888888888888888888888888888888888888888888888888888"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "",
+        "existingItems": [],
+        "candidateOutcomes": [
+          {
+            "ref": "candidate-1",
+            "title": "Publish and consume the compatible schema change",
+            "repository": "schema-service",
+            "independentlyShippable": false,
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "candidate-2",
+            "title": "Remove the temporary compatibility path",
+            "repository": "schema-service",
+            "independentlyShippable": false,
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": false,
+            "independentLifecycle": false,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "single-item",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Roll out the compatible schema change",
+            "sourceCitation": "Source plan: docs/plans/coupled-schema-rollout.md",
+            "metadata": {
+              "plan_source": "docs/plans/coupled-schema-rollout.md",
+              "plan_source_sha256": "8888888888888888888888888888888888888888888888888888888888888888",
+              "plan_proposal_ref": "owner"
+            }
+          }
+        ],
+        "relationships": [],
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "owner"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "proposal-only"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "cross-repository-two-outcomes",
+      "covers": ["epic", "two-cross-repository", "aggregate-owner"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "bead:fixture-601",
+          "fingerprint": "9999999999999999999999999999999999999999999999999999999999999999"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "fixture-601 owns the end-to-end user outcome across API and web repositories.",
+        "existingItems": [
+          {
+            "id": "fixture-601",
+            "proposalRef": "owner",
+            "classification": "owner",
+            "exactCompleteOutcome": false,
+            "convertible": true,
+            "matchEvidence": "The feature explicitly owns the aggregate API and web delivery."
+          }
+        ],
+        "candidateOutcomes": [
+          {
+            "ref": "child-1",
+            "title": "Expose the approved capability from the API",
+            "repository": "api",
+            "independentlyShippable": true,
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-2",
+            "title": "Make the approved capability available in the web client",
+            "repository": "web",
+            "independentlyShippable": true,
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "epic",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "update-type",
+            "existingId": "fixture-601",
+            "type": "epic",
+            "title": "Deliver the capability across API and web"
+          },
+          {
+            "ref": "child-1",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Expose the approved capability from the API",
+            "sourceCitation": "Source plan: bead:fixture-601",
+            "metadata": {
+              "plan_source": "bead:fixture-601",
+              "plan_source_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+              "plan_proposal_ref": "child-1"
+            }
+          },
+          {
+            "ref": "child-2",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Make the approved capability available in the web client",
+            "sourceCitation": "Source plan: bead:fixture-601",
+            "metadata": {
+              "plan_source": "bead:fixture-601",
+              "plan_source_sha256": "9999999999999999999999999999999999999999999999999999999999999999",
+              "plan_proposal_ref": "child-2"
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "kind": "parent",
+            "from": "child-1",
+            "to": "owner",
+            "rationale": "The API outcome contributes to the evidenced aggregate owner."
+          },
+          {
+            "kind": "parent",
+            "from": "child-2",
+            "to": "owner",
+            "rationale": "The web outcome contributes to the evidenced aggregate owner."
+          }
+        ],
+        "logicalWrites": [
+          {
+            "action": "update-type",
+            "ref": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-1",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "proposal-only"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "existing-duplicate-tree",
+      "covers": ["duplicate", "duplicate-tree", "no-item"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/import-pipeline.md",
+          "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "",
+        "existingItems": [
+          {
+            "id": "fixture-701",
+            "proposalRef": "owner",
+            "classification": "owner",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "The authoritative epic and its children carry the source fingerprint."
+          },
+          {
+            "id": "fixture-701.1",
+            "proposalRef": "child-1",
+            "parentProposalRef": "owner",
+            "classification": "owner-node",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "Source metadata maps this child to child-1."
+          },
+          {
+            "id": "fixture-701.2",
+            "proposalRef": "child-2",
+            "parentProposalRef": "owner",
+            "classification": "owner-node",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "Source metadata maps this child to child-2."
+          },
+          {
+            "id": "fixture-702",
+            "proposalRef": "duplicate-owner",
+            "classification": "duplicate",
+            "exactCompleteOutcome": false,
+            "matchEvidence": "A title-only competing tree lacks authoritative source metadata."
+          },
+          {
+            "id": "fixture-702.1",
+            "proposalRef": "duplicate-child",
+            "parentProposalRef": "duplicate-owner",
+            "classification": "duplicate-node",
+            "exactCompleteOutcome": false,
+            "matchEvidence": "This node belongs to the non-authoritative competing tree."
+          }
+        ],
+        "candidateOutcomes": []
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "no-item",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "reuse",
+            "existingId": "fixture-701",
+            "type": "epic",
+            "title": "Authoritative import-pipeline owner"
+          },
+          {
+            "ref": "child-1",
+            "action": "reuse",
+            "existingId": "fixture-701.1",
+            "type": "feature",
+            "title": "Receive import batches"
+          },
+          {
+            "ref": "child-2",
+            "action": "reuse",
+            "existingId": "fixture-701.2",
+            "type": "feature",
+            "title": "Publish completed imports"
+          }
+        ],
+        "relationships": [
+          {
+            "kind": "parent",
+            "from": "child-1",
+            "to": "owner",
+            "rationale": "Existing authoritative parent link."
+          },
+          {
+            "kind": "parent",
+            "from": "child-2",
+            "to": "owner",
+            "rationale": "Existing authoritative parent link."
+          }
+        ],
+        "logicalWrites": []
+      },
+      "confirmation": {
+        "decision": "not-required"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": [
+          {
+            "ref": "owner",
+            "status": "reused",
+            "actualId": "fixture-701"
+          },
+          {
+            "ref": "child-1",
+            "status": "reused",
+            "actualId": "fixture-701.1"
+          },
+          {
+            "ref": "child-2",
+            "status": "reused",
+            "actualId": "fixture-701.2"
+          },
+          {
+            "ref": "duplicate-owner",
+            "status": "skipped",
+            "actualId": "fixture-702"
+          },
+          {
+            "ref": "duplicate-child",
+            "status": "skipped",
+            "actualId": "fixture-702.1"
+          }
+        ]
+      }
+    },
+    {
+      "id": "partially-materialized-tree",
+      "covers": ["partial-materialization", "duplicate-safe-rerun", "epic"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/regional-routing.md",
+          "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "",
+        "existingItems": [
+          {
+            "id": "fixture-801",
+            "proposalRef": "owner",
+            "classification": "owner",
+            "exactCompleteOutcome": false,
+            "matchEvidence": "The epic carries the source locator and owns the partial tree."
+          },
+          {
+            "id": "fixture-801.1",
+            "proposalRef": "child-1",
+            "parentProposalRef": "owner",
+            "classification": "owner-node",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "Source metadata maps the successful child-1 create."
+          },
+          {
+            "id": "fixture-801.2",
+            "proposalRef": "child-3",
+            "parentProposalRef": "owner",
+            "classification": "owner-node",
+            "exactCompleteOutcome": true,
+            "matchEvidence": "Source metadata maps the successful child-3 create."
+          }
+        ],
+        "candidateOutcomes": [
+          {
+            "ref": "child-1",
+            "title": "Replicate regional route state",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-2",
+            "title": "Promote a healthy regional route",
+            "acceptanceRequires": ["child-1"],
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-3",
+            "title": "Report regional route health",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "epic",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "reuse",
+            "existingId": "fixture-801",
+            "type": "epic",
+            "title": "Regional routing"
+          },
+          {
+            "ref": "child-1",
+            "action": "reuse",
+            "existingId": "fixture-801.1",
+            "type": "feature",
+            "title": "Replicate regional route state"
+          },
+          {
+            "ref": "child-2",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Promote a healthy regional route",
+            "sourceCitation": "Source plan: docs/plans/regional-routing.md",
+            "metadata": {
+              "plan_source": "docs/plans/regional-routing.md",
+              "plan_source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "plan_proposal_ref": "child-2"
+            }
+          },
+          {
+            "ref": "child-3",
+            "action": "reuse",
+            "existingId": "fixture-801.2",
+            "type": "feature",
+            "title": "Report regional route health"
+          }
+        ],
+        "relationships": [
+          {
+            "kind": "parent",
+            "from": "child-1",
+            "to": "owner",
+            "rationale": "Existing parent link."
+          },
+          {
+            "kind": "parent",
+            "from": "child-2",
+            "to": "owner",
+            "rationale": "Missing child belongs to the existing owner."
+          },
+          {
+            "kind": "parent",
+            "from": "child-3",
+            "to": "owner",
+            "rationale": "Existing parent link."
+          },
+          {
+            "kind": "blocking",
+            "from": "child-2",
+            "to": "child-1",
+            "rationale": "Promotion cannot satisfy its acceptance criteria until replicated route state exists.",
+            "acceptanceCondition": "Replicated route state is available in the target region."
+          }
+        ],
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner"
+          },
+          {
+            "action": "add-blocker",
+            "dependent": "child-2",
+            "prerequisite": "child-1"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "proposal-only"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": [
+          {
+            "ref": "owner",
+            "status": "reused",
+            "actualId": "fixture-801"
+          },
+          {
+            "ref": "child-1",
+            "status": "reused",
+            "actualId": "fixture-801.1"
+          },
+          {
+            "ref": "child-3",
+            "status": "reused",
+            "actualId": "fixture-801.2"
+          }
+        ]
+      }
+    },
+    {
+      "id": "mechanical-dependency-sequence",
+      "covers": ["epic", "mechanical-sequence", "no-mechanical-blocker"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/analytics-outcomes.md",
+          "fingerprint": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "",
+        "planSequence": ["child-1", "child-2", "child-3"],
+        "existingItems": [],
+        "candidateOutcomes": [
+          {
+            "ref": "child-1",
+            "title": "Publish governed analytics events",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-2",
+            "title": "Expose the retention dashboard",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          },
+          {
+            "ref": "child-3",
+            "title": "Alert on analytics delivery gaps",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "ready",
+        "disposition": "epic",
+        "items": [
+          {
+            "ref": "owner",
+            "action": "create",
+            "existingId": null,
+            "type": "epic",
+            "title": "Operate governed analytics",
+            "sourceCitation": "Source plan: docs/plans/analytics-outcomes.md",
+            "metadata": {
+              "plan_source": "docs/plans/analytics-outcomes.md",
+              "plan_source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "plan_proposal_ref": "owner"
+            }
+          },
+          {
+            "ref": "child-1",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Publish governed analytics events",
+            "sourceCitation": "Source plan: docs/plans/analytics-outcomes.md",
+            "metadata": {
+              "plan_source": "docs/plans/analytics-outcomes.md",
+              "plan_source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "plan_proposal_ref": "child-1"
+            }
+          },
+          {
+            "ref": "child-2",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Expose the retention dashboard",
+            "sourceCitation": "Source plan: docs/plans/analytics-outcomes.md",
+            "metadata": {
+              "plan_source": "docs/plans/analytics-outcomes.md",
+              "plan_source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "plan_proposal_ref": "child-2"
+            }
+          },
+          {
+            "ref": "child-3",
+            "action": "create",
+            "existingId": null,
+            "type": "feature",
+            "title": "Alert on analytics delivery gaps",
+            "sourceCitation": "Source plan: docs/plans/analytics-outcomes.md",
+            "metadata": {
+              "plan_source": "docs/plans/analytics-outcomes.md",
+              "plan_source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "plan_proposal_ref": "child-3"
+            }
+          }
+        ],
+        "relationships": [
+          {
+            "kind": "parent",
+            "from": "child-1",
+            "to": "owner",
+            "rationale": "Durable analytics outcome."
+          },
+          {
+            "kind": "parent",
+            "from": "child-2",
+            "to": "owner",
+            "rationale": "Durable analytics outcome."
+          },
+          {
+            "kind": "parent",
+            "from": "child-3",
+            "to": "owner",
+            "rationale": "Durable analytics outcome."
+          }
+        ],
+        "logicalWrites": [
+          {
+            "action": "create",
+            "ref": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-1",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-2",
+            "parent": "owner"
+          },
+          {
+            "action": "create",
+            "ref": "child-3",
+            "parent": "owner"
+          }
+        ]
+      },
+      "confirmation": {
+        "decision": "proposal-only"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "more-than-six-candidates",
+      "covers": ["needs-clarification", "over-six", "no-mutation"],
+      "input": {
+        "source": {
+          "approved": true,
+          "locator": "docs/plans/unclustered-platform.md",
+          "fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "",
+        "existingItems": [],
+        "candidateOutcomes": [
+          {"ref": "child-1", "title": "Outcome 1", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true},
+          {"ref": "child-2", "title": "Outcome 2", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true},
+          {"ref": "child-3", "title": "Outcome 3", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true},
+          {"ref": "child-4", "title": "Outcome 4", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true},
+          {"ref": "child-5", "title": "Outcome 5", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true},
+          {"ref": "child-6", "title": "Outcome 6", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true},
+          {"ref": "child-7", "title": "Outcome 7", "observable": true, "ownAcceptance": true, "independentValue": true, "independentLifecycle": true, "outcomeLanguage": true}
+        ]
+      },
+      "expected": {
+        "readiness": "needs-clarification",
+        "disposition": null,
+        "items": [],
+        "relationships": [],
+        "logicalWrites": []
+      },
+      "confirmation": {
+        "decision": "unavailable"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    },
+    {
+      "id": "unapproved-plan",
+      "covers": ["needs-clarification", "unapproved", "no-mutation"],
+      "input": {
+        "source": {
+          "approved": false,
+          "locator": "session:draft-platform-plan",
+          "fingerprint": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        },
+        "unresolvedQuestions": [],
+        "aggregateOwnershipEvidence": "",
+        "existingItems": [],
+        "candidateOutcomes": [
+          {
+            "ref": "owner",
+            "title": "Draft platform outcome",
+            "observable": true,
+            "ownAcceptance": true,
+            "independentValue": true,
+            "independentLifecycle": true,
+            "outcomeLanguage": true
+          }
+        ]
+      },
+      "expected": {
+        "readiness": "needs-clarification",
+        "disposition": null,
+        "items": [],
+        "relationships": [],
+        "logicalWrites": []
+      },
+      "confirmation": {
+        "decision": "unavailable"
+      },
+      "observed": {
+        "writeCalls": [],
+        "ledger": []
+      }
+    }
+  ]
+}

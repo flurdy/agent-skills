@@ -75,6 +75,7 @@ test-project-brief:
 test-plan-to-backlog:
 	@skills/plan-to-backlog/tests/test-helpers.sh
 	@skills/plan-to-backlog/tests/test-skill-contract.sh
+	@python3 -m unittest discover -s skills/plan-to-backlog/tests -p 'test_decision_fixtures.py'
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

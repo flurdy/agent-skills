@@ -149,7 +149,9 @@ mark apply unavailable, and stop before confirmation.
 
 Search in this order, using only supported read forms:
 
-1. `bd search --metadata-field plan_source_sha256=<source-fingerprint> --status all`
+1. `bd list --metadata-field plan_source_sha256=<source-fingerprint> --status
+   open,in_progress,blocked,deferred,closed --json`. Some Beads versions require a query
+   for `bd search` even with metadata filters; use the query-free `bd list` form.
 2. source locator through metadata, external references, specification IDs, descriptions,
    and notes;
 3. high-signal outcome keywords across open and closed work;
