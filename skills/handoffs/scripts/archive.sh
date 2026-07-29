@@ -73,9 +73,15 @@ echo "---ARCHIVE-DIR---"
 echo "$ARCHIVE_DIR"
 echo "---ARCHIVED---"
 for line in "${ARCHIVED[@]:-}"; do
-    [ -n "$line" ] && echo "$line"
+    if [ -n "$line" ]; then echo "$line"; fi
 done
 echo "---SKIPPED---"
 for line in "${SKIPPED[@]:-}"; do
-    [ -n "$line" ] && echo "$line"
+    if [ -n "$line" ]; then echo "$line"; fi
 done
+
+# Explicit success. The loops above end on a false test whenever their array is
+# empty, and with `&&` that status leaked out as the script's exit code — so a
+# clean run (nothing skipped) exited 1 while a failed one exited 0. Callers read
+# outcomes from ---ARCHIVED---/---SKIPPED---, not the exit status.
+exit 0
