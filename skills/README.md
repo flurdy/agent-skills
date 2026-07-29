@@ -20,6 +20,7 @@
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — so the /handoffs picker stays focused. Standalone twin of /handoffs's archive step; read-only until you confirm; archives, never deletes |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
+| implement-solution | Explicitly invoked premium coding workflow for the smallest maintainable implementation, applying repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | model-update-check | Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
@@ -41,7 +42,6 @@
 | review-pr | Review a pull request against the linked Jira ticket requirements |
 | second-opinion | Query one independent peer or configurable local/OpenRouter panels with distinct quorum and evidence-backed consensus policies |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
-| simplify-solution | Explicitly invoked premium coding workflow for the smallest maintainable implementation, applying repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |

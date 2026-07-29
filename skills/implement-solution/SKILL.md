@@ -1,15 +1,15 @@
 ---
-name: simplify-solution
+name: implement-solution
 description: Explicitly invoked premium coding workflow that applies repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP to the smallest maintainable implementation.
 allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
-# Simplify Solution
+# Implement Solution
 
 Implement the smallest maintainable solution that meets the requested outcome. Apply strong engineering judgment before and during coding without replacing the model's native coding ability with a principle checklist.
 
@@ -17,7 +17,7 @@ This is an explicit premium/high implementation route. Invoking it deliberately 
 
 ## When to Use
 
-Route through this skill only when the user explicitly invokes `/simplify-solution` or explicitly asks for a premium or strongest-capability implementation pass. After that opt-in, use it to:
+Route through this skill only when the user explicitly invokes `/implement-solution` or explicitly asks for a premium or strongest-capability implementation pass. After that opt-in, use it to:
 
 - apply engineering principles from the start rather than inspect them only afterward;
 - find the simplest solution or apply a no-nonsense YAGNI/KISS check;
@@ -37,9 +37,9 @@ Do not auto-invoke it merely because a request changes code or asks for simplici
 ## Usage
 
 ```text
-/simplify-solution <task or request>
-/simplify-solution --plan <task>       # recommend an approach without editing
-/simplify-solution --review-current    # simplify the current uncommitted approach
+/implement-solution <task or request>
+/implement-solution --plan <task>       # recommend an approach without editing
+/implement-solution --review-current    # simplify the current uncommitted approach
 ```
 
 ## Engineering Judgment

@@ -7,7 +7,7 @@ change and does not adopt Bigpowers' fixed score threshold.
 ## Design
 
 - **Runtime:** Pi in noninteractive mode, with a model passed explicitly to the runner.
-- **Skills:** `simplify-solution` and `diagnose-bug`.
+- **Skills:** `implement-solution` and `diagnose-bug`. Earlier recorded runs retain the former `simplify-solution` name.
 - **Scenarios:** one calibration and one held-out scenario for each skill.
 - **Matrix:** three repetitions for every scenario in baseline and with-skill conditions
   (24 isolated agent sessions total).

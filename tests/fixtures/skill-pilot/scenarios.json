@@ -2,7 +2,7 @@
   "scenarios": [
     {
       "id": "simplify-calibration",
-      "skill": "skills/simplify-solution",
+      "skill": "skills/implement-solution",
       "split": "calibration",
       "fixture": "simplify-calibration",
       "prompt": "Inspect this small project and recommend the smallest maintainable way to show a Welcome label only for new users. Do not edit files. State the outcome, reuse checked, chosen approach, and verification. If a relevant loaded skill applies, follow it.",
@@ -13,7 +13,7 @@
     },
     {
       "id": "simplify-holdout",
-      "skill": "skills/simplify-solution",
+      "skill": "skills/implement-solution",
       "split": "holdout",
       "fixture": "simplify-holdout",
       "prompt": "Inspect this small project and recommend the smallest maintainable way to reject blank user slugs while retaining the established fallback behavior for a missing slug. Do not edit files. State the outcome, reuse checked, chosen approach, and verification. If a relevant loaded skill applies, follow it.",
