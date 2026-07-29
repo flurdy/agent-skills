@@ -20,7 +20,7 @@
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes. |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
-| implement-solution | Explicitly invoked premium coding workflow for the smallest maintainable implementation, applying repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP |
+| implement-solution | Premium workflow for non-trivial, implementation-ready coding where material local trade-offs justify repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | model-update-check | Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |

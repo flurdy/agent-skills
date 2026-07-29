@@ -1,11 +1,11 @@
 ---
 name: implement-solution
-description: Explicitly invoked premium coding workflow that applies repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP to the smallest maintainable implementation.
+description: Premium workflow for non-trivial, bounded implementation work with clear requirements. Use dynamically when material local trade-offs justify repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment; skip mechanical edits, unresolved diagnosis, and architecture decisions.
 allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -13,18 +13,19 @@ author: "flurdy"
 
 Implement the smallest maintainable solution that meets the requested outcome. Apply strong engineering judgment before and during coding without replacing the model's native coding ability with a principle checklist.
 
-This is an explicit premium/high implementation route. Invoking it deliberately spends stronger configured capability on the implementation; ordinary bounded coding does not automatically require premium. It is not an always-on gate and should not add ceremony when the repository already makes the right change obvious.
+This is a bounded premium/high implementation route. Select it dynamically when a task is implementation-ready but material local engineering judgment makes stronger configured capability worthwhile. Explicit invocation also opts in. It is not an always-on gate and should not add ceremony when the repository already makes the right change obvious.
 
 ## When to Use
 
-Route through this skill only when the user explicitly invokes `/implement-solution` or explicitly asks for a premium or strongest-capability implementation pass. After that opt-in, use it to:
+Use this skill when requirements and any required diagnosis are sufficiently clear, and one or more of these conditions applies:
 
-- apply engineering principles from the start rather than inspect them only afterward;
-- find the simplest solution or apply a no-nonsense YAGNI/KISS check;
-- avoid over-engineering, unnecessary dependencies, or speculative abstractions;
-- simplify an implementation already in progress.
+- multiple plausible local approaches remain and repository consensus should decide between them;
+- changed behavior crosses interacting components, state transitions, or meaningful edge and failure paths;
+- a present responsibility, dependency, duplication, or mutation trade-off materially affects maintainability or correctness;
+- an implementation already in progress needs substantive simplification rather than mechanical cleanup; or
+- the user explicitly invokes `/implement-solution` or requests a premium or strongest-capability implementation pass.
 
-Do not auto-invoke it merely because a request changes code or asks for simplicity. Skip a clearly mechanical edit unless the user explicitly requests this route.
+Do not route through it merely because a request changes code, contains the word "implement," or asks for simplicity. Skip mechanical edits and changes with one obvious established pattern. Use `/diagnose-bug` while the cause is unknown and `/architect` when consequential design decisions remain unresolved.
 
 ## Boundaries
 
