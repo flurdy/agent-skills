@@ -28,7 +28,15 @@
 #   ... (one line per member repo, including the root repo itself as ".")
 #
 # ahead/behind are "-" when there is no upstream. upstream is yes|no.
+#
+# --members-only skips the per-repo git status sweep and emits just MARKER, ROOT and
+# bare member paths under ---REPOS---. Callers that only need the workspace shape (who
+# are the members?) pay one root-walk instead of a `git status` per member, which on a
+# large monorepo member is the whole cost of the call.
 set -u
+
+MEMBERS_ONLY=0
+[ "${1:-}" = "--members-only" ] && MEMBERS_ONLY=1
 
 mgit_services() {   # $1 = dir holding .mgit.conf; prints one service path per line
   sed -n 's/^services=//p' "$1/.mgit.conf" | head -1 | tr ',' '\n' | tr -d '[:blank:]'
@@ -98,6 +106,14 @@ echo "---MARKER---"; echo "$marker"
 echo "---ROOT---"; echo "$root"
 echo "---REPOS---"
 [ "$marker" = "none" ] && exit 0
+
+if [ "$MEMBERS_ONLY" -eq 1 ]; then
+  for m in "${members[@]}"; do
+    git -C "$root/$m" rev-parse --git-dir >/dev/null 2>&1 || continue
+    echo "$m"
+  done
+  exit 0
+fi
 
 for m in "${members[@]}"; do
   dir="$root/$m"

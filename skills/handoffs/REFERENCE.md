@@ -41,8 +41,10 @@ Delimited sections:
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
 - `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff. (Consumed by `/landscape`; ignore here.)
-- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`.
-- `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc.
+- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_classified=N`.
+- `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
+- `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
+- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 21 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (23 total), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
 
 **`---HANDOFFS---` line — 21 pipe-delimited fields, in order:**
 
@@ -68,7 +70,7 @@ Delimited sections:
 - `superseded-by` is the filename of the **newest** handoff in the same repo that continues this thread, or empty if this is the live tip. `supersede-reason` is `branch` (same branch), `slug` (same exact topic slug), or `collision` (same-day re-wrap). Ticket/cwd overlap is deliberately *not* a supersede signal — a ticket legitimately spans many handoffs.
 - **Trunk co-residence never supersedes.** The `branch` reason excludes the default branch (`main`/`master`): two distinct threads both recorded on the trunk (the wrap-up trunk-parking case) are *not* the same thread — they only supersede on an exact slug or same-day collision.
 
-### Branch-state (`branch-state`) — only populated with `--check-branches`, current-repo rows only
+### Branch-state (`branch-state`) — only populated with `--check-branches`, current-repo **and workspace-member** rows
 
 - `live` — branch exists and isn't merged into the default branch.
 - `merged` — branch tip is an ancestor of the default branch (its PR likely landed).
@@ -77,7 +79,7 @@ Delimited sections:
 - `merged` and `gone` are the two "stale" states. Offline runs degrade safely: a branch with no local ref reports `unknown`, never a false `gone`.
 - **Default-branch guard:** a handoff recorded on the trunk reports `unknown`, never `merged` — being on the trunk says nothing about whether the work shipped. PR detection still applies on top.
 
-### PR fields (`pr-state`/`pr-number`/`pr-url`) — only with `--check-branches` + `gh`, current-repo rows only
+### PR fields (`pr-state`/`pr-number`/`pr-url`) — only with `--check-branches` + `gh`, current-repo **and workspace-member** rows
 
 A PR matches a handoff either by branch (headRefName) **or by a number recorded in the handoff's
 `**PRs:**` field** — the number fallback rescues the **trunk-parking** case (wrap-up recorded `main`
@@ -115,6 +117,40 @@ under a merged PR (the finished-work signal when there's no live branch/PR — t
 it in at §Jira-Done. `current_repo_stale` counts the `keep`/`safe` rows that are **not** superseded;
 superseded rows are counted by `current_repo_superseded`. Rows that can't be auto-classified set
 `needs-review` instead (§Trunk-review) — they are **not** counted in `current_repo_stale`.
+
+---
+
+## §Workspace-members — handoffs in sibling repos of a multi-repo workspace
+
+An mgit (`.mgit.conf`) or submodule workspace **root aggregates member repos that are
+independent git repos with their own identities**. A handoff recorded inside a member therefore
+keys to the member, not the root — so from the workspace root, the directory you actually orient
+in, every member handoff lands in `---OTHER-REPOS---`: invisible and unpickable. In a real
+workspace that can hide the majority of your handoffs behind a root that has almost none.
+
+`list.sh` discovers the members (one `multirepo.sh --members-only` call — no per-member status
+sweep) and emits them in the two sections above. Members are resolved through the same
+`resolve_repo_info` path as the current repo, so symlinked members and `.claude` unification behave
+identically.
+
+**Classification.** Member rows are classified by the *same* rules as current-repo rows (§Status,
+§Archive-glyph) — branch-state, PR state and bead closure are all re-run **inside the member repo**
+(`git -C`, `gh` in the member's cwd, `bd -C`). This is gated on `--check-branches`, matching the
+current-repo contract: a caller asking for a cheap offline listing must not silently pay N repos'
+network calls. Without the flag, member rows carry `unknown` branch/PR state and empty
+`archive-class`, and `workspace_classified` is `0`.
+
+Because members are classified, member rows in `---HANDOFFS---` now also carry real state rather
+than the blanket `unknown` older revisions emitted. No existing consumer reads them (all filter to
+`repo-key == CURRENT-REPO`), so this is additive information, not a contract change.
+
+**Stale accounting is kept separate.** Member rows feed `workspace_member_stale`, never
+`current_repo_stale` — so §Archive-flow's candidate set stays strictly current-repo and a member
+handoff can never be swept up by an archive prompt aimed at the repo you're standing in.
+
+**Picking is `cd`-gated.** Member rows are pickable, but a caller MUST surface the member path as a
+required `cd` before acting on the resume block. The wrong-repo guard is honoured by making the
+directory change explicit, not by hiding the handoff.
 
 ---
 

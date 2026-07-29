@@ -196,43 +196,71 @@ TIMEOUT=""
 if command -v timeout >/dev/null 2>&1; then TIMEOUT="timeout 8"
 elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT="gtimeout 8"; fi
 
+# Repo scope for every liveness query. "." is the invocation pwd (the current
+# repo). The workspace-member pass repoints this so branch/PR/bead lookups run
+# inside the member repo — running them in pwd is exactly why member rows used
+# to report `unknown` for everything.
+LIVENESS_DIR="."
+lgit() { git -C "$LIVENESS_DIR" "$@"; }
+
+compute_default_branch_name() {
+    local dref cand
+    dref=$(lgit symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+    if [ -n "$dref" ]; then
+        echo "${dref##*/}"; return
+    fi
+    for cand in main master; do
+        if lgit rev-parse --verify --quiet "$cand" >/dev/null 2>&1 \
+            || lgit rev-parse --verify --quiet "origin/$cand" >/dev/null 2>&1; then
+            echo "$cand"; return
+        fi
+    done
+}
+
 # Short name of the default branch. Computed whenever we're in a repo (not just
 # under --check-branches) because the supersede pass — which runs for every
 # caller, including wrap-up's no-flag invocation — needs it too: two handoffs
 # co-resident on the trunk are NOT the same thread (see is_trunk_branch).
 DEFAULT_BRANCH_NAME=""
 if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
-    dref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
-    if [ -n "$dref" ]; then
-        DEFAULT_BRANCH_NAME="${dref##*/}"
-    else
-        for cand in main master; do
-            if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1 \
-                || git rev-parse --verify --quiet "origin/$cand" >/dev/null 2>&1; then
-                DEFAULT_BRANCH_NAME="$cand"; break
-            fi
-        done
-    fi
+    DEFAULT_BRANCH_NAME=$(compute_default_branch_name)
 fi
 
 DEFAULT_TIP=""
 REMOTE_HEADS=""
 REMOTE_OK=0
-if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
-    dref=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+
+# Point every liveness global at $1 and re-run the probes there. Called once for
+# the current repo, then once per workspace member that owns handoffs. PR_LINES
+# is filled here too (see the PR-liveness note below) because `gh` resolves its
+# repo from cwd, so it must be re-run per member rather than reused.
+setup_liveness() {
+    LIVENESS_DIR="${1:-.}"
+    DEFAULT_BRANCH_NAME=$(compute_default_branch_name)
+    DEFAULT_TIP=""; REMOTE_HEADS=""; REMOTE_OK=0; PR_LINES=""; PR_OK=0
+    local dref cand
+    dref=$(lgit symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
     if [ -n "$dref" ]; then
         DEFAULT_TIP="${dref#refs/remotes/}"
     else
         for cand in origin/main origin/master main master; do
-            if git rev-parse --verify --quiet "$cand" >/dev/null 2>&1; then
+            if lgit rev-parse --verify --quiet "$cand" >/dev/null 2>&1; then
                 DEFAULT_TIP="$cand"; break
             fi
         done
     fi
-    if REMOTE_HEADS=$($TIMEOUT git ls-remote --heads origin 2>/dev/null); then
+    if REMOTE_HEADS=$($TIMEOUT git -C "$LIVENESS_DIR" ls-remote --heads origin 2>/dev/null); then
         REMOTE_OK=1
     fi
-fi
+    if command -v gh >/dev/null 2>&1; then
+        if PR_LINES=$(cd "$LIVENESS_DIR" 2>/dev/null && $TIMEOUT gh pr list --state all --limit 200 \
+            --json number,state,headRefName,url \
+            --jq '.[] | [.headRefName, (.state|ascii_downcase), (.number|tostring), .url] | @tsv' \
+            2>/dev/null); then
+            PR_OK=1
+        fi
+    fi
+}
 
 # True when $1 is a trunk branch — the repo's default branch, or the universal
 # main/master. The trunk is never a meaningful "same thread" or "merged feature"
@@ -258,14 +286,8 @@ is_trunk_branch() {
 # row reports pr-state `unknown` and the local heuristic stands.
 PR_LINES=""
 PR_OK=0
-if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ] \
-    && command -v gh >/dev/null 2>&1; then
-    if PR_LINES=$($TIMEOUT gh pr list --state all --limit 200 \
-        --json number,state,headRefName,url \
-        --jq '.[] | [.headRefName, (.state|ascii_downcase), (.number|tostring), .url] | @tsv' \
-        2>/dev/null); then
-        PR_OK=1
-    fi
+if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+    setup_liveness "."
 fi
 
 # Look up the PR state for a handoff from the cached `gh` listing. A PR matches
@@ -316,11 +338,71 @@ pr_state() {
 # local `bd` query, so it runs whenever beads exist (independent of the network
 # --check-branches gate) — that lets landscape's offline call also stop counting
 # bead-closed handoffs as live threads.
+# Bead lookups are repo-scoped for the same reason liveness is: a workspace
+# member keeps its own `.beads` store, and the workspace root's store (often
+# deliberately empty) knows nothing about a member's beads.
+BEADS_DIR="."
 BEADS_AVAILABLE=""
-BEADS_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-if command -v bd >/dev/null 2>&1 && [ -n "$BEADS_ROOT" ] && [ -d "$BEADS_ROOT/.beads" ]; then
-    BEADS_AVAILABLE=1
+setup_beads() {
+    BEADS_DIR="${1:-.}"
+    BEADS_AVAILABLE=""
+    local root
+    root=$(git -C "$BEADS_DIR" rev-parse --show-toplevel 2>/dev/null || true)
+    if command -v bd >/dev/null 2>&1 && [ -n "$root" ] && [ -d "$root/.beads" ]; then
+        BEADS_AVAILABLE=1
+    fi
+}
+setup_beads "."
+
+# --- Workspace members (mgit / git submodules) --------------------------------
+# A multi-repo workspace root aggregates member repos that are independent git
+# repos with their own identities. Handoffs recorded inside a member therefore
+# key to the member, not the root — so from the workspace root (the directory
+# you actually orient in) they land in "other repos": invisible and unpickable.
+# Discover the members here so their handoffs can be surfaced and classified.
+# Cheap by construction: one `--members-only` call, no per-member status sweep.
+WS_KEYS=()
+WS_DISPLAYS=()
+WS_PATHS=()
+if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+    MR_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../wrap-up/scripts" 2>/dev/null && pwd)/multirepo.sh"
+    if [ -x "$MR_SCRIPT" ]; then
+        ws_root=""
+        ws_section=""
+        while IFS= read -r line; do
+            case "$line" in
+                ---ROOT---)  ws_section="root";  continue ;;
+                ---REPOS---) ws_section="repos"; continue ;;
+                ---*---)     ws_section="";      continue ;;
+            esac
+            case "$ws_section" in
+                root) ws_root="$line"; ws_section="" ;;
+                repos)
+                    [ -n "$ws_root" ] || continue
+                    m_path=$(readlink -f "$ws_root/$line" 2>/dev/null) || continue
+                    { [ -n "$m_path" ] && [ -d "$m_path" ]; } || continue
+                    m_info=$(resolve_repo_info "$m_path") || continue
+                    m_key="${m_info%%|*}"
+                    # The root repo is itself a member ("."). It's already the
+                    # current repo, so skip it rather than double-listing.
+                    [ "$m_key" = "$CURRENT_REPO_KEY" ] && continue
+                    WS_KEYS+=("$m_key")
+                    WS_DISPLAYS+=("${m_info##*|}")
+                    WS_PATHS+=("$m_path")
+                    ;;
+            esac
+        done < <("$MR_SCRIPT" --members-only 2>/dev/null)
+    fi
 fi
+
+# Index of the workspace member owning repo-key $1, or non-zero if none.
+ws_index_for_key() {
+    local k="$1" wi
+    for wi in "${!WS_KEYS[@]}"; do
+        [ "${WS_KEYS[$wi]}" = "$k" ] && { echo "$wi"; return 0; }
+    done
+    return 1
+}
 
 # Echo "{closed} {total}" for the beads named in field $1 (backtick/comma
 # flattened, filtered to `{prefix}-{suffix}` shapes — bd-123, ab-1505,
@@ -341,7 +423,7 @@ beads_counts() {
     done
     [ -n "$ids" ] || { echo "0 0"; return; }
     local json total closed
-    json=$(bd list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || { echo "0 0"; return; }
+    json=$(bd -C "$BEADS_DIR" list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || { echo "0 0"; return; }
     [ -n "$json" ] || { echo "0 0"; return; }
     # Count occurrences (grep -o → one match per line → wc -l) rather than
     # matching lines, so a future compact-JSON `bd` doesn't collapse to 1.
@@ -368,7 +450,7 @@ branch_state() {
     fi
 
     local local_exists=0 remote_sha="" test_commit=""
-    if git show-ref --verify --quiet "refs/heads/$b" 2>/dev/null; then
+    if lgit show-ref --verify --quiet "refs/heads/$b" 2>/dev/null; then
         local_exists=1
         test_commit="refs/heads/$b"
     fi
@@ -378,7 +460,7 @@ branch_state() {
     fi
 
     if [ -n "$test_commit" ] && [ -n "$DEFAULT_TIP" ] \
-        && git merge-base --is-ancestor "$test_commit" "$DEFAULT_TIP" 2>/dev/null; then
+        && lgit merge-base --is-ancestor "$test_commit" "$DEFAULT_TIP" 2>/dev/null; then
         echo "merged"; return
     fi
     if [ "$local_exists" -eq 0 ] && [ "$REMOTE_OK" -eq 1 ] && [ -z "$remote_sha" ]; then
@@ -681,32 +763,48 @@ R_BEADSDONE=()
 R_BEADSPROGRESS=()
 R_NEEDSREVIEW=()
 CUR_STALE=0
+WS_STALE=0
+
+# Default every row to "unclassified" up front so the classification passes can
+# assign by index. Rows in neither the current repo nor a workspace member keep
+# these defaults — we can only speak for repos we can reach.
 i=0
 while [ "$i" -lt "$N" ]; do
-    state="unknown"
-    ps="unknown"; pnum=""; purl=""
-    archclass=""
-    beadsdone=""
-    beadsprogress=""
-    needsreview=""
-    is_current=0
-    if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
-        is_current=1
-    fi
+    R_STATE+=("unknown")
+    R_PRSTATE+=("unknown")
+    R_PRNUM+=("")
+    R_PRURL+=("")
+    R_ARCHCLASS+=("")
+    R_BEADSDONE+=("")
+    R_BEADSPROGRESS+=("")
+    R_NEEDSREVIEW+=("")
+    i=$((i+1))
+done
 
-    if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$is_current" -eq 1 ]; then
+# Classify row $1. $2 selects which stale counter this row feeds: `cur` for the
+# current repo (drives §3b's stale group), `ws` for a workspace member. The
+# caller must have pointed setup_liveness/setup_beads at the row's repo first —
+# every lookup in here reads those globals, which is what makes the same logic
+# reusable across repos instead of being hard-wired to pwd.
+classify_row() {
+    local i="$1" scope="$2"
+    local state="unknown" ps="unknown" pnum="" purl=""
+    local archclass="" beadsdone="" beadsprogress="" needsreview=""
+    local bead_src bclosed btotal
+
+    if [ "$CHECK_BRANCHES" -eq 1 ]; then
         state=$(branch_state "${R_BRANCH[$i]}")
         IFS='|' read -r ps pnum purl <<< "$(pr_state "${R_BRANCH[$i]}" "${R_PRS[$i]}")"
     fi
 
-    # Bead-closure is local — computed for current rows whenever beads exist,
-    # even without --check-branches, so landscape's offline call benefits too.
-    # The **Deliverable:** field (own-work beads) keys the check when present;
+    # Bead-closure is local — computed whenever beads exist, even without
+    # --check-branches, so landscape's offline call benefits too. The
+    # **Deliverable:** field (own-work beads) keys the check when present;
     # absent it, fall back to the full **Beads:** field (legacy handoffs).
     # Over-inclusion in Deliverable only ever UNDER-detects (a never-closing
     # bead keeps the row live) — safe; omitting an own-work bead is the only way
     # to false-positive, so wrap-up errs toward including.
-    if [ "$is_current" -eq 1 ] && [ -n "$BEADS_AVAILABLE" ]; then
+    if [ -n "$BEADS_AVAILABLE" ]; then
         bead_src="${R_DELIV[$i]}"
         [ -n "$bead_src" ] || bead_src="${R_BEADS[$i]}"
         read -r bclosed btotal <<< "$(beads_counts "$bead_src")"
@@ -716,47 +814,88 @@ while [ "$i" -lt "$N" ]; do
         fi
     fi
 
-    if [ "$is_current" -eq 1 ]; then
-        if [ -n "${R_SUPBY[$i]}" ]; then
-            archclass="safe"
-        elif [ "$ps" = "open" ]; then
-            archclass=""
-        elif [ "$ps" = "merged" ]; then
-            archclass="safe"
-        elif [ -n "$beadsdone" ]; then
-            archclass="safe"
-        elif [ "$ps" = "closed" ]; then
-            archclass="keep"
-        elif [ "$state" = "merged" ]; then
-            archclass="safe"
-        elif [ "$state" = "gone" ]; then
-            archclass="keep"
-        fi
-        # "stale" group = archivable, but not via supersede.
-        if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ]; then
-            CUR_STALE=$((CUR_STALE+1))
-        fi
-        # Trunk-parked legacy handoff that still renders live but has PARTIAL
-        # bead closure (something shipped, something open) and no Deliverable
-        # field to disambiguate → flag for the assisted prompt. All-closed rows
-        # already became archclass=safe above; all-open rows are genuinely live.
-        if [ -z "$archclass" ] && [ -z "${R_DELIV[$i]}" ] \
-            && is_trunk_branch "${R_BRANCH[$i]}" && [ -n "$beadsprogress" ] \
-            && [ "${beadsprogress%%/*}" -gt 0 ]; then
-            needsreview="Y"
-        fi
+    if [ -n "${R_SUPBY[$i]}" ]; then
+        archclass="safe"
+    elif [ "$ps" = "open" ]; then
+        archclass=""
+    elif [ "$ps" = "merged" ]; then
+        archclass="safe"
+    elif [ -n "$beadsdone" ]; then
+        archclass="safe"
+    elif [ "$ps" = "closed" ]; then
+        archclass="keep"
+    elif [ "$state" = "merged" ]; then
+        archclass="safe"
+    elif [ "$state" = "gone" ]; then
+        archclass="keep"
+    fi
+    # "stale" group = archivable, but not via supersede.
+    if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ]; then
+        if [ "$scope" = "cur" ]; then CUR_STALE=$((CUR_STALE+1)); else WS_STALE=$((WS_STALE+1)); fi
+    fi
+    # Trunk-parked legacy handoff that still renders live but has PARTIAL bead
+    # closure (something shipped, something open) and no Deliverable field to
+    # disambiguate → flag for the assisted prompt. All-closed rows already
+    # became archclass=safe above; all-open rows are genuinely live.
+    if [ -z "$archclass" ] && [ -z "${R_DELIV[$i]}" ] \
+        && is_trunk_branch "${R_BRANCH[$i]}" && [ -n "$beadsprogress" ] \
+        && [ "${beadsprogress%%/*}" -gt 0 ]; then
+        needsreview="Y"
     fi
 
-    R_STATE+=("$state")
-    R_PRSTATE+=("$ps")
-    R_PRNUM+=("$pnum")
-    R_PRURL+=("$purl")
-    R_ARCHCLASS+=("$archclass")
-    R_BEADSDONE+=("$beadsdone")
-    R_BEADSPROGRESS+=("$beadsprogress")
-    R_NEEDSREVIEW+=("$needsreview")
-    i=$((i+1))
-done
+    R_STATE[i]="$state"
+    R_PRSTATE[i]="$ps"
+    R_PRNUM[i]="$pnum"
+    R_PRURL[i]="$purl"
+    R_ARCHCLASS[i]="$archclass"
+    R_BEADSDONE[i]="$beadsdone"
+    R_BEADSPROGRESS[i]="$beadsprogress"
+    R_NEEDSREVIEW[i]="$needsreview"
+}
+
+# Current-repo rows (liveness globals already point at pwd).
+if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ] && classify_row "$i" cur
+        i=$((i+1))
+    done
+fi
+
+# Workspace-member rows. Each member needs its own ls-remote + gh + bd, so we
+# group by member and set up once per repo rather than once per row — and skip
+# members that own no handoffs entirely, since the setup is the expensive part.
+# Gated on --check-branches to match the current-repo contract: callers that
+# asked for a cheap offline listing don't silently get N repos' network calls.
+WS_CLASSIFIED=0
+if [ "$CHECK_BRANCHES" -eq 1 ] && [ "${#WS_KEYS[@]}" -gt 0 ]; then
+    mi=0
+    while [ "$mi" -lt "${#WS_KEYS[@]}" ]; do
+        mkey="${WS_KEYS[$mi]}"
+        has_rows=0
+        i=0
+        while [ "$i" -lt "$N" ]; do
+            if [ "${R_REPO[$i]}" = "$mkey" ]; then has_rows=1; break; fi
+            i=$((i+1))
+        done
+        if [ "$has_rows" -eq 1 ]; then
+            setup_liveness "${WS_PATHS[$mi]}"
+            setup_beads "${WS_PATHS[$mi]}"
+            i=0
+            while [ "$i" -lt "$N" ]; do
+                if [ "${R_REPO[$i]}" = "$mkey" ]; then
+                    classify_row "$i" ws
+                    WS_CLASSIFIED=$((WS_CLASSIFIED+1))
+                fi
+                i=$((i+1))
+            done
+        fi
+        mi=$((mi+1))
+    done
+    # Restore pwd scope so anything downstream reads the current repo again.
+    setup_liveness "."
+    setup_beads "."
+fi
 
 # --- Current-repo "last session" + live-recent count (offline; for landscape) -
 # LATEST_* is the newest current-repo handoff (records are newest-first, and the
@@ -790,6 +929,17 @@ if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
                 CUR_LIVE_LINES+=("${R_SLUG[$i]}|${R_BRANCH[$i]}|${R_DATE[$i]}|${R_TIME[$i]}")
             fi
         fi
+        i=$((i+1))
+    done
+fi
+
+# Handoffs owned by a workspace member — counted regardless of --check-branches
+# so a caller can tell "there are 14 member handoffs" even on a cheap offline run.
+WS_HANDOFF_COUNT=0
+if [ "${#WS_KEYS[@]}" -gt 0 ]; then
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        ws_index_for_key "${R_REPO[$i]}" >/dev/null && WS_HANDOFF_COUNT=$((WS_HANDOFF_COUNT+1))
         i=$((i+1))
     done
 fi
@@ -833,12 +983,52 @@ echo "other_repos=${#OTHER_KEYS[@]}"
 echo "pruned_total=${PRUNED_TOTAL}"
 echo "superseded_total=${SUPERSEDED_TOTAL}"
 echo "unresolved=${UNRESOLVED_COUNT}"
+echo "workspace_members=${#WS_KEYS[@]}"
+echo "workspace_member_handoffs=${WS_HANDOFF_COUNT}"
+echo "workspace_member_stale=${WS_STALE}"
+echo "workspace_classified=${WS_CLASSIFIED}"
 
 echo "---OTHER-REPOS---"
 # Sort other-repos by count desc, then by display name asc.
+# NOTE: workspace members still appear here. Keeping this section unfiltered is
+# deliberate — five skills parse it, and silently shrinking it would change their
+# output. Callers that render the WORKSPACE-MEMBER sections should subtract these.
 for i in "${!OTHER_KEYS[@]}"; do
     echo "${OTHER_COUNTS[$i]}|${OTHER_DISPLAYS[$i]}|${OTHER_KEYS[$i]}"
 done | sort -t'|' -k1,1nr -k2,2 | awk -F'|' '{print $3"|"$1"|"$2}'
+
+# --- Workspace members ---------------------------------------------------------
+# The member repos of the multi-repo workspace the cwd belongs to (empty when the
+# cwd isn't in one). `{repo-key}|{display}|{path}|{handoff-count}`, in .mgit.conf
+# order. The root repo is excluded — it's the current repo.
+echo "---WORKSPACE-MEMBER-REPOS---"
+mi=0
+while [ "$mi" -lt "${#WS_KEYS[@]}" ]; do
+    c=0
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        [ "${R_REPO[$i]}" = "${WS_KEYS[$mi]}" ] && c=$((c+1))
+        i=$((i+1))
+    done
+    echo "${WS_KEYS[$mi]}|${WS_DISPLAYS[$mi]}|${WS_PATHS[$mi]}|${c}"
+    mi=$((mi+1))
+done
+
+# Handoffs belonging to a workspace member (newest first). Same 21 fields as
+# ---HANDOFFS---, plus `{member-display}|{member-path}` appended, so a caller can
+# reuse its existing parser and read two extra fields. The member path is what a
+# picker must `cd` to before acting — these rows are pickable, but only from
+# inside their own repo.
+echo "---WORKSPACE-MEMBER-HANDOFFS---"
+if [ "$SUMMARY_ONLY" -eq 0 ]; then
+    i=0
+    while [ "$i" -lt "$N" ]; do
+        if wi=$(ws_index_for_key "${R_REPO[$i]}"); then
+            echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}|${WS_DISPLAYS[$wi]}|${WS_PATHS[$wi]}"
+        fi
+        i=$((i+1))
+    done
+fi
 
 # --- Matched handoffs (only under --bead/--ticket) ------------------------
 # Current-repo, NON-stale handoffs whose Beads/Jira field exactly contains the

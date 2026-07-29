@@ -34,7 +34,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
 - It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
-- It **cannot pick handoffs from other repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in another repo, `cd` there and run `/handoffs` again.
+- It **cannot pick handoffs from unrelated repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in an unrelated repo, `cd` there and run `/handoffs` again. **Exception:** repos in the same multi-repo workspace are listed and pickable (§2b/§4b), because from a workspace root they'd otherwise be invisible; picking one requires an explicit `cd` before any repo-scoped command runs.
 - It **never deletes** handoff files. The opt-in archive step (§3b) only *moves* superseded ones into `~/.claude/handoffs/archive/` — they stay on disk and greppable. Everything else you curate manually.
 
 ## Instructions
@@ -100,6 +100,36 @@ If `CURRENT-REPO == NONE`:
 `_Not in a git repo — handoffs cannot be matched to a current repo. Showing global counts only._`
 
 **Render this section exactly once, in this position.** Do not repeat the "No handoffs for this repo" sentence later (e.g. after §3's other-repos table) — once is enough. If `current_repo_total == 0` but other repos exist, the next section's table provides the rest of the context.
+
+### 2b. 🧱 Render the workspace-members table
+
+Skip this section entirely when `workspace_member_handoffs == 0`.
+
+In a multi-repo workspace the root aggregates independent member repos, so handoffs recorded in a
+member key to the member — not the root. Without this section they'd sit in §3's other-repos summary
+as a bare count, unpickable from the directory you orient in. See **REFERENCE §Workspace-members**.
+
+Render from `---WORKSPACE-MEMBER-HANDOFFS---` (23 fields: the usual 21 plus
+`{member-display}|{member-path}`):
+
+```markdown
+### 🧱 Handoffs — workspace members ({workspace_member_handoffs})
+
+| Date | Repo | Slug | Branch | Worktree | Status | Archive |
+|------|------|------|--------|----------|--------|---------|
+```
+
+- Same column semantics as §2, plus **Repo** = `{member-display}`.
+- **Status** and **Archive**: classify exactly as §2 (REFERENCE §Status / §Archive-glyph). Member
+  rows are classified against their own repo, so `✅ PR merged` / `⚪ branch gone` are meaningful here.
+- Sort newest-first (the emitted order); group visually by repo only if it aids scanning.
+- Cap at 10 rows. When more exist, render the 10 newest and add
+  `_+{N − 10} more — `cd` into the member repo and run `/handoffs` for its full list._`
+- When `workspace_classified == 0` (ran without `--check-branches`), add:
+  `_Status unclassified — member liveness needs `--check-branches`._`
+
+Then subtract these repos from §3's other-repos table so the same handoffs aren't counted twice —
+a member repo listed here must not also appear as an "other repo".
 
 ### 3. Render the other-repos summary
 
@@ -182,6 +212,29 @@ If `current_repo_total > 4`, do **not** force the picker (the option cap is 4). 
 ```
 
 Only pickable rows (✅) are valid choices. Pruned-worktree handoffs are pickable — they just resume in a different checkout. If the user picks an unresolved one, point them at `cat ~/.claude/handoffs/{filename}` for read-only access.
+
+### 4b. Picking a workspace-member handoff
+
+Member rows (§2b) **are** pickable, but only with an explicit directory change — the wrong-repo
+guard is honoured by making the `cd` mandatory, not by hiding the handoff.
+
+When `workspace_member_handoffs > 0`, extend the §4 prompt (or the "reply with the slug" line) to
+cover member rows too, labelling them `{date} {repo}/{slug}` so they're distinguishable from
+current-repo rows.
+
+On picking a member handoff, render the resume block per §5, then **lead with the switch**:
+
+```markdown
+⚠️ **This handoff belongs to `{member-display}`, not the repo you're in.**
+**Switch first:** `cd {member-path}`
+
+Everything in the resume block below — branches, beads, commands — refers to that repo.
+```
+
+Do not run repo-scoped commands (worktree creation, `git checkout`, `bd`) for a member handoff from
+the current directory; the §5 `exists=N` worktree flow assumes you're inside the handoff's own repo,
+so defer it until the user has switched. Re-running `/handoffs` from `{member-path}` gives the full
+current-repo experience for that repo, including the archive flow.
 
 ### 5. Load the picked handoff
 
