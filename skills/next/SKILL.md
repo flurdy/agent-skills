@@ -1,13 +1,13 @@
 ---
 name: next
 description: >
-  Pick the next bead to work on. Shows ready tasks (no blockers), applies user
-  preferences for ordering (priority, type, recency), and helps select work.
+  Pick the next bead to work on. Globally ranks ready tasks across validated
+  workspace Beads stores while preserving local single-store behavior.
 allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.4.1"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -40,9 +40,11 @@ Help select the next bead to work on based on readiness and user preferences.
 ## What This Skill Does
 
 1. **Find Ready Work**
-   - Run `bd list --ready` to get open, unblocked tasks
-   - Excludes `in_progress` beads (another session may be working on them)
-   - Show current in-progress work if any (for awareness, not selection)
+   - Run the `next-bd` collector to get open, unblocked tasks
+   - At a valid project-workspace root, collect the root and every registered repository
+     with a usable Beads store
+   - Exclude `in_progress` beads (another session may be working on them)
+   - Show current in-progress work with repository identity (for awareness, not selection)
 
 2. **Rank by Suitability**
    - Apply priority ranking algorithm (see below)
@@ -90,45 +92,54 @@ Help select the next bead to work on based on readiness and user preferences.
 ## Output Format
 
 ```plaintext
-## Ready to Work (5 of 12 open)
+## Ready to Work (3 beads)
 
-| # | ID         | Pri | Type    | Labels              | Title                          |
-|---|------------|-----|---------|---------------------|--------------------------------|
-| 1 | mycode-abc | P1  | bug     | frontend            | Fix login timeout issue        |
-| 2 | mycode-def | P2  | feature | backend, orders     | Add export to CSV              |
-| 3 | mycode-ghi | P2  | task    | auth                | Update dependencies            |
-| 4 | mycode-jkl | P3  | feature | frontend, css       | Dark mode toggle               |
-| 5 | mycode-mno | P3  | task    | events, auth        | Refactor auth service          |
+| # | Repo     | ID         | Pri | Type    | Labels          | Title                   |
+|---|----------|------------|-----|---------|-----------------|-------------------------|
+| 1 | frontend | web-abc    | P1  | bug     | login           | Fix login timeout       |
+| 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV       |
+| 3 | events   | event-ghi  | P2  | task    | auth            | Update dependencies     |
 
-Currently in progress: mycode-xyz "Implement caching layer"
+In progress (other sessions):
+- [frontend] `web-xyz` (P2 feature) "Implement caching layer"
 
-Which would you like to work on? (1-5, or specify ID, or "task" to auto-pick)
+Which would you like to work on? (1-3, or specify ID, or "task" to auto-pick)
 ```
+
+The `Repo` column appears only for validated workspace aggregation. Local single-store
+output keeps the original columns.
 
 ## Implementation
 
 When invoked:
 
-1. **Get the ranked table** using the `next-bd` script (handles ready list, blocked filtering, label fetching, and ranking in one command). Always invoke it through the portable shared install path so the command prefix is stable and allowlistable across harnesses:
+1. **Get the ranked table** using the `next-bd` script. It validates workspace topology,
+   collects each usable independent store read-only, preserves owner identity, filters
+   blocked work, and ranks the combined candidates. Outside a validated workspace root it
+   keeps local single-store behavior. Always invoke it through the portable shared install
+   path so the command prefix is stable and allowlistable across harnesses:
 
    ```bash
    ~/.agents/skills/next/scripts/next-bd --in-progress
    ```
 
-   For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap with in-progress beads:
+   For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap
+   with in-progress beads in the same owning store:
    ```bash
    ~/.agents/skills/next/scripts/next-bd --in-progress --avoid-busy
    ```
 
-   This outputs a markdown table ranked by the priority algorithm, with labels included, blocked beads filtered out, and in-progress beads shown for awareness.
+   This outputs a globally ranked markdown table with labels, blocked filtering, and
+   owner-qualified in-progress awareness. `--json` adds `repository`, `repository_path`,
+   and `selector` to workspace candidates; local JSON remains backward compatible.
 
 2. Parse command argument:
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Show the script output with `--avoid-busy`, ask user to pick
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
-   - `task`: Auto-select top-ranked bead and start it
-   - `quick`: Auto-select an easy win task and start it (uses `--avoid-busy`)
-   - `bug`: Auto-select top-ranked bug and start it (see Bug Mode below)
+   - `task`: Use `next-bd --json`, auto-select the top-ranked bead, and start it
+   - `quick`: Use `next-bd --json --avoid-busy`, apply the quick heuristics, and start it
+   - `bug`: Use `next-bd --json --type=bug`, auto-select the top-ranked bug, and start it
    - `<bead-id>`: Start that specific bead
 
 3. If specific bead ID provided:
@@ -144,10 +155,12 @@ When invoked:
 4. Otherwise, present the script output and ask user to choose
 
 5. On selection:
+   - Preserve the selected JSON candidate's `repository` and `repository_path`; never infer
+     ownership from its ID or labels
    - **Run the handoff check** (see *Resume awareness* below)
-   - Mark as in_progress
-   - Show full details with `bd show`
-   - If bead has description with steps, highlight first step
+   - In workspace mode, run `bd -C <repository_path> update <id> --status=in_progress` and
+     `bd -C <repository_path> show <id>`; use the existing local commands otherwise
+   - If bead has description with steps, highlight the first step
 
 ## Resume awareness (handoff check before starting)
 
@@ -189,6 +202,8 @@ When listing:
 2. **Reproduce the full ranked table in your own markdown reply**, every row, using the columns from the Output Format above. Do not truncate to "top 3" and do not replace the table with a narrative.
 3. *After* the table, you may add a short note (1–2 sentences) on the strongest candidate(s) and any in-progress overlap — but the table comes first and stays complete.
 4. End with the picker prompt: `Pick a number, a bead ID, or type task/bug/quick to auto-pick.`
+5. When the user picks a number, rerun the same collector options with `--json` and resolve
+   that current index so the selected candidate retains its owning repository path.
 
 Listing mode never marks anything `in_progress`. It only selects work once the user replies.
 
@@ -273,14 +288,15 @@ Within each bucket, preserve the `next-bd` rank order.
 ```markdown
 ## Ready by Sprint ({total} beads)
 
-| # | ID | Pri | Type | Jira | Sprint | Status | Title |
-|---|----|-----|------|------|--------|--------|-------|
-| 1 | mycode-agf | P1 | task | [AB-1088](https://yourorg.atlassian.net/browse/AB-1088) | 31 (active) | In Progress | Replace event attribution wiring... |
-| 2 | mycode-6ic | P2 | task | [AB-1424](https://yourorg.atlassian.net/browse/AB-1424) | 32 (future) | Backlog | Make analytics client stateless... |
-| 3 | mycode-y8p | P2 | bug | — | — | — | Auth0 postLogin race... |
+| # | Repo | ID | Pri | Type | Jira | Sprint | Status | Title |
+|---|------|----|-----|------|------|--------|--------|-------|
+| 1 | events | mycode-agf | P1 | task | [AB-1088](https://yourorg.atlassian.net/browse/AB-1088) | 31 (active) | In Progress | Replace event attribution wiring... |
+| 2 | workspace | mycode-6ic | P2 | task | [AB-1424](https://yourorg.atlassian.net/browse/AB-1424) | 32 (future) | Backlog | Make analytics client stateless... |
+| 3 | frontend | mycode-y8p | P2 | bug | — | — | — | Auth0 postLogin race... |
 ```
 
 - `#` is a continuous index for the picker.
+- `Repo` appears in workspace mode and is omitted for local single-store output.
 - `Jira` column: markdown link `[KEY](https://yourorg.atlassian.net/browse/KEY)`. `—` if no key.
 - `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`). Strip the project prefix from sprint names like `"PROJ Sprint 31"`. For descriptive sprint names without an obvious number, keep the full name. `—` for no-sprint and no-Jira beads.
 - `Status` column: Jira status. `—` for no-Jira beads.
@@ -302,10 +318,10 @@ Same prompt as default mode (`1-N`, bead ID, or `task`/`bug`/`quick` to auto-pic
 
 When `/next bug` is used:
 
-1. **Filter to open bugs only** (excluding P4 backlog):
+1. **Filter to open bugs across the collected stores** (excluding P4 backlog):
 
    ```bash
-   bd list --ready --type=bug --priority-max=3
+   ~/.agents/skills/next/scripts/next-bd --json --type=bug
    ```
 
 2. **Rank by priority**: P0 > P1 > P2 > P3 (highest priority bug first, P4 excluded)

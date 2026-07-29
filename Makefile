@@ -22,7 +22,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog test-next list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make clean-code"
@@ -32,6 +32,7 @@ help:
 	@echo "make test-second-opinion"
 	@echo "make test-project-brief"
 	@echo "make test-plan-to-backlog"
+	@echo "make test-next"
 	@echo "make list"
 	@echo "make doctor"
 	@echo "make doctor-codex    # compatibility alias; same shared skill root"
@@ -76,6 +77,9 @@ test-plan-to-backlog:
 	@skills/plan-to-backlog/tests/test-helpers.sh
 	@skills/plan-to-backlog/tests/test-skill-contract.sh
 	@python3 -m unittest discover -s skills/plan-to-backlog/tests -p 'test_decision_fixtures.py'
+
+test-next:
+	@python3 -m unittest discover -s skills/next/tests -p 'test_next_bd.py'
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

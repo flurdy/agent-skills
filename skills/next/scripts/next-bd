@@ -1,90 +1,117 @@
 #!/usr/bin/env bash
 # next-bd: Show ready beads ranked by priority, with labels, filtered against blocked.
-# Usage: next-bd [--in-progress] [--avoid-busy] [--json]
-#   --in-progress  Also show in-progress beads (for awareness)
-#   --avoid-busy   Exclude beads whose labels overlap with in-progress beads
-#   --json         Emit ranked beads as JSON (with .rank field) instead of markdown
+# Usage: next-bd [--in-progress] [--avoid-busy] [--json] [--type=TYPE]
 set -euo pipefail
 
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
 JSON_OUTPUT=false
+TYPE_FILTER=""
 for arg in "$@"; do
   case "$arg" in
     --in-progress) SHOW_IN_PROGRESS=true ;;
     --avoid-busy)  AVOID_BUSY=true ;;
     --json)        JSON_OUTPUT=true ;;
+    --type=*)      TYPE_FILTER=${arg#--type=} ;;
   esac
 done
 
-# Fetch ready beads (P0-P3), blocked beads, and in-progress beads as JSON
-ready_json=$(bd list --ready --priority-max=3 --json --flat 2>/dev/null || echo "[]")
-blocked_json=$(bd blocked --json 2>/dev/null || echo "[]")
-in_progress_json=$(bd list --status=in_progress --json --flat 2>/dev/null || echo "[]")
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+payload=$("$SCRIPT_DIR/collect.py")
 
-# Use jq to:
-# 1. Extract blocked IDs
-# 2. Filter ready list against blocked
-# 3. Rank by priority algorithm
-# 4. Format as table
-jq -r --argjson blocked "$blocked_json" --argjson in_progress "$in_progress_json" --arg show_ip "$SHOW_IN_PROGRESS" --arg avoid_busy "$AVOID_BUSY" --arg json_output "$JSON_OUTPUT" '
-  # Extract blocked IDs
-  ($blocked | map(.id)) as $blocked_ids |
+if "$JSON_OUTPUT"; then
+  jq -r '.diagnostics[] | "next-bd: \(.)"' <<< "$payload" >&2
+fi
 
-  # Extract labels from in-progress beads (for --avoid-busy)
-  ($in_progress | map(.labels // []) | flatten | unique) as $busy_labels |
+jq -r \
+  --arg show_ip "$SHOW_IN_PROGRESS" \
+  --arg avoid_busy "$AVOID_BUSY" \
+  --arg json_output "$JSON_OUTPUT" \
+  --arg type_filter "$TYPE_FILTER" '
+  . as $payload |
+  ($payload.workspace) as $workspace |
+  ($payload.blocked | map("\(.repository // "")\u0000\(.id)")) as $blocked_keys |
+  ($payload.in_progress) as $in_progress |
+  ($payload.diagnostics) as $diagnostics |
 
-  # Filter out blocked beads
-  map(select(.id as $id | $blocked_ids | index($id) | not)) |
-
-  # Filter out beads with labels that overlap in-progress beads (if --avoid-busy)
-  if $avoid_busy == "true" and ($busy_labels | length) > 0 then
+  ($payload.ready |
+    map(select(.priority >= 0 and .priority <= 3)) |
     map(select(
-      (.labels // []) as $labels |
-      ($labels | length == 0) or
-      ([$labels[] | select(. as $l | $busy_labels | index($l) | not)] | length == ($labels | length))
-    ))
-  else . end |
+      . as $candidate |
+      "\($candidate.repository // "")\u0000\($candidate.id)" as $candidate_key |
+      $blocked_keys | index($candidate_key) | not
+    )) |
+    if $type_filter != "" then
+      map(select(.issue_type == $type_filter))
+    else . end |
+    if $avoid_busy == "true" then
+      map(
+        . as $candidate |
+        ($in_progress |
+          map(
+            select((.repository // "") == ($candidate.repository // "")) |
+            (.labels // [])
+          ) |
+          flatten |
+          unique
+        ) as $busy_labels |
+        ($candidate.labels // []) as $labels |
+        select(
+          ($labels | length) == 0 or
+          ([$labels[] | select(. as $label | $busy_labels | index($label) | not)] | length) ==
+            ($labels | length)
+        )
+      )
+    else . end |
+    map(. + {
+      rank: (
+        if .priority == 0 then 1
+        elif .priority == 1 and .issue_type == "bug" then 2
+        elif .priority == 2 and .issue_type == "bug" then 3
+        elif .priority == 1 and (.issue_type == "feature" or .issue_type == "task") then 4
+        elif .priority == 1 and .issue_type == "epic" then 5
+        elif .priority == 2 and (.issue_type == "feature" or .issue_type == "task") then 6
+        elif .priority == 3 and (.issue_type == "bug" or .issue_type == "feature" or .issue_type == "task") then 7
+        elif .priority == 2 and .issue_type == "epic" then 8
+        elif .priority == 3 and .issue_type == "epic" then 9
+        else 10
+        end
+      )
+    }) |
+    sort_by(.rank, .created_at, (.repository // ""), .id)
+  ) as $ranked |
 
-  # Assign rank based on priority algorithm
-  map(. + {
-    rank: (
-      if .priority == 0 then 1
-      elif .priority == 1 and .issue_type == "bug" then 2
-      elif .priority == 2 and .issue_type == "bug" then 3
-      elif .priority == 1 and (.issue_type == "feature" or .issue_type == "task") then 4
-      elif .priority == 1 and .issue_type == "epic" then 5
-      elif .priority == 2 and (.issue_type == "feature" or .issue_type == "task") then 6
-      elif .priority == 3 and (.issue_type == "bug" or .issue_type == "feature" or .issue_type == "task") then 7
-      elif .priority == 2 and .issue_type == "epic" then 8
-      elif .priority == 3 and .issue_type == "epic" then 9
-      else 10
+  if $json_output == "true" then
+    $ranked
+  else
+    "## Ready to Work (\($ranked | length) beads)\n" +
+    (if $workspace then
+      "| # | Repo | ID | Pri | Type | Labels | Title |\n" +
+      "|---|---|---|---|---|---|---|\n"
+    else
+      "| # | ID | Pri | Type | Labels | Title |\n" +
+      "|---|---|---|---|---|---|\n"
+    end) +
+    ($ranked | to_entries | map(
+      if $workspace then
+        "| \(.key + 1) | \(.value.repository) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
+      else
+        "| \(.key + 1) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
       end
-    )
-  }) |
-
-  # Sort by rank, then by created_at (older first)
-  sort_by(.rank, .created_at) |
-
-  # JSON mode: emit the ranked array and stop (caller renders)
-  if $json_output == "true" then . else
-
-  # Count totals
-  length as $ready_count |
-
-  # Format output
-  "## Ready to Work (\($ready_count) beads)\n" +
-  "| # | ID | Pri | Type | Labels | Title |\n" +
-  "|---|---|---|---|---|---|\n" +
-  (to_entries | map(
-    "| \(.key + 1) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
-  ) | join("\n")) +
-
-  # In-progress section
-  if $show_ip == "true" and ($in_progress | length) > 0 then
-    "\n\nIn progress (other sessions):\n" +
-    ($in_progress | map("- `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\"") | join("\n"))
-  else "" end
-
+    ) | join("\n")) +
+    if $show_ip == "true" and ($in_progress | length) > 0 then
+      "\n\nIn progress (other sessions):\n" +
+      ($in_progress | map(
+        if $workspace then
+          "- [\(.repository)] `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\""
+        else
+          "- `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\""
+        end
+      ) | join("\n"))
+    else "" end +
+    if $workspace and ($diagnostics | length) > 0 then
+      "\n\nSource diagnostics:\n" +
+      ($diagnostics | map("- " + .) | join("\n"))
+    else "" end
   end
-' <<< "$ready_json"
+' <<< "$payload"

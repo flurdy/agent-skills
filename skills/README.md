@@ -25,7 +25,7 @@
 | landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | model-update-check | Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
 | name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
-| next | Pick the next bead to work on. Modes: `safe` (skip busy services), `sprint` (sort by Jira sprint), `task`/`bug`/`quick` (auto-pick) |
+| next | Globally rank ready beads across validated workspace stores, with local fallback. Modes: `safe`, `sprint`, `task`, `bug`, `quick` |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
 | plan-to-backlog | Materialize an approved plan into proposal-first Beads tracking with no-item/single-item/epic outcomes, explicit confirmation before writes, and duplicate-aware recovery |
