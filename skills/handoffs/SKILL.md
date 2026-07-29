@@ -131,6 +131,11 @@ Render from `---WORKSPACE-MEMBER-HANDOFFS---` (23 fields: the usual 21 plus
 Then subtract these repos from §3's other-repos table so the same handoffs aren't counted twice —
 a member repo listed here must not also appear as an "other repo".
 
+Member rows are **listed and pickable here but never archived here** — §3b's archive flow stays
+strictly current-repo. Tidying members is `/handoffs-tidy`'s job (REFERENCE §Archive-flow-members).
+When members hold archivable rows, say so once under this table:
+`_{N} member handoff(s) look finished — `/handoffs-tidy` to archive them._`
+
 ### 3. Render the other-repos summary
 
 If `other_repos > 0`:

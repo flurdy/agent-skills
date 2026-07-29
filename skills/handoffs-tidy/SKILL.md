@@ -77,11 +77,18 @@ if you want to stay network-light; PR/bead/branch/supersede classification still
 ### 4. Present the candidates
 
 If `current_repo_superseded == 0` **and** `current_repo_stale == 0` (after any §Jira-Done promotions)
-**and** no row has `needs-review=Y`, report nothing and stop at step 6 — the picker is already tidy:
+**and** no row has `needs-review=Y` **and** no member row is archivable (step 5c's gate), report
+nothing and stop at step 6 — the picker is already tidy:
 
 ```markdown
 _No archivable handoffs — every handoff for this repo still points at live work._
 ```
+
+> **Check step 5c's gate before stopping.** In a multi-repo workspace the current repo can be
+> perfectly tidy while its members hold many finished handoffs — member rows deliberately never feed
+> `current_repo_stale`. Stopping on the current-repo counts alone reports "nothing to tidy" while
+> archivable handoffs sit one level away, which is precisely the blind spot this command exists to
+> close. When only member candidates exist, skip to step 5c rather than stopping.
 
 If there are auto-classified candidates, render them as a table, grouped by regret (REFERENCE
 §Archive-flow defines the groups). (When the only thing flagged is `needs-review`, skip straight to
@@ -122,6 +129,30 @@ handoffs the script couldn't auto-classify: partial bead closure (`beads-progres
 same `archive.sh` call. Skip entirely when no row is flagged. This prompt goes quiet on its own as
 old handoffs age out and new ones carry `**Deliverable:**`.
 
+### 5c. 🧱 Workspace-member handoffs
+
+Run the member archive flow exactly as **REFERENCE §Archive-flow-members** specifies, after the
+current-repo steps. In a multi-repo workspace, member repos are where finished handoffs accumulate —
+the root itself often holds one or two.
+
+Read the member rows from `---WORKSPACE-MEMBER-HANDOFFS---` (23 fields: the usual 21 plus
+`{member-display}|{member-path}`) and the per-repo totals from `---WORKSPACE-MEMBER-REPOS---`.
+Classify each with the same §Status / §Archive-glyph rules as current-repo rows — member rows are
+already classified against their own repo when `--check-branches` was passed.
+
+Key points from that section, so they aren't missed:
+
+- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`.
+- **Only `safe` rows are offered from here.** `keep`-class member rows (PR closed unmerged, branch
+  gone with no merge evidence) are higher-regret — name them and point at `cd {path} && /handoffs-tidy`
+  rather than offering them.
+- **One question per member repo**, not one per candidate — `AskUserQuestion` caps at 4 options and a
+  single repo can hold more candidates than that.
+- Archive every selection across repos in **one** `archive.sh` call; it takes bare filenames and is
+  repo-agnostic.
+
+Skip the step entirely when the gate doesn't pass.
+
 ### 6. Done
 
 If nothing was archivable (steps 4–5b) or the user selected none, say so plainly and stop. This command
@@ -132,8 +163,10 @@ never touches live work and never deletes — at worst it's a no-op.
 - **`list.sh` / `archive.sh` / `REFERENCE.md` missing** (handoffs skill not installed): say so plainly
   and stop — this command is a thin driver over the handoffs skill's scripts and shared spec.
 - **No `~/.claude/handoffs/` directory**: nothing to tidy; say so and stop.
-- **Not in a git repo**: liveness is current-repo-only, so there's nothing to classify — say so and
-  stop. (Cross-repo tidying isn't supported; `cd` into the repo and re-run.)
+- **Not in a git repo**: liveness needs a repo to classify against — say so and stop. (`cd` into the
+  repo and re-run.)
+- **Multi-repo workspace**: member repos are covered by step 5c, but only their `safe` rows. Anything
+  needing judgement (`keep`-class, trunk-review) still requires `cd`ing into that member and re-running.
 - **Offline / remote unreachable**: `branch-state` degrades to local-only (`merged` still detected
   against the local default tip; no false `gone`). The Done/Stale groups just shrink. Don't retry.
 - **`gh` missing, unauthenticated, or timed out**: `pr-state` reports `unknown` and classification

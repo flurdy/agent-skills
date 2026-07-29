@@ -265,6 +265,59 @@ After archiving, **drop the archived rows** from any subsequent listing or picke
 
 ---
 
+## §Archive-flow-members — archiving workspace-member handoffs from the root
+
+Used by `/handoffs-tidy` only. `/handoffs` lists and picks member rows (§Workspace-members) but does
+not archive them — tidying is this flow's job.
+
+Member rows feed `workspace_member_stale`, never `current_repo_stale`, so §Archive-flow's candidate
+set stays strictly current-repo. That guard is deliberate and stays: a prompt aimed at the repo you're
+standing in must never sweep up a sibling's handoff. This section is the *explicit* opt-in that makes
+member handoffs tidyable without weakening it.
+
+**Gate — skip entirely unless all of:** you ran with `--check-branches` (member rows are otherwise
+unclassified), `workspace_member_handoffs > 0`, and at least one member row has
+**`archive-class=safe`**.
+
+**Only `safe` rows are offered here.** A member row classed `keep` (PR closed unmerged, or branch gone
+with no merge evidence) is higher-regret and may be the only record of an abandoned thread — judging
+that needs the full per-row context, so it requires `cd`ing into the member repo and running
+`/handoffs-tidy` there. Say so rather than silently dropping them:
+`_{N} keep-class candidate(s) in {repo} need a closer look — `cd {path}` and re-run._`
+
+Render the candidates grouped by member repo, newest first:
+
+```markdown
+## 🧱 Archive candidates — workspace members ({count})
+
+| Repo | Date | Slug | Branch | Status |
+|------|------|------|--------|--------|
+```
+
+**Confirm one repo at a time.** Do *not* enumerate candidates as individual options: `AskUserQuestion`
+caps at 4 options, and a member repo can easily hold more (the case that motivated this had 8 in one
+repo). Ask **one question per member repo**, in descending candidate count:
+
+> Archive the {N} finished handoff(s) for `{repo}`? They're all merged/superseded — the work shipped.
+
+Options:
+- **Archive all {N}** — every `safe` candidate for that repo.
+- **Superseded only ({M})** — just the rows with a non-empty `superseded-by` (the lowest-regret
+  subset). Omit this option when M is 0 or M == N.
+- **Skip {repo}** — leave them; suggest `cd {path} && /handoffs-tidy` for per-row control.
+
+Collect the selections across repos and archive them in **one** `archive.sh` call (it takes bare
+filenames and is repo-agnostic — it only ever moves files within `~/.claude/handoffs/`). Parse
+`---ARCHIVED---` / `---SKIPPED---` and confirm exactly as §Archive-flow does, naming the repos:
+
+```markdown
+✅ Archived {N} handoff(s) from {repo-list} to `~/.claude/handoffs/archive/`.
+```
+
+Never offer a member row that is `🟢 live`, `🟠 PR open`, or `unknown`.
+
+---
+
 ## §Trunk-review — assisted prompt for un-auto-classifiable trunk handoffs
 
 A **legacy** trunk-parked handoff (recorded on `master` before the `**Deliverable:**` field existed)
