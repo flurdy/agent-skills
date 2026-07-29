@@ -34,25 +34,46 @@ payload = json.loads((directory / '.beads' / 'fixture.json').read_text())
 command = arguments[0]
 
 if command == 'show':
-    issues = [i for k in ('ready', 'blocked', 'in_progress', 'other') for i in payload.get(k, [])]
-    matches = [issue for issue in issues if issue['id'] == arguments[1]]
-    if not matches:
-        print(f"issue not found: {arguments[1]}", file=sys.stderr)
-        raise SystemExit(1)
-    print(json.dumps(matches[:1]))
-    raise SystemExit(0)
-
-if command == 'update':
-    raise SystemExit(0)
-
-if command == 'blocked':
+    key = 'show'
+elif command == 'update':
+    key = 'update'
+elif command == 'blocked':
     key = 'blocked'
+elif '--id' in arguments:
+    key = 'probe'
 elif '--ready' in arguments:
     key = 'ready'
 elif '--status=in_progress' in arguments:
     key = 'in_progress'
 else:
     raise SystemExit(2)
+
+fault = payload.get('faults', {}).get(key)
+if fault == 'error':
+    print(f'simulated {key} failure', file=sys.stderr)
+    raise SystemExit(9)
+if fault == 'invalid-json':
+    print('{')
+    raise SystemExit(0)
+
+issues = [i for k in ('ready', 'blocked', 'in_progress', 'other') for i in payload.get(k, [])]
+if key == 'show':
+    selector = arguments[1]
+    matches = [
+        issue for issue in issues
+        if issue['id'] == selector or issue['id'].endswith('-' + selector)
+    ]
+    if not matches:
+        print(f"issue not found: {arguments[1]}", file=sys.stderr)
+        raise SystemExit(1)
+    print(json.dumps(matches[:1]))
+    raise SystemExit(0)
+if key == 'update':
+    raise SystemExit(0)
+if key == 'probe':
+    issue_id = arguments[arguments.index('--id') + 1]
+    print(json.dumps([issue for issue in issues if issue['id'] == issue_id]))
+    raise SystemExit(0)
 print(json.dumps(payload[key]))
 """
 
@@ -111,6 +132,7 @@ class WorkspaceFixture(unittest.TestCase):
         blocked: list[dict[str, Any]] | None = None,
         in_progress: list[dict[str, Any]] | None = None,
         other: list[dict[str, Any]] | None = None,
+        faults: dict[str, str] | None = None,
     ) -> None:
         directory.mkdir(parents=True)
         subprocess.run(
@@ -127,6 +149,7 @@ class WorkspaceFixture(unittest.TestCase):
                     "blocked": blocked or [],
                     "in_progress": in_progress or [],
                     "other": other or [],
+                    "faults": faults or {},
                 }
             ),
             encoding="utf-8",
@@ -135,8 +158,8 @@ class WorkspaceFixture(unittest.TestCase):
     def create_workspace(
         self,
         *,
-        root_data: dict[str, list[dict[str, Any]]] | None = None,
-        repositories: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+        root_data: dict[str, Any] | None = None,
+        repositories: dict[str, dict[str, Any]] | None = None,
     ) -> Path:
         root = self.base / "workspace"
         self.create_store(root, **(root_data or {}))

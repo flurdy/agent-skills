@@ -244,9 +244,23 @@ def discover_sources(root: Path) -> tuple[bool, list[Source]]:
     return True, sources
 
 
+def concise_text(text: str) -> str:
+    return text.strip().replace("\n", " ")[:240]
+
+
 def diagnostic_text(result: subprocess.CompletedProcess[str]) -> str:
-    text = (result.stderr or result.stdout).strip().replace("\n", " ")
-    return text[:240] or f"bd exited {result.returncode}"
+    return concise_text(result.stderr or result.stdout) or f"bd exited {result.returncode}"
+
+
+def store_error(source: Source) -> str | None:
+    beads = source.directory / ".beads"
+    if beads.is_symlink():
+        return "unusable .beads store: symlink"
+    if not beads.exists():
+        return "missing .beads store"
+    if not beads.is_dir():
+        return "unusable .beads store: not a directory"
+    return None
 
 
 def load_issues(source: Source, arguments: list[str]) -> tuple[list[dict[str, Any]], str | None]:
@@ -262,7 +276,7 @@ def load_issues(source: Source, arguments: list[str]) -> tuple[list[dict[str, An
     except subprocess.TimeoutExpired:
         return [], f"timed out after {COMMAND_TIMEOUT_SECONDS} seconds"
     except OSError as error:
-        return [], str(error)
+        return [], concise_text(str(error))
     if result.returncode != 0:
         return [], diagnostic_text(result)
     try:
@@ -305,16 +319,27 @@ def collect(root: Path) -> dict[str, Any]:
         "in_progress": ["list", "--status=in_progress", "--flat"],
     }
     for source in sources:
-        beads = source.directory / ".beads"
-        if workspace and (not beads.is_dir() or beads.is_symlink()):
+        error = store_error(source)
+        if workspace and error is not None:
+            payload["diagnostics"].append(f"{source.name}: {error}")
             continue
+        collected: dict[str, list[dict[str, Any]]] = {}
         for key, arguments in commands.items():
             issues, error = load_issues(source, arguments)
             if error is not None:
                 if workspace:
                     payload["diagnostics"].append(f"{source.name}: {key}: {error}")
+                    break
                 continue
-            payload[key].extend(owned_issues(source, issues, workspace))
+            owned = owned_issues(source, issues, workspace)
+            if workspace:
+                collected[key] = owned
+            else:
+                payload[key].extend(owned)
+        else:
+            if workspace:
+                for key, issues in collected.items():
+                    payload[key].extend(issues)
     return payload
 
 

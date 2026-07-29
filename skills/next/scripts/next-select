@@ -18,6 +18,7 @@ HANDOFF_LIST = SCRIPT_DIR.parents[1] / "handoffs" / "scripts" / "list.sh"
 COMMAND_TIMEOUT_SECONDS = 5
 AMBIGUOUS_EXIT = 3
 NOT_FOUND_EXIT = 4
+UNAVAILABLE_EXIT = 5
 STALE_EXIT = 6
 
 
@@ -30,17 +31,10 @@ def load_collector() -> Any:
 
 
 def usable_sources(collector: Any) -> tuple[bool, list[Any]]:
-    workspace, sources = collector.discover_sources(Path.cwd())
-    if not workspace:
-        return workspace, sources
-    return workspace, [
-        source
-        for source in sources
-        if (source.directory / ".beads").is_dir() and not (source.directory / ".beads").is_symlink()
-    ]
+    return collector.discover_sources(Path.cwd())
 
 
-def owns_issue(source: Any, issue_id: str) -> bool:
+def owns_local_issue(source: Any, issue_id: str) -> bool:
     try:
         result = subprocess.run(
             ["bd", "-C", str(source.directory), "show", issue_id, "--json", "--readonly"],
@@ -52,6 +46,43 @@ def owns_issue(source: Any, issue_id: str) -> bool:
     except (OSError, subprocess.TimeoutExpired):
         return False
     return result.returncode == 0
+
+
+def probe_issue(collector: Any, source: Any, issue_id: str) -> tuple[bool, str | None]:
+    error = collector.store_error(source)
+    if error is not None:
+        return False, error
+    try:
+        result = subprocess.run(
+            [
+                "bd",
+                "-C",
+                str(source.directory),
+                "list",
+                "--id",
+                issue_id,
+                "--all",
+                "--json",
+                "--readonly",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {COMMAND_TIMEOUT_SECONDS} seconds"
+    except OSError as command_error:
+        return False, collector.concise_text(str(command_error))
+    if result.returncode != 0:
+        return False, collector.diagnostic_text(result)
+    try:
+        issues = json.loads(result.stdout)
+    except json.JSONDecodeError as json_error:
+        return False, f"invalid bd JSON: {json_error}"
+    if not isinstance(issues, list) or not all(isinstance(issue, dict) for issue in issues):
+        return False, "invalid bd JSON: expected an issue list"
+    return any(issue.get("id") == issue_id for issue in issues), None
 
 
 def resolution(workspace: bool, source: Any, issue_id: str) -> dict[str, Any]:
@@ -88,6 +119,22 @@ def source_by_name(sources: list[Any], name: str) -> Any | None:
     return None
 
 
+def owner_match(source: Any, issue_id: str) -> dict[str, str]:
+    return {
+        "repository": source.name,
+        "repository_path": source.relative_path,
+        "selector": f"{source.name}:{issue_id}",
+    }
+
+
+def source_failure(source: Any, error: str) -> dict[str, str]:
+    return {
+        "repository": source.name,
+        "repository_path": source.relative_path,
+        "error": error,
+    }
+
+
 def resolve_index(
     workspace: bool, sources: list[Any], index: int, options: list[str]
 ) -> tuple[dict[str, Any], int]:
@@ -103,30 +150,61 @@ def resolve_index(
 
 
 def resolve_id(
-    workspace: bool, sources: list[Any], issue_id: str, qualifier: str | None
+    collector: Any,
+    workspace: bool,
+    sources: list[Any],
+    issue_id: str,
+    qualifier: str | None,
 ) -> tuple[dict[str, Any], int]:
+    selector = f"{qualifier}:{issue_id}" if qualifier is not None else issue_id
+    if not workspace and qualifier is None:
+        if owns_local_issue(sources[0], issue_id):
+            return resolution(False, sources[0], issue_id), 0
+        return {"status": "not-found", "selector": issue_id}, NOT_FOUND_EXIT
     if qualifier is not None:
         source = source_by_name(sources, qualifier)
-        if source is None or not owns_issue(source, issue_id):
-            return {"status": "not-found", "selector": f"{qualifier}:{issue_id}"}, NOT_FOUND_EXIT
+        if source is None:
+            return {"status": "not-found", "selector": selector}, NOT_FOUND_EXIT
+        owned, error = probe_issue(collector, source, issue_id)
+        if error is not None:
+            return {
+                "status": "unavailable",
+                "selector": selector,
+                "id": issue_id,
+                "failures": [source_failure(source, error)],
+            }, UNAVAILABLE_EXIT
+        if not owned:
+            return {"status": "not-found", "selector": selector}, NOT_FOUND_EXIT
         return resolution(workspace, source, issue_id), 0
 
-    owners = [source for source in sources if owns_issue(source, issue_id)]
-    if not owners:
-        return {"status": "not-found", "selector": issue_id}, NOT_FOUND_EXIT
+    owners = []
+    failures = []
+    for source in sources:
+        owned, error = probe_issue(collector, source, issue_id)
+        if error is not None:
+            failures.append(source_failure(source, error))
+        elif owned:
+            owners.append(source)
+    matches = [owner_match(source, issue_id) for source in owners]
     if len(owners) > 1:
-        return {
+        payload: dict[str, Any] = {
             "status": "ambiguous",
             "id": issue_id,
-            "matches": [
-                {
-                    "repository": source.name,
-                    "repository_path": source.relative_path,
-                    "selector": f"{source.name}:{issue_id}",
-                }
-                for source in owners
-            ],
-        }, AMBIGUOUS_EXIT
+            "matches": matches,
+        }
+        if failures:
+            payload["failures"] = failures
+        return payload, AMBIGUOUS_EXIT
+    if failures:
+        return {
+            "status": "unavailable",
+            "selector": issue_id,
+            "id": issue_id,
+            "matches": matches,
+            "failures": failures,
+        }, UNAVAILABLE_EXIT
+    if not owners:
+        return {"status": "not-found", "selector": issue_id}, NOT_FOUND_EXIT
     return resolution(workspace, owners[0], issue_id), 0
 
 
@@ -138,9 +216,13 @@ def resolve(selector: str, options: list[str], expected_id: str) -> tuple[dict[s
     else:
         qualifier, separator, issue_id = selector.partition(":")
         if separator:
-            resolved, code = resolve_id(workspace, sources, issue_id, qualifier)
+            resolved, code = resolve_id(
+                collector, workspace, sources, issue_id, qualifier
+            )
         else:
-            resolved, code = resolve_id(workspace, sources, selector, None)
+            resolved, code = resolve_id(
+                collector, workspace, sources, selector, None
+            )
     if code == 0 and expected_id and resolved["id"] != expected_id:
         return {
             "status": "stale",

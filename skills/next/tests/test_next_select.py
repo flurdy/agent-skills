@@ -135,6 +135,67 @@ class NextSelectTest(WorkspaceFixture):
         self.assertEqual(stale["actual"], "dup-1")
         self.assertEqual(self.update_calls(), [])
 
+    def test_bare_id_probe_failure_is_unavailable_before_mutation(self) -> None:
+        workspace = self.create_workspace(
+            repositories={
+                "healthy": {
+                    "other": [issue("healthy-only", 2, "task", "2026-01-01T00:00:00Z")]
+                },
+                "broken": {"faults": {"probe": "error"}},
+            }
+        )
+
+        result = self.run_select(workspace, "start", "healthy-only")
+
+        self.assertEqual(result.returncode, 5)
+        unavailable = json.loads(result.stdout)
+        self.assertEqual(unavailable["status"], "unavailable")
+        self.assertEqual(unavailable["matches"][0]["selector"], "healthy:healthy-only")
+        self.assertEqual(unavailable["failures"][0]["repository"], "broken")
+        self.assertIn("simulated probe failure", unavailable["failures"][0]["error"])
+        self.assertEqual(self.update_calls(), [])
+
+    def test_qualified_and_index_selection_keep_healthy_source_usable(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]
+            },
+            repositories={
+                "healthy": {
+                    "other": [issue("healthy-only", 2, "task", "2026-01-01T00:00:00Z")]
+                },
+                "broken": {
+                    "faults": {"ready": "error", "probe": "error"}
+                },
+            },
+        )
+
+        qualified = self.run_select(workspace, "start", "healthy:healthy-only")
+        indexed = self.run_select(
+            workspace, "start", "1", "--expect-id", "root-task"
+        )
+
+        self.assertEqual(qualified.returncode, 0)
+        self.assertEqual(indexed.returncode, 0)
+        self.assertEqual(
+            [Path(str(call["directory"])) for call in self.update_calls()],
+            [(self.base / "sources" / "healthy").resolve(), workspace.resolve()],
+        )
+
+    def test_qualified_source_probe_failure_is_unavailable(self) -> None:
+        workspace = self.create_workspace(
+            repositories={"broken": {"faults": {"probe": "invalid-json"}}}
+        )
+
+        result = self.run_select(workspace, "start", "broken:any-id")
+
+        self.assertEqual(result.returncode, 5)
+        unavailable = json.loads(result.stdout)
+        self.assertEqual(unavailable["status"], "unavailable")
+        self.assertEqual(unavailable["failures"][0]["repository"], "broken")
+        self.assertIn("invalid bd JSON", unavailable["failures"][0]["error"])
+        self.assertEqual(self.update_calls(), [])
+
     def test_handoff_lookup_runs_in_the_owning_repository(self) -> None:
         workspace = self.colliding_workspace()
         skills_root = self.base / "skills"
@@ -159,6 +220,32 @@ class NextSelectTest(WorkspaceFixture):
             (self.base / "sources" / "repo-b").resolve(),
         )
         self.assertEqual(arguments.split(), ["--bead", "dup-1", "--check-branches"])
+        self.assertEqual(self.update_calls(), [])
+
+    def test_local_mode_keeps_shorthand_and_store_fallback_behavior(self) -> None:
+        local = self.base / "local-compat"
+        self.create_store(
+            local, ready=[issue("local-task", 2, "task", "2026-01-01T00:00:00Z")]
+        )
+
+        shorthand = self.run_select(local, "resolve", "task")
+        self.assertEqual(shorthand.returncode, 0)
+        self.assertEqual(json.loads(shorthand.stdout)["id"], "task")
+
+        beads_target = self.base / "local-beads"
+        shutil.move(local / ".beads", beads_target)
+        (local / ".beads").symlink_to(beads_target, target_is_directory=True)
+        candidates = self.run_script(
+            SKILL_DIR / "scripts" / "next-bd", local, "--json"
+        )
+        symlinked = self.run_select(local, "resolve", "task")
+        self.assertEqual([item["id"] for item in json.loads(candidates.stdout)], ["local-task"])
+        self.assertEqual(symlinked.returncode, 0)
+
+        (local / ".beads").unlink()
+        missing = self.run_select(local, "resolve", "local-task")
+        self.assertEqual(missing.returncode, 4)
+        self.assertEqual(json.loads(missing.stdout)["status"], "not-found")
         self.assertEqual(self.update_calls(), [])
 
     def test_local_mode_routes_to_the_current_store(self) -> None:

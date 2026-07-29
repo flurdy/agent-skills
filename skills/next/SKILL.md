@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Ba
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.6.0"
+version: "1.7.0"
 author: "flurdy"
 ---
 
@@ -134,6 +134,13 @@ When invoked:
    owner-qualified in-progress awareness. `--json` adds `repository`, `repository_path`,
    and `selector` to workspace candidates; local JSON remains backward compatible.
 
+   Workspace stores are read independently and read-only. A missing or unusable `.beads`
+   directory, command failure, timeout, or malformed response excludes only that source and
+   emits a concise `Source diagnostics` entry; healthy stores remain ranked. A source is
+   included only when its ready, blocked, and in-progress reads all succeed, so partial state
+   cannot make blocked or busy work look selectable. JSON mode writes the same diagnostics to
+   stderr and keeps stdout valid JSON. No listing path synchronizes or merges stores.
+
 2. Parse command argument:
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Show the script output with `--avoid-busy`, ask user to pick
@@ -215,8 +222,13 @@ Resolution prints JSON and never writes:
   the absolute `directory` of the owning store. `handoff` and `start` reuse that store.
 - `{"status":"ambiguous", ...}` (exit 3) means the bare ID exists in several stores. **Do
   not mutate anything.** Show the `matches[].selector` values and ask which one to start.
-- `{"status":"not-found", ...}` (exit 4) means no usable store owns that selector. Show the
-  ranked table again rather than guessing.
+- `{"status":"not-found", ...}` (exit 4) means every queried store answered and none owns
+  that selector. Show the ranked table again rather than guessing.
+- `{"status":"unavailable", ...}` (exit 5) means ownership could not be proven because a
+  relevant store probe failed, timed out, or returned malformed data. **Do not mutate.** Show
+  `failures`, and prefer a repository-qualified selector when the intended healthy owner is
+  known. A bare ID never treats probe failure as “not owned,” because that could hide a
+  duplicate ID in the failed store.
 - `{"status":"stale", ...}` (exit 6) means the index no longer points at `--expect-id`.
   Re-render the table and ask again; nothing was written.
 
@@ -227,7 +239,7 @@ Resolution prints JSON and never writes:
 When listing:
 
 1. Run the `next-bd` script.
-2. **Reproduce the full ranked table in your own markdown reply**, every row, using the columns from the Output Format above. Do not truncate to "top 3" and do not replace the table with a narrative.
+2. **Reproduce the full ranked table and any source diagnostics in your own markdown reply**, every row, using the columns from the Output Format above. Do not truncate to "top 3" and do not replace the table with a narrative.
 3. *After* the table, you may add a short note (1–2 sentences) on the strongest candidate(s) and any in-progress overlap — but the table comes first and stays complete.
 4. End with the picker prompt: `Pick a number, a bead ID, or type task/bug/quick to auto-pick.`
 5. When the user picks a number, pass that index to `next-select` with the same collector
@@ -242,6 +254,7 @@ Listing mode never marks anything `in_progress`. It only selects work once the u
 - **User picks in_progress bead**: Warn that another session may be working on it; require explicit confirmation before starting
 - **Invalid ID**: Show error and list valid options
 - **ID owned by several stores**: `next-select` returns `ambiguous` and writes nothing; ask which `repo:id` to start
+- **Ownership probe failed**: `next-select` returns `unavailable` and writes nothing; report the failed stores and ask for a qualified healthy owner or retry
 - **User says "skip"**: Show next 5 options
 
 ## Priority Ranking Algorithm

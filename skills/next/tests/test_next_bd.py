@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
+import sys
 import unittest
+from unittest import mock
 from pathlib import Path
+from typing import Any
 
 from workspace_fixture import SKILL_DIR, WorkspaceFixture, issue
 
@@ -167,6 +171,118 @@ class NextBdTest(WorkspaceFixture):
         candidates = json.loads(self.run_next(workspace, "--json").stdout)
         self.assertEqual([candidate["id"] for candidate in candidates], ["root-task"])
         self.assertNotIn("repository", candidates[0])
+
+    def test_failing_source_keeps_healthy_candidates_and_reports_diagnostic(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]
+            },
+            repositories={
+                "healthy": {
+                    "ready": [issue("healthy-task", 1, "task", "2026-01-01T00:00:00Z")]
+                },
+                "broken": {
+                    "ready": [issue("hidden-task", 0, "bug", "2026-01-01T00:00:00Z")],
+                    "faults": {"ready": "error"},
+                },
+            },
+        )
+
+        result = self.run_next(workspace, "--json")
+        candidates = json.loads(result.stdout)
+
+        self.assertEqual(
+            [(candidate["repository"], candidate["id"]) for candidate in candidates],
+            [("healthy", "healthy-task"), ("workspace", "root-task")],
+        )
+        self.assertIn("next-bd: broken: ready: simulated ready failure", result.stderr)
+        calls = self.recorded_calls()
+        self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
+        self.assertFalse(any(call["arguments"][0] == "update" for call in calls))
+
+    def test_late_source_failure_discards_its_partial_results(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]
+            },
+            repositories={
+                "broken": {
+                    "ready": [issue("unsafe-task", 0, "bug", "2026-01-01T00:00:00Z")],
+                    "faults": {"blocked": "error"},
+                }
+            },
+        )
+
+        result = self.run_next(workspace, "--json")
+
+        self.assertEqual(
+            [candidate["id"] for candidate in json.loads(result.stdout)],
+            ["root-task"],
+        )
+        self.assertIn("broken: blocked: simulated blocked failure", result.stderr)
+
+    def test_malformed_and_unusable_sources_have_concise_diagnostics(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]
+            },
+            repositories={
+                "malformed": {"faults": {"ready": "invalid-json"}},
+                "missing": {},
+                "symlinked": {},
+            },
+        )
+        shutil.rmtree(self.base / "sources" / "missing" / ".beads")
+        symlinked = self.base / "sources" / "symlinked" / ".beads"
+        shutil.rmtree(symlinked)
+        symlinked.symlink_to(self.base / "external-beads", target_is_directory=True)
+
+        result = self.run_next(workspace)
+
+        self.assertIn("workspace | root-task", result.stdout)
+        self.assertIn("malformed: ready: invalid bd JSON", result.stdout)
+        self.assertIn("missing: missing .beads store", result.stdout)
+        self.assertIn("symlinked: unusable .beads store: symlink", result.stdout)
+
+    def test_timed_out_source_is_reported_without_hiding_healthy_source(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "next_collect_test", SKILL_DIR / "scripts" / "collect.py"
+        )
+        collector = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = collector
+        spec.loader.exec_module(collector)
+        source = collector.Source("slow", "repos/slow", self.base / "slow")
+
+        with mock.patch.object(
+            collector.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["bd"], 5),
+        ):
+            issues, error = collector.load_issues(source, ["list", "--ready"])
+
+        self.assertEqual(issues, [])
+        self.assertEqual(error, "timed out after 5 seconds")
+
+        workspace = self.create_workspace(
+            repositories={"healthy": {}, "slow": {}}
+        )
+
+        def load_fixture(
+            source: Any, arguments: list[str]
+        ) -> tuple[list[dict[str, Any]], str | None]:
+            if source.name == "slow":
+                return [], "timed out after 5 seconds"
+            if "--ready" in arguments and source.name == "healthy":
+                return [issue("healthy-task", 1, "task", "2026-01-01T00:00:00Z")], None
+            return [], None
+
+        with mock.patch.object(collector, "load_issues", side_effect=load_fixture):
+            payload = collector.collect(workspace)
+
+        self.assertEqual([item["id"] for item in payload["ready"]], ["healthy-task"])
+        self.assertEqual(
+            payload["diagnostics"], ["slow: ready: timed out after 5 seconds"]
+        )
 
     def test_single_store_output_remains_compatible(self) -> None:
         local = self.base / "local"
