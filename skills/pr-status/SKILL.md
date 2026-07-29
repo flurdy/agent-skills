@@ -13,7 +13,7 @@ author: "flurdy"
 
 Show enriched status for all open PRs created by you across your GitHub org: CI checks, approvals, unresolved review threads, and linked Jira discussion. Also shows recently closed PRs.
 
-The GitHub org is auto-detected from the current repo's `origin` remote, or can be overridden via `PR_STATUS_ORG` env var.
+The GitHub org is auto-detected from the current repo's `origin` remote, falling back to the most common org across a multi-repo workspace's member repos when the cwd repo has no GitHub remote of its own (a workspace root is often deliberately local-only). Override via the `PR_STATUS_ORG` env var or a first positional argument. When nothing resolves the scripts exit non-zero with an explanatory message rather than returning an empty list.
 
 **The output of this skill is the rendered dashboard** (steps 3–6). Fetching without rendering is not a valid run.
 
