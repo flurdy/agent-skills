@@ -34,7 +34,9 @@ line_of() {
 
 [[ -f "$SKILL" ]] || fail "missing plan-to-backlog skill"
 
-assert_contains "$SKILL" 'disable-model-invocation: true'
+assert_not_contains "$SKILL" 'disable-model-invocation:'
+assert_contains "$SKILL" 'Select this skill dynamically, or through `/plan-to-backlog`, only when:'
+assert_contains "$SKILL" 'The existence or approval of a plan alone is not a trigger.'
 assert_contains "$SKILL" 'Proposal-first. May recommend no backlog change. Never writes without confirmation.'
 
 frontmatter=$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$SKILL")

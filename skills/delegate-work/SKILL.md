@@ -1,11 +1,10 @@
 ---
 name: delegate-work
-description: Safely coordinate bounded delegation while preserving observable outcome and acceptance-evidence pairs through one-writer execution, independent review, and parent validation. Explicit invocation only.
+description: Coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve latency, context, or confidence. Use dynamically only when delegation can pay; decline trivial, tightly coupled, or inherently serial work.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
-disable-model-invocation: true
 model-tier: premium
 effort: high
-version: "2.0.1"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -37,13 +36,16 @@ only when architecture, risk, or final judgment warrants it.
 
 ## 1. Decide whether delegation pays
 
-Use this skill only after explicit user invocation. Invocation authorizes ordinary
-bounded delegation within the requested scope, not external side effects, tracker
-mutations, product decisions, or broader work.
+Select this skill dynamically when a non-trivial task has clear enough outcomes and
+acceptance evidence, and independent investigation, separated implementation and
+review, or genuinely separable workstreams could materially improve latency, context,
+or confidence. Explicit invocation remains supported.
 
-Decline delegation and continue directly when the task is trivial, tightly coupled,
-inherently serial, or cheaper to do than to brief and supervise. Delegation must save
-more context, latency, or cost than briefing, coordination, and review consume.
+Selection authorizes the delegation return-on-investment assessment, not external side
+effects, tracker mutations, product decisions, broader work, or bypassing child-route
+consent. Decline delegation and continue directly when the task is trivial, tightly
+coupled, inherently serial, or cheaper to do than to brief and supervise. Delegation
+must save more context, latency, or cost than briefing, coordination, and review consume.
 
 The parent always owns:
 

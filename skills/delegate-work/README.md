@@ -1,8 +1,10 @@
 # Delegate Work skill
 
-`/delegate-work` is the single explicit entry point for coordinating delegated work.
-It replaces the former `/orchestrate` name, which was too broad and conflicted with
-runtime-specific orchestration concepts. No compatibility alias is retained.
+`/delegate-work` is the bounded policy entry point for coordinating delegated work.
+Models may select it dynamically when delegation can materially improve a non-trivial
+task; explicit invocation remains supported. It replaces the former `/orchestrate` name,
+which was too broad and conflicted with runtime-specific orchestration concepts. No
+compatibility alias is retained.
 
 It is a safe delegation and integration workflow, and — by decision (`skills-mcn`) —
 deliberately not a persistent or adaptive task scheduler. See

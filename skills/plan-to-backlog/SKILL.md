@@ -1,12 +1,11 @@
 ---
 name: plan-to-backlog
-description: "Proposal-first materialization of an approved cited plan into proportionate Beads tracking. Recommends no item, one item, or a bounded epic; checks owners and duplicates; previews every write; and applies only after explicit confirmation with partial-failure recovery."
-disable-model-invocation: true
+description: "Materialize an explicitly approved cited plan into proportionate Beads tracking when the user asks for durable ownership. Use dynamically for that bounded request: recommend no item, one item, or a bounded epic; check owners and duplicates; preview every write; and apply only after exact confirmation."
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(bd status:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd children:*),Bash(~/.agents/skills/plan-to-backlog/scripts/utc-now.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/confirmed-bd.sh:*),mcp__jira__*,mcp__confluence__*"
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -24,16 +23,18 @@ The canonical behavior and thresholds are defined in the
 
 ## When to use
 
-Use `/plan-to-backlog` when:
+Select this skill dynamically, or through `/plan-to-backlog`, only when:
 
 - an `/architect` or implementation plan has been explicitly approved;
 - the plan has a stable source or exact capturable session text;
-- the user wants durable Beads ownership rather than another planning pass; and
+- the user explicitly asks to create or reconcile durable Beads ownership rather than
+  continue planning; and
 - no-item versus single-item versus epic is still a meaningful decision.
 
-Do not use it for raw ideas or Jira intake (`/triage`), plan refinement (`/architect`),
-retrospective backlog quality (`/backlog-groom`), or cross-system reconciliation
-(`/tracking-sweep` or `/trello-beads`).
+The existence or approval of a plan alone is not a trigger. Do not use this skill for raw
+ideas or Jira intake (`/triage`), plan refinement (`/architect`), retrospective backlog
+quality (`/backlog-groom`), or cross-system reconciliation (`/tracking-sweep` or
+`/trello-beads`).
 
 ## Usage
 

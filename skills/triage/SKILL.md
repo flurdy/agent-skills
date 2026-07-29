@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(bd:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 
@@ -25,10 +25,11 @@ Analyze user requests and create appropriate beads with intelligent investigatio
 
 This skill owns raw prompt and Jira intake. When input clearly cites an approved
 architecture or implementation plan and asks for durable materialization, stop with a
-paste-ready `/plan-to-backlog <plan-source>` handoff. Do not invoke the opt-in-only skill
-on the user's behalf. Do not classify plan children or create beads first.
-`/plan-to-backlog` owns source citation, no-item versus single-item versus epic disposition,
-proposal preview, confirmation, apply, and recovery.
+paste-ready `/plan-to-backlog <plan-source>` handoff. Do not invoke the separate
+materialization workflow from inside triage.
+Do not classify plan children or create beads first. `/plan-to-backlog` owns source
+citation, no-item versus single-item versus epic disposition, proposal preview,
+confirmation, apply, and recovery.
 
 If the plan is not approved or the user is asking to improve it, route to `/architect`
 instead of creating tracking from an unstable plan.

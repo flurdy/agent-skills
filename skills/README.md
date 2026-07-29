@@ -14,7 +14,7 @@
 | contract-check | Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests |
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
 | create-pr | Create a pull request from the current branch following project conventions, and close the associated bead |
-| delegate-work | Safely coordinate bounded delegation while preserving observable outcome → acceptance-evidence pairs through writer, reviewer, and parent validation; explicit invocation only |
+| delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
@@ -28,7 +28,7 @@
 | next | Globally rank ready beads across validated workspace stores, isolating failed sources with local fallback. Modes: `safe`, `sprint`, `task`, `bug`, `quick` |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
 | pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
-| plan-to-backlog | Materialize an approved plan into proposal-first Beads tracking with no-item/single-item/epic outcomes, explicit confirmation before writes, and duplicate-aware recovery |
+| plan-to-backlog | Dynamically materialize an explicitly approved plan into proposal-first Beads tracking when durable ownership is requested, with no-item/single-item/epic outcomes and explicit confirmation before writes |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion |
 | project-brief | Read-only workspace-level synthesis of project outcomes, requirement linkage, delivery evidence, coordination risks, and the single most important next coordination action |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
