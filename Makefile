@@ -79,7 +79,7 @@ test-plan-to-backlog:
 	@python3 -m unittest discover -s skills/plan-to-backlog/tests -p 'test_decision_fixtures.py'
 
 test-next:
-	@python3 -m unittest discover -s skills/next/tests -p 'test_next_bd.py'
+	@python3 -m unittest discover -s skills/next/tests -p 'test_*.py'
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

@@ -4,159 +4,17 @@ import json
 import os
 import shutil
 import subprocess
-import tempfile
 import unittest
 from pathlib import Path
-from typing import Any
 
-SCRIPT = Path(__file__).parents[1] / "scripts" / "next-bd"
+from workspace_fixture import SKILL_DIR, WorkspaceFixture, issue
 
-
-def issue(
-    issue_id: str,
-    priority: int,
-    issue_type: str,
-    created_at: str,
-    *,
-    labels: list[str] | None = None,
-) -> dict[str, Any]:
-    return {
-        "id": issue_id,
-        "title": f"Title for {issue_id}",
-        "priority": priority,
-        "issue_type": issue_type,
-        "labels": labels or [],
-        "created_at": created_at,
-    }
+SCRIPT = SKILL_DIR / "scripts" / "next-bd"
 
 
-class NextBdTest(unittest.TestCase):
-    def setUp(self) -> None:
-        self.temporary = tempfile.TemporaryDirectory()
-        self.base = Path(self.temporary.name)
-        self.fake_bin = self.base / "bin"
-        self.fake_bin.mkdir()
-        fake_bd = self.fake_bin / "bd"
-        fake_bd.write_text(
-            """#!/usr/bin/env python3
-import json
-import sys
-from pathlib import Path
-
-payload = json.loads((Path.cwd() / '.beads' / 'fixture.json').read_text())
-arguments = sys.argv[1:]
-if arguments[0] == 'blocked':
-    key = 'blocked'
-elif '--ready' in arguments:
-    key = 'ready'
-elif '--status=in_progress' in arguments:
-    key = 'in_progress'
-else:
-    raise SystemExit(2)
-print(json.dumps(payload[key]))
-""",
-            encoding="utf-8",
-        )
-        fake_bd.chmod(0o755)
-        self.environment = os.environ.copy()
-        self.environment["PATH"] = f"{self.fake_bin}:{self.environment['PATH']}"
-
-    def tearDown(self) -> None:
-        self.temporary.cleanup()
-
-    def create_store(
-        self,
-        directory: Path,
-        *,
-        ready: list[dict[str, Any]] | None = None,
-        blocked: list[dict[str, Any]] | None = None,
-        in_progress: list[dict[str, Any]] | None = None,
-    ) -> None:
-        directory.mkdir(parents=True)
-        subprocess.run(
-            ["git", "init", "-q", "--initial-branch=main"],
-            cwd=directory,
-            check=True,
-        )
-        beads = directory / ".beads"
-        beads.mkdir()
-        (beads / "fixture.json").write_text(
-            json.dumps(
-                {
-                    "ready": ready or [],
-                    "blocked": blocked or [],
-                    "in_progress": in_progress or [],
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    def create_workspace(
-        self,
-        *,
-        root_data: dict[str, list[dict[str, Any]]] | None = None,
-        repositories: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
-    ) -> Path:
-        root = self.base / "workspace"
-        self.create_store(root, **(root_data or {}))
-        (root / "repos").mkdir()
-        (root / "infrastructure").mkdir()
-        for relative_path in (
-            "docs/prds",
-            "docs/adrs",
-            "docs/architecture",
-            "docs/runbooks",
-        ):
-            (root / relative_path).mkdir(parents=True)
-        (root / "AGENTS.md").write_text("# Fixture agents\n", encoding="utf-8")
-        (root / "Makefile").write_text("all:\n\t@true\n", encoding="utf-8")
-
-        entries = []
-        for index, (name, data) in enumerate((repositories or {}).items()):
-            target = self.base / "sources" / name
-            self.create_store(target, **data)
-            link = root / "repos" / name
-            link.symlink_to(os.path.relpath(target, link.parent), target_is_directory=True)
-            entries.append(
-                {
-                    "name": name,
-                    "path": f"repos/{name}",
-                    "role": "primary" if index == 0 else "service",
-                }
-            )
-
-        manifest = {
-            "version": 1,
-            "name": "Fixture Workspace",
-            "repositories": entries,
-            "infrastructure": [],
-        }
-        (root / "workspace.json").write_text(json.dumps(manifest), encoding="utf-8")
-        repository_lines = "\n".join(
-            f"- `{entry['name']}` — [`{entry['path']}`]({entry['path']}) ({entry['role']})"
-            for entry in entries
-        ) or "_No repositories are registered yet._"
-        (root / "README.md").write_text(
-            "# Fixture Workspace\n\n"
-            "<!-- project-workspace:repositories:start -->\n"
-            f"{repository_lines}\n"
-            "<!-- project-workspace:repositories:end -->\n\n"
-            "<!-- project-workspace:infrastructure:start -->\n"
-            "_No infrastructure references are registered yet._\n"
-            "<!-- project-workspace:infrastructure:end -->\n",
-            encoding="utf-8",
-        )
-        return root
-
+class NextBdTest(WorkspaceFixture):
     def run_next(self, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(
-            [str(SCRIPT), *arguments],
-            cwd=directory,
-            env=self.environment,
-            capture_output=True,
-            check=True,
-            text=True,
-        )
+        return self.run_script(SCRIPT, directory, *arguments)
 
     def test_workspace_candidates_are_globally_ranked_and_owned(self) -> None:
         workspace = self.create_workspace(

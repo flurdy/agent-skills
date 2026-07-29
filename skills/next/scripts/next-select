@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Resolve a /next selection to its owning Beads store and act only there."""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import subprocess
+import sys
+from pathlib import Path
+from typing import Any
+
+sys.dont_write_bytecode = True
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+HANDOFF_LIST = SCRIPT_DIR.parents[1] / "handoffs" / "scripts" / "list.sh"
+COMMAND_TIMEOUT_SECONDS = 5
+AMBIGUOUS_EXIT = 3
+NOT_FOUND_EXIT = 4
+STALE_EXIT = 6
+
+
+def load_collector() -> Any:
+    spec = importlib.util.spec_from_file_location("next_collect", SCRIPT_DIR / "collect.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def usable_sources(collector: Any) -> tuple[bool, list[Any]]:
+    workspace, sources = collector.discover_sources(Path.cwd())
+    if not workspace:
+        return workspace, sources
+    return workspace, [
+        source
+        for source in sources
+        if (source.directory / ".beads").is_dir() and not (source.directory / ".beads").is_symlink()
+    ]
+
+
+def owns_issue(source: Any, issue_id: str) -> bool:
+    try:
+        result = subprocess.run(
+            ["bd", "-C", str(source.directory), "show", issue_id, "--json", "--readonly"],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return result.returncode == 0
+
+
+def resolution(workspace: bool, source: Any, issue_id: str) -> dict[str, Any]:
+    return {
+        "status": "resolved",
+        "workspace": workspace,
+        "id": issue_id,
+        "repository": source.name,
+        "repository_path": source.relative_path,
+        "directory": str(source.directory.resolve()),
+    }
+
+
+def ranked_candidates(options: list[str]) -> list[dict[str, Any]]:
+    result = subprocess.run(
+        [str(SCRIPT_DIR / "next-bd"), "--json", *options],
+        capture_output=True,
+        check=False,
+        text=True,
+    )
+    if result.returncode != 0:
+        return []
+    try:
+        candidates = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return []
+    return candidates if isinstance(candidates, list) else []
+
+
+def source_by_name(sources: list[Any], name: str) -> Any | None:
+    for source in sources:
+        if source.name == name:
+            return source
+    return None
+
+
+def resolve_index(
+    workspace: bool, sources: list[Any], index: int, options: list[str]
+) -> tuple[dict[str, Any], int]:
+    candidates = ranked_candidates(options)
+    if index < 1 or index > len(candidates):
+        return {"status": "not-found", "selector": str(index)}, NOT_FOUND_EXIT
+    candidate = candidates[index - 1]
+    name = candidate.get("repository", sources[0].name)
+    source = source_by_name(sources, name)
+    if source is None:
+        return {"status": "not-found", "selector": str(index)}, NOT_FOUND_EXIT
+    return resolution(workspace, source, candidate["id"]), 0
+
+
+def resolve_id(
+    workspace: bool, sources: list[Any], issue_id: str, qualifier: str | None
+) -> tuple[dict[str, Any], int]:
+    if qualifier is not None:
+        source = source_by_name(sources, qualifier)
+        if source is None or not owns_issue(source, issue_id):
+            return {"status": "not-found", "selector": f"{qualifier}:{issue_id}"}, NOT_FOUND_EXIT
+        return resolution(workspace, source, issue_id), 0
+
+    owners = [source for source in sources if owns_issue(source, issue_id)]
+    if not owners:
+        return {"status": "not-found", "selector": issue_id}, NOT_FOUND_EXIT
+    if len(owners) > 1:
+        return {
+            "status": "ambiguous",
+            "id": issue_id,
+            "matches": [
+                {
+                    "repository": source.name,
+                    "repository_path": source.relative_path,
+                    "selector": f"{source.name}:{issue_id}",
+                }
+                for source in owners
+            ],
+        }, AMBIGUOUS_EXIT
+    return resolution(workspace, owners[0], issue_id), 0
+
+
+def resolve(selector: str, options: list[str], expected_id: str) -> tuple[dict[str, Any], int]:
+    collector = load_collector()
+    workspace, sources = usable_sources(collector)
+    if selector.isdigit():
+        resolved, code = resolve_index(workspace, sources, int(selector), options)
+    else:
+        qualifier, separator, issue_id = selector.partition(":")
+        if separator:
+            resolved, code = resolve_id(workspace, sources, issue_id, qualifier)
+        else:
+            resolved, code = resolve_id(workspace, sources, selector, None)
+    if code == 0 and expected_id and resolved["id"] != expected_id:
+        return {
+            "status": "stale",
+            "selector": selector,
+            "expected": expected_id,
+            "actual": resolved["id"],
+        }, STALE_EXIT
+    return resolved, code
+
+
+def run_handoff(directory: Path, issue_id: str, extra: list[str]) -> int:
+    if not HANDOFF_LIST.is_file():
+        print(f"next-select: handoff lookup unavailable: {HANDOFF_LIST}", file=sys.stderr)
+        return 0
+    result = subprocess.run(
+        [str(HANDOFF_LIST), "--bead", issue_id, *extra],
+        cwd=directory,
+        check=False,
+    )
+    return result.returncode
+
+
+def run_start(directory: Path, issue_id: str) -> int:
+    update = subprocess.run(
+        ["bd", "-C", str(directory), "update", issue_id, "--status=in_progress"],
+        check=False,
+    )
+    if update.returncode != 0:
+        return update.returncode
+    return subprocess.run(
+        ["bd", "-C", str(directory), "show", issue_id],
+        check=False,
+    ).returncode
+
+
+def parse_arguments(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=("resolve", "handoff", "start"))
+    parser.add_argument("selector")
+    parser.add_argument("--avoid-busy", action="store_true")
+    parser.add_argument("--type", default="")
+    parser.add_argument("--expect-id", default="")
+    parser.add_argument("--check-branches", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    arguments = parse_arguments(argv)
+    options = []
+    if arguments.avoid_busy:
+        options.append("--avoid-busy")
+    if arguments.type:
+        options.append(f"--type={arguments.type}")
+
+    resolved, code = resolve(arguments.selector, options, arguments.expect_id)
+    if code != 0 or arguments.command == "resolve":
+        json.dump(resolved, sys.stdout, separators=(",", ":"))
+        sys.stdout.write("\n")
+        return code
+
+    directory = Path(resolved["directory"])
+    if arguments.command == "handoff":
+        return run_handoff(
+            directory,
+            resolved["id"],
+            ["--check-branches"] if arguments.check_branches else [],
+        )
+    return run_start(directory, resolved["id"])
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

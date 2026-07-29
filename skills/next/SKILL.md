@@ -3,11 +3,11 @@ name: next
 description: >
   Pick the next bead to work on. Globally ranks ready tasks across validated
   workspace Beads stores while preserving local single-store behavior.
-allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
+allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.5.0"
+version: "1.6.0"
 author: "flurdy"
 ---
 
@@ -35,6 +35,7 @@ Help select the next bead to work on based on readiness and user preferences.
 /next quick              # Auto-pick an easy win (excludes busy services)
 /next bug                # Auto-pick the next most important bug and fix it
 /next <bead-id>          # Start working on specific bead
+/next <repo>:<bead-id>   # Start a bead whose ID exists in several workspace stores
 ```
 
 ## What This Skill Does
@@ -137,29 +138,28 @@ When invoked:
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Show the script output with `--avoid-busy`, ask user to pick
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
-   - `task`: Use `next-bd --json`, auto-select the top-ranked bead, and start it
-   - `quick`: Use `next-bd --json --avoid-busy`, apply the quick heuristics, and start it
-   - `bug`: Use `next-bd --json --type=bug`, auto-select the top-ranked bug, and start it
-   - `<bead-id>`: Start that specific bead
+   - `task`: Use `next-bd --json`, auto-select the top-ranked bead, and start it through `next-select start <selector>`
+   - `quick`: Use `next-bd --json --avoid-busy`, apply the quick heuristics, and start it through `next-select start <selector>`
+   - `bug`: Use `next-bd --json --type=bug`, auto-select the top-ranked bug, and start it through `next-select start <selector>`
+   - `<bead-id>` or `<repo>:<bead-id>`: Start that specific bead
 
-3. If specific bead ID provided:
+3. If a specific bead ID is provided, resolve its owning store first (see
+   **Owner-routed selection** below):
 
    ```bash
-   bd show <id>
-   ```
-   Then **run the handoff check** (see *Resume awareness* below) before marking in_progress:
-   ```bash
-   bd update <id> --status=in_progress
+   ~/.agents/skills/next/scripts/next-select resolve <selector>
    ```
 
 4. Otherwise, present the script output and ask user to choose
 
 5. On selection:
-   - Preserve the selected JSON candidate's `repository` and `repository_path`; never infer
-     ownership from its ID or labels
+   - Never infer ownership from a bead's ID, labels, or the current directory
    - **Run the handoff check** (see *Resume awareness* below)
-   - In workspace mode, run `bd -C <repository_path> update <id> --status=in_progress` and
-     `bd -C <repository_path> show <id>`; use the existing local commands otherwise
+   - Start the bead in its owning store:
+     ```bash
+     ~/.agents/skills/next/scripts/next-select start <selector>
+     ```
+     This marks it `in_progress` and shows its full details in that store only
    - If bead has description with steps, highlight the first step
 
 ## Resume awareness (handoff check before starting)
@@ -172,12 +172,15 @@ Two-step so the common case (a fresh bead with no handoff) stays cheap — no ne
 
 1. **Cheap pass (no network):**
    ```bash
-   ~/.agents/skills/handoffs/scripts/list.sh --bead <id>
+   ~/.agents/skills/next/scripts/next-select handoff <selector>
    ```
-   Read the `---MATCHED-HANDOFFS---` section (current-repo, supersede-filtered, newest first). **Empty → proceed straight to in_progress, say nothing.** This is the usual path.
+   This runs the handoffs lookup inside the bead's owning repository, so a member repo's
+   handoff is matched instead of the workspace root's. Handoffs match by owning repository,
+   so one written from the workspace root about a member's bead will not surface here.
+   Read the `---MATCHED-HANDOFFS---` section (owning-repo, supersede-filtered, newest first). **Empty → proceed straight to in_progress, say nothing.** This is the usual path.
 2. **Confirm live (only if step 1 matched):** a squash-merged branch still looks live to the cheap pass. Re-run with liveness to drop shipped/merged handoffs:
    ```bash
-   ~/.agents/skills/handoffs/scripts/list.sh --check-branches --bead <id>
+   ~/.agents/skills/next/scripts/next-select handoff <selector> --check-branches
    ```
    If `---MATCHED-HANDOFFS---` is now empty, the work already shipped — **proceed silently**. Otherwise take the **newest** matched line.
 
@@ -192,6 +195,31 @@ When a live handoff remains, ask with `AskUserQuestion` before starting:
 
 Keep it to one prompt. If `bd`/`list.sh` errors or there's no handoffs dir, proceed silently — the check is a courtesy, never a blocker.
 
+## Owner-routed selection
+
+Every selection resolves through one command before anything is read or written:
+
+```bash
+~/.agents/skills/next/scripts/next-select resolve <selector>
+```
+
+`<selector>` is a table index (`3`), a bead ID (`mycode-abc`), or a repository-qualified ID
+(`frontend:mycode-abc`). Pass the same `--avoid-busy` or `--type=<type>` options used to
+render the table so an index resolves against the list the user actually saw. Prefer the
+candidate's own `selector`; when you do pass an index, add `--expect-id <id>` so a list that
+changed since it was rendered fails instead of starting a different bead.
+
+Resolution prints JSON and never writes:
+
+- `{"status":"resolved", ...}` (exit 0) carries `id`, `repository`, `repository_path`, and
+  the absolute `directory` of the owning store. `handoff` and `start` reuse that store.
+- `{"status":"ambiguous", ...}` (exit 3) means the bare ID exists in several stores. **Do
+  not mutate anything.** Show the `matches[].selector` values and ask which one to start.
+- `{"status":"not-found", ...}` (exit 4) means no usable store owns that selector. Show the
+  ranked table again rather than guessing.
+- `{"status":"stale", ...}` (exit 6) means the index no longer points at `--expect-id`.
+  Re-render the table and ask again; nothing was written.
+
 ## Listing Mode (default and `list`)
 
 `/next` with no auto-pick argument — and the explicit `/next list` — must **show the table**, not a prose summary of it. The `next-bd` output arrives inside a Bash tool result that the UI collapses to a few lines, so do not rely on the user seeing it there.
@@ -202,8 +230,8 @@ When listing:
 2. **Reproduce the full ranked table in your own markdown reply**, every row, using the columns from the Output Format above. Do not truncate to "top 3" and do not replace the table with a narrative.
 3. *After* the table, you may add a short note (1–2 sentences) on the strongest candidate(s) and any in-progress overlap — but the table comes first and stays complete.
 4. End with the picker prompt: `Pick a number, a bead ID, or type task/bug/quick to auto-pick.`
-5. When the user picks a number, rerun the same collector options with `--json` and resolve
-   that current index so the selected candidate retains its owning repository path.
+5. When the user picks a number, pass that index to `next-select` with the same collector
+   options so the selection resolves against the list they saw and keeps its owning store.
 
 Listing mode never marks anything `in_progress`. It only selects work once the user replies.
 
@@ -213,6 +241,7 @@ Listing mode never marks anything `in_progress`. It only selects work once the u
 - **All open beads in progress**: Warn that another session may be working on them; ask user if they want to see in_progress beads anyway (may cause conflicts)
 - **User picks in_progress bead**: Warn that another session may be working on it; require explicit confirmation before starting
 - **Invalid ID**: Show error and list valid options
+- **ID owned by several stores**: `next-select` returns `ambiguous` and writes nothing; ask which `repo:id` to start
 - **User says "skip"**: Show next 5 options
 
 ## Priority Ranking Algorithm
@@ -307,6 +336,10 @@ Within each bucket, preserve the `next-bd` rank order.
 
 Same prompt as default mode (`1-N`, bead ID, or `task`/`bug`/`quick` to auto-pick). For `sprint task`/`sprint bug`/`sprint quick`, prefer the top-ranked match in the **active sprint**, falling back to the next bucket if empty.
 
+Sprint rows are re-sorted into buckets, so their numbers no longer match `next-bd` rank
+order. Resolve a sprint pick by the candidate's `selector` (or its bead ID), never by the
+displayed index.
+
 ### Edge cases
 
 - **Multiple active sprints**: still one table — beads from each appear with their own sprint name. Active-sprint groups sort by sprint name / ID ascending so they cluster.
@@ -326,7 +359,7 @@ When `/next bug` is used:
 
 2. **Rank by priority**: P0 > P1 > P2 > P3 (highest priority bug first, P4 excluded)
 
-3. **Auto-select and start** the top-ranked bug
+3. **Auto-select and start** the top-ranked bug through `next-select start <selector>`
 
 4. **Continue fixing bugs** if the completed bug was minor:
    - After completing a bug fix, assess if it was minor (small change, localized fix)
