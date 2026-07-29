@@ -2,9 +2,11 @@
 # List Claude Code handoff files (~/.claude/handoffs/*.md) with metadata.
 # Sections delimited by `---<NAME>---` markers. Companion to the wrap-up skill.
 #
-# Usage: list.sh [--recent-days N] [--summary-only] [--bead ID] [--ticket KEY]
+# Usage: list.sh [--recent-days N] [--stale-days N] [--summary-only] [--bead ID] [--ticket KEY]
 #   --recent-days N   override the "recent" window (default: 3, with Mon=3, Tue=4
 #                     weekend buffer to mirror gh-pr-list-closed.sh)
+#   --stale-days N    age floor for assisted review of otherwise unclassifiable
+#                     trunk handoffs (default: 30; never auto-archives)
 #   --summary-only    suppress per-file lines in the HANDOFFS section (landscape's
 #                     footer only needs the SUMMARY counts)
 #   --bead ID         emit a `---MATCHED-HANDOFFS---` section: current-repo, NON-stale
@@ -22,6 +24,7 @@ set -uo pipefail
 HANDOFFS_DIR="${HOME}/.claude/handoffs"
 
 RECENT_DAYS=""
+STALE_DAYS=30
 SUMMARY_ONLY=0
 CHECK_BRANCHES=0
 MATCH_BEAD=""
@@ -29,6 +32,7 @@ MATCH_TICKET=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --recent-days) RECENT_DAYS="$2"; shift 2 ;;
+        --stale-days) STALE_DAYS="$2"; shift 2 ;;
         --summary-only) SUMMARY_ONLY=1; shift ;;
         --check-branches) CHECK_BRANCHES=1; shift ;;
         --bead) MATCH_BEAD="$2"; shift 2 ;;
@@ -62,6 +66,10 @@ if [ -z "$RECENT_DAYS" ]; then
         2) RECENT_DAYS=4 ;;  # Tue → covers Fri+weekend+Mon
         *) RECENT_DAYS=3 ;;
     esac
+fi
+if ! [[ "$STALE_DAYS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --stale-days must be a positive integer" >&2
+    exit 2
 fi
 
 # Check whether any sibling of $1 has a *bare* `.claude` symlink pointing at
@@ -186,6 +194,7 @@ else
 fi
 
 CUTOFF=$(date -I -d "${RECENT_DAYS} days ago" 2>/dev/null || date -j -v-${RECENT_DAYS}d +%Y-%m-%d 2>/dev/null)
+AGE_REVIEW_CUTOFF=$(date -I -d "${STALE_DAYS} days ago" 2>/dev/null || date -j -v-${STALE_DAYS}d +%Y-%m-%d 2>/dev/null)
 
 # --- Branch-liveness setup (only with --check-branches, only in a repo) -----
 # Staleness is current-repo-only: the git queries run in the invocation pwd, so
@@ -481,6 +490,9 @@ echo "$CURRENT_REPO_DISPLAY"
 echo "---RECENT-WINDOW-DAYS---"
 echo "$RECENT_DAYS"
 
+echo "---STALE-DAYS---"
+echo "$STALE_DAYS"
+
 echo "---HANDOFFS-DIR---"
 echo "$HANDOFFS_DIR"
 
@@ -762,7 +774,9 @@ R_ARCHCLASS=()
 R_BEADSDONE=()
 R_BEADSPROGRESS=()
 R_NEEDSREVIEW=()
+R_NEEDSAGEREVIEW=()
 CUR_STALE=0
+CUR_AGE_REVIEW=0
 WS_STALE=0
 
 # Default every row to "unclassified" up front so the classification passes can
@@ -778,6 +792,7 @@ while [ "$i" -lt "$N" ]; do
     R_BEADSDONE+=("")
     R_BEADSPROGRESS+=("")
     R_NEEDSREVIEW+=("")
+    R_NEEDSAGEREVIEW+=("")
     i=$((i+1))
 done
 
@@ -789,8 +804,9 @@ done
 classify_row() {
     local i="$1" scope="$2"
     local state="unknown" ps="unknown" pnum="" purl=""
-    local archclass="" beadsdone="" beadsprogress="" needsreview=""
-    local bead_src bclosed btotal
+    local archclass="" beadsdone="" beadsprogress="" needsreview="" needsagereview=""
+    local bead_src bclosed btotal recordedpr=""
+    printf '%s' "${R_PRS[$i]}" | grep -qE '#[0-9]+' && recordedpr="Y"
 
     if [ "$CHECK_BRANCHES" -eq 1 ]; then
         state=$(branch_state "${R_BRANCH[$i]}")
@@ -842,6 +858,20 @@ classify_row() {
         && [ "${beadsprogress%%/*}" -gt 0 ]; then
         needsreview="Y"
     fi
+    # Age is only a reason to ask, never evidence of completion. Flag old
+    # current-repo rows when every stronger signal is absent: trunk parked,
+    # no usable PR signal, no resolvable beads, and otherwise unclassified.
+    # An unavailable PR lookup still qualifies when the handoff records no PR;
+    # this is assisted review, not evidence-backed auto-archiving.
+    if [ "$scope" = "cur" ] && [ "$CHECK_BRANCHES" -eq 1 ] \
+        && [ -z "$archclass" ] && [ -z "$needsreview" ] \
+        && is_trunk_branch "${R_BRANCH[$i]}" && [ -z "$recordedpr" ] \
+        && { [ "$ps" = "none" ] || [ "$ps" = "unknown" ]; } \
+        && [ -z "$beadsprogress" ] && [ -n "${R_DATE[$i]}" ] \
+        && [[ "${R_DATE[$i]}" < "$AGE_REVIEW_CUTOFF" ]]; then
+        needsagereview="Y"
+        CUR_AGE_REVIEW=$((CUR_AGE_REVIEW+1))
+    fi
 
     R_STATE[i]="$state"
     R_PRSTATE[i]="$ps"
@@ -851,6 +881,7 @@ classify_row() {
     R_BEADSDONE[i]="$beadsdone"
     R_BEADSPROGRESS[i]="$beadsprogress"
     R_NEEDSREVIEW[i]="$needsreview"
+    R_NEEDSAGEREVIEW[i]="$needsagereview"
 }
 
 # Current-repo rows (liveness globals already point at pwd).
@@ -949,7 +980,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}"
+        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}|${R_NEEDSAGEREVIEW[$i]}"
         i=$((i+1))
     done
 fi
@@ -979,6 +1010,7 @@ echo "current_repo_recent_live=${CUR_RECENT_LIVE}"
 echo "current_repo_pruned=${CUR_PRUNED}"
 echo "current_repo_superseded=${CUR_SUPERSEDED}"
 echo "current_repo_stale=${CUR_STALE}"
+echo "current_repo_age_review=${CUR_AGE_REVIEW}"
 echo "other_repos=${#OTHER_KEYS[@]}"
 echo "pruned_total=${PRUNED_TOTAL}"
 echo "superseded_total=${SUPERSEDED_TOTAL}"
@@ -1014,7 +1046,7 @@ while [ "$mi" -lt "${#WS_KEYS[@]}" ]; do
     mi=$((mi+1))
 done
 
-# Handoffs belonging to a workspace member (newest first). Same 21 fields as
+# Handoffs belonging to a workspace member (newest first). Same 22 fields as
 # ---HANDOFFS---, plus `{member-display}|{member-path}` appended, so a caller can
 # reuse its existing parser and read two extra fields. The member path is what a
 # picker must `cd` to before acting — these rows are pickable, but only from
@@ -1024,7 +1056,7 @@ if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
         if wi=$(ws_index_for_key "${R_REPO[$i]}"); then
-            echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}|${WS_DISPLAYS[$wi]}|${WS_PATHS[$wi]}"
+            echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}|${R_NEEDSAGEREVIEW[$i]}|${WS_DISPLAYS[$wi]}|${WS_PATHS[$wi]}"
         fi
         i=$((i+1))
     done

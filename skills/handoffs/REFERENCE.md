@@ -6,15 +6,18 @@ script's output, classify each handoff, and run the archive flow**. The *signals
 from `list.sh` (the `archive-class` field already encodes the safe/keep verdict) — this file is the
 single source for how to render and act on them, so the two skills can never drift on classification.
 
-Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review.
+Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review.
 
 ---
 
 ## §Run — invoking `list.sh`
 
 ```bash
-~/.agents/skills/handoffs/scripts/list.sh --check-branches
+~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days 30]
 ```
+
+`--stale-days` sets the positive-integer age floor for §Age-review (default `30`). It changes only
+which otherwise unclassifiable rows are offered for judgement; it never changes `archive-class`.
 
 `--check-branches` adds branch-liveness classification (the `branch-state` field) for current-repo
 handoffs. It runs one `git ls-remote` (network, timeout-guarded) plus local merge-base checks. It is
@@ -37,19 +40,20 @@ Delimited sections:
 - `---CURRENT-REPO---` — current repo identity (origin URL preferred, falling back to realpath of git-common-dir), or `NONE` if not in a repo.
 - `---CURRENT-REPO-DISPLAY---` — short label for the current repo (basename of the repo root), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
+- `---STALE-DAYS---` — configured age floor for assisted age review (30 default).
 - `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
 - `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff. (Consumed by `/landscape`; ignore here.)
-- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_classified=N`.
+- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_classified=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
 - `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
-- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 21 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (23 total), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
+- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 22 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (24 total), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
 
-**`---HANDOFFS---` line — 21 pipe-delimited fields, in order:**
+**`---HANDOFFS---` line — 22 pipe-delimited fields, in order:**
 
 ```
-{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}
+{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}|{needs-age-review}
 ```
 
 `{time}` (field 15) is the `HH:MM` the handoff was written — from the `# Resume:` header
@@ -92,7 +96,7 @@ row wrongly shows `🟢 live`, but the merged PR's number is still in the body).
 - `none` — `gh` ran but found no PR for this branch.
 - `unknown` — `gh` wasn't consulted (no flag, no `gh`, offline, or branch `?`). Falls back to `branch-state`.
 
-### Beads / Jira (`beads-field`, `jira-field`, `beads-done`, `deliverable-field`, `beads-progress`, `needs-review`)
+### Beads / Jira (`beads-field`, `jira-field`, `beads-done`, `deliverable-field`, `beads-progress`, `needs-review`, `needs-age-review`)
 
 - `{beads-field}` — raw `**Beads:**` token list (own-work **and** context/epic beads); empty unless beads exist locally or a `--bead`/`--ticket` filter is active.
 - `{jira-field}` — raw `**Jira:**` token list; populated under `--check-branches` (and filters). Bash can't call the Jira MCP, so the script never sets a jira-done flag — it only hands you the keys (see §Jira-Done).
@@ -101,6 +105,7 @@ row wrongly shows `🟢 live`, but the merged PR's number is still in the body).
   - **Why Deliverable matters:** in trunk repos all work commits to `master`, so wrap-up records every handoff with `branch: master` → `branch-state=unknown` (the default-branch guard) and no PR. The bead is then the only "done" signal — but the `**Beads:**` list mixes own work with recurring "in-progress elsewhere" context beads and parent epics that never close, so an all-`**Beads:**`-closed rule can never fire. Keying off `**Deliverable:**` (own work only) fixes that. Safety: over-including a bead in Deliverable only ever *under*-detects (a never-closing bead keeps the row live); **omitting** an own-work bead is the only way to false-positive, so wrap-up errs toward including.
 - `{beads-progress}` — `{closed}/{total}` over the closure-check set (Deliverable if present, else Beads), or empty when there are no resolvable beads. Lets a caller distinguish *partial* closure (something shipped, something open) from all-open (nothing done) and all-closed (done).
 - `{needs-review}` — `Y` for a current-repo row that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are already `safe`; all-open rows are genuinely live.
+- `{needs-age-review}` — `Y` for an old current-repo row that has no usable completion or liveness signal and warrants §Age-review: `--check-branches` was used, the row is older than `---STALE-DAYS---`, trunk-parked, has no usable PR signal (`pr-state=none`, or `unknown` with no recorded PR number), has no resolvable beads (`beads-progress` empty), and still has empty `archive-class`. Age is not evidence of doneness, so this flag never changes `archive-class` or stale counts. Rows with an open/merged/closed PR, or an unknown lookup plus a recorded PR number, are not flagged.
 
 ### Archive-class (`archive-class`) — current-repo rows only
 
@@ -115,8 +120,9 @@ Beads-done (keyed off `**Deliverable:**` when present, else the full `**Beads:**
 under a merged PR (the finished-work signal when there's no live branch/PR — the trunk case) but
 **below** an open PR. Jira-Done is *not* in this list — the script can't query Jira; the skill folds
 it in at §Jira-Done. `current_repo_stale` counts the `keep`/`safe` rows that are **not** superseded;
-superseded rows are counted by `current_repo_superseded`. Rows that can't be auto-classified set
-`needs-review` instead (§Trunk-review) — they are **not** counted in `current_repo_stale`.
+superseded rows are counted by `current_repo_superseded`. Rows that can't be auto-classified may set
+`needs-review` (§Trunk-review) or `needs-age-review` (§Age-review) instead — neither is counted in
+`current_repo_stale`.
 
 ---
 
@@ -219,7 +225,9 @@ Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `k
 
 ## §Archive-flow — the opt-in archive cleanup
 
-Skip entirely if `current_repo_superseded == 0` **and** `current_repo_stale == 0`.
+Skip entirely only if `current_repo_superseded == 0`, `current_repo_stale == 0`, **and** §Jira-Done
+promoted no live row to `safe`. The script counters cannot include model-side Jira results, so a
+promotion is itself an effective Done candidate even when both counters remain zero.
 
 Archiving **moves** handoffs to `~/.claude/handoffs/archive/` (still on disk, still greppable; just
 out of the active listing). It is opt-in and never automatic — rows stay pickable until the user says so.
@@ -354,3 +362,41 @@ Then offer, via `AskUserQuestion` (multiSelect, one option per `needs-review` ro
 Archive the selected filenames via the same `archive.sh` call and confirmation as §Archive-flow. The
 durable fix is upstream: once these age out and new handoffs carry `**Deliverable:**`, this prompt
 goes quiet on its own.
+
+---
+
+## §Age-review — assisted prompt for old rows with no usable signals
+
+A trunk-parked handoff can remain `🟢 live` forever when it has no usable PR signal, no resolvable
+beads, and no other completion signal. Age does **not** prove that it finished; it only makes the row worth asking
+about. `list.sh` flags these current-repo rows with `needs-age-review=Y` once they are older than
+`---STALE-DAYS---` (30 by default, configurable with `--stale-days N`).
+
+Run this after §Jira-Done. If Jira promoted a flagged row to `safe`, handle it as Done instead and do
+not include it here. Present the remaining rows as a separate assisted group, never mixed into
+§Archive-flow or §Trunk-review:
+
+```markdown
+## 🕰️ Old handoffs with no completion signal ({count})
+
+These are older than {stale-days} days, trunk-parked, have no usable PR signal, and have no
+resolvable beads. Age is only a reason to ask; skip anything still waiting on external work.
+
+| Date | Slug | Jira | Evidence |
+|------|------|------|----------|
+```
+
+- **Jira**: `{jira-field}`, or `—`.
+- **Evidence**: `no usable PR signal · no resolvable beads · >{stale-days}d`.
+
+Prompt with `AskUserQuestion` using `multiSelect` and batches of at most four rows. Label each option
+`{date} {slug}` and describe it as `>{stale-days}d · Jira: {jira-field-or-dash}`. Leave every option
+unselected by default:
+
+> Archive any old handoffs you no longer need? Age is not a done signal; leave parked or uncertain
+> threads untouched.
+
+Only filenames the user explicitly selects go to `archive.sh`. These rows retain empty
+`archive-class`, are never auto-selected, and are never auto-archived. Skipping must be trivial and
+silent. `/handoffs` and `/handoffs-tidy` must both consume this shared flag and follow this section,
+so their classification and safeguards stay identical.

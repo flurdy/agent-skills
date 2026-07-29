@@ -1,11 +1,11 @@
 ---
 name: handoffs-tidy
-description: Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — and archive them so the /handoffs picker stays focused. Read-only until you confirm; archives (never deletes).
+description: Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes.
 allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: low
-version: "0.3.0"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -19,8 +19,10 @@ common one isn't supersede:
   its Jira ticket is Done. These are usually **never re-wrapped**, so nothing supersedes them — they
   just sit in the picker looking `🟢 live` until you notice the work is long gone.
 - **Stale** — abandoned: the PR was closed unmerged, or the branch is gone with no merge evidence.
+- **Old and signal-less** — trunk-parked with no usable PR signal or resolvable beads. Age only earns an assisted
+  question; it never makes the handoff an automatic archive candidate.
 
-This command finds all three and archives the ones you confirm. Nothing is deleted — archived files
+This command finds all four and archives the ones you confirm. Nothing is deleted — archived files
 move to `~/.claude/handoffs/archive/` and stay greppable.
 
 Run it **ad-hoc** whenever the picker feels noisy, or right after a `/wrap-up`. It is the standalone
@@ -43,7 +45,8 @@ ever offers candidates; it never touches a live or open-PR row.
 > **MUST use the helper scripts.** Never construct ad-hoc `ls`/`grep`/`git`/`gh`/`bd` pipelines
 > against `~/.claude/handoffs/` — they bypass the per-script permission allowlist and miss the
 > repo-matching and liveness logic. Classification and the archive flow are specified **once** in
-> `~/.agents/skills/handoffs/REFERENCE.md`; read it rather than re-deriving the rules here.
+> `~/.agents/skills/handoffs/REFERENCE.md`; read it rather than re-deriving the rules here, including
+§Age-review for old rows with no usable signals.
 
 ### 1. Load the shared spec
 
@@ -53,19 +56,22 @@ each row, and run the archive flow — the same definitions `/handoffs` uses, so
 ### 2. Run the lister with liveness
 
 ```bash
-~/.agents/skills/handoffs/scripts/list.sh --check-branches
+~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
 ```
+
+Forward `--stale-days N` when the user supplied it; otherwise use the 30-day default. The threshold
+only controls the assisted age-review group and never changes `archive-class`.
 
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is
 present) `pr-state`, so the script can mark merged PRs, landed branches, and closed PRs. Bead-closure
 (`beads-done`, keyed off the `**Deliverable:**` field when present) and supersede are computed
-regardless. See REFERENCE §Run and §Fields for the flag semantics and the 21-field line format.
+regardless. See REFERENCE §Run and §Fields for the flag semantics and the 22-field line format.
 Degrades cleanly offline (REFERENCE §Run / the failure modes below).
 
 Parse the `---HANDOFFS---` lines and the `---SUMMARY---` counts. For each current-repo row, derive its
 **Status** (REFERENCE §Status) and **archive-class** (`safe` / `keep` / empty — REFERENCE §Fields).
-Also note rows with `needs-review=Y` — trunk-parked legacy handoffs the script couldn't auto-classify
-(step 5b).
+Also note rows with `needs-review=Y` (step 5b) and `needs-age-review=Y` (step 5c) — both are
+assisted judgement groups, never automatic archive candidates.
 
 ### 3. Resolve Jira-Done (optional)
 
@@ -76,23 +82,25 @@ if you want to stay network-light; PR/bead/branch/supersede classification still
 
 ### 4. Present the candidates
 
-If `current_repo_superseded == 0` **and** `current_repo_stale == 0` (after any §Jira-Done promotions)
-**and** no row has `needs-review=Y` **and** no member row is archivable (step 5c's gate), report
+If `current_repo_superseded == 0` **and** `current_repo_stale == 0` **and** §Jira-Done promoted no
+row to `safe` **and** no row has `needs-review=Y` **and** no row has `needs-age-review=Y` **and** no
+member row is
+archivable (step 5d's gate), report
 nothing and stop at step 6 — the picker is already tidy:
 
 ```markdown
 _No archivable handoffs — every handoff for this repo still points at live work._
 ```
 
-> **Check step 5c's gate before stopping.** In a multi-repo workspace the current repo can be
+> **Check step 5d's gate before stopping.** In a multi-repo workspace the current repo can be
 > perfectly tidy while its members hold many finished handoffs — member rows deliberately never feed
 > `current_repo_stale`. Stopping on the current-repo counts alone reports "nothing to tidy" while
 > archivable handoffs sit one level away, which is precisely the blind spot this command exists to
-> close. When only member candidates exist, skip to step 5c rather than stopping.
+> close. When only member candidates exist, skip to step 5d rather than stopping.
 
 If there are auto-classified candidates, render them as a table, grouped by regret (REFERENCE
-§Archive-flow defines the groups). (When the only thing flagged is `needs-review`, skip straight to
-step 5b.)
+§Archive-flow defines the groups). When only an assisted flag is present, skip straight to step 5b
+for `needs-review` or step 5c for `needs-age-review`.
 
 ```markdown
 ## 🗂️ Archive candidates ({count})
@@ -129,13 +137,20 @@ handoffs the script couldn't auto-classify: partial bead closure (`beads-progres
 same `archive.sh` call. Skip entirely when no row is flagged. This prompt goes quiet on its own as
 old handoffs age out and new ones carry `**Deliverable:**`.
 
-### 5c. 🧱 Workspace-member handoffs
+### 5c. 🕰️ Old handoffs with no completion signal
+
+If any current-repo row still has `needs-age-review=Y` after §Jira-Done promotion, run the assisted
+prompt exactly as **REFERENCE §Age-review** specifies. Keep it separate from the safe/done/stale and
+§Trunk-review groups. Age is not evidence of doneness: leave every option unselected, make skipping
+trivial, and archive only filenames the user explicitly confirms. Skip when no row is flagged.
+
+### 5d. 🧱 Workspace-member handoffs
 
 Run the member archive flow exactly as **REFERENCE §Archive-flow-members** specifies, after the
 current-repo steps. In a multi-repo workspace, member repos are where finished handoffs accumulate —
 the root itself often holds one or two.
 
-Read the member rows from `---WORKSPACE-MEMBER-HANDOFFS---` (23 fields: the usual 21 plus
+Read the member rows from `---WORKSPACE-MEMBER-HANDOFFS---` (24 fields: the usual 22 plus
 `{member-display}|{member-path}`) and the per-repo totals from `---WORKSPACE-MEMBER-REPOS---`.
 Classify each with the same §Status / §Archive-glyph rules as current-repo rows — member rows are
 already classified against their own repo when `--check-branches` was passed.
@@ -155,7 +170,7 @@ Skip the step entirely when the gate doesn't pass.
 
 ### 6. Done
 
-If nothing was archivable (steps 4–5b) or the user selected none, say so plainly and stop. This command
+If nothing was archivable or reviewable (steps 4–5d), or the user selected none, say so plainly and stop. This command
 never touches live work and never deletes — at worst it's a no-op.
 
 ## Failure modes
@@ -165,7 +180,7 @@ never touches live work and never deletes — at worst it's a no-op.
 - **No `~/.claude/handoffs/` directory**: nothing to tidy; say so and stop.
 - **Not in a git repo**: liveness needs a repo to classify against — say so and stop. (`cd` into the
   repo and re-run.)
-- **Multi-repo workspace**: member repos are covered by step 5c, but only their `safe` rows. Anything
+- **Multi-repo workspace**: member repos are covered by step 5d, but only their `safe` rows. Anything
   needing judgement (`keep`-class, trunk-review) still requires `cd`ing into that member and re-running.
 - **Offline / remote unreachable**: `branch-state` degrades to local-only (`merged` still detected
   against the local default tip; no false `gone`). The Done/Stale groups just shrink. Don't retry.

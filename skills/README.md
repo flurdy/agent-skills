@@ -18,7 +18,7 @@
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
-| handoffs-tidy | Prune handoffs that no longer point at live work — superseded (a newer handoff continues the thread), done (PR merged, all beads closed, branch landed, or Jira ticket Done), or stale (branch gone / PR closed) — so the /handoffs picker stays focused. Standalone twin of /handoffs's archive step; read-only until you confirm; archives, never deletes |
+| handoffs-tidy | Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes. |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
 | implement-solution | Explicitly invoked premium coding workflow for the smallest maintainable implementation, applying repository consensus, proportional TDD, KISS/YAGNI, demonstrated DRY, and contextual SOLID/FP |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
