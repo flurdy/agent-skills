@@ -6,10 +6,19 @@
 # unpushed/uncommitted state in sibling repos. This walks every member repo and emits
 # its branch / ahead / behind / dirty counts so the wrap-up can roll them up.
 #
-# Detection (first match wins):
-#   - .mgit.conf at repo root  -> mgit workspace (parse `services=a,b,c`)
-#   - .gitmodules at repo root -> git submodules
-#   - otherwise                -> single repo (marker=none, nothing to roll up)
+# Workspace-root detection (first match wins):
+#   - $MGIT_ROOT, when it points at a directory holding .mgit.conf
+#   - nearest ancestor holding .mgit.conf  -> mgit workspace (parse `services=a,b,c`)
+#   - nearest ancestor holding .gitmodules -> git submodules
+#   - nearest ancestor with a *child* directory whose .mgit.conf lists this repo
+#   - otherwise                            -> single repo (marker=none, nothing to roll up)
+#
+# The child-directory step exists because a member repo is usually not inside the
+# workspace: mgit links siblings in via repos/<name> symlinks, so .mgit.conf sits at
+# ~/w/workspace/.mgit.conf while the repo lives at ~/w/<name>. It is a sibling, never
+# an ancestor, so an ancestor-only walk reports marker=none from every member repo.
+# Candidates are accepted only when `services=` actually resolves to this repo — one
+# parent can hold several unrelated workspaces, and proximity alone would mis-assign.
 #
 # Output (delimited; parse, don't eyeball):
 #   ---MARKER---  mgit | submodules | none
@@ -21,7 +30,50 @@
 # ahead/behind are "-" when there is no upstream. upstream is yes|no.
 set -u
 
-root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+mgit_services() {   # $1 = dir holding .mgit.conf; prints one service path per line
+  sed -n 's/^services=//p' "$1/.mgit.conf" | head -1 | tr ',' '\n' | tr -d '[:blank:]'
+}
+
+mgit_claims_repo() {   # $1 = candidate workspace dir, $2 = resolved repo root
+  local s
+  [ -n "$2" ] || return 1
+  while IFS= read -r s; do
+    [ -n "$s" ] || continue
+    [ "$(readlink -f "$1/$s" 2>/dev/null)" = "$2" ] && return 0
+  done < <(mgit_services "$1")
+  return 1
+}
+
+self="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+[ -n "$self" ] && self="$(readlink -f "$self")"
+
+root=""
+marker="none"
+if [ -n "${MGIT_ROOT:-}" ] && [ -f "${MGIT_ROOT}/.mgit.conf" ]; then
+  root="$(readlink -f "$MGIT_ROOT")"
+  marker="mgit"
+else
+  d="$(readlink -f "${PWD}")"
+  while : ; do
+    if [ -f "$d/.mgit.conf" ]; then
+      root="$d"; marker="mgit"; break
+    fi
+    if [ -f "$d/.gitmodules" ] && [ -e "$d/.git" ]; then
+      root="$d"; marker="submodules"; break
+    fi
+    for conf in "$d"/*/.mgit.conf; do
+      [ -f "$conf" ] || continue
+      ws="$(dirname "$conf")"
+      if mgit_claims_repo "$ws" "$self"; then
+        root="$ws"; marker="mgit"; break 2
+      fi
+    done
+    [ "$d" = "/" ] && break
+    d="$(dirname "$d")"
+  done
+fi
+
+[ -z "$root" ] && root="$self"
 if [ -z "$root" ]; then
   echo "---MARKER---"; echo "none"
   echo "---ROOT---"
@@ -29,19 +81,13 @@ if [ -z "$root" ]; then
   exit 0
 fi
 
-marker="none"
 members=()   # relative paths from root; "." is the root repo itself
-if [ -f "$root/.mgit.conf" ]; then
-  marker="mgit"
-  services="$(sed -n 's/^services=//p' "$root/.mgit.conf" | head -1)"
+if [ "$marker" = "mgit" ]; then
   members+=(".")
-  IFS=',' read -r -a svc <<< "$services"
-  for s in "${svc[@]}"; do
-    s="$(echo "$s" | tr -d '[:space:]')"
+  while IFS= read -r s; do
     [ -n "$s" ] && members+=("$s")
-  done
-elif [ -f "$root/.gitmodules" ]; then
-  marker="submodules"
+  done < <(mgit_services "$root")
+elif [ "$marker" = "submodules" ]; then
   members+=(".")
   while IFS= read -r p; do
     [ -n "$p" ] && members+=("$p")
