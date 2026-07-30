@@ -36,11 +36,14 @@ class HandoffListFixture:
             gh.write_text(f"#!/bin/sh\nprintf '%s\\n' '{pr_line}'\n", encoding="utf-8")
         gh.chmod(0o755)
 
-    def add_beads_store(self, status: str = "open") -> None:
+    def add_beads_store(self, *statuses: str) -> None:
         (self.repo / ".beads").mkdir()
+        payload = "[" + ",".join(
+            f'{{"status":"{status}"}}' for status in statuses or ("open",)
+        ) + "]"
         bd = self.bin / "bd"
         bd.write_text(
-            f"#!/bin/sh\nprintf '%s\\n' '[{{\"status\":\"{status}\"}}]'\n",
+            f"#!/bin/sh\nprintf '%s\\n' '{payload}'\n",
             encoding="utf-8",
         )
         bd.chmod(0o755)
@@ -88,6 +91,21 @@ def section(output: str, name: str) -> list[str]:
     start = lines.index(marker) + 1
     end = next((i for i in range(start, len(lines)) if lines[i].startswith("---")), len(lines))
     return lines[start:end]
+
+
+class TrunkReviewClassificationTests(unittest.TestCase):
+    def test_partial_bead_closure_still_needs_assisted_trunk_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            fixture.add_beads_store("closed", "open")
+            fixture.add_handoff(40, "partial-closure", beads="`repo-closed`, `repo-open`")
+
+            fields = section(fixture.run("--stale-days", "30"), "HANDOFFS")[0].split("|")
+
+            self.assertEqual(fields[13], "")
+            self.assertEqual(fields[19], "1/2")
+            self.assertEqual(fields[20], "Y")
+            self.assertEqual(fields[21], "")
 
 
 class AgeReviewClassificationTests(unittest.TestCase):
