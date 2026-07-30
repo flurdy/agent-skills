@@ -27,7 +27,7 @@ Separate blocks, rendered from broadest context to most immediate. Order matters
 1. **📋 Jira** — tickets assigned to you, not Done (with sprint and latest discussion)
 2. **🔀 PRs** — org-wide open PRs, recently closed, unresolved threads
 3. **🎯 Beads** — in-progress and top ready beads in this repo (skipped if `bd` not installed)
-4. **📍 Working copy** — current branch, uncommitted/unpushed work (plus, in a multi-repo workspace, a roll-up of sibling service repos with unsaved/unpushed state)
+4. **📍 Working copy** — current branch and uncommitted/unpushed work; at a multi-repo workspace root this becomes one per-repo table over every member instead, since the root's own branch is never where the work is
 5. **Next** — single-sentence suggestion for the most load-bearing action
 
 Each block is independent — if one source fails, the others still render.
@@ -207,17 +207,30 @@ For each ticket's `sprint` array, pick the **active** sprint (first with `state=
 - If the `---READY---` section is not valid JSON (fallback plain text): render it as-is, capped at 5 lines.
 - If the Jira call fails: render the table without Jira/Sprint/Status columns; add a footnote `_Jira unavailable._`
 
-### 4. 📍 Working copy — current branch
+### 4. 📍 Working copy
 
 Rendered LAST because it's the most immediate context — the branch you're sitting on right now, what needs committing/pushing, and whether it's in sync.
 
-Run the `working-copy.sh` helper, which emits delimited sections for branch, dirty status, ahead/behind, last commit, and on-branch stash count:
+Run the `working-copy.sh` helper, which emits delimited sections for branch, repo toplevel, dirty status, ahead/behind, last commit, and on-branch stash count:
 
 ```bash
 ~/.agents/skills/landscape/scripts/working-copy.sh
 ```
 
 Output is grouped by `---SECTION---` markers. Parse and render from that.
+
+#### Pick the mode first
+
+This section has two shapes, chosen by comparing `working-copy.sh`'s `---TOPLEVEL---` against `multirepo.sh`'s `---ROOT---` (§4b runs in parallel; you have both before rendering):
+
+| Condition | Mode |
+|-----------|------|
+| `MARKER != none` **and** `TOPLEVEL == ROOT` | **Workspace root** — one table over every member (§4a below). §4b does not render separately. |
+| anything else (single repo, **or** cwd inside a member repo) | **Single repo** — the field table below, then §4b for the siblings. |
+
+`MARKER != none` alone is **not** enough to pick the workspace shape. `multirepo.sh` resolves the workspace from inside a member repo too (its sibling `.mgit.conf` child-directory step), so a member repo also reports `marker=mgit`. Only `TOPLEVEL == ROOT` means "sitting at the root". Inside a member repo the field table is the *most* load-bearing block on the page — it's the feature branch you're on — so never collapse it there.
+
+#### Mode: single repo (or inside a member repo)
 
 Render:
 
@@ -235,6 +248,39 @@ Render:
 Notes:
 - If `@{u}` fails (no upstream), show `no upstream tracking`.
 - If output is empty for dirty, show `clean`.
+#### Mode: workspace root (§4a)
+
+At the root, the field table is redundant and misleading, so it is replaced — not supplemented — by a single table over every member repo:
+
+- `multirepo.sh` already emits the root as its own row, so the field table re-renders data §4b would show anyway. Rendering both forces ad-hoc dedup the skill never specified, and the row gets dropped inconsistently.
+- The fields are structurally uninteresting at a root: it holds no feature branches, `no upstream` is often permanent by design (a deliberately local workspace repo), and its dirt is usually infra noise (`.envrc`, editor config).
+- Worse, §4b's "only members with something to report" rule *suppresses* the root row — so "which branch am I on, is my cwd clean" could vanish from the page entirely.
+
+Render one table from `multirepo.sh`'s `---REPOS---`, in emitted order (root first), **including clean members** — at the root the full inventory is the point:
+
+```markdown
+### 📍 Working copy — {N} repos in this workspace
+
+| Repo | Branch | Unpushed | Behind | Uncommitted |
+|------|--------|----------|--------|-------------|
+| `workspace` 📍 | main | local-only | — | 2 untracked |
+| `repos/blc-2` | main | 0 | — | ✅ clean |
+| `repos/docs` | main | 2 | — | ✅ clean |
+```
+
+- `{N}` is the member count (rows emitted, root included).
+- **Repo**: the `{name}` field. Append ` 📍` to the root row — that's where you're standing.
+- **Branch**: the `{branch}` field. Do not abbreviate; a member sitting on an unexpected branch is a real signal.
+- **Unpushed**: `{ahead}`, or `local-only` when `upstream=no` (never pushed — for a deliberately local repo this is the intended state, not a warning).
+- **Behind**: `{behind}` when >0, else `—`. When **diverged** (ahead>0 AND behind>0) it needs a rebase/pull before it can push — flag it in this cell: `⚠️ diverged — N ahead / M behind`.
+- **Uncommitted**: `{modified} modified / {untracked} untracked`, omitting zero parts; `✅ clean` when both are zero.
+
+Then skip §4b entirely — this table is §4b, promoted. Carry the most urgent member (diverged, then unpushed, then uncommitted) into §5 exactly as §4b specifies.
+
+#### Extras — both modes
+
+These come from `working-copy.sh` and have no equivalent in the roll-up, so they render under either mode. In workspace-root mode they describe the root repo (the 📍 row); scope them explicitly so that reads unambiguously.
+
 - **Stashes**: do NOT include a stash row in the table. Only surface stashes if there are stashes *on the current branch*. If non-empty, add a one-line footnote below the table:
   ```
   ⚠️ {N} stash(es) on this branch — run `git stash list` to review.
@@ -293,17 +339,20 @@ Notes:
 
 ### 4b. 🗂️ Other repos in this workspace
 
-`working-copy.sh` (§4) inspects **only the cwd repo** (plus its own worktrees). In a multi-repo workspace — mgit services (`.mgit.conf`) or git submodules (`.gitmodules`) — that silently misses uncommitted/unpushed state in sibling service repos. This is the single biggest blind spot at session start: you orient on the root repo and never notice that, say, `dispatch` was left with unpushed commits last night. Roll them up:
+**Only renders in single-repo mode** — i.e. when cwd is *inside a member repo*, where §4's field table covers your branch and this section covers the siblings. At the workspace root, §4a has already absorbed this table; do not render it twice.
+
+`working-copy.sh` (§4) inspects **only the cwd repo** (plus its own worktrees). In a multi-repo workspace — mgit services (`.mgit.conf`) or git submodules (`.gitmodules`) — that silently misses uncommitted/unpushed state in sibling service repos. This is the single biggest blind spot at session start: you orient on one repo and never notice that, say, `dispatch` was left with unpushed commits last night. Roll them up:
 
 ```bash
 ~/.agents/skills/wrap-up/scripts/multirepo.sh
 ```
 
 It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---REPOS---` lines:
-`{name}|{branch}|{ahead}|{behind}|{upstream}|{modified}|{untracked}` (ahead/behind are `-` with no upstream; the root repo appears as its own row). This call can run in parallel with `working-copy.sh` — it's the same roll-up `/wrap-up` §3b uses.
+`{name}|{branch}|{ahead}|{behind}|{upstream}|{modified}|{untracked}` (ahead/behind are `-` with no upstream; the root repo appears as its own row). Always run it — §4 needs its `---ROOT---` to pick a mode — and run it in parallel with `working-copy.sh`. It's the same roll-up `/wrap-up` §3b uses.
 
-- **`---MARKER---` is `none`** → single repo; skip this whole section silently (§4 already covered it).
-- Otherwise render only the members with something to report (ahead>0, behind>0, or modified+untracked>0); a clean+pushed member is noise. Skip the table entirely if every member is clean — in a healthy workspace this section shows nothing, which is the point.
+- **`---MARKER---` is `none`** → single repo, no workspace; skip this whole section silently (§4 already covered it).
+- **`TOPLEVEL == ROOT`** → workspace root; skip silently, §4a rendered it.
+- Otherwise render only the members with something to report (ahead>0, behind>0, or modified+untracked>0), **excluding the cwd repo's own row** — §4's field table already covers it in this mode. A clean+pushed member is noise. Skip the table entirely if every other member is clean — in a healthy workspace this section shows nothing, which is the point.
 
 ```markdown
 ### 🗂️ Other repos in this workspace
@@ -326,12 +375,12 @@ After all blocks render, add a short footer with a concrete next step, picked fr
 - If the current branch's PR has **unresolved review threads** → suggest `/review-comments`.
 - If the current branch's PR is **behind main** → suggest `/rebase-main`.
 - If there is uncommitted work → suggest committing or stashing.
-- If a sibling service repo (§4b) is **diverged** → suggest rebasing/pulling it before it can block a push (name the repo).
+- If a workspace member repo (§4a or §4b) is **diverged** → suggest rebasing/pulling it before it can block a push (name the repo).
 - If a sibling service repo has **unpushed commits** or uncommitted work → suggest pushing/committing it (name the repo).
 
 Once those "finish / unblock" actions are clear, the suggestion becomes a **pick-what-to-work-on** decision. This is the morning "resume a handoff or start fresh?" question — arbitrate it here rather than leaving the user to choose between `/handoffs` and `/next`. Use the handoff signals from §4 (`current_repo_recent_live` and the `---CURRENT-REPO-LATEST---` `{slug}|{branch}|{date}` line):
 
-- If a recent live handoff is on the **current branch** (its `{branch}` equals the §4 working-copy branch) → strongest resume signal: you're already sitting on its branch and it carries the open threads + suggested next step the bare branch doesn't. Suggest `Resume {slug} — /handoffs`.
+- If a recent live handoff is on the **current branch** (its `{branch}` equals `---BRANCH---`, which in workspace-root mode is the 📍 row's branch — handoffs are recorded per repo, so this stays the cwd repo's branch either way) → strongest resume signal: you're already sitting on its branch and it carries the open threads + suggested next step the bare branch doesn't. Suggest `Resume {slug} — /handoffs`.
 - If exactly one in-progress bead **and no** current-branch handoff → suggest resuming the bead (show the ID).
 - If nothing decisive above but a recent live handoff exists (`current_repo_recent_live > 0`) → **lead with the handoff and name the fallback in one sentence**, e.g. `Resume {slug} (last session's thread) via /handoffs — or /next safe for fresh work.` A warm thread beats a cold start, but the user keeps the choice.
 - If no live handoff and nothing in progress but ready beads exist → suggest `/next`.
@@ -355,6 +404,7 @@ Each block is independent — a failure in one must not prevent the others from 
 - **gh not authenticated**: skip the PR block, print `_GitHub CLI not authenticated (run \`gh auth login\`)._`.
 - **No beads in repo**: skip the Beads block, print `_No beads in this repo._`.
 - **Single repo (no `.mgit.conf`/`.gitmodules`)**: the §4b roll-up emits `MARKER=none` — skip that block silently; §4 already covers the one repo.
+- **`multirepo.sh` fails or emits no `---ROOT---`**: fall back to §4's single-repo field table. An unknown mode must degrade to the always-valid shape, never to a blank Working-copy block.
 
 ## Performance notes
 
