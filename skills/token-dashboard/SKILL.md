@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/token-dashboard/scripts/token_dashboa
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.4"
+version: "1.0.5"
 author: "flurdy"
 ---
 
@@ -121,6 +121,11 @@ combined.
   symlinks, read failures, missing roots, network failures, and sanitized 401/403/429 responses
   degrade only the affected source.
 - Version 1 supports UTC only and offers no timezone option.
+
+## See also
+
+- `/pi-spend` for Pi's recorded per-response cost estimates by day, week, and month. Cost is out of
+  scope here by design: only Pi records it, and this skill stays token-only across all four sources.
 
 ## Maintainer validation
 
