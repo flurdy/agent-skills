@@ -12,11 +12,17 @@ readonly HARD_MAX_PROMPT_BYTES=65536
 readonly HARD_MAX_OUTPUT_TOKENS=2000
 readonly HARD_MAX_RESPONSE_BYTES=1048576
 readonly HARD_MAX_TIMEOUT_SECONDS=1800
+readonly COMPLETION_MARKER='<!-- SECOND_OPINION_COMPLETE -->'
+COMPLETION_CONTRACT="Return a complete answer in this response using only the user message. "
+COMPLETION_CONTRACT+="Do not announce future inspection or tool use. You have no tools or repository access. "
+COMPLETION_CONTRACT+="End only a completed answer with this marker on its own final line: $COMPLETION_MARKER"
+readonly COMPLETION_CONTRACT
 
 usage() {
   cat <<'USAGE'
 Usage:
   openrouter-panel.sh check [--profile NAME] [--config FILE]
+  openrouter-panel.sh completion-contract-bytes|completion-contract-sha256
   openrouter-panel.sh run --confirmed --prompt-file FILE --profile-sha256 DIGEST
                           [--profile NAME] [--config FILE] [--timeout SECONDS]
 
@@ -24,10 +30,13 @@ Configuration defaults to ~/.agents/second-opinion/config.json. A profile contai
 1-8 unique OpenRouter models and limits no greater than the compiled safety
 ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
 model, a 1,048,576-byte HTTP response transport cap, and 1,800 seconds per request.
+The prompt ceiling includes the fixed completion contract and sanitized user message.
 
 An OpenRouter API key is required only for run. The helper uses
 OPENROUTER_API_KEY when set, otherwise secret-api-key with SECRET_API_KEY_PROJECT.
-The config contains model identities and limits, never credentials.
+The config contains model identities and limits, never credentials. The helper
+adds a fixed completion contract, strips its marker, and returns non-compliant
+transport-success responses as status=incomplete.
 USAGE
 }
 
@@ -38,6 +47,10 @@ die() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required"
+}
+
+completion_contract_bytes() {
+  printf '%s' "$COMPLETION_CONTRACT" | wc -c | tr -d '[:space:]'
 }
 
 load_openrouter_api_key() {
@@ -62,6 +75,18 @@ profile_sha256() {
   else
     return 1
   fi
+}
+
+completion_contract_sha256() {
+  printf '%s' "$COMPLETION_CONTRACT" | profile_sha256
+}
+
+profile_binding_sha256() {
+  local contract_sha256
+  contract_sha256="$(completion_contract_sha256)" || return 1
+  jq -cS --arg contract_sha256 "$contract_sha256" \
+    '. + {completionContractSha256: $contract_sha256}' <<< "$PROFILE_JSON" |
+    profile_sha256
 }
 
 parse_location_args() {
@@ -131,14 +156,15 @@ validate_profile() {
     --argjson hard_parallel "$HARD_MAX_PARALLEL" \
     --argjson hard_prompt "$HARD_MAX_PROMPT_BYTES" \
     --argjson hard_output "$HARD_MAX_OUTPUT_TOKENS" \
-    --argjson hard_timeout "$HARD_MAX_TIMEOUT_SECONDS" '
+    --argjson hard_timeout "$HARD_MAX_TIMEOUT_SECONDS" \
+    --argjson contract_bytes "$(completion_contract_bytes)" '
       (.limits | type == "object") and
       (.limits.maxParallel | type == "number" and floor == . and . >= 1 and . <= $hard_parallel) and
-      (.limits.maxPromptBytes | type == "number" and floor == . and . >= 1 and . <= $hard_prompt) and
+      (.limits.maxPromptBytes | type == "number" and floor == . and . > $contract_bytes and . <= $hard_prompt) and
       (.limits.maxOutputTokensPerModel | type == "number" and floor == . and . >= 1 and . <= $hard_output) and
       (.limits.defaultTimeoutSeconds | type == "number" and floor == . and . >= 1 and . <= $hard_timeout)
     ' <<< "$PROFILE_JSON" >/dev/null 2>&1; then
-    PROFILE_ERROR="profile limits must be positive integers within compiled safety ceilings"
+    PROFILE_ERROR="profile limits must be positive integers within compiled safety ceilings; maxPromptBytes must exceed the fixed completion contract"
     return 1
   fi
 
@@ -176,7 +202,7 @@ check_configuration() {
   fi
 
   local digest=""
-  if ! digest="$(printf '%s' "$PROFILE_JSON" | profile_sha256)"; then
+  if ! digest="$(profile_binding_sha256)"; then
     append_problem "a SHA-256 command is required (sha256sum, shasum, or openssl)"
   fi
 
@@ -193,7 +219,9 @@ check_configuration() {
     --argjson hard_max_prompt_bytes "$HARD_MAX_PROMPT_BYTES" \
     --argjson hard_max_output_tokens "$HARD_MAX_OUTPUT_TOKENS" \
     --argjson hard_max_response_bytes "$HARD_MAX_RESPONSE_BYTES" \
-    --argjson hard_max_timeout_seconds "$HARD_MAX_TIMEOUT_SECONDS" '
+    --argjson hard_max_timeout_seconds "$HARD_MAX_TIMEOUT_SECONDS" \
+    --argjson completion_contract_bytes "$(completion_contract_bytes)" \
+    --arg completion_contract_sha256 "$(completion_contract_sha256)" '
     {
       ready: ($problems | length == 0),
       auth: $auth,
@@ -211,6 +239,10 @@ check_configuration() {
         max_response_bytes: $hard_max_response_bytes,
         max_timeout_seconds: $hard_max_timeout_seconds
       },
+      completion_contract: {
+        bytes: $completion_contract_bytes,
+        sha256: $completion_contract_sha256
+      },
       problems: $problems
     }'
 }
@@ -224,21 +256,82 @@ write_result() {
   local curl_status="$6"
   local result_file="$7"
 
-  if [[ "$curl_status" -eq 0 ]] && jq -e '.choices[0].message.content | type == "string"' "$response_file" >/dev/null 2>&1; then
+  if [[ "$curl_status" -eq 0 ]] \
+    && jq -e '((.choices[0] | type) == "object") or ((.error | type) == "object")' "$response_file" >/dev/null 2>&1; then
     jq -n \
       --arg model "$canonical_model" \
       --arg vendor "$vendor" \
       --arg provider "$provider" \
       --arg role "$role" \
+      --arg completion_marker "$COMPLETION_MARKER" \
       --slurpfile response "$response_file" '
+      def bounded_string($value; $limit):
+        if ($value | type) == "string" then $value[0:$limit] else null end;
+      def normalized_finish_reason($value):
+        if ($value | type) != "string" then "unknown"
+        else
+          ($value | ascii_downcase) as $normalized |
+          if (["stop", "length", "tool_calls", "function_call", "content_filter", "error"] |
+              index($normalized)) != null
+          then $normalized
+          else "other"
+          end
+        end;
+      ($response[0]) as $raw |
+      ($raw.choices[0] // {}) as $choice |
+      ($choice.message // {}) as $message |
+      ($raw.error // null) as $response_error |
+      (if ($message.content | type) == "string" then $message.content else null end) as $content |
+      (if ($message.tool_calls | type) == "array" then ($message.tool_calls | length)
+       elif ($message.function_call | type) == "object" then 1
+       else 0
+       end) as $tool_call_count |
+      (normalized_finish_reason($choice.finish_reason)) as $finish_reason |
+      (($content // "") | sub("[[:space:]]+$"; "")) as $trimmed_content |
+      ($trimmed_content | endswith("\n" + $completion_marker)) as $has_completion_marker |
+      (if $has_completion_marker
+       then ($trimmed_content[0:(-(($completion_marker | length) + 1))] |
+             sub("[[:space:]]+$"; ""))
+       else $content
+       end) as $visible_response |
+      ($response_error == null and
+       $finish_reason == "stop" and
+       $tool_call_count == 0 and
+       $has_completion_marker and
+       (($visible_response // "") | test("\\S"))) as $completed |
+      (if $response_error != null
+       then (bounded_string($response_error.message; 1024) // "OpenRouter request failed")
+       elif $completed then null
+       elif $tool_call_count > 0 or $finish_reason == "tool_calls" or $finish_reason == "function_call"
+       then "OpenRouter generation attempted a tool call; panel routes have no tools"
+       elif $finish_reason != "stop"
+       then "OpenRouter generation was incomplete (finish reason: \($finish_reason))"
+       elif $content == null or (($content | test("\\S")) | not)
+       then "OpenRouter generation returned no textual response"
+       elif ($has_completion_marker | not)
+       then "OpenRouter response omitted the required completion marker"
+       else "OpenRouter response contained no completed content before the completion marker"
+       end) as $result_error |
       {
         model: $model,
         vendor: $vendor,
         provider: $provider,
         role: $role,
-        status: "ok",
-        response: $response[0].choices[0].message.content,
-        usage: ($response[0].usage // null)
+        status: (if $response_error != null then "error" elif $completed then "ok" else "incomplete" end),
+        response: $visible_response,
+        error: $result_error,
+        curl_exit_code: (if $response_error != null then 0 else null end),
+        usage: ($raw.usage // null),
+        termination: {
+          finishReason: $finish_reason,
+          reportedFinishReason: bounded_string($choice.finish_reason; 128),
+          nativeFinishReason: bounded_string(($choice.native_finish_reason // $raw.native_finish_reason); 128),
+          responseId: bounded_string(($raw.id // $raw.generation_id); 128),
+          responseModel: bounded_string($raw.model; 256),
+          responseProvider: bounded_string($raw.provider; 128),
+          errorType: bounded_string(($response_error.metadata.error_type // $raw.error_type); 128),
+          toolCallCount: $tool_call_count
+        }
       }' > "$result_file"
     return
   fi
@@ -283,11 +376,15 @@ call_model() {
 
   jq -n \
     --arg model "$api_model" \
+    --arg completion_contract "$COMPLETION_CONTRACT" \
     --rawfile prompt "$prompt_file" \
     --argjson max_tokens "$max_output_tokens" '
     {
       model: $model,
-      messages: [{role: "user", content: $prompt}],
+      messages: [
+        {role: "system", content: $completion_contract},
+        {role: "user", content: $prompt}
+      ],
       max_tokens: $max_tokens,
       temperature: 0.2
     }' > "$request_file"
@@ -367,7 +464,7 @@ run_panel() {
   require_command jq
   validate_profile || die "$PROFILE_ERROR"
   local actual_profile_sha256
-  actual_profile_sha256="$(printf '%s' "$PROFILE_JSON" | profile_sha256)" || \
+  actual_profile_sha256="$(profile_binding_sha256)" || \
     die "a SHA-256 command is required (sha256sum, shasum, or openssl)"
   [[ "$actual_profile_sha256" == "$expected_profile_sha256" ]] || \
     die "profile changed since check; rerun check and obtain fresh consent"
@@ -395,10 +492,12 @@ run_panel() {
     timeout_seconds="$timeout_override"
   fi
 
-  local prompt_bytes
+  local prompt_bytes contract_bytes request_prompt_bytes
   prompt_bytes="$(wc -c < "$prompt_file" | tr -d '[:space:]')"
-  (( prompt_bytes <= max_prompt_bytes )) || \
-    die "prompt is $prompt_bytes bytes; profile maximum is $max_prompt_bytes (summarize before retrying)"
+  contract_bytes="$(completion_contract_bytes)"
+  request_prompt_bytes=$((prompt_bytes + contract_bytes))
+  (( request_prompt_bytes <= max_prompt_bytes )) || \
+    die "prompt plus completion contract is $request_prompt_bytes bytes; profile maximum is $max_prompt_bytes (summarize before retrying)"
 
   WORK_DIR="$(mktemp -d)"
   chmod 700 "$WORK_DIR"
@@ -441,6 +540,14 @@ shift || true
 case "$command_name" in
   check)
     check_configuration "$@"
+    ;;
+  completion-contract-bytes)
+    [[ $# -eq 0 ]] || die "completion-contract-bytes takes no arguments"
+    completion_contract_bytes
+    ;;
+  completion-contract-sha256)
+    [[ $# -eq 0 ]] || die "completion-contract-sha256 takes no arguments"
+    completion_contract_sha256 || die "a SHA-256 command is required"
     ;;
   run)
     run_panel "$@"

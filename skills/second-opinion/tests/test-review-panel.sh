@@ -105,10 +105,33 @@ request_file="$(awk -F '"' '/^data-binary = "@/{print $2}' "$config_file")"
 request_file="${request_file#@}"
 response_file="$(awk -F '"' '/^output = "/{print $2}' "$config_file")"
 model="$(jq -r '.model' "$request_file")"
+jq -e '
+  (.messages | length) == 2 and
+  (.messages[0].role == "system" and
+    (.messages[0].content | contains("SECOND_OPINION_COMPLETE"))) and
+  (.messages[1].role == "user" and (.messages[1].content | type == "string")) and
+  (has("tools") | not)
+' "$request_file" >/dev/null || exit 4
 if [[ "$model" == "${FAIL_OPENROUTER_MODEL:-}" ]]; then
   jq -n --arg model "$model" '{error:{message:("simulated failure for " + $model)}}' > "$response_file"
+elif [[ ",${INCOMPLETE_OPENROUTER_MODELS:-}," == *",$model,"* ]]; then
+  jq -n --arg model "$model" '{
+    id:("gen-" + $model), model:$model,
+    choices:[{finish_reason:"stop", native_finish_reason:"stop", message:{
+      content:"I will inspect the repository first, then provide the review.",
+      reasoning:"hidden reasoning must not persist"
+    }}],
+    usage:{total_tokens:12}
+  }' > "$response_file"
 else
-  jq -n --arg model "$model" '{choices:[{message:{content:("response from " + $model)}}],usage:{total_tokens:1}}' > "$response_file"
+  jq -n --arg model "$model" '{
+    id:("gen-" + $model), model:$model,
+    choices:[{finish_reason:"stop", native_finish_reason:"stop", message:{
+      content:("response from " + $model + "\n\n<!-- SECOND_OPINION_COMPLETE -->"),
+      reasoning:"hidden reasoning must not persist"
+    }}],
+    usage:{total_tokens:20}
+  }' > "$response_file"
 fi
 FAKE_CURL
 chmod +x "$TMP_DIR/bin/curl"
@@ -171,6 +194,7 @@ jq -e '
   .ready and .source == "built-in" and .quorum == 2 and
   .limits.defaultTimeoutSeconds == 600 and
   [.routes[].id] == ["claude","codex"] and .openrouter.requestCount == 0 and
+  .openrouter.completionContractBytes == 0 and
   (.promptSha256 | test("^[a-f0-9]{64}$"))
 ' <<< "$focused_json" >/dev/null || fail "focused built-in was not normalized"
 
@@ -183,6 +207,7 @@ jq -e '
 legacy_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel legacy --prompt-file "$PROMPT")"
 jq -e '
   .legacy and .quorum == 2 and .openrouter.requestCount == 2 and
+  .openrouter.completionContractBytes > 0 and
   [.routes[].id] == ["openrouter-1","openrouter-2"]
 ' <<< "$legacy_json" >/dev/null || fail "legacy profile was not normalized"
 printf '%s\n' "$legacy_json" > "$TMP_DIR/legacy-check.json"
@@ -259,6 +284,13 @@ jq -e '
   (.routes[] | select(.id == "qwen-a") | .availability == "requires-consent" and .consentPolicy == "ask" and .consentBasis == "confirmation-required") and
   ([.routes[].provider] | unique | sort) == ["anthropic","openai","qwen"]
 ' <<< "$mixed_json" >/dev/null || fail "mixed profile, consent policy, or route overrides were incorrect"
+
+completion_contract_bytes="$(jq -r '.openrouter.completionContractBytes' <<< "$mixed_json")"
+CONTRACT_OVERHEAD_PROMPT="$TMP_DIR/contract-overhead.txt"
+head -c $((4097 - completion_contract_bytes)) /dev/zero | tr '\0' x > "$CONTRACT_OVERHEAD_PROMPT"
+expect_failure 'prompt plus completion contract is 4097 bytes; panel maximum is 4096' \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel mixed \
+  --prompt-file "$CONTRACT_OVERHEAD_PROMPT"
 
 panel_sha="$(jq -r '.panelSha256' <<< "$mixed_json")"
 openrouter_sha="$(jq -r '.openrouterSha256' <<< "$mixed_json")"
@@ -339,6 +371,31 @@ jq -e '
   .quorumMet and (.consensusEligible | not) and .successfulProviderCount == 3 and
   .sameProviderCorroboration == [{"provider":"qwen","routeIds":["qwen-a","qwen-b"]}]
 ' "$approved_eval" >/dev/null || fail "provider quorum or same-provider corroboration was incorrect"
+
+# Preamble-only responses remain visible but cannot contribute provider coverage.
+: > "$CURL_LOG"
+incomplete_openrouter_results="$TMP_DIR/incomplete-openrouter-results.json"
+INCOMPLETE_OPENROUTER_MODELS='qwen/model-a,QWEN/model-b' \
+  "${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed "${COMMON[@]}" \
+  --openrouter-sha256 "$openrouter_sha" > "$incomplete_openrouter_results"
+jq -e '
+  length == 2 and all(.[];
+    .status == "incomplete" and
+    (.error | contains("completion marker")) and
+    .termination.finishReason == "stop" and
+    ((tostring | contains("hidden reasoning must not persist")) | not)
+  )
+' "$incomplete_openrouter_results" >/dev/null || fail "incomplete OpenRouter results lost bounded diagnostics"
+"$HELPER" evaluate --policy quorum --check-file "$TMP_DIR/mixed-check.json" \
+  --results-file "$local_results" --results-file "$incomplete_openrouter_results" \
+  > "$TMP_DIR/incomplete-eval.json"
+jq -e '
+  .quorumMet and .successfulProviderCount == 2 and
+  .successfulProviders == ["anthropic","openai"] and
+  ([.unavailableRoutes[] | select(.provider == "qwen" and .status == "incomplete")] | length) == 2 and
+  all(.results[] | select(.provider == "qwen"); .termination.finishReason == "stop") and
+  (.sameProviderCorroboration | length) == 0
+' "$TMP_DIR/incomplete-eval.json" >/dev/null || fail "incomplete responses contributed to provider quorum"
 
 # Different successful response text never changes mechanical quorum.
 jq '.[0].response = "contradicts every other route"' "$openrouter_results" > "$TMP_DIR/contradictory.json"

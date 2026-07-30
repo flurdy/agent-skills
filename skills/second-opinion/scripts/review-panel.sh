@@ -343,7 +343,18 @@ validate_and_apply_overrides() {
 
   PANEL_CANONICAL="$(jq -cS . <<< "$PANEL_JSON")"
   PANEL_SHA256="$(printf '%s' "$PANEL_CANONICAL" | sha256_stream)" || die "a SHA-256 command is required"
-  OPENROUTER_JSON="$(jq -cS '{routes: [.routes[] | select(.kind == "openrouter")], limits}' <<< "$PANEL_JSON")"
+  local completion_contract_bytes completion_contract_sha256
+  completion_contract_bytes="$("$OPENROUTER_HELPER" completion-contract-bytes)"
+  completion_contract_sha256="$("$OPENROUTER_HELPER" completion-contract-sha256)"
+  OPENROUTER_JSON="$(jq -cS \
+    --argjson contract_bytes "$completion_contract_bytes" \
+    --arg contract_sha256 "$completion_contract_sha256" '
+    {
+      routes: [.routes[] | select(.kind == "openrouter")],
+      limits,
+      completionContract: {bytes: $contract_bytes, sha256: $contract_sha256}
+    }
+  ' <<< "$PANEL_JSON")"
   OPENROUTER_SHA256="$(printf '%s' "$OPENROUTER_JSON" | sha256_stream)" || die "a SHA-256 command is required"
 }
 
@@ -356,9 +367,15 @@ prompt_digest() {
   [[ -s "$PROMPT_FILE" ]] || die "prompt file is empty"
   local bytes
   bytes="$(wc -c < "$PROMPT_FILE" | tr -d '[:space:]')"
-  local max_bytes
+  local max_bytes contract_bytes=0 request_prompt_bytes
   max_bytes="$(jq -r '.limits.maxPromptBytes' <<< "$PANEL_JSON")"
-  (( bytes <= max_bytes )) || die "prompt is $bytes bytes; panel maximum is $max_bytes"
+  if jq -e '.routes | length > 0' <<< "$OPENROUTER_JSON" >/dev/null; then
+    contract_bytes="$(jq -r '.completionContract.bytes' <<< "$OPENROUTER_JSON")"
+    [[ "$contract_bytes" =~ ^[0-9]+$ ]] || die "invalid OpenRouter completion contract size"
+  fi
+  request_prompt_bytes=$((bytes + contract_bytes))
+  (( request_prompt_bytes <= max_bytes )) || \
+    die "prompt plus completion contract is $request_prompt_bytes bytes; panel maximum is $max_bytes"
   sha256_file "$PROMPT_FILE" || die "a SHA-256 command is required"
 }
 
@@ -404,8 +421,11 @@ check_panel() {
   local_routes="$(jq '[.[] | select(.kind == "local")]' <<< "$routes")"
   openrouter_routes="$(jq '[.[] | select(.kind == "openrouter")]' <<< "$routes")"
 
-  local route_count
+  local route_count completion_contract_bytes=0
   route_count="$(jq 'length' <<< "$local_routes")"
+  if jq -e 'length > 0' <<< "$openrouter_routes" >/dev/null; then
+    completion_contract_bytes="$(jq -r '.completionContract.bytes' <<< "$OPENROUTER_JSON")"
+  fi
   if (( route_count > 0 )); then
     local index agent availability
     for ((index=0; index<route_count; index++)); do
@@ -427,7 +447,8 @@ check_panel() {
     --argjson openrouter_routes "$openrouter_routes" \
     --arg openrouter_auth "$openrouter_auth" \
     --arg openrouter_curl "$openrouter_curl" \
-    --arg openrouter_availability "$openrouter_availability" '
+    --arg openrouter_availability "$openrouter_availability" \
+    --argjson completion_contract_bytes "$completion_contract_bytes" '
     {
       ready: true,
       panel: $panel,
@@ -445,6 +466,7 @@ check_panel() {
       openrouterRoutes: $openrouter_routes,
       openrouter: {
         requestCount: ($openrouter_routes | length),
+        completionContractBytes: $completion_contract_bytes,
         auth: (if ($openrouter_routes | length) == 0 then "not-required" else $openrouter_auth end),
         curl: (if ($openrouter_routes | length) == 0 then "not-required" else $openrouter_curl end),
         runnable: (($openrouter_routes | length) == 0 or $openrouter_availability == "available"),

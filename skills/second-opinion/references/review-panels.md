@@ -123,8 +123,8 @@ exact model, add a root-level policy to the user-local config:
 full canonical model ID, not provider or panel name. An absent, invalid, or non-matching policy is
 `ask`. A mixed subset prompts if any selected OpenRouter route is not `allow`. Effective policy and
 basis (`configured` or `confirmation-required`) are included in the check and route results. Policy
-values are included in the panel and OpenRouter subset digests, so a policy change invalidates a prior
-check.
+values are included in the panel and OpenRouter subset digests. The OpenRouter subset digest also binds
+the fixed completion contract, so a policy or contract change invalidates a prior check.
 
 ### Built-ins and compatibility
 
@@ -167,21 +167,28 @@ The skill invokes `scripts/review-panel.sh` in four bounded stages:
    whose exact policies remain `ask`** and asks for fresh metered consent. If every selected route is
    explicitly `allow`, it invokes `run-openrouter --configured-consent`; otherwise it invokes
    `run-openrouter --confirmed` only after approval. Both paths verify all three digests and delegate
-   the exact subset once to `openrouter-panel.sh`. Declining uses `decline-openrouter` and makes no
-   request.
+   the exact subset once to `openrouter-panel.sh`. The OpenRouter helper adds a fixed completion
+   contract, strips its marker from completed output, and classifies missing markers, non-stop
+   termination, or tool-call attempts as `incomplete`. Declining uses `decline-openrouter` and makes
+   no request.
 4. `evaluate` preserves route order and failures, counts unique successful providers, and reports
    whether quorum was met. It reports same-provider corroboration separately and does no semantic
    consensus analysis.
 
 Every result reports route ID, kind, provider, effective model and effort, their source (`panel`,
 `override`, or `native-default`), effective OpenRouter consent policy/basis when applicable, status,
-and the bound panel and prompt digests. Local CLIs receive a
+and the bound panel and prompt digests. OpenRouter results also retain bounded response ID/model/provider,
+normalized and native finish reasons, usage, and tool-call count while discarding tool arguments and
+hidden reasoning text. An `incomplete` route remains visible but cannot count toward quorum; completion
+marker compliance is not semantic validation. Local CLIs receive a
 minimal environment containing native config locations but not arbitrary inherited secrets or API
 keys. Their stdout (65,536 bytes) and stderr (8,192 bytes) are bounded while streaming; empty or
 oversized output is a route error. Local routes are approved read-only repository reviewers and may
 inspect readable repository files, so the repository itself remains a trust boundary and must not
-contain shareable secrets. OpenRouter receives prompt bytes only and no tools. Missing CLIs, timeouts,
-declined metered routes, and model errors remain explicit; routes are never retried or substituted.
+contain shareable secrets. OpenRouter receives the sanitized user prompt plus the bounded fixed
+completion contract and no tools. Their combined bytes stay within `maxPromptBytes`. Missing CLIs,
+timeouts, incomplete responses, declined metered routes, and model errors remain explicit; routes are
+never retried or substituted.
 
 For consensus, the caller may synthesize agreements only when `consensusEligible` is true. The
 synthesis must separately report evidence-backed agreements, disagreements, shared assumptions,

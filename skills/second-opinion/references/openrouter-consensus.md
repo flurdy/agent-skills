@@ -66,7 +66,7 @@ Local limits may lower but never exceed the compiled ceilings:
 
 - 8 requests total;
 - 4 concurrent requests;
-- 65,536 prompt bytes;
+- 65,536 combined sanitized-user-prompt and fixed completion-contract bytes;
 - 2,000 output tokens per model;
 - 1,048,576 response bytes per HTTP transport;
 - 1,800 seconds per request.
@@ -82,8 +82,9 @@ Run these steps only after assembling one prompt for the ordinary second-opinion
 ### 1. Sanitize and bound context
 
 Remove credentials, `.env` content, private keys, tokens, and other sensitive data. The helper sends
-prompt bytes verbatim and cannot reliably identify arbitrary secrets. If context exceeds the profile
-cap, create a focused summary before `check`; never silently truncate.
+the prompt bytes verbatim as the user message and adds only a fixed, non-secret system completion
+contract. It cannot reliably identify arbitrary secrets. If context exceeds the profile cap, create a
+focused summary before `check`; never silently truncate.
 
 ### 2. Resolve the full panel without network access
 
@@ -97,8 +98,10 @@ Write the exact sanitized prompt to a mode-`600` temporary file, then run:
 ```
 
 Retain `panelSha256`, `openrouterSha256`, and `promptSha256`. They bind the effective panel, exactly
-the metered subset, and exactly the disclosed prompt. The result reports missing local CLIs, curl,
-and OpenRouter authentication without making a request or exposing a credential.
+the metered subset plus fixed completion-contract digest, and exactly the disclosed user prompt. The
+result reports the fixed completion contract's byte count; it is included within `maxPromptBytes`.
+The result also reports missing local
+CLIs, curl, and OpenRouter authentication without making a request or exposing a credential.
 
 Local routes may run before the consent decision. If OpenRouter prerequisites are missing, preserve
 those routes as unavailable and continue with honest quorum degradation; do not install software,
@@ -113,7 +116,8 @@ immediately before requests, use one `AskUserQuestion`. Disclose:
 - panel name and every OpenRouter route whose policy remains `ask`, with exact model ID, vendor,
   provider, and role;
 - exact number of OpenRouter requests and configured maximum concurrency;
-- prompt-byte cap, output-token cap per model, and timeout;
+- prompt-byte cap, including the displayed fixed completion-contract bytes, output-token cap per
+  model, and timeout;
 - that only this subset consumes OpenRouter credits and prices can change.
 
 Options:
@@ -146,6 +150,13 @@ explicitly `allow`. On interactive approval, use `run-openrouter --confirmed`. O
 `decline-openrouter` with the same panel, prompt, digests, and overrides. It emits one `declined`
 result per OpenRouter route and calls no network endpoint.
 
+The fixed system contract asks each OpenRouter route to end a completed answer with a marker. The
+helper strips that marker from visible output. A route is `ok` only when it returns non-empty text,
+uses normalized finish reason `stop`, contains no tool calls, and supplies the marker. Missing markers,
+non-stop termination, and attempted tool calls become `incomplete`; their visible partial content and
+bounded termination diagnostics remain available, but they cannot count toward quorum. Marker
+compliance is transport completion only, not proof of correctness or substantive review.
+
 `run-openrouter` rebuilds and verifies the effective panel and prompt before delegating the exact
 subset to `openrouter-panel.sh`. The hardened helper keeps the bearer token out of argv using a
 mode-private curl config, enforces the response-byte ceiling in curl and again before JSON parsing,
@@ -158,7 +169,9 @@ Always remove private prompt/result files after evaluation, success or failure.
 ## Presentation and interpretation
 
 Preserve every route's status, role, vendor, derived provider, exact model, effective settings, and
-provenance. Usage is post-call telemetry, not a reliable pre-run estimate.
+provenance. OpenRouter results also preserve bounded response ID/model/provider, normalized and native
+finish reasons, and tool-call count. Tool arguments and hidden reasoning text are discarded. Usage is
+post-call telemetry, not a reliable pre-run estimate.
 
 Quorum is mechanical: count unique providers with successful responses. Same-provider successes are
 reported separately and cannot inflate quorum.
@@ -183,6 +196,7 @@ list only actionable items.
 - Never print credentials or put the bearer token in argv.
 - Never exceed compiled model, concurrency, prompt, output, or timeout ceilings.
 - Never give OpenRouter models tools, repository access, environment contents, or unsanitized data.
+- Never count an `incomplete` response toward quorum or treat the completion marker as semantic review.
 
 ## Maintainer validation
 

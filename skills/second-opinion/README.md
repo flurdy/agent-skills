@@ -102,8 +102,10 @@ Only run them where that repository is safe to share with their providers. The s
 secrets from assembled context, but you remain responsible for not requesting review of credentials,
 private keys, `.env` contents, or sensitive personal data.
 
-OpenRouter routes receive only the sanitized prompt—no tools or repository access—but consume
-credits. They prompt for approval immediately before requests by default. A user may opt in an
+OpenRouter routes receive the sanitized prompt plus a fixed, non-secret completion contract—no tools
+or repository access—but consume credits. The contract marker is removed from completed output; hidden
+reasoning and tool arguments are not retained. They prompt for approval immediately before requests by
+default. A user may opt in an
 exact configured model with `consent: "allow"`; it is never inferred from provider, panel, or prior
 spend. Every other route in a selected subset still requires approval. Declining retains any local
 results and records the OpenRouter routes as declined.
@@ -115,7 +117,10 @@ for the full safety boundary.
 ## Reading the result
 
 Expect the result to include each route's status and effective model/effort, followed by the raw
-successful opinions or explicit failures, timeouts, and declines.
+successful opinions or explicit incomplete responses, failures, timeouts, and declines. OpenRouter
+termination diagnostics include bounded response identity, normalized/native finish reason, and
+tool-call count. `incomplete` routes never contribute provider quorum; the completion contract checks
+transport completion, not correctness or semantic consensus.
 
 Treat the final assessment as a review checklist:
 
@@ -135,6 +140,7 @@ settings are reported as `native-default`—see
 |---|---|
 | `peer` route is unavailable | Install/authenticate another supported local CLI, or select an available route explicitly. The skill does not silently substitute one. |
 | A panel falls short of quorum | Read the unavailable-route statuses; partial results are still useful but are not complete coverage. |
+| An OpenRouter route is `incomplete` | Inspect its visible partial response and termination diagnostics. It intentionally does not count toward quorum. |
 | OpenRouter routes were not run | Check the displayed prerequisite or consent status. Declining consent is expected to leave those routes as declined. |
 | A panel configuration is rejected | Check route IDs/models for uniqueness and use the schema in [review-panels.md](references/review-panels.md). |
 | Result has conflicting recommendations | Verify the disputed claims in the repository; use consensus as a structured comparison, not a tie-breaker. |
