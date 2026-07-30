@@ -20,7 +20,7 @@ Panel configuration defaults to:
 ~/.agents/second-opinion/config.json
 ```
 
-It contains no credentials. `OPENROUTER_API_KEY` remains in the user's shell or secret manager.
+It contains no credentials. The API key remains in the user's secret manager and is loaded on demand through `secret-api-key` when `SECRET_API_KEY_PROJECT` is configured.
 Exact model IDs belong in local configuration, not the shared skill. See
 [review-panels.md](review-panels.md) for the mixed-route schema.
 

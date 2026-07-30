@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+load_circleci_token() {
+  [[ -z "${CIRCLECI_TOKEN:-}" ]] || return 0
+  [[ -n "${SECRET_API_KEY_PROJECT:-}" ]] || return 0
+  command -v secret-api-key >/dev/null 2>&1 || return 0
+  CIRCLECI_TOKEN="$(secret-api-key lookup circleci "$SECRET_API_KEY_PROJECT" 2>/dev/null || true)"
+}
+
 remote_url() {
   git config --get remote.origin.url 2>/dev/null || true
 }
@@ -18,6 +25,7 @@ if [[ -z "$repo" ]]; then
   echo "NO_GIT_REPO"
   exit 0
 fi
+load_circleci_token
 if [[ -z "${CIRCLECI_TOKEN:-}" ]]; then
   echo "---STATUS---"
   echo "NO_TOKEN"
@@ -74,7 +82,7 @@ fi
 
 # CircleCI v2 occasionally returns 404 for output while v1.1 exposes
 # presigned step output URLs. Fetch the failed action first, else first action.
-v1_job_json="$(curl -fsS "https://circleci.com/api/v1.1/project/github/$owner/$name/$job_number?circle-token=$CIRCLECI_TOKEN" 2>/dev/null || true)"
+v1_job_json="$("${api[@]}" "https://circleci.com/api/v1.1/project/github/$owner/$name/$job_number" 2>/dev/null || true)"
 if [[ -z "$v1_job_json" ]]; then
   echo 'No job output available.'
   exit 0

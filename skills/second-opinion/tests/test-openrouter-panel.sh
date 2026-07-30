@@ -71,6 +71,14 @@ fi
 FAKE_CURL
 chmod +x "$TMP_DIR/bin/curl"
 
+cat > "$TMP_DIR/bin/secret-api-key" <<'FAKE_SECRET_API_KEY'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == "lookup openrouter flurdy" ]] || exit 2
+printf '%s\n' 'test-key'
+FAKE_SECRET_API_KEY
+chmod +x "$TMP_DIR/bin/secret-api-key"
+
 CONFIG="$TMP_DIR/config.json"
 cat > "$CONFIG" <<'JSON'
 {
@@ -95,7 +103,8 @@ cat > "$CONFIG" <<'JSON'
 JSON
 
 RUN_ENV=(env "PATH=$TMP_DIR/bin:$ORIGINAL_PATH" "HOME=$TMP_DIR/home" "OPENROUTER_API_KEY=test-key")
-CHECK_ENV=(env -u OPENROUTER_API_KEY "PATH=$TMP_DIR/bin:$ORIGINAL_PATH" "HOME=$TMP_DIR/home")
+CHECK_ENV=(env -u OPENROUTER_API_KEY -u SECRET_API_KEY_PROJECT "PATH=$TMP_DIR/bin:$ORIGINAL_PATH" "HOME=$TMP_DIR/home")
+KEYRING_ENV=(env -u OPENROUTER_API_KEY "PATH=$TMP_DIR/bin:$ORIGINAL_PATH" "HOME=$TMP_DIR/home" "SECRET_API_KEY_PROJECT=flurdy")
 
 check_json="$("${CHECK_ENV[@]}" "$HELPER" check --config "$CONFIG" --profile test)"
 jq -e '
@@ -105,10 +114,18 @@ jq -e '
   (.profile_sha256 | test("^[a-f0-9]{64}$")) and
   .hard_limits.max_response_bytes == 1048576 and
   .hard_limits.max_timeout_seconds == 1800 and
-  .problems == ["OPENROUTER_API_KEY is not set"]
+  .problems == ["OpenRouter API key is not configured"]
 ' <<< "$check_json" >/dev/null || fail "local check output was incorrect"
 assert_no_requests
 profile_sha256="$(jq -r '.profile_sha256' <<< "$check_json")"
+
+keyring_json="$("${KEYRING_ENV[@]}" "$HELPER" check --config "$CONFIG" --profile test)"
+jq -e '
+  .ready == true and
+  .auth == "configured (not network-verified)" and
+  .problems == []
+' <<< "$keyring_json" >/dev/null || fail "keyring authentication was not detected"
+assert_no_requests
 
 DUPLICATE_MODEL_CONFIG="$TMP_DIR/duplicate-model.json"
 jq '.profiles.test.models[1].model = "openrouter/qwen/test-a"' "$CONFIG" \
@@ -130,7 +147,7 @@ repeated_json="$("${CHECK_ENV[@]}" "$HELPER" check \
 jq -e '
   .ready == false and
   (.models | length == 4) and
-  .problems == ["OPENROUTER_API_KEY is not set"]
+  .problems == ["OpenRouter API key is not configured"]
 ' <<< "$repeated_json" >/dev/null || fail "same-provider routes were rejected"
 assert_no_requests
 
@@ -152,7 +169,7 @@ max_timeout_json="$("${CHECK_ENV[@]}" "$HELPER" check \
 jq -e '
   .ready == false and
   .profile_limits.defaultTimeoutSeconds == 1800 and
-  .problems == ["OPENROUTER_API_KEY is not set"]
+  .problems == ["OpenRouter API key is not configured"]
 ' <<< "$max_timeout_json" >/dev/null || fail "the maximum timeout was rejected"
 assert_no_requests
 

@@ -3,6 +3,13 @@ set -euo pipefail
 
 ref="${1:-}"
 
+load_circleci_token() {
+  [[ -z "${CIRCLECI_TOKEN:-}" ]] || return 0
+  [[ -n "${SECRET_API_KEY_PROJECT:-}" ]] || return 0
+  command -v secret-api-key >/dev/null 2>&1 || return 0
+  CIRCLECI_TOKEN="$(secret-api-key lookup circleci "$SECRET_API_KEY_PROJECT" 2>/dev/null || true)"
+}
+
 remote_url() {
   git config --get remote.origin.url 2>/dev/null || true
 }
@@ -52,6 +59,7 @@ else
 fi
 
 printf '%s\n' '---CIRCLECI-STATUS---'
+load_circleci_token
 if [[ -z "${CIRCLECI_TOKEN:-}" ]]; then
   echo 'NO_TOKEN'
   exit 0

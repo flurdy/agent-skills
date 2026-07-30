@@ -16,16 +16,15 @@ Check the latest CircleCI pipeline/workflow status for the current GitHub reposi
 ## Authentication
 
 - Basic GitHub commit status/check-run summaries use `gh` when authenticated.
-- CircleCI pipeline/workflow/job details require `CIRCLECI_TOKEN` in the local environment.
+- CircleCI pipeline/workflow/job details use `CIRCLECI_TOKEN` when already set, otherwise `secret-api-key lookup circleci "$SECRET_API_KEY_PROJECT"`.
 - CircleCI project slug is derived from `origin`: `gh/{owner}/{repo}`.
 
-Set up once locally if detailed CircleCI API access is needed:
+Store the token once and expose only its non-secret project selector:
 
 ```bash
-export CIRCLECI_TOKEN=...
+secret-api-key store circleci flurdy
+export SECRET_API_KEY_PROJECT=flurdy
 ```
-
-or configure the CircleCI CLI/token storage separately and export the token before invoking the skill.
 
 ## Usage
 
@@ -60,7 +59,7 @@ Render:
 
 If `---CIRCLECI-STATUS---` is `NO_TOKEN`, say:
 
-> CircleCI API details unavailable: set `CIRCLECI_TOKEN` locally. GitHub commit/check status above may still show CircleCI's reported state.
+> CircleCI API details unavailable: configure `SECRET_API_KEY_PROJECT` and its CircleCI key. GitHub commit/check status above may still show CircleCI's reported state.
 
 If GitHub status includes CircleCI contexts with `target_url`, include links for failing/pending contexts.
 
@@ -81,10 +80,10 @@ Render:
 |-----|--------|--------|
 ```
 
-Then include the tail or relevant failure portion of `---LOGS---`. Keep output concise; prefer the final failing command/error block over dumping thousands of lines. If no token is configured, explain that logs require `CIRCLECI_TOKEN`.
+Then include the tail or relevant failure portion of `---LOGS---`. Keep output concise; prefer the final failing command/error block over dumping thousands of lines. If no token is configured, explain that logs require a CircleCI key for `SECRET_API_KEY_PROJECT`.
 
 ## Failure handling
 
 - `NO_GIT_REPO`: say this must be run inside a GitHub-backed git repo.
-- `NO_TOKEN`: show GitHub status if available, and explain how to set `CIRCLECI_TOKEN`.
+- `NO_TOKEN`: show GitHub status if available, and explain how to configure the project keyring lookup.
 - CircleCI API errors: report the error and fall back to GitHub commit/check status when present.

@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import textwrap
 import unicodedata
@@ -593,6 +594,24 @@ def request_json(url: str, method: str, key: str, body: Optional[dict[str, Any]]
         return json.loads(raw.decode("utf-8"))
 
 
+def load_secret_api_key(service: str, environ: dict[str, str]) -> Optional[str]:
+    project = environ.get("SECRET_API_KEY_PROJECT", "").strip()
+    if not project:
+        return None
+    try:
+        result = subprocess.run(
+            ["secret-api-key", "lookup", service, project],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    key = result.stdout.strip()
+    return key if result.returncode == 0 and key else None
+
+
 def collect_openrouter(start: dt.datetime, end: dt.datetime, offline: bool, base_url: str, timeout: float, environ: dict[str, str]) -> tuple[ScanResult, list[dict[str, Any]]]:
     result = ScanResult("openrouter-analytics", "OpenRouter", exactness="exact")
     result.events = []
@@ -600,14 +619,14 @@ def collect_openrouter(start: dt.datetime, end: dt.datetime, offline: bool, base
         result.status, result.exactness = "offline", "unavailable"
         result.detail = "Offline mode: no OpenRouter request was sent."
         return result, []
-    key = environ.get("OPENROUTER_MANAGEMENT_API_KEY")
+    key = environ.get("OPENROUTER_MANAGEMENT_API_KEY") or load_secret_api_key("openrouter_management", environ)
     if not key:
         if environ.get("OPENROUTER_API_KEY"):
             result.status, result.exactness = "insufficient_scope", "unavailable"
-            result.detail = "OPENROUTER_API_KEY is inference-only; set OPENROUTER_MANAGEMENT_API_KEY for analytics. No request was sent."
+            result.detail = "OPENROUTER_API_KEY is inference-only; configure an OpenRouter management key for analytics. No request was sent."
         else:
             result.status, result.exactness = "not_configured", "unavailable"
-            result.detail = "Set OPENROUTER_MANAGEMENT_API_KEY to enable optional weekly analytics."
+            result.detail = "Configure an OpenRouter management key for SECRET_API_KEY_PROJECT to enable optional weekly analytics."
         return result, []
     base = base_url.rstrip("/")
     try:

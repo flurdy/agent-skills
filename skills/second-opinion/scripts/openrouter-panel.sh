@@ -25,8 +25,9 @@ Configuration defaults to ~/.agents/second-opinion/config.json. A profile contai
 ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
 model, a 1,048,576-byte HTTP response transport cap, and 1,800 seconds per request.
 
-OPENROUTER_API_KEY is required only for run. Its presence is checked without
-printing it. The config contains model identities and limits, never credentials.
+An OpenRouter API key is required only for run. The helper uses
+OPENROUTER_API_KEY when set, otherwise secret-api-key with SECRET_API_KEY_PROJECT.
+The config contains model identities and limits, never credentials.
 USAGE
 }
 
@@ -37,6 +38,13 @@ die() {
 
 require_command() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required"
+}
+
+load_openrouter_api_key() {
+  [[ -z "${OPENROUTER_API_KEY:-}" ]] || return 0
+  [[ -n "${SECRET_API_KEY_PROJECT:-}" ]] || return 0
+  command -v secret-api-key >/dev/null 2>&1 || return 0
+  OPENROUTER_API_KEY="$(secret-api-key lookup openrouter "$SECRET_API_KEY_PROJECT" 2>/dev/null || true)"
 }
 
 append_problem() {
@@ -155,10 +163,11 @@ check_configuration() {
     curl_status="missing"
     append_problem "curl is not installed"
   }
+  load_openrouter_api_key
   if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
     auth_status="configured (not network-verified)"
   else
-    append_problem "OPENROUTER_API_KEY is not set"
+    append_problem "OpenRouter API key is not configured"
   fi
 
   if ! validate_profile; then
@@ -362,7 +371,8 @@ run_panel() {
     die "a SHA-256 command is required (sha256sum, shasum, or openssl)"
   [[ "$actual_profile_sha256" == "$expected_profile_sha256" ]] || \
     die "profile changed since check; rerun check and obtain fresh consent"
-  [[ -n "${OPENROUTER_API_KEY:-}" ]] || die "OPENROUTER_API_KEY is not set"
+  load_openrouter_api_key
+  [[ -n "${OPENROUTER_API_KEY:-}" ]] || die "OpenRouter API key is not configured"
   case "$OPENROUTER_API_KEY" in
     *$'\n'*|*$'\r'*|*\"*|*\\*) die "OPENROUTER_API_KEY contains unsupported characters" ;;
   esac

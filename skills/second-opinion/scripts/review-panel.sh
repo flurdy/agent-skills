@@ -47,6 +47,13 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "$1 is required"
 }
 
+load_openrouter_api_key() {
+  [[ -z "${OPENROUTER_API_KEY:-}" ]] || return 0
+  [[ -n "${SECRET_API_KEY_PROJECT:-}" ]] || return 0
+  command -v secret-api-key >/dev/null 2>&1 || return 0
+  OPENROUTER_API_KEY="$(secret-api-key lookup openrouter "$SECRET_API_KEY_PROJECT" 2>/dev/null || true)"
+}
+
 sha256_stream() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum | awk '{print $1}'
@@ -374,6 +381,7 @@ check_panel() {
   prompt_sha="$(prompt_digest)"
 
   local openrouter_auth="missing" openrouter_curl="missing" openrouter_availability="unavailable"
+  load_openrouter_api_key
   [[ -n "${OPENROUTER_API_KEY:-}" ]] && openrouter_auth="configured (not network-verified)"
   command -v curl >/dev/null 2>&1 && openrouter_curl="available"
   if [[ "$openrouter_auth" != "missing" && "$openrouter_curl" == "available" ]]; then

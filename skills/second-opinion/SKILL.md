@@ -49,7 +49,7 @@ Agreement and vote count never establish correctness.
 
 - Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
 - Panel orchestration: `jq` plus `scripts/review-panel.sh`.
-- OpenRouter subset only: `curl`, `OPENROUTER_API_KEY`, and a configured panel/profile in
+- OpenRouter subset only: `curl`, plus either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT`, and a configured panel/profile in
   `~/.agents/second-opinion/config.json`. Optional exact-model `modelPolicies` in that user-local
   file may set `consent: "allow"`; absent or invalid policies remain confirmation-required.
 - `gh` for PR context.

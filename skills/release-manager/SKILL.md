@@ -125,7 +125,7 @@ as one plain call per service (parallel calls are fine; loops are not).
 
    Parse the delimited sections:
    - `---META---`: `context=<kubectl ctx>`, `ci=<available|unavailable>` (CI is `available` only
-     when `CIRCLECI_TOKEN`/`.env.circleci` is present; otherwise every `ci` field is `unknown`).
+     when a CircleCI key is available through `secret-api-key`, `CIRCLECI_TOKEN`, or `.env.circleci`; otherwise every `ci` field is `unknown`).
    - `---SERVICES---`: one pipe-delimited line per service after the header line:
      `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age`.
      - `unpushed` (int), `uncommitted` (`true|false`), `head` = short sha of the current local
@@ -330,7 +330,7 @@ as one plain call per service (parallel calls are fine; loops are not).
        green. (Step 3 already filed the bead.)
      - `ci` = `running` → mark `⏳ CI RUNNING — wait` and drop this tick. The branch tip is
        mid-build and unsettled; it resurfaces next tick.
-     - `ci` = `unknown` (no `CIRCLECI_TOKEN`, no pipeline, or branch mismatch above) → mark
+     - `ci` = `unknown` (no CircleCI key, no pipeline, or branch mismatch above) → mark
        `❔ CI UNKNOWN — verify locally before pushing` and drop, **unless** you (the operator)
        have confirmed the service's tests pass locally this session — only then keep it as READY.
        Never silently offer a push on `unknown`.
@@ -493,7 +493,7 @@ as one plain call per service (parallel calls are fine; loops are not).
   only true verification of the candidate is local tests before push (or the post-push pipeline
   that runs once the commits land). The gate uses CI red/running/unknown as a hard stop, and
   surfaces "candidate remotely unverified" in the push prompt even when CI is green.
-- Needs `CIRCLECI_TOKEN` and kubectl context `paperboy` for full data; degrade any missing
+- Needs a CircleCI key available through `secret-api-key` (or `CIRCLECI_TOKEN`) and kubectl context `paperboy` for full data; degrade any missing
   section to `unknown` rather than failing the tick.
 - `.release-state.json` is gitignored and local — defer is per-session, cancel persists until
   new commits land on that service.

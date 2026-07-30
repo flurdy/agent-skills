@@ -72,7 +72,8 @@ The stdlib-only collector reads these telemetry roots recursively:
 - OpenAI Codex: `~/.codex/sessions/**/*.jsonl`; rollout `event_msg/token_count` cumulative counters
   are authoritative and converted to duplicate-suppressed deltas.
 - OpenRouter, optionally: Management Analytics API metadata plus one UTC-week query. Set
-  `OPENROUTER_MANAGEMENT_API_KEY`; an `OPENROUTER_API_KEY` is inference-only and is never sent.
+  `SECRET_API_KEY_PROJECT` and store `openrouter_management` with `secret-api-key`; an explicit
+  `OPENROUTER_MANAGEMENT_API_KEY` remains supported. `OPENROUTER_API_KEY` is inference-only and is never sent.
 
 The collector never reads auth files. It does not emit or persist credentials, prompts, responses,
 tool output, raw transcript lines, session/message IDs, file paths, or raw API error bodies.

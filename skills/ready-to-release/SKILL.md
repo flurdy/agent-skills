@@ -39,7 +39,7 @@ Run these checks for the named service and present a gate table (✅ / ⚠️ / 
    (commit first). List the unpushed commits with `./scripts/mgit log <service> --oneline @{u}..HEAD`.
 
 2. **CI** — `make ci-status <service>`. `success` → ✅; `running` → ⚠️ (wait); `failed`/`error`
-   → ❌ (blocker); `unknown` (no `CIRCLECI_TOKEN`) → ⚠️.
+   → ❌ (blocker); `unknown` (no CircleCI key) → ⚠️.
 
 3. **Contracts** — if the service has connectors/pacts, run `Skill /contract-check status` and
    read the rows for this service. Covers both contract *state* (staleness / unsynced /

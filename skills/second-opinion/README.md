@@ -92,7 +92,7 @@ exact-model consent policies, not credentials. See
 [review-panels.md](references/review-panels.md) for the supported schema, built-ins, per-route
 model/effort overrides, and limits.
 
-OpenRouter panels additionally require `curl` and `OPENROUTER_API_KEY` in your shell or secret
+OpenRouter panels additionally require `curl` and either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT` in your shell or secret
 manager. Put exact OpenRouter model IDs in the local configuration, never in this shared README.
 
 ## Cost, privacy, and consent

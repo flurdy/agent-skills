@@ -44,7 +44,7 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
 
    Parse the delimited sections (already ANSI-free):
    - `---META---`: `context=<kubectl ctx>`, `ci=<available|unavailable>` — when `ci=unavailable`
-     (no `CIRCLECI_TOKEN`/`.env.circleci`) every `ci` field is `unknown`; show it as such.
+     (no CircleCI key from `secret-api-key`, `CIRCLECI_TOKEN`, or `.env.circleci`) every `ci` field is `unknown`; show it as such.
    - `---SERVICES---`: one pipe-delimited line per service after the header line:
      `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age`.
      - `unpushed` (int, commits ahead of origin), `uncommitted` (`true|false`), `head` = short
@@ -133,7 +133,7 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
 
 - Strictly read-only. If you find yourself wanting to push, file a bead, or reconcile drift,
   that's `/release-manager`.
-- `CIRCLECI_TOKEN` and kubectl context `paperboy` are needed for full data; degrade gracefully to
+- A CircleCI key available through `secret-api-key` (or `CIRCLECI_TOKEN`) and kubectl context `paperboy` are needed for full data; degrade gracefully to
   `unknown` for any section that isn't available rather than failing the whole dashboard.
 - `./scripts/pact-graph` (ordering) and `./scripts/contract-check coverage` (contract health)
   are pure-filesystem, need no network/tokens, and always run. The dependency graph is the

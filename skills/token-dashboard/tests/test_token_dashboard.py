@@ -314,6 +314,24 @@ class OpenRouterTests(unittest.TestCase):
     def collect(self, env=None, offline=False):
         return td.collect_openrouter(self.start, self.end, offline, "https://analytics.test/base", 0.2, env or {})
 
+    def test_management_key_loads_from_project_keyring(self):
+        meta = {"data": {"metrics": list(td.REMOTE_METRICS), "dimensions": ["model", "provider"]}}
+        query = {"data": {"data": [], "metadata": {"truncated": False}}}
+        completed = subprocess.CompletedProcess([], 0, stdout="secret\n", stderr="")
+        with mock.patch.object(td.subprocess, "run", return_value=completed) as run:
+            with mock.patch.object(td, "request_json", side_effect=[meta, query]) as request:
+                source, _ = self.collect({"SECRET_API_KEY_PROJECT": "flurdy"})
+
+        self.assertEqual(source.status, "ok")
+        run.assert_called_once_with(
+            ["secret-api-key", "lookup", "openrouter_management", "flurdy"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        self.assertEqual(request.call_args_list[0].args[2], "secret")
+
     def test_management_success_uses_official_envelope_numeric_strings_and_time_range(self):
         meta = {"data": {"metrics": list(td.REMOTE_METRICS), "dimensions": ["model", "provider"]}}
         metrics = {"request_count": "2", "tokens_total": "30", "tokens_prompt": "20", "tokens_completion": "10", "reasoning_tokens": "3", "cached_tokens": "4"}
@@ -377,10 +395,12 @@ class OpenRouterTests(unittest.TestCase):
         self.assertEqual(source.status, "not_configured")
         request.assert_not_called()
 
-    def test_offline_never_requests_even_with_management_key(self):
-        with mock.patch.object(td, "request_json") as request:
-            source, _ = self.collect({"OPENROUTER_MANAGEMENT_API_KEY": "secret"}, offline=True)
+    def test_offline_never_loads_or_requests_a_management_key(self):
+        with mock.patch.object(td.subprocess, "run") as run:
+            with mock.patch.object(td, "request_json") as request:
+                source, _ = self.collect({"SECRET_API_KEY_PROJECT": "flurdy"}, offline=True)
         self.assertEqual(source.status, "offline")
+        run.assert_not_called()
         request.assert_not_called()
 
     def test_http_errors_are_sanitized(self):
