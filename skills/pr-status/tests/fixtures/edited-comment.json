@@ -1,0 +1,5 @@
+{
+  "nodeId": "C1",
+  "body": "Please add a null and empty guard before dereferencing this value.",
+  "updatedAt": "2026-07-30T13:00:00Z"
+}

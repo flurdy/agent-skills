@@ -1,11 +1,11 @@
 ---
 name: reply-comments
 description: Reply to PR review comments after addressing them. Resolves conversations where changes were made. Uses polite tone for humans, terse factual responses for AI bots. IMPORTANT - Always use this skill (not raw gh api calls) when replying to PR comments, including after manually addressing review feedback.
-allowed-tools: "Read,Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
+allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -37,20 +37,24 @@ gh pr view --json number,url,title,headRepositoryOwner,headRepository \
   --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
 ```
 
-### 2. Fetch Review Comments
+### 2. Fetch the normalized feedback inventory
 
-Get all review comments with their thread/resolution status:
-
-```bash
-~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh {owner} {repo} {pr_number}
-```
-
-If the script is unavailable, fall back to:
+Use the shared bounded read-only collector:
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments" \
-  --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id, created_at}'
+~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {pr_number}
 ```
+
+Select records by stable `identity`, not body text or count. For the existing inline reply flow, use
+only `source: inline_review` records whose lifecycle is `unresolved` and whose author is not self.
+Retain `updatedAt` and `targets`: `targets.reply.commentId` is the REST reply target and
+`targets.resolveThreadId` is the GraphQL thread target. This mapping keeps every item on the correct
+reply or resolution endpoint. Never send conversation comments, review summaries, or CI annotations
+to an inline-review endpoint; report those surfaces separately.
+
+If `partial` is true, name the failed source and do not infer that a missing item was addressed. If
+the inventory helper is unavailable, `gh-pr-comments.sh` plus `gh-pr-review-threads.sh` remains the
+compatibility fallback.
 
 ### 3. Get Recent Commits
 
@@ -99,7 +103,7 @@ For comments NOT addressed (intentionally skipped):
 
 ### 6. Post Replies
 
-Reply to each comment:
+Reply to each selected inline record using `targets.reply.commentId` as `{comment_id}`:
 
 ```bash
 ~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "{reply_text}"
@@ -114,13 +118,14 @@ gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
 
 ### 7. Resolve Threads (if addressed)
 
-First, get the thread IDs:
+Use each selected inventory record's `targets.resolveThreadId`. Only inline review threads have a
+resolvable target. In compatibility fallback mode, get the thread IDs with:
 
 ```bash
 ~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh {owner} {repo} {pr_number}
 ```
 
-If the script is unavailable, fall back to:
+If that script is unavailable, fall back to:
 
 ```bash
 gh api graphql -f query='

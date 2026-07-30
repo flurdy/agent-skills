@@ -22,7 +22,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog test-next test-handoffs test-pi-spend test-watch-prs test-watch-release test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog test-next test-handoffs test-pi-spend test-pr-feedback test-watch-prs test-watch-release test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make clean-code"
@@ -35,6 +35,7 @@ help:
 	@echo "make test-next"
 	@echo "make test-handoffs"
 	@echo "make test-pi-spend"
+	@echo "make test-pr-feedback"
 	@echo "make test-watch-prs"
 	@echo "make test-watch-release"
 	@echo "make test-watch-rollouts"
@@ -92,6 +93,10 @@ test-handoffs:
 
 test-pi-spend:
 	@python3 -m unittest discover -s skills/pi-spend/tests -p 'test_*.py'
+
+test-pr-feedback:
+	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_feedback_inventory.py'
+	@bash skills/pr-status/tests/test-feedback-contract.sh
 
 test-watch-prs:
 	@bash skills/watch-prs/tests/test-skill-contract.sh

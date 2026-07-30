@@ -1,11 +1,11 @@
 ---
 name: review-comments
 description: Address PR review comments from reviewers (amazon-q-developer, copilot, humans). Use when the user wants to see and respond to feedback on their pull request.
-allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-reply-comment.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-reply-comment.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -37,55 +37,38 @@ gh pr view --json number,url,title,headRepositoryOwner,headRepository \
   --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
 ```
 
-### 2. Fetch Review Comments
+### 2. Fetch the normalized feedback inventory
 
-Get PR reviews and comments:
-
-```bash
-~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh {pr_number}
-```
-
-If the script is unavailable, fall back to:
+Use the same bounded read-only collector as `/pr-status`:
 
 ```bash
-gh pr view {pr_number} --json reviews,comments
+~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {pr_number}
 ```
 
-Get inline code review comments:
+Read `records`, `partial`, and `errors`. The collector supplies stable identities and update times
+for inline roots/replies, review summaries, top-level conversation, and changed-file CI annotations;
+it also carries lifecycle, author kind, bounded body/gist, and response target IDs. If `partial` is
+true, show the available records and failed source but do not treat absent items as resolved or
+handled.
 
-```bash
-~/.agents/skills/review-comments/scripts/gh-pr-comments.sh {owner} {repo} {pr_number}
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments"
-```
-
-### 2b. Fetch CI Check Annotations
-
-Lint/typecheck jobs often attach inline annotations to the PR's checks — these surface in the GitHub UI alongside review comments but are NOT review threads, so the comment endpoints above never return them.
-
-```bash
-# List completed check runs on the PR head, then pull annotations per run
-gh pr view {pr_number} --json headRefOid --jq .headRefOid
-gh api "repos/{owner}/{repo}/commits/{head_sha}/check-runs" \
-  --jq '.check_runs[] | select(.output.annotations_count > 0) | {id, name}'
-gh api "repos/{owner}/{repo}/check-runs/{check_run_id}/annotations" \
-  --jq '.[] | {path, line: .start_line, level: .annotation_level, message}'
-```
-
-Filter to annotations whose `path` is in the PR's changed files — drop repo-wide noise (e.g. deprecated-runner warnings on `.github`). Skip this step silently if no check run has annotations.
+If the helper is unavailable, the existing `gh-pr-view-reviews.sh` and `gh-pr-comments.sh` wrappers
+remain a compatibility fallback. Fetch check annotations only in that fallback, and keep filtering
+them to changed files. Do not combine the normalized path with those ad-hoc fetches.
 
 ### 3. Categorize Comments
 
-Group comments by:
-- **Reviewer**: amazon-q-developer[bot], copilot[bot], human reviewers
-- **Status**: Pending, Resolved, Outdated
-- **Type**: Code suggestion, question, blocking issue
+Group records by:
+- **Author kind**: bot, human, self, or unknown
+- **Source**: inline review, submitted review summary, top-level conversation, or check annotation
+- **Lifecycle**: active/unresolved, resolved, outdated, or dismissed
+- **Semantic type**: suggestion, question, change request, blocking/security claim, approval,
+  automated status, CI annotation, or informational note
 
-CI annotations are their own category — **fix-only**: there is no thread to reply to or resolve, so they are addressed in code (or consciously left, e.g. a passing warning) and never appear in the `/reply-comments` step.
+The collector's semantic type and `actionability` are triage hints. Whether a claim is valid or a
+change should be made remains agent judgment against the current code, tests, and requirements.
+Skip self-authored, resolved, outdated, dismissed, approval, and automated-status records by
+default, but show them separately when useful. CI annotations are **fix-only** because they have no
+reply or resolution endpoint.
 
 ### 4. Present Summary
 
@@ -120,10 +103,10 @@ Do NOT start making changes or replying without user confirmation.
 
 ### 6. Address Comments (if requested)
 
-For each unresolved comment the user wants addressed:
+For each selected candidate, retain its `identity`, `updatedAt`, and `targets` throughout the run:
 
-1. Read the comment and understand what's being asked
-2. Check the file and line being referenced
+1. Read the record and understand what's being asked
+2. Check the referenced file/line and validate the claim independently
 3. Either:
    - Make the suggested change if appropriate, including an initially failing test if needed
    - Explain why the current code is correct

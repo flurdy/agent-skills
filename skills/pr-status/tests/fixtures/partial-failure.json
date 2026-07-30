@@ -1,0 +1,29 @@
+{
+  "initial": {
+    "data": {
+      "viewer": {"login": "ivar"},
+      "repository": {
+        "pr0": {
+          "number": 9,
+          "url": "https://github.com/acme/widgets/pull/9",
+          "headRefOid": "sha9",
+          "reviewThreads": {
+            "nodes": [
+              {"id": "FT1", "isResolved": false, "isOutdated": false, "path": "b.py", "line": 4, "originalLine": 4, "comments": {"nodes": [{"id": "FC1", "databaseId": 901, "author": {"login": "alice", "__typename": "User"}, "body": "Please handle the failure.", "createdAt": "2026-07-30T10:00:00Z", "updatedAt": "2026-07-30T10:00:00Z", "url": null, "replyTo": null}], "pageInfo": {"hasNextPage": false, "endCursor": null}}}
+            ],
+            "pageInfo": {"hasNextPage": false, "endCursor": null}
+          },
+          "reviews": {"nodes": [], "pageInfo": {"hasNextPage": true, "endCursor": "reviews-1"}},
+          "comments": {"nodes": [], "pageInfo": {"hasNextPage": false, "endCursor": null}},
+          "files": {"nodes": [{"path": "b.py"}], "pageInfo": {"hasNextPage": false, "endCursor": null}}
+        }
+      }
+    }
+  },
+  "connectionPages": {
+    "9:reviews:reviews-1": {"error": "reviews unavailable"}
+  },
+  "rest": {
+    "repos/acme/widgets/commits/sha9/check-runs?per_page=100&page=1": {"error": "checks unavailable"}
+  }
+}

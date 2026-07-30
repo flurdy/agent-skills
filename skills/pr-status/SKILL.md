@@ -1,11 +1,11 @@
 ---
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion, with transition-driven suggested next actions.
-allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*), mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh api:*), Bash(gh search:*), Bash(date:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.12.0"
+version: "1.13.0"
 author: "flurdy"
 ---
 
@@ -75,6 +75,32 @@ Map `checksState` values: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PE
 
 If the batch script is unavailable, the per-PR scripts in the same directory (`gh-pr-checks.sh`, `gh-pr-reviews.sh`, `gh-pr-threads.sh`, `gh-pr-merge-state.sh`) or plain `gh pr view/checks` cover the same fields.
 
+### 2b. Fetch the normalized feedback inventory
+
+For each `owner/repo` group of open PRs, make one bounded read-only inventory call:
+
+```bash
+~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {number1} {number2} ...
+```
+
+The schema-v1 JSON envelope contains `records`, `partial`, `errors`, and explicit caps. Records
+cover inline review roots and replies, submitted review summaries/states, top-level conversation,
+and changed-file CI annotations. A record carries stable `identity` plus `updatedAt`, `updateKey`,
+`stateKey`, author kind, lifecycle, semantic type, actionability candidate status, bounded body/gist, and the
+GitHub IDs needed by the correct response surface. Pending draft review comments are not observable
+through normal APIs and are never represented as fetched feedback.
+
+Treat `actionability: candidate` as a triage hint, not a validated claim or permission to act. Human
+and bot feedback still needs agent judgment against the code and requirements. Suppress
+self-authored, resolved, outdated, dismissed, approval, and automated-status records from suggested
+actions while retaining them in the factual inventory. When `partial` is true, render the available
+data, name each failed source, and do not mark absent feedback as handled.
+
+The existing `unresolvedThreads` detail remains a compatibility fallback for other status consumers;
+this skill uses inventory identities and update times—not count changes—to detect feedback events.
+If the inventory helper is unavailable, fall back to the old count-only behavior and label feedback
+identity as unavailable rather than issuing overlapping ad-hoc comment fetches.
+
 ### 3. Fetch linked Jira discussion
 
 For every distinct Jira key found while rendering (open PRs: branch first, then title; recently closed PRs: title; using `/[A-Z]+-\d+/`), fetch its newest Jira comment. Include both open and recently closed PRs when they carry a ticket key; fetch each key once, even if multiple PRs use it. Calls may run in parallel:
@@ -131,7 +157,15 @@ Truncate titles: ~50 chars in the closed table, ~25 in the open table (13 column
 
 ### 5. Summarise changes
 
-After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update. Otherwise say "No changes." Render both tables in full either way — the point of repeated checks is current state at a glance.
+After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update.
+
+For PR feedback, compare the inventory by `identity`; the same identity with a later `updatedAt` is
+an edit, not a second comment. Use `stateKey` to detect lifecycle-only changes such as resolution or
+outdating; they may be shown as deltas but are not new actionable candidates. Report each new or
+materially edited candidate once with PR, source, author, lifecycle, semantic type, and bounded
+gist. Never infer identity from a
+thread count. If a partial fetch prevents comparison, say so. Otherwise say "No changes." Render
+both tables in full either way — the point of repeated checks is current state at a glance.
 
 ### 6. Suggest next actions (transition-driven)
 
@@ -142,29 +176,16 @@ Fire on transitions, not standing state: on the first check of a session list th
 | Transition this tick | Suggested command |
 |---|---|
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
-| unresolved threads increased, or → 👎 changes requested | `/review-comments {n}` |
+| new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
 | → ⚠️ behind (fell behind base) | `/rebase-main` (on that PR's branch) |
 | → 🔔 awaiting review (no longer draft, still no reviewers) | `/request-review` |
 
 Order most actionable first (🚀 → 💬 → ⚠️ → 🔔); omit the section when no PR changed state.
 
-For a PR whose unresolved-thread count increased this tick (only those), fetch who commented and a ~80-char gist for the bullet:
-
-```bash
-gh api graphql -f query='
-query($owner:String!,$repo:String!,$pr:Int!){
-  repository(owner:$owner,name:$repo){
-    pullRequest(number:$pr){
-      reviewThreads(last:10){
-        nodes{ isResolved comments(last:1){ nodes{ author{login} body } } }
-      }
-    }
-  }
-}' -f owner="{owner}" -f repo="{repo}" -F pr={number} \
-  --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false) | .comments.nodes[0] | {author: .author.login, gist: (.body | .[0:80])}]'
-```
-
-If the fetch fails, fall back to the bare count (`💬 N new`).
+Use the normalized record's author and bounded gist in the bullet. Keep its `identity` and
+`updatedAt` in session state so later polls distinguish an edit from a duplicate. Do not issue a
+second comment/thread query. When the inventory is partial, suggest a safe recheck and name the
+failed source instead of claiming that the candidate set is complete.
 
 ### 7. Next-tick recommendation
 

@@ -6,7 +6,7 @@ description: >
   renders tables and suggested next actions, never prompts or blocks.
 model-tier: standard
 effort: medium
-version: "2.4.0"
+version: "2.5.0"
 author: "flurdy"
 ---
 
@@ -14,6 +14,10 @@ author: "flurdy"
 
 Run `/pr-status` on a self-rescheduling loop until a stop hour. Each tick is an ordinary
 `/pr-status` run that ends by scheduling the next one. Unattended — leave it in a tab.
+
+`/pr-status` owns the shared read-only feedback call at
+`~/.agents/skills/pr-status/scripts/gh-pr-feedback.py`; the watcher must not duplicate it. This
+preserves stable identity/update comparisons and makes partial fetches visible on each dashboard.
 
 ## Usage
 
@@ -136,5 +140,5 @@ Tell the loop to stop at `{stop_hour}:00` local time.
 ## Note
 
 `/pr-status` is read-only and never prompts, so this loop runs unattended. Its suggested-action
-footer points at `/ready-to-merge`, `/review-comments`, etc. as PRs become actionable — you run
-those yourself; the watcher never acts. For an attended release gatekeeper, use `/watch-release`.
+footer points at `/ready-to-merge`, `/review-comments`, etc. when normalized feedback is new or
+materially edited — you run those yourself; the watcher never acts. For an attended release gatekeeper, use `/watch-release`.

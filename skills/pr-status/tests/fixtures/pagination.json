@@ -1,0 +1,35 @@
+{
+  "initial": {
+    "data": {
+      "viewer": {"login": "ivar"},
+      "repository": {
+        "pr0": {
+          "number": 7,
+          "url": "https://github.com/acme/widgets/pull/7",
+          "headRefOid": "sha7",
+          "reviewThreads": {
+            "nodes": [
+              {"id": "PT1", "isResolved": false, "isOutdated": false, "path": "a.py", "line": 1, "originalLine": 1, "comments": {"nodes": [{"id": "PC1", "databaseId": 701, "author": {"login": "alice", "__typename": "User"}, "body": "Please fix the first item.", "createdAt": "2026-07-30T10:00:00Z", "updatedAt": "2026-07-30T10:00:00Z", "url": null, "replyTo": null}], "pageInfo": {"hasNextPage": false, "endCursor": null}}}
+            ],
+            "pageInfo": {"hasNextPage": true, "endCursor": "threads-1"}
+          },
+          "reviews": {"nodes": [], "pageInfo": {"hasNextPage": false, "endCursor": null}},
+          "comments": {"nodes": [], "pageInfo": {"hasNextPage": false, "endCursor": null}},
+          "files": {"nodes": [{"path": "a.py"}], "pageInfo": {"hasNextPage": false, "endCursor": null}}
+        }
+      }
+    }
+  },
+  "connectionPages": {
+    "7:reviewThreads:threads-1": {
+      "nodes": [
+        {"id": "PT1", "isResolved": false, "isOutdated": false, "path": "a.py", "line": 1, "originalLine": 1, "comments": {"nodes": [{"id": "PC1", "databaseId": 701, "author": {"login": "alice", "__typename": "User"}, "body": "Please fix the first item.", "createdAt": "2026-07-30T10:00:00Z", "updatedAt": "2026-07-30T10:00:00Z", "url": null, "replyTo": null}], "pageInfo": {"hasNextPage": false, "endCursor": null}}},
+        {"id": "PT2", "isResolved": false, "isOutdated": false, "path": "a.py", "line": 2, "originalLine": 2, "comments": {"nodes": [{"id": "PC2", "databaseId": 702, "author": {"login": "bob", "__typename": "User"}, "body": "Could this branch be tested?", "createdAt": "2026-07-30T10:01:00Z", "updatedAt": "2026-07-30T10:01:00Z", "url": null, "replyTo": null}], "pageInfo": {"hasNextPage": false, "endCursor": null}}}
+      ],
+      "pageInfo": {"hasNextPage": false, "endCursor": null}
+    }
+  },
+  "rest": {
+    "repos/acme/widgets/commits/sha7/check-runs?per_page=100&page=1": {"check_runs": []}
+  }
+}
