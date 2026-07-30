@@ -447,7 +447,7 @@ class CliTests(unittest.TestCase):
             fixture = Fixture(Path(temporary))
             fixture.line(".pi/agent/sessions/a.jsonl", {"type": "session", "id": "p"}, pi_message("m", "2026-07-20T04:00:00Z", {"input": 2}))
             env = {**os.environ, "HOME": temporary}
-            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
+            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "SECRET_API_KEY_PROJECT", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
                 env.pop(name, None)
             completed = subprocess.run([str(SCRIPT)], env=env, text=True, capture_output=True, check=False, timeout=5)
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -472,7 +472,7 @@ class CliTests(unittest.TestCase):
                 }),
             )
             env = {**os.environ, "HOME": temporary}
-            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
+            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "SECRET_API_KEY_PROJECT", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
                 env.pop(name, None)
             completed = subprocess.run([str(SCRIPT), "--offline"], env=env, text=True, capture_output=True, check=False, timeout=5)
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -489,7 +489,7 @@ class CliTests(unittest.TestCase):
             fixture = Fixture(Path(temporary))
             fixture.line(".pi/agent/sessions/private-path/a.jsonl", {"type": "session", "id": "PRIVATE_RAW_ID"}, pi_message("m", "2026-07-20T04:00:00Z", {"input": 2}))
             env = {**os.environ, "HOME": temporary}
-            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
+            for name in ("OPENROUTER_MANAGEMENT_API_KEY", "OPENROUTER_API_KEY", "SECRET_API_KEY_PROJECT", "PI_SUBAGENT_PARENT_SESSION", "PI_SESSION_ID"):
                 env.pop(name, None)
             completed = subprocess.run([str(SCRIPT), "--json", "--offline", "--now", "2026-07-20T12:00:00Z"], env=env, text=True, capture_output=True, check=False, timeout=5)
         self.assertEqual(completed.returncode, 0, completed.stderr)
