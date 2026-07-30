@@ -8,7 +8,7 @@ allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-rol
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.0.1"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -106,22 +106,65 @@ the Jira AC. Classify the change:
 Present the candidate (target URL + assertion) and let the user confirm or tweak **before** the
 watch starts. Don't run a derived smoke unconfirmed.
 
-### Phase 4 — Watch the deploy (compose `/loop`)
+### Phase 4 — Watch the deploy
 
-Hand a **self-contained** dynamic-loop prompt to `/loop` — it must carry the run id, gating-job name,
-smoke spec, and target URL, since each wake re-runs the prompt from scratch:
+Keep the resolved run id, workflow, sha, gating-job name, and confirmed smoke spec in the scheduling
+prompt. Polling is unattended; the smoke step (Phase 5) may need the user present for a browser
+permission prompt.
+
+#### Pi protocol v1
+
+If `watch_loop` is available, use this path instead of Claude scheduling:
+
+1. Call `watch_loop` with `action: status`. Continue only when its result reports
+   `protocolVersion: 1`. If another watch is `armed`, `running`, or `paused`, do not replace it;
+   show the status and point at `/watch-status`, `/watch-stop`, or `/watch-resume`. If the version
+   differs, explain the mismatch and stop without scheduling anything.
+2. Make this prompt self-contained with the resolved values before passing it to `action: start`:
+
+   ```text
+   Load and follow the skill named `watch-rollout` now. This is one continuation tick, not new watcher setup. Watch GitHub Actions run {run_id} ({workflow} on {sha}); the gating job is "{gating_job}" and the confirmed smoke is {smoke spec with URL, or "disabled (--no-smoke)"}. Run ~/.agents/skills/watch-rollout/scripts/run-jobs.sh {run_id}. Render the current gating-job status as visible text. If it is in_progress, waiting, queued, or not yet started and no upstream job has failed, call the matching `watch_loop` action: complete with outcome: continue. If it or an upstream prerequisite failed, report the failure and complete with outcome: stop. On gating-job success, either report deploy success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. Do not complete before rendering the status or terminal evidence. Never re-trigger, cancel, re-run, or approve a workflow; never deploy.
+   ```
+
+3. State that the watcher starts after about one minute, polls every four minutes, and is capped at
+   30 ticks (just under two hours). Then make the terminating start call:
+
+   ```yaml
+   action: start
+   protocolVersion: 1
+   label: Rollout
+   mode: fixed
+   initialDelaySeconds: 60
+   intervalSeconds: 240
+   missedCompletionPolicy: retry
+   maxTicks: 30
+   tickPrompt: <the prompt above>
+   ```
+
+A pending tick uses `action: complete` with `outcome: continue`. Deploy failure or completed smoke
+uses `action: complete` with `outcome: stop` and a concise reason. Protocol v1 also exposes
+model-facing `action: stop` for a terminal abort with the matching watcher and generation tokens.
+The runtime owns the cadence and finite budget; do not set `allowIndefinite`.
+
+#### Claude Code fallback
+
+If `watch_loop` is unavailable, retain the existing `/loop` path. Hand it the same resolved values
+in a self-contained dynamic-loop prompt:
 
 ```
 /loop Watch GitHub Actions run {run_id} ({workflow} on {sha}).
 Run: ~/.agents/skills/watch-rollout/scripts/run-jobs.sh {run_id}.
-While the gating job "{gating_job}" is in_progress (or not yet started), reschedule ~240s.
-On gating-job success → run the smoke test: {smoke spec, with URL}. Report pass/fail with captured evidence.
+While the gating job "{gating_job}" is in_progress, waiting, queued, or not yet started,
+reschedule ~240s.
+On gating-job success → if smoke is disabled, report deploy success and stop; otherwise run the
+smoke test: {smoke spec, with URL}. Report pass/fail with captured evidence.
 On gating-job failure → report which job failed and stop. Stop the loop once the smoke is done or the deploy failed.
 ```
 
-~240s keeps each wake inside the prompt-cache window and catches completion promptly. The loop is
-**goal-terminating** — it ends when the smoke completes or the deploy fails, not at end of day.
-Polling is unattended; the smoke step (Phase 5) may need you present for a browser permission prompt.
+If neither `watch_loop` nor `/loop` is available, explain that recurring watches are unsupported
+and stop. ~240s keeps each wake inside the prompt-cache window and catches completion promptly.
+Both paths are **goal-terminating** — they end when the smoke completes or the deploy fails, not at
+end of day.
 
 ### Phase 5 — Smoke test (the loop's terminal tick)
 

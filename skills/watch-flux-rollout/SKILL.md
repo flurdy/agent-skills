@@ -9,7 +9,7 @@ allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flu
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -108,11 +108,50 @@ the watch starts. Don't run a derived smoke unconfirmed.
 there may be no staging. That's fine *only because* smokes here are strictly read-only (GET /
 navigation). If a derived smoke isn't clearly read-only, refuse it and ask.
 
-### Phase 4 — Watch the rollout (compose `/loop`)
+### Phase 4 — Watch the rollout
 
-Hand a **self-contained** dynamic-loop prompt to `/loop` — it must carry the sha, branch,
-deployment, namespace, `fromTag`, and smoke spec, since each wake re-runs the prompt from
-scratch:
+Keep the resolved sha, branch, deployment, namespace, `fromTag`, and confirmed smoke spec in the
+scheduling prompt. Each tick must match the CircleCI pipeline by exact revision before inspecting
+the rollout.
+
+#### Pi protocol v1
+
+If `watch_loop` is available, use this path instead of Claude scheduling:
+
+1. Call `watch_loop` with `action: status`. Continue only when its result reports
+   `protocolVersion: 1`. If another watch is `armed`, `running`, or `paused`, do not replace it;
+   show the status and point at `/watch-status`, `/watch-stop`, or `/watch-resume`. If the version
+   differs, explain the mismatch and stop without scheduling anything.
+2. Make this prompt self-contained with the resolved values before passing it to `action: start`:
+
+   ```text
+   Load and follow the skill named `watch-flux-rollout` now. This is one continuation tick, not new watcher setup. Watch the CircleCI+Flux rollout of {sha} on {branch}, deployment {deployment} in {namespace}, fromTag "{fromTag}", with confirmed smoke {smoke spec with URL, or "disabled (--no-smoke)"}. Stage 1: run ~/.agents/skills/circleci-status/scripts/status.sh {branch}; parse ---CIRCLECI-STATUS--- and select only a pipeline whose vcs.revision is {sha}. If none exists yet or its workflows are running, render that status and call the matching `watch_loop` action: complete with outcome: continue. If a workflow for that revision failed, report it and complete with outcome: stop. Stage 2, only after CI succeeds: run ~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}. Deployed means tag moved off "{fromTag}" and ready equals desired. If not deployed, render tag and readiness, then complete with outcome: continue; but if CI has been green over 30 minutes and the tag is still "{fromTag}", report a Flux stall and complete with outcome: stop. Once deployed, either report success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. If the same read-only CI or kubectl poll fails on two consecutive ticks, report it and stop. Never reconcile Flux, restart or apply Kubernetes resources, re-trigger CI, or issue a mutating smoke request.
+   ```
+
+3. State that the watcher starts after about one minute, polls every four minutes, and is capped at
+   20 ticks (about 80 minutes). Then make the terminating start call:
+
+   ```yaml
+   action: start
+   protocolVersion: 1
+   label: Flux rollout
+   mode: fixed
+   initialDelaySeconds: 60
+   intervalSeconds: 240
+   missedCompletionPolicy: retry
+   maxTicks: 20
+   tickPrompt: <the prompt above>
+   ```
+
+A pending tick uses `action: complete` with `outcome: continue`. CI failure, Flux stall, or completed
+smoke uses `action: complete` with `outcome: stop` and a concise reason. Protocol v1 also exposes
+model-facing `action: stop` for a terminal abort with the matching watcher and generation tokens.
+The runtime owns the cadence and finite budget; do not set `allowIndefinite`.
+
+#### Claude Code fallback
+
+If `watch_loop` is unavailable, retain the existing `/loop` path. Hand it the same resolved values
+in a self-contained dynamic-loop prompt:
 
 ```
 /loop Watch the CircleCI+Flux rollout of {sha} on {branch} ({deployment} in {namespace}).
@@ -125,13 +164,15 @@ Deployed when tag has moved OFF "{fromTag}" AND ready == desired. Not yet → re
 If CI has been green over ~30 min and the tag still equals "{fromTag}" → report a Flux stall
 (likely: ImagePolicy semver range excludes the new tag, or image automation interval/suspend)
 and stop.
-On deployed → run the smoke test: {smoke spec, with URL}. Report pass/fail with captured
-evidence, then stop the loop.
+On deployed → if smoke is disabled, report rollout success and stop; otherwise run the smoke test:
+{smoke spec, with URL}. Report pass/fail with captured evidence, then stop the loop.
 ```
 
-~240s keeps each wake inside the prompt-cache window and matches the real cadence (a CircleCI
-build takes minutes; Flux image automation scans on an interval, typically 1–10 min). The loop
-is **goal-terminating** — it ends when the smoke completes, the deploy fails, or Flux stalls.
+If neither `watch_loop` nor `/loop` is available, explain that recurring watches are unsupported
+and stop. ~240s keeps each wake inside the prompt-cache window and matches the real cadence (a
+CircleCI build takes minutes; Flux image automation scans on an interval, typically 1–10 min).
+Both paths are **goal-terminating** — they end when the smoke completes, the deploy fails, or Flux
+stalls.
 
 ### Phase 5 — Smoke test (the loop's terminal tick)
 
