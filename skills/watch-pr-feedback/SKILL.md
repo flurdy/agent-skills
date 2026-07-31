@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-lis
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.3"
+version: "1.1.4"
 author: "flurdy"
 ---
 
@@ -111,7 +111,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger state silent and never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -161,13 +161,15 @@ Before starting the Claude adaptive path, apply the established session-model gu
 would discard the tick's visible output. Recommend a Sonnet/Opus session or fixed mode instead.
 
 For adaptive mode, schedule a 60-second first wake with a self-contained prompt equivalent to the
-Pi tick prompt. Each completed tick calls `ScheduleWakeup` last with the numeric N from its
-`next-tick:` line. Stop rather than reschedule past the local deadline or after the third
-consecutive failure for one repository/source. In attended mode, ask and wait before the trailing
-schedule call; an unanswered question must not create another wake.
+Pi tick prompt. Each completed tick computes N, renders all content except the cadence line, calls
+`ScheduleWakeup` as its final tool action with N, then emits the `next-tick:` cadence line as the
+sole post-tool text and ends immediately. Stop rather than reschedule past the local deadline or
+after the third consecutive failure for one repository/source. In attended mode, ask and wait
+before scheduling; an unanswered question must not create another wake.
 
 For fixed mode, use `/loop {interval} /watch-pr-feedback tick {read-only|attended}` and state the
-local stop hour. Fixed ticks ignore `next-tick:`. Every fallback tick must load this skill, enter
+local stop hour. Fixed ticks ignore `next-tick:` for scheduling but still emit it as their final
+line and end immediately without another summary. Every fallback tick must load this skill, enter
 `tick` mode, render visible output, and preserve the same session-local state and safety boundary.
 
 ## Tick mode
@@ -268,7 +270,7 @@ If the helper reports no clean exact-head checkout, continue with PR diff, requi
 tests visible in the diff, and CI evidence, then lower confidence. Never substitute an unrelated
 or stale checkout. If evidence is missing or contradictory, use `unable to validate` rather than guessing.
 
-Choose exactly one validation outcome:
+For each candidate or materially distinct sub-claim, choose exactly one validation outcome:
 
 - `confirmed defect`
 - `valid improvement`
@@ -283,6 +285,13 @@ Choose exactly one validation outcome:
 requirements, or a testable invariant. `valid improvement` is worthwhile but not required for
 correctness. Questions and subjective decisions are not defects. A security or blocking label does
 not raise confidence by itself.
+
+When one feedback record contains two to five materially distinct claims, validate each claim and
+render a compact claim breakdown with its own allowed outcome and evidence. Use
+`mixed — see claim breakdown` for the record-level outcome when claim outcomes differ; this is the
+only aggregate exception to the outcome list. Never label the whole record `stale/outdated` unless
+every actionable claim is stale. If a record contains more than five distinct claims, use
+`unable to validate` and recommend the attended workflow rather than silently dropping claims.
 
 ### 5. Render the bounded decision queue
 
@@ -301,7 +310,8 @@ user-facing reason; that phrase is internal ledger terminology. The quiet line c
 without narrating empty categories.
 
 For every non-quiet tick, render a timestamp, mode, baseline/recheck status, and repositories and
-PRs checked. Show partial status only when data is partial; do not narrate successful fetch defaults.
+PRs checked. Show partial status only when data is partial; do not print healthy defaults such as
+`inventories complete`, `partial: false`, or empty errors.
 Then show no more than 20 decision rows:
 
 | PR | Author/source | Feedback type | Lifecycle | Validation outcome | Evidence | Confidence | Recommended response |
@@ -364,5 +374,6 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 In an injected Pi tick, call the matching `action: complete` only after the cadence line and any
 attended answer. Use `outcome: continue` and `delaySeconds: N` for adaptive mode; omit the delay for
 fixed mode. Use `outcome: stop` for the failure bound, **Open attended workflow**, or **Stop
-watcher**. In Claude adaptive mode, schedule only after the visible output; fixed `/loop` owns
-scheduling.
+watcher**. In Claude adaptive mode, render everything except cadence, call `ScheduleWakeup` as the final tool
+action, then emit the cadence line as the sole post-tool text and end immediately. Fixed `/loop`
+owns scheduling and ends immediately after its cadence line.

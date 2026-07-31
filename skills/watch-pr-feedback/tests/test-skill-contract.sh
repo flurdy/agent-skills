@@ -62,14 +62,15 @@ for invariant in \
     'silent ledger updates' \
     'only for a lifecycle-only transition' \
     'Show partial status only when data is partial' \
-    'do not narrate successful fetch defaults' \
+    'do not print healthy defaults' \
+    '`inventories complete`, `partial: false`, or empty errors' \
     'summary** only for pending attended feedback' \
     'a non-zero failure streak' \
     'lost ledger continuity' \
     'final visible text' \
     'do not follow' \
     'decision recap' \
-    'Keep healthy internal ledger state silent' \
+    'Keep healthy internal ledger and fetch state silent' \
     'Only a non-baseline, non-recheck tick with complete inventories' \
     'exclusively unchanged duplicate records' \
     'no lifecycle transitions, pending candidates, capacity/pruning notices, or failures' \
@@ -88,6 +89,10 @@ for invariant in \
     'subjective/trade-off decision' \
     'false positive/already handled' \
     'stale/outdated' \
+    'materially distinct sub-claim' \
+    'mixed — see claim breakdown' \
+    'Never label the whole record `stale/outdated` unless' \
+    'more than five distinct claims' \
     'out of scope' \
     'unable to validate' \
     'confidence' \
@@ -130,6 +135,9 @@ for invariant in \
     '60–3600 seconds' \
     '### Claude Code fallback' \
     'ScheduleWakeup' \
+    'final tool action with N' \
+    'sole post-tool text and ends immediately' \
+    'Fixed ticks ignore `next-tick:` for scheduling' \
     'Fable' \
     '/loop' \
     'next-tick:'; do
@@ -138,13 +146,20 @@ done
 
 tick_prompt=$(grep -F -- 'Load and follow the skill named `watch-pr-feedback`' "$SKILL")
 for prompt_invariant in \
+    'two to five materially distinct sub-claims' \
+    'validate each claim' \
+    'use `mixed — see claim breakdown` only when outcomes differ' \
+    'never mark the whole record stale unless every actionable claim is stale' \
+    'For more than five claims, use `unable to validate`' \
+    'recommend the attended workflow' \
     'keep routine suppressions silent' \
     'only user-relevant lifecycle/disposition suppressions and actual failures' \
     'mention partial status only when partial' \
     'State summary only for pending attended feedback' \
     'non-zero failure streak, or lost ledger continuity' \
-    'Keep healthy internal ledger state silent' \
-    'never add a prose recap after the final cadence line'; do
+    'Keep healthy internal ledger and fetch state silent' \
+    'do not print `inventories complete`, `partial: false`, or empty errors' \
+    'Never add a prose recap after the final cadence line'; do
     grep -Fq -- "$prompt_invariant" <<<"$tick_prompt" \
         || fail "tick prompt missing output invariant: $prompt_invariant"
 done
