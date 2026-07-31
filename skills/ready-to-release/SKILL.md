@@ -1,84 +1,154 @@
 ---
 name: ready-to-release
 description: >
-  Deep release-readiness gate for a single letterbox service — checks CI green, contracts in
-  sync, deploy-order prereqs satisfied, feature toggle present, and unpushed work vs the live
-  deploy. Emits a gate table and a single verdict. Use before deciding to ship one service.
-allowed-tools: "Read,Skill,Bash(make git-status:*),Bash(make ci-status:*),Bash(make deploy-status:*),Bash(make feature-toggles:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*)"
+  Deep release-readiness gate for one service using normalized Git, CI, contract, ordering,
+  toggle, and deployment evidence. Emits a capability-aware gate table and one verdict without
+  prompting or mutating state. Use before deciding whether a service is safe to ship.
+allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.3.0"
+version: "1.4.0"
 author: "flurdy"
 ---
 
 # Ready to Release
 
-A focused, per-service readiness gate. Where `/release-manager` scans everything and prompts,
-this answers one question thoroughly: **is `<service>` safe to ship right now?** Read-only —
-it reports a verdict, it does not push.
+A focused, per-service readiness gate. Where `/release-manager` scans all services and can prompt,
+this skill answers one question without taking action: **is `<service>` safe to ship now?**
 
-This is the deploy-side cousin of `/ready-to-merge` (which gates a PR *merge*). This gates a
-*release* of an already-merged service: built locally, CI green, contracts honoured, deploy
-order respected, toggle in place.
+It is the deploy-side cousin of `/ready-to-merge`: one gates an already-merged service release,
+the other gates a pull-request merge.
 
 ## Usage
 
-```
+```text
 /ready-to-release dispatch
 ```
 
-A service argument is required.
+A service argument is required. If it is absent, print usage and stop without running commands.
 
-## Instructions
+## Evidence
 
-Run these checks for the named service and present a gate table (✅ / ⚠️ / ❌ per row):
+1. **Gather the normalized project digest.** Run `./scripts/release-digest` without service scoping
+   so dependency rows remain available. Parse:
 
-1. **Unpushed work** — `make git-status <service>`. Show commits ahead (`N`) and whether the
-   tree is dirty (`*`). `N = 0` → nothing to release (note it and stop). Dirty tree → ⚠️
-   (commit first). List the unpushed commits with `./scripts/mgit log <service> --oneline @{u}..HEAD`.
+   - `---META---`: `ciProvider=<circleci|github-actions|cloud-build|none>` and
+     `ci=<available|partial|unavailable>`.
+   - `---SERVICES---`: require this exact header and select the named service:
+     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age|ciRevision|ciExpectedRevision`.
+   - `---TOGGLES---`: optional normalized live toggle values.
 
-2. **CI** — `make ci-status <service>`. `success` → ✅; `running` → ⚠️ (wait); `failed`/`error`
-   → ❌ (blocker); `unknown` (no CircleCI key) → ⚠️.
+   If the command is missing, exits nonzero, is malformed, or omits the service, keep going and
+   render every gate as `➖ N/A` with the evidence reason. The verdict is `HOLD ⚠️` because the
+   required Git and CI evidence is unavailable. Do not fall back to provider-specific commands.
 
-3. **Contracts** — if the service has connectors/pacts, run `Skill /contract-check status` and
-   read the rows for this service. Covers both contract *state* (staleness / unsynced /
-   uncommitted → ❌) and *verification coverage* — if this service is a provider with a
-   coverage `GAP` (CI doesn't verify all its consumer pacts, e.g. commented-out consumers),
-   flag ⚠️ (a contract change may break an unverified consumer).
+2. **Read optional project policy.** If `docs/release-manifest.yaml` is absent or unreadable, use
+   empty `toggles`, `parked`, `ignore`, and `non_deploying` defaults. Otherwise read only those
+   sections. A service in `non_deploying` has no deployment or remote-CI release gate.
 
-4. **Deploy order** — run `./scripts/release-order` (a project symlink installed by
-   /release-manager — see its Setup if missing) and use its `---GRAPH---` as the effective
-   dependency map. Take this service's prereqs directly from that graph; do not parse or merge
-   manifest order sections in the skill. A prereq blocks only if it is *co-changing* — has
-   unpushed commits, is mid-rollout (`make deploy-status <prereq>` shows a Deployment `N/M`, N<M,
-   or a CronJob service — digest/patrol/reconciler — showing `cron:rollout`), or was
-   pushed-but-not-rolled. A stable, already-live prereq (a Deployment `1/1` at current tag, or a
-   CronJob service showing the settled `cron` marker) does **not** block. All clear → ✅; any
-   co-changing prereq → ❌ (waiting on `<prereq>`). `provider=none` is a valid empty map and reports
-   ✅ `no deploy ordering configured`. (Contract coverage is checked in step 3, not here — this
-   step is purely deploy ordering.)
+3. **Gather optional dependency order.** Run `./scripts/release-order` when available. A successful,
+   well-formed result supplies provider metadata and the effective `---GRAPH---`.
 
-5. **Feature toggle** — If `docs/release-manifest.yaml` is absent, report `no manifest toggle`
-   and continue without a toggle blocker. Otherwise, if its `toggles` map has an entry whose
-   `service` is this one, report the flag, its live value (`make feature-toggles`), and the
-   `flip_when` condition so you know whether shipping needs a follow-up toggle flip.
-   Missing-but-expected toggle → ⚠️. A toggle with `status: dark-release` means the service is in
-   a shadow launch — report it as `🌓 dark-release` (flip is a later manual call), not a blocker.
-   If the service has a `parked` flag, note it as informational only (deliberately off,
-   `superseded_by` / `reconsider_if`) — never treat it as a pending flip.
+   - `provider=none` with an empty graph is valid and means no deploy ordering is configured.
+   - A graph with no entry for the service is valid evidence that it has no prerequisites.
+   - If the command is missing, nonzero, or malformed, order evidence is unavailable. The order row
+     is `➖ N/A`, but unavailable safety-critical evidence produces `HOLD ⚠️`; never claim readiness
+     from an assumed empty graph.
 
-6. **Live deploy** — `make deploy-status <service>`: show current `ready/tag/age` so you can see
-   what's running versus what you're about to ship. For a CronJob service (digest/patrol/reconciler)
-   this is the `cron`/`cron:rollout` marker + tag + last-run age, not replicas.
+4. **Gather optional contract health.** Run `./scripts/contract-check all` when available. Treat
+   contract evidence as applicable when its output names the service or when valid Pact-backed
+   order evidence places the service in a consumer/provider relationship.
+
+   - Stale, different, missing-provider, uncommitted, not-built, or not-synced evidence is a hard
+     blocker.
+   - A verification `GAP` involving the service is a soft hold.
+   - A clean applicable result passes.
+   - When no contract relationship applies, the gate is `➖ N/A` and has no verdict impact.
+   - When a relationship is known but the contract command is unavailable or malformed, the gate
+     is `➖ N/A` and the verdict is `HOLD ⚠️` because expected safety evidence is unavailable.
+
+5. **Read optional in-flight state.** If `.release-state.json` exists and is valid, read
+   `rolloutWatch` without modifying it. Ignore an absent or malformed state file; saved state alone
+   never proves deployment status.
+
+## Gate table
+
+Render exactly one table with columns `Gate | Result | Evidence`. Use these result classes:
+
+- `✅ pass` — applicable evidence proves the gate.
+- `⚠️ hold` — evidence is unsettled or an expected capability is unavailable.
+- `❌ block` — evidence proves release is unsafe or there is nothing to release.
+- `➖ N/A` — the project does not use that capability or the gate cannot be evaluated.
+
+An N/A row is never a blocker by itself. Expected safety evidence can still make the overall
+verdict `HOLD ⚠️`, as defined below.
+
+Evaluate these rows:
+
+1. **Unpushed work**
+   - `unpushed > 0` and clean tree → `✅ pass`, showing the count and local head.
+   - `unpushed > 0` with `uncommitted=true` → `⚠️ hold`; commit or intentionally discard first.
+   - `unpushed = 0` → `❌ block`; there is nothing to release.
+   - Missing normalized service evidence → `➖ N/A` plus overall hold.
+
+2. **CI**
+   - A deploying service requires `ciBranch == gitBranch`; both revisions must be non-`-`, and
+     `ciRevision == ciExpectedRevision` before interpreting native status.
+   - Exact `success` → `✅ pass`; exact `failed`/`error` → `❌ block`; exact `running` → `⚠️ hold`.
+   - `unknown`, unavailable provider evidence, missing fields, or any branch/revision mismatch →
+     `⚠️ hold`. Never accept branch-only or stale green evidence.
+   - A `non_deploying` service → `➖ N/A`; its release does not trigger a deployment pipeline.
+
+3. **Contracts**
+   - Apply step 4's pass, hold, block, and not-applicable mapping.
+
+4. **Deploy order**
+   - A `non_deploying` service → `➖ N/A` with no verdict impact. Do not require or evaluate order
+     evidence because the service has no rollout prerequisites.
+   - Valid `provider=none` → `➖ N/A` (`no ordering configured`) with no verdict impact.
+   - Valid graph with no prerequisites → `✅ pass`.
+   - For each prerequisite, use its digest row and optional `rolloutWatch` entry. Unpushed work,
+     `N/M` with N<M, `cron:rollout`, or a pushed tag that has not settled means co-changing and
+     yields `❌ block` (`waiting on <prereq>`).
+   - A settled `N/N` deployment or `cron` marker with no unpushed work passes. If a required
+     prerequisite has no observable deployment evidence, use `⚠️ hold`; do not infer it is live.
+   - Unavailable order evidence → `➖ N/A` plus overall hold.
+
+5. **Feature toggle**
+   - No manifest toggle for the service means no toggle policy applies: `➖ N/A`.
+   - A `parked` flag is `➖ N/A` and informational only. Include `superseded_by` and
+     `reconsider_if` when present.
+   - A `dark-release` flag is `➖ N/A` and informational; its later flip is a manual decision.
+   - For an active declared flag, show the normalized live value and `flip_when`. A false value is
+     `⚠️ hold` for the follow-up; true is `✅ pass`.
+   - If an active flag is declared but normalized toggle evidence is missing, use `➖ N/A` plus
+     overall hold. Do not invoke a project-specific toggle command.
+
+6. **Live deployment**
+   - Observable `N/N` or `cron` evidence → `✅ pass`, showing ready/tag/age.
+   - Observable `N/M` with N<M or `cron:rollout` → `⚠️ hold`; avoid overlapping a rollout.
+   - For `unknown`, `notfound`, `not-applicable`, or `-`, deployment evidence is unavailable:
+     `➖ N/A`. This informational gate has no verdict impact unless the service is a prerequisite
+     needed by the deploy-order gate.
+   - A `non_deploying` service is `➖ N/A`.
 
 ## Verdict
 
-End with one line:
+End with exactly one verdict. Hard blockers take precedence over holds; holds take precedence over
+readiness.
 
-- **READY ✅** — unpushed commits, CI green, contracts in sync, prereqs rolled out. Suggest
-  `make git-push <service>` (the user runs it, or use `/release-manager`).
-- **NOT READY ❌** — list the blocking rows.
-- **HOLD ⚠️** — only soft warnings (CI running, dirty tree, toggle follow-up); say what to wait for.
+- **READY ✅** — unpushed work is clean, exact CI is green when applicable, no hard block or hold
+  remains, and every applicable safety gate passed. N/A optional gates do not prevent readiness.
+- **NOT READY ❌** — list every hard-blocking row, including no unpushed work, failed CI, stale
+  contracts, or a co-changing prerequisite.
+- **HOLD ⚠️** — no hard blocker exists, but one or more warnings or required evidence gaps remain.
+  Name what must settle or become available.
 
-Read-only: never push here. Pushing is an explicit action via `/release-manager` or `make git-push`.
+Never suggest that the skill itself push. A user may later invoke `/release-manager` after reviewing
+the evidence.
+
+## Safety
+
+This skill is strictly passive: never prompt and never mutate state. Never push, trigger or retry
+CI, reconcile order, flip toggles, deploy, or edit `.release-state.json`.
