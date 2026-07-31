@@ -1,11 +1,11 @@
 ---
 name: wrap-up
-description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before `/exit`.
+description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before leaving the client.
 allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.11.1"
+version: "0.11.2"
 author: "flurdy"
 ---
 
@@ -15,7 +15,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 
 ## When to use
 
-- Before running `/exit`, especially in worktree sessions.
+- Before ending the current client session, especially in worktree sessions.
 - After a planning- or discussion-only session that produced no code but valuable context (Jira refinement, bead triage, design exchanges).
 - Before pruning a worktree where you might otherwise lose the thread.
 
@@ -27,12 +27,21 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
 5. Auto-save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` when that file is free; prompt only on collision/overwrite or when choosing a different name.
 6. Optional: archive older handoffs this one supersedes (same branch/topic) so the picker stays focused.
-7. Reminder to run `/exit` yourself — the skill cannot exit Claude Code for you.
+7. Reminder to leave the client manually with its own command — the skill cannot exit for you.
 
-## Important — what this skill cannot do
+## Important — client-specific commands
 
-- It **cannot run `/exit`**. `/exit` is a built-in CLI command, not a model-invocable tool. After the summary renders, you exit manually.
-- It **cannot rename the session** for you. Only you typing the command triggers a rename. Step 4 prints `/name {slug}` for Pi or `/rename {slug}` for Claude Code, but the handoff file remains the durable artifact you grep for tomorrow.
+Follow `/name-session`'s client-selection convention. Harness selection comes from the current tool surface.
+Never use the shell, PATH, filesystem, process list, or installed binaries to detect another client.
+Treat the client as unknown when that surface does not conclusively identify Pi or Claude Code.
+
+- **Pi:** use `/quit`. Never recommend `/exit` in Pi.
+- **Claude Code:** use `/exit`.
+- **Unknown client:** label both commands — Pi: `/quit`; Claude Code: `/exit` — rather than guessing.
+
+The skill cannot execute either client's built-in exit command. After the summary renders, the user exits manually.
+
+It also **cannot rename the session** for you. Only you typing the command triggers a rename. Step 4 prints `/name {slug}` for Pi or `/rename {slug}` for Claude Code, but the handoff file remains the durable artifact you grep for tomorrow.
 
 ## Instructions
 
@@ -223,8 +232,8 @@ Render a small status block + appropriate warning:
 
 Then exactly one of the warnings below (pick the first matching rule):
 
-1. **Uncommitted changes** → `⚠️ Uncommitted work — commit, stash, or discard before `/exit`. The resume block does not preserve file diffs.`
-2. **Unpushed commits** → `⚠️ {N} unpushed commit(s) — push before `/exit` if the branch survives in a remote PR, or accept that this branch lives only locally.`
+1. **Uncommitted changes** → `⚠️ Uncommitted work — commit, stash, or discard before leaving this client. The resume block does not preserve file diffs.`
+2. **Unpushed commits** → `⚠️ {N} unpushed commit(s) — push before leaving this client if the branch survives in a remote PR, or accept that this branch lives only locally.`
 3. **Linked worktree, clean, no unpushed, no stashes** → `ℹ️ Linked worktree with no code to preserve. If you prune this worktree (`git worktree remove`), only the conversation context is lost — the auto-saved resume block below is your durable recovery path.`
 4. **Main checkout, clean** → no warning.
 
@@ -473,9 +482,27 @@ The supersede-detection + archive flow has been **moved out to its own `/handoff
 
 ### 6. Footer
 
+Select exactly one footer using the client selection from **Important — client-specific commands**.
+
+**Pi footer:**
+
+```markdown
+---
+**Next:** run `/quit` to close this session. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
+```
+
+**Claude Code footer:**
+
 ```markdown
 ---
 **Next:** run `/exit` to close this session. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
+```
+
+**Unknown-client footer:**
+
+```markdown
+---
+**Next:** close this session manually — Pi: `/quit`; Claude Code: `/exit`. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
 ```
 
 If no handoff file was saved, drop the `cat` half and keep just the paste reminder.
