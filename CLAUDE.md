@@ -33,3 +33,14 @@ in `README.md`.
   routing hint; agents omit it because Pi may honor `model:` in agent files. See
   `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
 - Add one alphabetical description row to `skills/README.md` for every new skill.
+- Prefer small executable shell scripts for simple command wrappers and orchestration. Use
+  Python 3.10+ when structured-data processing, state management, subprocess control, or
+  shell quoting would otherwise make the implementation difficult to test or maintain.
+  Keep Python helpers standard-library-only unless an additional dependency is explicitly
+  justified and documented.
+- Keep scripts focused, composable, and governed by narrow command-line or JSON contracts.
+  When multiple skills need the same behavior, give one skill an authoritative helper and
+  invoke it from the consumers instead of copying implementations. Keep skill-specific
+  behavior local rather than creating premature shared abstractions.
+- Document required runtimes and external commands in the owning `SKILL.md`, including
+  whether the skill fails clearly or degrades gracefully when a dependency is unavailable.
