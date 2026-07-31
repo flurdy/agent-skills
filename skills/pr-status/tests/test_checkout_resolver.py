@@ -56,15 +56,19 @@ class CheckoutResolverTest(unittest.TestCase):
     def test_remote_parser_requires_the_exact_github_host(self) -> None:
         accepted = {
             "git@github.com:acme/widgets.git",
+            "git@work.github.com:acme/widgets.git",
             "https://github.com/acme/widgets.git",
             "ssh://git@github.com/acme/widgets.git",
+            "ssh://git@work.github.com/acme/widgets.git",
             "github.com/acme/widgets",
         }
         rejected = {
+            "git@nested.work.github.com:acme/widgets.git",
             "git@notgithub.com:acme/widgets.git",
             "https://evil.example/github.com/acme/widgets.git",
             "https://github.com.evil.example/acme/widgets.git",
             "https://github.com/acme/widgets/extra",
+            "https://work.github.com/acme/widgets.git",
         }
 
         self.assertEqual(

@@ -21,6 +21,10 @@ DEFAULT_TIMEOUT_SECONDS = 15.0
 DEFAULT_MAX_OUTPUT_BYTES = 1_000_000
 MAX_CANDIDATES = 100
 REPOSITORY_PATTERN = re.compile(r"^[^/\s]+/[^/\s]+$")
+SSH_GITHUB_HOST_PATTERN = re.compile(
+    r"^(?:[A-Za-z0-9-]+\.)?github\.com$",
+    flags=re.IGNORECASE,
+)
 SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40,64}$")
 
 
@@ -134,16 +138,21 @@ def error_record(source: str, message: str, path: str | None = None) -> dict[str
 def github_repository(remote_url: str) -> str | None:
     value = remote_url.strip()
     scp = re.fullmatch(
-        r"(?:[^@/:]+@)?github\.com:([^/\s]+)/([^/\s]+?)(?:\.git)?/?",
+        r"(?:[^@/:]+@)?([^/:]+):([^/\s]+)/([^/\s]+?)(?:\.git)?/?",
         value,
         flags=re.IGNORECASE,
     )
-    if scp:
-        repository = f"{scp.group(1)}/{scp.group(2)}"
+    if scp and SSH_GITHUB_HOST_PATTERN.fullmatch(scp.group(1)):
+        repository = f"{scp.group(2)}/{scp.group(3)}"
         return repository if REPOSITORY_PATTERN.fullmatch(repository) else None
 
     parsed = urlparse(value if "://" in value else f"https://{value}")
-    if parsed.hostname is None or parsed.hostname.casefold() != "github.com":
+    hostname = parsed.hostname or ""
+    exact_github = hostname.casefold() == "github.com"
+    ssh_alias = parsed.scheme.casefold() == "ssh" and SSH_GITHUB_HOST_PATTERN.fullmatch(
+        hostname
+    )
+    if not exact_github and not ssh_alias:
         return None
     if parsed.query or parsed.fragment or parsed.params:
         return None
