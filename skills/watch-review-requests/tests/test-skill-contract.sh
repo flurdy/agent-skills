@@ -34,6 +34,9 @@ for invariant in \
     'model-tier: premium' \
     'effort: xhigh' \
     'gh-pr-review-requests.py' \
+    'gh-pr-checkout.py OWNER/REPO HEAD_SHA' \
+    'This helper alone may enumerate registered workspace members and Git worktrees.' \
+    'never run ad-hoc shell probes' \
     '/review-pr owner/repo#123 --automation --premium-established' \
     '--expected-head' \
     '--deadline-seconds' \
@@ -218,6 +221,8 @@ assert_not_contains 'git push'
 assert_not_contains 'git commit'
 assert_not_contains 'resolveReviewThread'
 assert_not_contains 'command -v pi'
+assert_not_contains 'Bash(git'
+assert_not_contains 'for d in'
 assert_not_contains "--body 'EXACT_SHOWN_BODY'"
 assert_not_contains 'mcp__jira__'
 assert_not_contains 'unless selected by an explicit qualified recheck'

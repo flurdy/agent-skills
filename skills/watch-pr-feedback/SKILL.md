@@ -4,7 +4,7 @@ description: >
   Watch the user's open GitHub PRs for normalized feedback, validate each new or edited
   actionable item once, and render a bounded decision queue. Read-only by default; attended
   mode pauses only when the queue needs acknowledgment.
-allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git status:*),Bash(git remote:*),Bash(git rev-parse:*),Bash(git diff:*),Bash(git log:*),Bash(git worktree list:*),Bash(date:*),mcp__jira__*,AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checkout.py:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(date:*),mcp__jira__jira_get,AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
@@ -46,7 +46,9 @@ A semantic classification, validation outcome, or answer is never permission to 
 GitHub. Stop the watcher and invoke the appropriate attended workflow separately for any action.
 
 Do not switch branches, fetch remotes, or create a checkout. Never assume the current directory is
-the checkout for a PR merely because repository names look related.
+the checkout for a PR merely because repository names look related. Do not run shell, Git,
+filesystem, workspace, or authentication preflight probes when starting the watcher. In ticks,
+never improvise a shell loop or workspace scan; use only the allowlisted checkout helper below.
 
 ## Session-local state
 
@@ -96,7 +98,11 @@ and local deadline. The first tick lands after about one minute.
 
 ### Pi protocol v1
 
-If `watch_loop` is available, use this branch before Claude scheduling:
+This section is Pi-only. In Claude Code, skip directly to **Claude Code fallback** without probing,
+searching for, or discussing Pi. Harness selection comes from the current tool surface; never use
+the shell to detect another harness or executable.
+
+If the current harness directly exposes `watch_loop`, use this branch before Claude scheduling:
 
 1. Call `watch_loop` with `action: status` and require `protocolVersion: 1`. If another watch is
    `armed`, `running`, or `paused`, do not replace it; show status and point to `/watch-status`,
@@ -105,7 +111,7 @@ If `watch_loop` is available, use this branch before Claude scheduling:
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted gh-pr-checkout helper for optional local evidence. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -145,14 +151,14 @@ itself. A successful start terminates the initiating turn.
 
 ### Claude Code fallback
 
-If `watch_loop` is unavailable, use existing Claude scheduling capability; never imitate the Pi
+In Claude Code, enter this branch directly without PATH, filesystem, process, binary, or Pi
+capability probes or commentary. Use existing Claude scheduling capability; never imitate the Pi
 tool. If neither `ScheduleWakeup` nor `/loop` is available, explain that recurring watches are
 unsupported and stop.
 
 Before starting the Claude adaptive path, apply the established session-model guard from
 `/watch-prs`: if the session uses a Fable model, do not start because a trailing `ScheduleWakeup`
-would discard the tick's visible output. Recommend Pi protocol v1, a Sonnet/Opus session, or fixed
-mode instead.
+would discard the tick's visible output. Recommend a Sonnet/Opus session or fixed mode instead.
 
 For adaptive mode, schedule a 60-second first wake with a self-contained prompt equivalent to the
 Pi tick prompt. Each completed tick calls `ScheduleWakeup` last with the numeric N from its
@@ -227,13 +233,22 @@ For each candidate, gather the smallest sufficient read-only evidence:
 2. The PR diff and referenced path/line.
 3. Linked requirements from the PR body and available Jira/project documentation.
 4. Relevant implementation and existing tests from a matching clean checkout when one is already
-   available. Confirm its origin and HEAD match the PR repository and head SHA first.
+   available. Resolve it once per repository/head only through:
+
+   ```bash
+   ~/.agents/skills/pr-status/scripts/gh-pr-checkout.py OWNER/REPO HEAD_SHA \
+     --timeout REMAINING_SECONDS
+   ```
+
+   The helper alone may enumerate registered workspace members and Git worktrees. Never run `for`,
+   `ls`, `find`, `git -C`, `git worktree`, remote, or HEAD probes. Use local `Read`, `Grep`, and
+   `Glob` only when `checkout.available` is true, anchored under its returned path.
 5. CI results and test changes. Do not run tests in watcher mode; execution can create artifacts and
    belongs to an explicitly attended implementation workflow.
 
-If there is no matching clean checkout, continue with PR diff, requirements, existing tests visible
-in the diff, and CI evidence, then lower confidence. Never substitute an unrelated or stale
-checkout. If evidence is missing or contradictory, use `unable to validate` rather than guessing.
+If the helper reports no clean exact-head checkout, continue with PR diff, requirements, existing
+tests visible in the diff, and CI evidence, then lower confidence. Never substitute an unrelated
+or stale checkout. If evidence is missing or contradictory, use `unable to validate` rather than guessing.
 
 Choose exactly one validation outcome:
 

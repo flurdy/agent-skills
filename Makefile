@@ -107,6 +107,7 @@ test-review-pr:
 
 test-review-requests:
 	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_review_request_queue.py'
+	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_checkout_resolver.py'
 
 test-pr-feedback-actions:
 	@bash skills/review-comments/tests/test-attended-contract.sh

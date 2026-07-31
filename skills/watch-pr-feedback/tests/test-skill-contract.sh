@@ -35,6 +35,9 @@ for invariant in \
     '## Tick mode' \
     'gh-pr-list-open.sh' \
     'gh-pr-feedback.py' \
+    'gh-pr-checkout.py OWNER/REPO HEAD_SHA' \
+    'The helper alone may enumerate registered workspace members and Git worktrees.' \
+    'Never run ad-hoc shell/workspace probes' \
     'one call per `owner/repo` group' \
     '`repository`, PR number, and `identity`' \
     '`updateKey`' \
@@ -83,7 +86,10 @@ for invariant in \
     'Recheck next tick' \
     'Stop watcher' \
     '### Pi protocol v1' \
-    '`watch_loop` is available' \
+    'current harness directly exposes `watch_loop`' \
+    'In Claude Code, enter this branch directly' \
+    'the shell to detect another harness or executable.' \
+    'capability probes or commentary' \
     'protocolVersion: 1' \
     'action: status' \
     'action: start' \
@@ -115,5 +121,8 @@ assert_not_contains 'gh pr checkout'
 assert_not_contains 'git push'
 assert_not_contains 'git commit'
 assert_not_contains 'resolveReviewThread'
+assert_not_contains 'command -v pi'
+assert_not_contains 'Bash(git'
+assert_not_contains 'for d in'
 
 printf '%s\n' 'watch-pr-feedback contract tests passed'
