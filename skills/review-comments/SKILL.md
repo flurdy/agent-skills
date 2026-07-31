@@ -1,128 +1,183 @@
 ---
 name: review-comments
-description: Address PR review comments from reviewers (amazon-q-developer, copilot, humans). Use when the user wants to see and respond to feedback on their pull request.
-allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-reply-comment.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+description: Address PR review feedback through explicit item selection, independent validation, focused local fixes, verification, and a local commit. Never publishes remote actions; use reply-comments for separately confirmed push, reply, and resolution gates.
+allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),mcp__jira__*,AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
 # Address Review Comments
 
-Fetch and address review comments on the current PR.
+Select and independently validate PR feedback before making focused local changes. This skill owns
+only the attended local phase: selection, validation, edits, tests, and a local commit. It never
+publishes a branch, GitHub reply, or thread resolution. `/reply-comments` owns those separately
+confirmed remote actions.
 
 ## Usage
 
+```text
+/review-comments                         # PR for the current branch
+/review-comments 123                     # backward-compatible current-repository selector
+/review-comments owner/repo#123          # repository-qualified selector from the watcher
+/review-comments owner/repo#123 inline:C1 conversation:I2
 ```
-/review-comments
-/review-comments 123    # Specific PR number
-```
+
+Trailing stable identities preselect candidates but never authorize an edit or reply.
 
 ## Instructions
 
-### 1. Find the PR
+### 1. Resolve the PR and Checkout
 
-If no PR number provided, get it from the current branch:
+Accept `owner/repo#number` or a numeric PR. With no selector, resolve the current branch through:
 
 ```bash
 ~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh
 ```
 
-If the script is unavailable, fall back to:
+For a numeric selector, derive owner/repository from the current checkout. For a repository-qualified
+selector, use its owner/repository for every GitHub call. Fetch PR metadata, head SHA, branch, body,
+and changed files read-only.
 
-```bash
-gh pr view --json number,url,title,headRepositoryOwner,headRepository \
-  --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
-```
+Before offering a local fix, prove that the current directory is a matching checkout:
 
-### 2. Fetch the normalized feedback inventory
+1. `origin` resolves to the selected owner/repository;
+2. the current branch/HEAD represents the selected PR head;
+3. the working tree's pre-existing changes are understood and will not be overwritten.
 
-Use the same bounded read-only collector as `/pr-status`:
+Never switch branches, create a checkout, fetch, reset, clean, or overwrite unrelated work. If no
+matching checkout exists, validation and reply preparation may continue from the PR diff, but local
+fix actions are unavailable. Tell the user which checkout is required.
+
+### 2. Fetch the Normalized Inventory
+
+Use one bounded read-only call:
 
 ```bash
 ~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {pr_number}
 ```
 
-Read `records`, `partial`, and `errors`. The collector supplies stable identities and update times
-for inline roots/replies, review summaries, top-level conversation, and changed-file CI annotations;
-it also carries lifecycle, author kind, bounded body/gist, and response target IDs. If `partial` is
-true, show the available records and failed source but do not treat absent items as resolved or
-handled.
+Read `records`, `partial`, and `errors`. Preserve each candidate's stable `identity`, `updatedAt`,
+`updateKey`, `stateKey`, source, lifecycle, author kind, and `targets` throughout the run. Never use
+body text or counts as identity. Pending draft review comments are not observable and must not be
+invented.
 
-If the helper is unavailable, the existing `gh-pr-view-reviews.sh` and `gh-pr-comments.sh` wrappers
-remain a compatibility fallback. Fetch check annotations only in that fallback, and keep filtering
-them to changed files. Do not combine the normalized path with those ad-hoc fetches.
+If `partial` is true, show available records and failed sources. The user may select an available
+record, but do not infer that an absent record is handled. If the helper is unavailable, the
+existing `gh-pr-view-reviews.sh` and `gh-pr-comments.sh` wrappers remain a compatibility fallback;
+label stable identity and race protection unavailable and do not combine both fetch paths.
 
-### 3. Categorize Comments
+### 3. Apply Source and Lifecycle Policy
 
-Group records by:
-- **Author kind**: bot, human, self, or unknown
-- **Source**: inline review, submitted review summary, top-level conversation, or check annotation
-- **Lifecycle**: active/unresolved, resolved, outdated, or dismissed
-- **Semantic type**: suggestion, question, change request, blocking/security claim, approval,
-  automated status, CI annotation, or informational note
+Group factual records by author kind, source, lifecycle, semantic type, and collector actionability.
+These are triage hints, not proof; semantic validity remains agent judgment against evidence.
 
-The collector's semantic type and `actionability` are triage hints. Whether a claim is valid or a
-change should be made remains agent judgment against the current code, tests, and requirements.
-Skip self-authored, resolved, outdated, dismissed, approval, and automated-status records by
-default, but show them separately when useful. CI annotations are **fix-only** because they have no
-reply or resolution endpoint.
+- **Human requests/questions:** validate independently; prepare short, polite, evidence-based
+  replies when selected.
+- **AI/bot findings:** validate exactly like human claims; use a terse factual reply only when it
+  adds useful closure. Bot confidence is not evidence.
+- **Top-level conversation or review summary:** any response is prepared as a new top-level PR
+  comment, never an inline reply.
+- **Inline review:** retain the root reply target and thread ID. Only this source can later resolve
+  a review thread.
+- **CI annotation:** fix-only; it has no reply or resolution endpoint.
+- **Approval or automated status/noise:** no action or response.
+- **False positive or intentional trade-off:** a concise rationale may be prepared, but never claim
+  a fix and do not mark it resolved as fixed.
+- **Resolved, outdated, dismissed, or self-authored:** skip by default and show separately.
 
-### 4. Present Summary
+### 4. Select Items
 
-Show a summary of comments:
+Render a numbered candidate table with PR, stable feedback ID, author/source, lifecycle, bounded
+gist, and triage hint. No code change occurs before explicit item selection.
 
+Use `AskUserQuestion` to select identities. When there are four or fewer, use one multi-select
+question with one option per identity. For a larger inventory, ask in priority batches of at most
+four and leave unselected items untouched; the user may type an exact list of IDs. Preselected IDs
+from arguments still require this current-run confirmation. Selecting an item authorizes only
+read-only validation, not a fix or publication.
+
+### 5. Validate Selected Items
+
+For each selected identity, read the full record, referenced path/line, current implementation,
+relevant PR diff, requirements, existing tests, and CI. Do not trust the reviewer wording. Choose
+one outcome and cite concrete evidence:
+
+- `confirmed defect`
+- `valid improvement`
+- `question needing an answer`
+- `subjective/trade-off decision`
+- `false positive/already handled`
+- `stale/outdated`
+- `out of scope`
+- `unable to validate`
+
+State confidence as high, medium, or low and name missing evidence. Security, architecture,
+scope-changing, ambiguous, or low-confidence feedback always returns to the user; never auto-fix
+it. Re-read the item against current code before any later edit. If the feedback became stale,
+outdated, resolved, or already handled, update the outcome and do not edit.
+
+### 6. Choose a Local Action
+
+Show the validation result first. Then use `AskUserQuestion` for each item, batching at most four
+questions per call, with only eligible choices:
+
+- **Fix and verify (Recommended)** — available only for a confirmed defect or accepted valid
+  improvement in a matching checkout.
+- **Prepare reply** — draft an evidence-based response but do not post it.
+- **Acknowledge only** — record the item as reviewed in bounded session state; no repository or
+  GitHub action.
+- **Defer / skip with rationale** — leave it pending or retain a concise reason.
+
+Questions and trade-offs default to **Prepare reply** or defer. Security, architecture,
+scope-changing, ambiguous, and low-confidence items offer discussion/defer choices only. A custom
+answer may narrow a requested fix but is not remote-action permission.
+
+### 7. Implement, Verify, and Commit Locally
+
+For each approved fix or coherent selected group:
+
+1. Define expected behavior and proportional test evidence before editing.
+2. Add a focused failing regression test when practical.
+3. Make the smallest change that addresses the validated claim.
+4. Cover the relevant happy path, sad path, and edge case; explain when one is not applicable.
+5. Run focused verification first, then the repository's required lint/type/test checks.
+6. Review the diff and confirm unrelated pre-existing work is excluded.
+7. Stage explicit paths only and commit locally with a concise conventional message.
+
+Do not skip verification, bypass hooks, amend unrelated commits, or claim a fix without a successful
+local commit. If tests fail, stop and keep remote actions unavailable. If multiple items require
+unrelated changes, use separate commits. This skill does not publish the commit.
+
+### 8. Prepare the Remote Handoff
+
+Draft replies only for selected items. Keep a bounded session ledger keyed by
+`repository/PR/identity/updateKey` with validation, files/tests, commit SHA, intended reply surface,
+prepared body, and resolution eligibility.
+
+- Humans receive short polite responses with evidence.
+- AI/bots receive terse factual responses when useful.
+- A fixed item may reference the verified local commit without claiming it is pushed.
+- A rationale must say no change was made.
+- CI annotations, approvals, status noise, and skipped lifecycle records have no reply.
+
+Do not call a reply, conversation-comment, or resolution helper here. Render the exact next command:
+
+```text
+/reply-comments owner/repo#123 identity1 identity2 ...
 ```
-PR #123: feat(offers-cms): add caching
 
-Reviews:
-- amazon-q-developer: 3 comments (2 suggestions, 1 security concern)
-- copilot: 1 comment (style suggestion)
-- @username: 2 comments (1 question, 1 blocking)
+`/reply-comments` must independently re-fetch and reconfirm push, posting, and resolution.
 
-CI annotations (fix-only, no thread):
-- Linting: warning at src/foo.tsx:21 — missing useEffect dependency
+### 9. Summary
 
-Unresolved comments: 6
-```
+Map every selected record, including deferred and skipped items:
 
-Omit the CI annotations block when there are none.
+| Feedback ID | Validation | Files/tests/commit | Push state | Reply | Resolution |
+|---|---|---|---|---|---|
 
-### 5. Ask the User
-
-After presenting the summary, ask the user how they'd like to proceed:
-
-- **Address** — make code changes to fix the feedback
-- **Reply only** — just reply to the comments without code changes
-- **Skip** — dismiss specific comments
-- Or the user may give specific instructions per comment
-
-Do NOT start making changes or replying without user confirmation.
-
-### 6. Address Comments (if requested)
-
-For each selected candidate, retain its `identity`, `updatedAt`, and `targets` throughout the run:
-
-1. Read the record and understand what's being asked
-2. Check the referenced file/line and validate the claim independently
-3. Either:
-   - Make the suggested change if appropriate, including an initially failing test if needed
-   - Explain why the current code is correct
-   - Ask the user for guidance on ambiguous feedback
-
-### 7. After Making Changes
-
-```bash
-# Stage and commit fixes
-git add {files_changed}
-git commit -m "address review feedback"
-
-# Push updates
-git push
-```
-
-### 8. Reply to Comments
-
-After addressing and pushing, ask the user if they'd like to reply. If yes, use `/reply-comments` to post replies and resolve threads.
+Use `local only` for a new commit, `not applicable` when no change was made, `prepared/not posted`
+for drafts, and `not attempted` for remote actions. Include unresolved uncertainty and the
+repository-qualified `/reply-comments` handoff when anything is prepared.

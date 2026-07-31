@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-lis
 model-tier: premium
 model: opus
 effort: high
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -279,14 +279,19 @@ becoming actionable.
 queue, asks exactly once for the whole queue. Use `AskUserQuestion` with one single-select question
 and these choices:
 
-- **Acknowledge (Recommended)** — mark the displayed queue seen and continue.
+- **Open attended workflow (Recommended)** — leave displayed records pending, group their stable
+  IDs by repository/PR, stop this watcher, and render `/review-comments owner/repo#number id...`
+  for explicit item selection, validation, local fixes, and later remote gates.
+- **Acknowledge** — mark the displayed queue seen and continue.
 - **Recheck next tick** — leave displayed actionable records unacknowledged so they return once.
 - **Stop watcher** — leave them pending and stop after the tick.
 
 If there is no actionable queue, do not ask. A question remains open until answered; never call
-`action: complete` or `ScheduleWakeup` while it is open. A custom answer may refine read-only
-validation or acknowledgment, but refuse any repository or GitHub mutation and point to the
-appropriate attended workflow after stopping this watcher.
+`action: complete` or `ScheduleWakeup` while it is open. **Open attended workflow** is a handoff,
+not mutation permission: the tick performs no repository or GitHub action, and stops before the
+user invokes `/review-comments`. A custom answer may refine read-only validation or acknowledgment,
+but refuse any repository or GitHub mutation and point to the attended workflow after stopping this
+watcher.
 
 ### 7. Complete and pace
 
@@ -303,5 +308,6 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 
 In an injected Pi tick, call the matching `action: complete` only after the cadence line and any
 attended answer. Use `outcome: continue` and `delaySeconds: N` for adaptive mode; omit the delay for
-fixed mode. Use `outcome: stop` for the failure bound or **Stop watcher**. In Claude adaptive mode,
-schedule only after the visible output; fixed `/loop` owns scheduling.
+fixed mode. Use `outcome: stop` for the failure bound, **Open attended workflow**, or **Stop
+watcher**. In Claude adaptive mode, schedule only after the visible output; fixed `/loop` owns
+scheduling.

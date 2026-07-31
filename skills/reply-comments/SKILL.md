@@ -1,175 +1,191 @@
 ---
 name: reply-comments
-description: Reply to PR review comments after addressing them. Resolves conversations where changes were made. Uses polite tone for humans, terse factual responses for AI bots. IMPORTANT - Always use this skill (not raw gh api calls) when replying to PR comments, including after manually addressing review feedback.
-allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git:*)"
+description: Safely publish prepared PR-feedback outcomes through separately confirmed push, reply, and inline-thread resolution gates. Re-fetches normalized identities before every mutation and keeps retries idempotent.
+allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-conversation-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(git:*),AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
 # Reply to Review Comments
 
-Reply to PR review comments after addressing the feedback. Use this after `/review-comments` to close the feedback loop.
+Publish selected, validated feedback outcomes after `/review-comments`. Push, reply posting, and
+thread resolution are three separate visible actions, each requiring fresh current-run
+confirmation. Never infer remote permission from item selection, validation, a local commit, a
+previous run, or approval of another action.
 
 ## Usage
 
+```text
+/reply-comments                         # PR for the current branch; select eligible items
+/reply-comments 123                     # backward-compatible current-repository selector
+/reply-comments owner/repo#123          # repository-qualified selector
+/reply-comments owner/repo#123 inline:C1 conversation:I2
 ```
-/reply-comments
-/reply-comments 123    # Specific PR number
-```
+
+Arguments identify candidates only. They are not permission to push, post, or resolve.
 
 ## Instructions
 
-### 1. Find the PR
+### 1. Resolve the PR and Checkout
 
-If no PR number provided, get it from the current branch:
+Accept `owner/repo#number` or a numeric PR. With no selector, resolve the current branch through:
 
 ```bash
 ~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh
 ```
 
-If the script is unavailable, fall back to:
+Use the selected owner/repository for every GitHub call. Before offering a push, prove the current
+checkout's `origin`, branch, and HEAD correspond to that PR. Do not switch, fetch, reset, clean,
+merge, rebase, or overwrite work. A repository mismatch disables the push gate but does not prevent
+a separately validated answer/rationale from being prepared.
 
-```bash
-gh pr view --json number,url,title,headRepositoryOwner,headRepository \
-  --jq '{number, url, title, owner: .headRepositoryOwner.login, repo: .headRepository.name}'
-```
+### 2. Restore Bounded Handled State
 
-### 2. Fetch the normalized feedback inventory
+Carry forward `/review-comments` state when it exists. Otherwise reconstruct validation and prepared
+replies read-only before offering any remote action. Keep at most 500 handled actions keyed by
+`repository/PR/identity/updateKey`, recording validation, commit SHA, push result, posted reply ID,
+and resolution result.
 
-Use the shared bounded read-only collector:
+On retry:
+
+- a recorded successful push, reply, or resolution is not repeated;
+- an inline record with a later self reply is treated as already replied;
+- an already resolved thread is recorded as complete without another mutation;
+- an uncertain or timed-out mutation result is reported as unknown — do not retry automatically;
+- if bounded state was lost, announce that idempotency continuity is unavailable and require a
+  read-only recheck plus new confirmations. For a top-level response whose prior publication cannot
+  be disproved from current self-comments, do not offer another post; return it for manual reconciliation.
+
+Never use body text, author, count, or list position as identity.
+
+### 3. Select and Re-fetch
+
+If no identities were supplied, render eligible records and use `AskUserQuestion` to select exact
+stable IDs in batches of at most four. Supplied IDs still require a current-run selection summary.
+Skip approvals, automated status/noise, CI annotations without a fix, and resolved, dismissed,
+outdated, or self-authored items.
+
+Before preparing remote gates, re-fetch the normalized inventory:
 
 ```bash
 ~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {pr_number}
 ```
 
-Select records by stable `identity`, not body text or count. For the existing inline reply flow, use
-only `source: inline_review` records whose lifecycle is `unresolved` and whose author is not self.
-Retain `updatedAt` and `targets`: `targets.reply.commentId` is the REST reply target and
-`targets.resolveThreadId` is the GraphQL thread target. This mapping keeps every item on the correct
-reply or resolution endpoint. Never send conversation comments, review summaries, or CI annotations
-to an inline-review endpoint; report those surfaces separately.
+Compare each selected stable `identity`, `updateKey`, and `stateKey` with the validated version. If
+the inventory is `partial`, do not mutate and name the failed source. If an item is changed,
+resolved, outdated, or self-authored, stop that item and return it to selection/validation. Missing
+is not resolved. This re-fetch is mandatory even when the previous skill ran moments ago.
 
-If `partial` is true, name the failed source and do not infer that a missing item was addressed. If
-the inventory helper is unavailable, `gh-pr-comments.sh` plus `gh-pr-review-threads.sh` remains the
-compatibility fallback.
+### 4. Compose Endpoint-correct Replies
 
-### 3. Get Recent Commits
+Show the proposed response policy before any confirmation:
 
-Check what was recently committed to understand which comments were addressed:
+- **Human request/question:** short, polite, evidence-based reply.
+- **AI/bot finding:** terse factual reply only when it adds useful closure; independently validated
+  evidence remains authoritative.
+- **Inline review:** reply to `targets.reply.commentId` through the inline endpoint.
+- **Top-level conversation:** create a new top-level PR comment through the conversation endpoint.
+- **Review summary:** respond through the same top-level conversation endpoint; it is not an inline
+  comment.
+- **CI annotation:** fix-only; no reply or resolution endpoint.
+- **Approval or automated status/noise:** no response.
+- **False positive or intentional trade-off:** concise rationale, explicitly no fix; never resolve
+  it as fixed.
+- **Resolved, outdated, dismissed, or self-authored:** skip.
 
-```bash
-# Get recent commit messages and changed files
-git log --oneline -10
-git diff HEAD~1 --name-only
-```
+A reply claiming a fix must map to a verified local commit. If that commit is not visible on the PR,
+the push gate must succeed before its reply can be posted. Questions and rationale-only responses
+may skip the push gate.
 
-### 4. Identify Addressed Comments
+### 5. Push Confirmation
 
-For each review comment, determine if it was addressed by:
-- Checking if the file/line was modified in recent commits
-- Matching commit messages to comment content (e.g., "address review feedback")
-- Looking for code changes that match suggested fixes
+If no selected reply depends on an unpushed local fix, render `Push state: not applicable` and skip
+this section's question.
 
-### 5. Compose Replies
+Otherwise show checkout, branch, commit SHA, upstream state, verification evidence, and the exact
+non-force command. Use `AskUserQuestion` to request explicit permission immediately before the
+push. Permission from item selection, fixing, committing, or an earlier run does not count.
 
-Use different tones based on the reviewer:
+- **Push commit (Recommended)** — on this answer, make the standalone `git push` invocation as the
+  next tool call. Do not hide it in a script or command chain.
+- **Not now** — leave the commit local and suppress any reply that claims the fix is published.
+- **Stop** — perform no remote action.
 
-**AI Bots** (amazon-q-developer[bot], copilot[bot], github-actions[bot], etc.):
-- Terse, factual responses
-- Just state what was done
-- Examples:
-  - "Fixed."
-  - "Done."
-  - "Changed to use `const`."
-  - "Added null check."
-  - "Not applicable - already handled by X."
+Never force-push, amend, or push another branch/tag. If the push fails or the branch moved, stop;
+do not retry or proceed to fixed-item replies. Record the pushed SHA only after success.
 
-**Human Reviewers** (anyone without [bot] suffix):
-- Short but polite responses
-- Acknowledge their feedback
-- Examples:
-  - "Good catch, fixed!"
-  - "Thanks - updated."
-  - "Done, good suggestion."
-  - "Makes sense, changed it."
-  - "Addressed in latest commit."
+### 6. Reply Confirmation
 
-For comments NOT addressed (intentionally skipped):
-- "Keeping as-is because {brief reason}."
-- "Intentional - {brief explanation}."
+Build a preview keyed by feedback ID with the exact reply body and exact surface (`inline review` or
+`top-level conversation`). Do not include CI annotations, approvals, noise, or skipped lifecycle
+records.
 
-### 6. Post Replies
+Use one `AskUserQuestion` confirmation for the preview:
 
-Reply to each selected inline record using `targets.reply.commentId` as `{comment_id}`:
+- **Post selected replies (Recommended)**
+- **Edit drafts**
+- **Skip replies**
+- **Stop**
 
-```bash
-~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {comment_id} "{reply_text}"
-```
+After **Post selected replies**, re-fetch immediately before posting. Compare `identity`,
+`updateKey`, `stateKey`, lifecycle, and later-self-reply state again. Skip every raced item and ask
+for fresh validation rather than posting stale text. If the re-fetch is partial, post nothing.
 
-If the script is unavailable, fall back to:
+For each still-current confirmed item, use exactly one endpoint:
+
+**Inline review** — root comment target:
 
 ```bash
-gh api "repos/{owner}/{repo}/pulls/{pr_number}/comments/{comment_id}/replies" \
-  -f body="{reply_text}"
+~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh {owner} {repo} {pr_number} {targets.reply.commentId} "{body}"
 ```
 
-### 7. Resolve Threads (if addressed)
-
-Use each selected inventory record's `targets.resolveThreadId`. Only inline review threads have a
-resolvable target. In compatibility fallback mode, get the thread IDs with:
+**Top-level conversation or review summary** — new PR conversation comment:
 
 ```bash
-~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh {owner} {repo} {pr_number}
+~/.agents/skills/reply-comments/scripts/gh-pr-conversation-comment.sh {owner} {repo} {pr_number} "{body}"
 ```
 
-If that script is unavailable, fall back to:
+Record the returned reply/comment ID before moving to the next item. If a result is ambiguous, stop
+that item and do not retry automatically. Never send a top-level record to the inline endpoint or
+an inline record to the conversation endpoint.
+
+### 7. Resolution Confirmation
+
+Resolve only inline review threads. First re-fetch the inventory again and retain the selected
+record's `targets.resolveThreadId`. Exclude any thread that raced, is already resolved/outdated, has
+no confirmed reply, or has an unknown reply result.
+
+A verified and published fix may be presented as resolution-eligible. A question or rationale may
+be eligible only when the exact reply was posted and the user explicitly resolves it as answered or
+not applicable. A false positive is never described or resolved as fixed. CI annotations,
+conversation comments, and review summaries cannot resolve.
+
+Show feedback ID, thread ID, validation outcome, reply ID, and proposed resolution meaning. Use a
+new `AskUserQuestion` confirmation, separate from reply permission:
+
+- **Resolve selected threads (Recommended)**
+- **Leave open**
+- **Stop**
+
+After confirmation, re-fetch once more. For each still-current unresolved thread, call visibly:
 
 ```bash
-gh api graphql -f query='
-  query($owner: String!, $repo: String!, $pr: Int!) {
-    repository(owner: $owner, name: $repo) {
-      pullRequest(number: $pr) {
-        reviewThreads(first: 100) {
-          nodes {
-            id
-            isResolved
-            comments(first: 1) { nodes { databaseId body } }
-          }
-        }
-      }
-    }
-  }
-' -f owner="{owner}" -f repo="{repo}" -F pr={pr_number}
+~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh {targets.resolveThreadId}
 ```
 
-Then resolve each thread that was addressed:
-
-```bash
-~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh {thread_id}
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh api graphql -f query='
-  mutation($threadId: ID!) {
-    resolveReviewThread(input: {threadId: $threadId}) {
-      thread { isResolved }
-    }
-  }
-' -f threadId="{thread_id}"
-```
+Record success per thread. Do not retry an unknown result automatically and never resolve a thread
+whose reply failed or was skipped.
 
 ### 8. Summary
 
-Report what was done:
+Render every selected identity, including races, deferrals, and failures:
 
-```
-Replied to 6 comments:
-- amazon-q-developer[bot]: 3 (all resolved)
-- @username: 2 (2 resolved, 1 kept as-is)
-- copilot[bot]: 1 (resolved)
-```
+| Feedback ID | Validation | Files/tests/commit | Push state | Reply | Resolution |
+|---|---|---|---|---|---|
+
+For remote actions include `not applicable`, `declined`, `failed`, `unknown`, or the successful
+SHA/reply ID/thread result. Explicitly name items returned to validation because of an edit or
+lifecycle race. Preserve the bounded handled ledger so an immediate retry skips successful actions.

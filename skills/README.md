@@ -39,8 +39,8 @@
 | rebase-parent | Rebase the current branch onto an updated parent PR branch |
 | release-manager | Interactive release gatekeeper for letterbox — prompts to push/defer/cancel each ready service, auto-files a bead on CI failure, enforces deploy order, watches rollouts, nudges toggles. Advisory: only pushes on explicit choice |
 | release-status | Read-only release dashboard for letterbox — built-but-unpushed, pushed-but-not-rolled-out, deployed-but-toggle-off, and deploy-order blocks. Passive: never prompts or pushes |
-| reply-comments | Reply to PR review comments after addressing them |
-| review-comments | Address PR review comments from reviewers |
+| reply-comments | Publish prepared PR-feedback outcomes through separate confirmed push, reply, and inline-thread resolution gates with race and duplicate protection |
+| review-comments | Select and independently validate PR feedback, make focused verified local fixes, and commit locally without publishing remote actions |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
 | second-opinion | Query one independent peer or configurable local/OpenRouter panels with distinct quorum and evidence-backed consensus policies |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |

@@ -77,6 +77,8 @@ for invariant in \
     'never prompts' \
     'asks exactly once' \
     '`AskUserQuestion`' \
+    'Open attended workflow (Recommended)' \
+    '/review-comments owner/repo#number' \
     'Acknowledge' \
     'Recheck next tick' \
     'Stop watcher' \
