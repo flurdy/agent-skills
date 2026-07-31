@@ -96,7 +96,10 @@ for invariant in \
     'gh pr review' \
     '--repo OWNER/REPO' \
     '### Pi protocol v1' \
-    '`watch_loop` is available' \
+    'current harness directly exposes `watch_loop`' \
+    'In Claude Code, enter this branch directly.' \
+    'the shell to detect another harness or executable.' \
+    'do not include Pi capability commentary' \
     'protocolVersion: 1' \
     'action: status' \
     'action: start' \
@@ -214,6 +217,7 @@ assert_not_contains 'gh pr checkout'
 assert_not_contains 'git push'
 assert_not_contains 'git commit'
 assert_not_contains 'resolveReviewThread'
+assert_not_contains 'command -v pi'
 assert_not_contains "--body 'EXACT_SHOWN_BODY'"
 assert_not_contains 'mcp__jira__'
 assert_not_contains 'unless selected by an explicit qualified recheck'

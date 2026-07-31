@@ -108,7 +108,11 @@ minute. Premium route, deadline, and review budget must be visible first.
 
 ### Pi protocol v1
 
-If `watch_loop` is available, use this branch before Claude scheduling:
+This section is Pi-only. In Claude Code, skip directly to **Claude Code fallback** without probing,
+searching for, or discussing Pi. Harness selection comes from the current tool surface; never use
+the shell to detect another harness or executable.
+
+If the current harness directly exposes `watch_loop`, use this branch before Claude scheduling:
 
 1. Call `watch_loop` with `action: status` and require `protocolVersion: 1`. If another watch is
    `armed`, `running`, or `paused`, do not replace it; show status and point to `/watch-status`,
@@ -154,9 +158,10 @@ itself. Only a completed tick may call `action: complete`.
 
 ### Claude Code fallback
 
-If `watch_loop` is unavailable, use existing Claude scheduling; never imitate the Pi tool. If
-neither `ScheduleWakeup` nor `/loop` is available, explain that recurring watches are unsupported
-and stop.
+In Claude Code, enter this branch directly. Do not inspect the filesystem, PATH, process list, or
+installed binaries to decide whether Pi exists, and do not include Pi capability commentary in the
+start preflight. Use Claude's existing scheduling capability. If neither `ScheduleWakeup` nor
+`/loop` is available, explain that recurring watches are unsupported and stop.
 
 For adaptive mode, apply the established Fable session-model guard: Fable must not start an
 adaptive watcher because its trailing scheduling call can discard visible output. Recommend Pi
