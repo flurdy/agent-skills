@@ -1,0 +1,816 @@
+#!/usr/bin/env python3
+"""Return provider-neutral CI evidence for exact upstream revisions."""
+
+from dataclasses import dataclass
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+from urllib.parse import quote, urlparse
+
+
+PROVIDERS = {"circleci", "github-actions", "cloud-build", "none"}
+SERVICE_NAME = re.compile(r"[A-Za-z0-9._-]+")
+ERROR_REASONS = {"malformed-response", "provider-error", "provider-timeout"}
+MAX_PROVIDER_PAGES = 5
+PROVIDER_PAGE_SIZE = 100
+MAX_CLOUD_BUILDS = 100
+
+
+@dataclass
+class Repository:
+    service: str
+    ref: str = "-"
+    expected_revision: str = "-"
+    identity: str | None = None
+    host: str | None = None
+    github_slug: str | None = None
+    reason: str | None = None
+
+
+@dataclass
+class Evidence:
+    service: str
+    status: str
+    ref: str
+    revision: str
+    expected_revision: str
+    url: str
+    reason: str
+
+
+def find_project_root() -> Path:
+    configured = os.environ.get("RELEASE_PROJECT_ROOT")
+    if configured:
+        return Path(configured).expanduser().resolve()
+
+    current = Path.cwd().resolve()
+    for directory in (current, *current.parents):
+        for marker in (".mgit.conf", "docs/release-manifest.yaml", ".git"):
+            if (directory / marker).exists():
+                return directory
+    return current
+
+
+def unquote(value: str) -> str:
+    value = value.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        return value[1:-1]
+    return value
+
+
+def parse_ci_config(manifest: Path) -> tuple[str, dict[str, dict[str, str]]]:
+    if not manifest.is_file():
+        return "none", {}
+
+    provider = "none"
+    settings: dict[str, dict[str, str]] = {}
+    in_ci = False
+    current_section: str | None = None
+
+    for raw in manifest.read_text(encoding="utf-8").splitlines():
+        clean = raw.split("#", 1)[0].rstrip()
+        if not clean.strip():
+            continue
+        indent = len(clean) - len(clean.lstrip(" "))
+        stripped = clean.strip()
+
+        if indent == 0:
+            in_ci = stripped == "ci:"
+            current_section = None
+            continue
+        if not in_ci:
+            continue
+        if indent == 2:
+            match = re.fullmatch(r"([A-Za-z0-9_-]+):\s*(.*)", stripped)
+            if not match:
+                continue
+            key, value = match.groups()
+            if key == "provider":
+                provider = unquote(value)
+                current_section = None
+            elif not value:
+                current_section = key
+                settings.setdefault(key, {})
+            continue
+        if indent == 4 and current_section:
+            match = re.fullmatch(r"([A-Za-z0-9_-]+):\s*(.*)", stripped)
+            if match:
+                key, value = match.groups()
+                settings[current_section][key] = unquote(value)
+
+    return provider, settings
+
+
+def command_name(environment_key: str, default: str) -> str:
+    return os.environ.get(environment_key, default)
+
+
+def command_available(command: str) -> bool:
+    if os.path.sep in command:
+        return os.path.isfile(command) and os.access(command, os.X_OK)
+    return shutil.which(command) is not None
+
+
+def timeout_seconds() -> int:
+    try:
+        configured = int(os.environ.get("RELEASE_CI_TIMEOUT_SECONDS", "20"))
+    except ValueError:
+        configured = 20
+    return min(60, max(1, configured))
+
+
+def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(
+            command,
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds(),
+        )
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(command, 124, "", "provider-timeout")
+    except OSError:
+        return subprocess.CompletedProcess(command, 127, "", "command-launch-error")
+
+
+def git_value(git: str, checkout: Path, *args: str) -> str | None:
+    result = run([git, "-C", str(checkout), *args])
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
+
+
+def remote_parts(remote: str | None) -> tuple[str | None, str | None]:
+    if not remote:
+        return None, None
+    if "://" in remote:
+        parsed = urlparse(remote)
+        host = parsed.hostname
+        path = parsed.path
+    else:
+        scp = re.fullmatch(r"(?:[^@]+@)?([^:]+):(.+)", remote)
+        if scp:
+            host, path = scp.groups()
+        else:
+            host, path = None, remote
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return host.casefold() if host else None, None
+    identity = "/".join(parts[-2:]) if len(parts) > 1 else parts[0]
+    return host.casefold() if host else None, identity
+
+
+def circleci_vcs(repo: Repository) -> str | None:
+    return {"github.com": "gh", "bitbucket.org": "bb"}.get(repo.host or "")
+
+
+def repository(root: Path, service: str, git: str) -> Repository:
+    checkout = root / service
+    if not checkout.is_dir() or not git_value(git, checkout, "rev-parse", "--git-dir"):
+        return Repository(service=service, reason="no-checkout")
+
+    upstream = git_value(git, checkout, "rev-parse", "@{u}")
+    upstream_ref = git_value(
+        git,
+        checkout,
+        "rev-parse",
+        "--abbrev-ref",
+        "--symbolic-full-name",
+        "@{u}",
+    )
+    local_ref = git_value(git, checkout, "branch", "--show-current") or "-"
+    ref = upstream_ref.split("/", 1)[1] if upstream_ref and "/" in upstream_ref else local_ref
+    if not upstream:
+        return Repository(service=service, ref=ref, reason="no-upstream")
+
+    remote = git_value(git, checkout, "remote", "get-url", "origin")
+    host, identity = remote_parts(remote)
+    if not identity:
+        return Repository(
+            service=service,
+            ref=ref,
+            expected_revision=upstream,
+            reason="unsupported-origin",
+        )
+    return Repository(
+        service=service,
+        ref=ref,
+        expected_revision=upstream,
+        identity=identity,
+        host=host,
+        github_slug=identity if host == "github.com" else None,
+    )
+
+
+def unknown(repo: Repository, reason: str) -> Evidence:
+    return Evidence(
+        service=repo.service,
+        status="unknown",
+        ref="-",
+        revision="-",
+        expected_revision=repo.expected_revision,
+        url="-",
+        reason=reason,
+    )
+
+
+def parse_json(result: subprocess.CompletedProcess[str]):
+    if result.returncode == 124:
+        raise TimeoutError
+    if result.returncode != 0:
+        raise RuntimeError
+    try:
+        return json.loads(result.stdout)
+    except (json.JSONDecodeError, TypeError) as error:
+        raise ValueError from error
+
+
+def circleci_token(root: Path, settings: dict[str, str]) -> str | None:
+    environment_name = settings.get("token_env", "CIRCLECI_TOKEN")
+    token = os.environ.get(environment_name)
+    if token:
+        return token
+
+    env_file = root / ".env.circleci"
+    if env_file.is_file():
+        for raw in env_file.read_text(encoding="utf-8").splitlines():
+            match = re.fullmatch(rf"(?:export\s+)?{re.escape(environment_name)}=(.*)", raw.strip())
+            if match:
+                value = unquote(match.group(1))
+                if value:
+                    return value
+
+    account = settings.get("token_account") or os.environ.get("SECRET_API_KEY_PROJECT")
+    secret_command = command_name("RELEASE_CI_SECRET_API_KEY", "secret-api-key")
+    if account and command_available(secret_command):
+        result = run([secret_command, "lookup", "circleci", account])
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    return None
+
+
+def circleci_url(repo: Repository, pipeline: dict) -> str:
+    number = pipeline.get("number")
+    vcs = circleci_vcs(repo)
+    if number is None or not repo.identity or not vcs:
+        return "-"
+    path = "github" if vcs == "gh" else "bitbucket"
+    return f"https://app.circleci.com/pipelines/{path}/{repo.identity}/{number}"
+
+
+def map_circleci_workflows(items: list[dict]) -> str:
+    statuses = {str(item.get("status", "unknown")) for item in items}
+    if not statuses:
+        return "unknown"
+    if statuses & {"failed", "failing", "canceled", "not_run"}:
+        return "failed"
+    if statuses & {"error", "unauthorized"}:
+        return "error"
+    if statuses & {"running", "on_hold"}:
+        return "running"
+    if statuses == {"success"}:
+        return "success"
+    return "unknown"
+
+
+def circleci_page_items(
+    command: str,
+    token: str,
+    base_url: str,
+) -> tuple[list[dict] | None, str | None]:
+    items: list[dict] = []
+    page_token: str | None = None
+    for _page in range(MAX_PROVIDER_PAGES):
+        separator = "&" if "?" in base_url else "?"
+        page_url = (
+            f"{base_url}{separator}page-token={quote(page_token)}"
+            if page_token
+            else base_url
+        )
+        try:
+            response = parse_json(
+                run(
+                    [
+                        command,
+                        "-fsS",
+                        "--max-time",
+                        str(timeout_seconds()),
+                        "-H",
+                        f"Circle-Token: {token}",
+                        page_url,
+                    ]
+                )
+            )
+        except TimeoutError:
+            return None, "provider-timeout"
+        except RuntimeError:
+            return None, "provider-error"
+        except ValueError:
+            return None, "malformed-response"
+        page_items = response.get("items") if isinstance(response, dict) else None
+        if not isinstance(page_items, list) or any(not isinstance(item, dict) for item in page_items):
+            return None, "malformed-response"
+        items.extend(page_items)
+        next_token = response.get("next_page_token")
+        if not next_token:
+            return items, None
+        page_token = str(next_token)
+    return None, "incomplete-evidence"
+
+
+def circleci_evidence(repo: Repository, command: str, token: str) -> Evidence:
+    vcs = circleci_vcs(repo)
+    assert vcs and repo.identity
+    pipelines_url = (
+        f"https://circleci.com/api/v2/project/{vcs}/{repo.identity}/pipeline"
+        f"?branch={quote(repo.ref)}&limit={PROVIDER_PAGE_SIZE}"
+    )
+    pipelines, reason = circleci_page_items(command, token, pipelines_url)
+    if reason:
+        return unknown(repo, reason)
+    assert pipelines is not None
+
+    exact_pipelines = [
+        item
+        for item in pipelines
+        if isinstance(item.get("vcs"), dict)
+        and item["vcs"].get("revision") == repo.expected_revision
+    ]
+    if not exact_pipelines:
+        observed = pipelines[0] if pipelines else {}
+        vcs_data = observed.get("vcs") if isinstance(observed.get("vcs"), dict) else {}
+        return Evidence(
+            service=repo.service,
+            status="unknown",
+            ref=str(vcs_data.get("branch") or "-"),
+            revision=str(vcs_data.get("revision") or "-"),
+            expected_revision=repo.expected_revision,
+            url=circleci_url(repo, observed),
+            reason="revision-mismatch" if observed else "revision-not-found",
+        )
+
+    if any(not item["vcs"].get("branch") for item in exact_pipelines):
+        return unknown(repo, "missing-ref")
+    refs = {str(item["vcs"]["branch"]) for item in exact_pipelines}
+    if refs != {repo.ref}:
+        return Evidence(
+            repo.service,
+            "unknown",
+            next(iter(refs), "-"),
+            repo.expected_revision,
+            repo.expected_revision,
+            circleci_url(repo, exact_pipelines[0]),
+            "ref-mismatch",
+        )
+
+    workflows: list[dict] = []
+    for pipeline in exact_pipelines:
+        pipeline_id = pipeline.get("id")
+        if not pipeline_id:
+            return unknown(repo, "malformed-response")
+        pipeline_workflows, reason = circleci_page_items(
+            command,
+            token,
+            f"https://circleci.com/api/v2/pipeline/{pipeline_id}/workflow",
+        )
+        if reason:
+            return unknown(repo, reason)
+        assert pipeline_workflows is not None
+        workflows.extend(pipeline_workflows)
+
+    return Evidence(
+        service=repo.service,
+        status=map_circleci_workflows(workflows),
+        ref=repo.ref,
+        revision=repo.expected_revision,
+        expected_revision=repo.expected_revision,
+        url=circleci_url(repo, exact_pipelines[0]),
+        reason="exact-revision",
+    )
+
+
+def map_github_actions(run_data: dict) -> str:
+    status = str(run_data.get("status") or "unknown")
+    if status != "completed":
+        return "running" if status in {"queued", "in_progress", "waiting", "requested", "pending"} else "unknown"
+    conclusion = str(run_data.get("conclusion") or "unknown")
+    if conclusion == "success":
+        return "success"
+    if conclusion in {
+        "failure",
+        "timed_out",
+        "cancelled",
+        "startup_failure",
+        "action_required",
+    }:
+        return "failed"
+    return "unknown"
+
+
+def github_action_runs(
+    repo: Repository,
+    command: str,
+) -> tuple[list[dict] | None, str | None]:
+    assert repo.github_slug
+    runs: list[dict] = []
+    total_count: int | None = None
+    for page in range(1, MAX_PROVIDER_PAGES + 1):
+        result = run(
+            [
+                command,
+                "api",
+                "--method",
+                "GET",
+                f"repos/{repo.github_slug}/actions/runs",
+                "-f",
+                f"head_sha={repo.expected_revision}",
+                "-f",
+                f"per_page={PROVIDER_PAGE_SIZE}",
+                "-f",
+                f"page={page}",
+            ]
+        )
+        try:
+            response = parse_json(result)
+        except TimeoutError:
+            return None, "provider-timeout"
+        except RuntimeError:
+            return None, "provider-error"
+        except ValueError:
+            return None, "malformed-response"
+        page_runs = response.get("workflow_runs") if isinstance(response, dict) else None
+        if not isinstance(page_runs, list) or any(not isinstance(item, dict) for item in page_runs):
+            return None, "malformed-response"
+        reported_total = response.get("total_count")
+        if reported_total is not None:
+            if not isinstance(reported_total, int) or reported_total < 0:
+                return None, "malformed-response"
+            total_count = reported_total
+        runs.extend(page_runs)
+        if total_count is not None and len(runs) >= total_count:
+            return runs[:total_count], None
+        if total_count is None and len(page_runs) < PROVIDER_PAGE_SIZE:
+            return runs, None
+    return None, "incomplete-evidence"
+
+
+def github_actions_evidence(repo: Repository, command: str) -> Evidence:
+    runs, reason = github_action_runs(repo, command)
+    if reason:
+        return unknown(repo, reason)
+    assert runs is not None
+    exact_runs = [
+        item
+        for item in runs
+        if isinstance(item, dict) and item.get("head_sha") == repo.expected_revision
+    ]
+    if not exact_runs:
+        observed = runs[0] if runs and isinstance(runs[0], dict) else {}
+        return Evidence(
+            repo.service,
+            "unknown",
+            str(observed.get("head_branch") or "-"),
+            str(observed.get("head_sha") or "-"),
+            repo.expected_revision,
+            str(observed.get("html_url") or "-"),
+            "revision-mismatch" if observed else "revision-not-found",
+        )
+
+    diagnostic_url = str(exact_runs[0].get("html_url") or "-")
+    if any(not item.get("head_branch") for item in exact_runs):
+        return Evidence(
+            repo.service,
+            "unknown",
+            "-",
+            repo.expected_revision,
+            repo.expected_revision,
+            diagnostic_url,
+            "missing-ref",
+        )
+    refs = {str(item["head_branch"]) for item in exact_runs}
+    if refs != {repo.ref}:
+        return Evidence(
+            repo.service,
+            "unknown",
+            next(iter(refs), "-"),
+            repo.expected_revision,
+            repo.expected_revision,
+            diagnostic_url,
+            "ref-mismatch",
+        )
+
+    statuses = [map_github_actions(item) for item in exact_runs]
+    if "failed" in statuses:
+        status = "failed"
+    elif "error" in statuses:
+        status = "error"
+    elif "running" in statuses:
+        status = "running"
+    elif statuses and all(item == "success" for item in statuses):
+        status = "success"
+    else:
+        status = "unknown"
+    return Evidence(
+        repo.service,
+        status,
+        repo.ref,
+        repo.expected_revision,
+        repo.expected_revision,
+        diagnostic_url,
+        "exact-revision",
+    )
+
+
+def cloud_build_revision(build: dict) -> str | None:
+    substitutions = build.get("substitutions")
+    if isinstance(substitutions, dict):
+        for key in ("COMMIT_SHA", "_COMMIT_SHA"):
+            if substitutions.get(key):
+                return str(substitutions[key])
+    provenance = build.get("sourceProvenance")
+    if isinstance(provenance, dict):
+        resolved = provenance.get("resolvedRepoSource")
+        if isinstance(resolved, dict) and resolved.get("commitSha"):
+            return str(resolved["commitSha"])
+    return None
+
+
+def cloud_build_repositories(build: dict) -> set[str]:
+    names: set[str] = set()
+    substitutions = build.get("substitutions")
+    if isinstance(substitutions, dict):
+        for key in ("REPO_NAME", "_REPO_NAME", "REPO_FULL_NAME", "_REPO_FULL_NAME"):
+            if substitutions.get(key):
+                names.add(str(substitutions[key]).casefold())
+    source = build.get("source")
+    if isinstance(source, dict):
+        repo_source = source.get("repoSource")
+        if isinstance(repo_source, dict) and repo_source.get("repoName"):
+            names.add(str(repo_source["repoName"]).casefold())
+    return names
+
+
+def cloud_build_ref(build: dict) -> str | None:
+    substitutions = build.get("substitutions")
+    if isinstance(substitutions, dict):
+        for key in ("BRANCH_NAME", "_HEAD_BRANCH", "TAG_NAME"):
+            if substitutions.get(key):
+                return str(substitutions[key])
+    return None
+
+
+def map_cloud_build(build: dict) -> str:
+    status = str(build.get("status") or "STATUS_UNKNOWN").upper()
+    if status == "SUCCESS":
+        return "success"
+    if status in {"WORKING", "QUEUED", "PENDING"}:
+        return "running"
+    if status in {"FAILURE", "CANCELLED", "TIMEOUT", "EXPIRED"}:
+        return "failed"
+    if status == "INTERNAL_ERROR":
+        return "error"
+    return "unknown"
+
+
+def cloud_build_evidence(
+    repo: Repository,
+    command: str,
+    settings: dict[str, str],
+) -> Evidence:
+    project = settings.get("project")
+    if not project:
+        return unknown(repo, "missing-project")
+    region = settings.get("region", "global")
+    result = run(
+        [
+            command,
+            "builds",
+            "list",
+            f"--project={project}",
+            f"--region={region}",
+            f"--filter=substitutions.COMMIT_SHA={repo.expected_revision}",
+            f"--limit={MAX_CLOUD_BUILDS + 1}",
+            "--format=json",
+        ]
+    )
+    try:
+        builds = parse_json(result)
+    except TimeoutError:
+        return unknown(repo, "provider-timeout")
+    except RuntimeError:
+        return unknown(repo, "provider-error")
+    except ValueError:
+        return unknown(repo, "malformed-response")
+    if not isinstance(builds, list) or any(not isinstance(build, dict) for build in builds):
+        return unknown(repo, "malformed-response")
+
+    assert repo.identity
+    repo_name = repo.identity.rsplit("/", 1)[-1].casefold()
+    identity = repo.identity.casefold()
+    if len(builds) > MAX_CLOUD_BUILDS:
+        return unknown(repo, "incomplete-evidence")
+    repository_matches = [
+        build
+        for build in builds
+        if isinstance(build, dict)
+        and cloud_build_repositories(build) & {repo_name, identity}
+    ]
+    exact_builds = [
+        build
+        for build in repository_matches
+        if cloud_build_revision(build) == repo.expected_revision
+    ]
+    if not exact_builds:
+        observed = repository_matches[0] if repository_matches else {}
+        return Evidence(
+            repo.service,
+            "unknown",
+            cloud_build_ref(observed) or "-",
+            cloud_build_revision(observed) or "-",
+            repo.expected_revision,
+            str(observed.get("logUrl") or "-"),
+            "revision-mismatch" if observed else "revision-not-found",
+        )
+
+    refs = [cloud_build_ref(build) for build in exact_builds]
+    diagnostic_url = str(exact_builds[0].get("logUrl") or "-")
+    if any(ref is None for ref in refs):
+        return Evidence(
+            repo.service,
+            "unknown",
+            "-",
+            repo.expected_revision,
+            repo.expected_revision,
+            diagnostic_url,
+            "missing-ref",
+        )
+    if set(refs) != {repo.ref}:
+        return Evidence(
+            repo.service,
+            "unknown",
+            str(refs[0]),
+            repo.expected_revision,
+            repo.expected_revision,
+            diagnostic_url,
+            "ref-mismatch",
+        )
+
+    statuses = [map_cloud_build(build) for build in exact_builds]
+    if "failed" in statuses:
+        status = "failed"
+    elif "error" in statuses:
+        status = "error"
+    elif "running" in statuses:
+        status = "running"
+    elif statuses and all(item == "success" for item in statuses):
+        status = "success"
+    else:
+        status = "unknown"
+    return Evidence(
+        repo.service,
+        status,
+        repo.ref,
+        repo.expected_revision,
+        repo.expected_revision,
+        diagnostic_url,
+        "exact-revision",
+    )
+
+
+def safe_field(value: str) -> str:
+    return value.replace("|", "%7C").replace("\n", " ").replace("\r", " ")
+
+
+def render(provider: str, availability: str, manifest_present: bool, evidence: list[Evidence]) -> None:
+    print("---SOURCE---")
+    print(f"provider={safe_field(provider)}")
+    print(f"availability={availability}")
+    print(f"manifest={'present' if manifest_present else 'absent'}")
+    print("---CI---")
+    print("service|status|ref|revision|expectedRevision|url|reason")
+    for item in evidence:
+        print(
+            "|".join(
+                safe_field(value)
+                for value in (
+                    item.service,
+                    item.status,
+                    item.ref,
+                    item.revision,
+                    item.expected_revision,
+                    item.url,
+                    item.reason,
+                )
+            )
+        )
+
+
+def main() -> int:
+    args = sys.argv[1:]
+    if args == ["--help"]:
+        print("usage: release-ci [service ...]")
+        return 0
+    if any(not SERVICE_NAME.fullmatch(service) for service in args):
+        sys.stderr.write("release-ci: service names may contain only letters, digits, ., _, and -\n")
+        return 2
+
+    root = find_project_root()
+    manifest = root / "docs" / "release-manifest.yaml"
+    provider, all_settings = parse_ci_config(manifest)
+    git = command_name("RELEASE_CI_GIT", "git")
+    if command_available(git):
+        repositories = [repository(root, service, git) for service in args]
+    else:
+        repositories = [Repository(service=service, reason="missing-git") for service in args]
+
+    if provider not in PROVIDERS:
+        render(
+            provider,
+            "unavailable",
+            manifest.is_file(),
+            [unknown(repo, "unsupported-provider") for repo in repositories],
+        )
+        return 0
+    if provider == "none":
+        render(
+            provider,
+            "unavailable",
+            manifest.is_file(),
+            [unknown(repo, "provider-none") for repo in repositories],
+        )
+        return 0
+
+    command_key = {
+        "circleci": ("RELEASE_CI_CURL", "curl"),
+        "github-actions": ("RELEASE_CI_GH", "gh"),
+        "cloud-build": ("RELEASE_CI_GCLOUD", "gcloud"),
+    }[provider]
+    provider_command = command_name(*command_key)
+    if not command_available(provider_command):
+        render(
+            provider,
+            "unavailable",
+            manifest.is_file(),
+            [unknown(repo, "missing-command") for repo in repositories],
+        )
+        return 0
+
+    provider_settings = all_settings.get(provider, {})
+    token = None
+    if provider == "circleci":
+        token = circleci_token(root, provider_settings)
+        if not token:
+            render(
+                provider,
+                "unavailable",
+                manifest.is_file(),
+                [unknown(repo, "missing-credentials") for repo in repositories],
+            )
+            return 0
+    if provider == "cloud-build" and not provider_settings.get("project"):
+        render(
+            provider,
+            "unavailable",
+            manifest.is_file(),
+            [unknown(repo, "missing-project") for repo in repositories],
+        )
+        return 0
+
+    evidence: list[Evidence] = []
+    for repo in repositories:
+        if repo.reason:
+            evidence.append(unknown(repo, repo.reason))
+        elif provider == "circleci" and not circleci_vcs(repo):
+            evidence.append(unknown(repo, "unsupported-origin"))
+        elif provider == "github-actions" and not repo.github_slug:
+            evidence.append(unknown(repo, "unsupported-origin"))
+        elif provider == "circleci":
+            evidence.append(circleci_evidence(repo, provider_command, token or ""))
+        elif provider == "github-actions":
+            evidence.append(github_actions_evidence(repo, provider_command))
+        else:
+            evidence.append(cloud_build_evidence(repo, provider_command, provider_settings))
+
+    provider_errors = sum(item.reason in ERROR_REASONS for item in evidence)
+    if provider_errors == 0:
+        availability = "available"
+    elif provider_errors == len(evidence):
+        availability = "unavailable"
+    else:
+        availability = "partial"
+    render(provider, availability, manifest.is_file(), evidence)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

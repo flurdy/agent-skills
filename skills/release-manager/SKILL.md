@@ -6,11 +6,11 @@ description: >
   enforces deploy order, watches rollouts, syncs k8s config and schedules the restarts that
   applied config needs, and nudges feature toggles. Drive it on a loop with
   /watch-release. Advisory: it only pushes after you explicitly choose "push".
-allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
+allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*),Bash(./scripts/release-ci:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.11.0"
+version: "1.12.0"
 author: "flurdy"
 ---
 
@@ -41,28 +41,61 @@ use `/ready-to-release <service>`.
 
 ## Setup
 
-This skill ships `release-order`, the deploy-order authority also used by /release-status and
-/ready-to-release. On first run, ensure the project symlink exists:
+This skill ships two project-facing authorities:
+
+- `release-order` resolves the effective deploy-order graph for /release-manager,
+  /release-status, and /ready-to-release.
+- `release-ci` resolves read-only CI evidence for the exact upstream revision of each requested
+  service. It has built-in adapters for CircleCI, GitHub Actions, Google Cloud Build, and `none`.
+
+On first run, ensure both project commands resolve to the installed skill:
 
 ```bash
 ln -sfn "$SKILLS_DIR/release-manager/scripts/release-order" ./scripts/release-order
-chmod +x ./scripts/release-order
+ln -sfn "$SKILLS_DIR/release-manager/scripts/release-ci" ./scripts/release-ci
+chmod +x ./scripts/release-order ./scripts/release-ci
 ```
 
-Where `$SKILLS_DIR` resolves to `${CLAUDE_HOME:-$HOME/.claude}/skills`. The authority finds a
-multi-repo root from `.mgit.conf`, otherwise a release manifest or Git root. It selects the pact
-provider when live pact edges or a generated pact block exist, uses `order.manual` for a plain
-manifest-declared graph, and returns an empty graph when neither source exists. An accepted
-generated block remains effective until you explicitly reconcile provider drift. Manual edges and
-suppressions use the same flow-list map shape:
+Where `$SKILLS_DIR` resolves to the installed shared skill root. Both authorities find a multi-repo
+root from `RELEASE_PROJECT_ROOT`, `.mgit.conf`, a release manifest, or a Git root.
+
+`release-order` selects the pact provider when live pact edges or a generated pact block exist,
+uses `order.manual` for a plain manifest-declared graph, and returns an empty graph when neither
+source exists. An accepted generated block remains effective until you explicitly reconcile
+provider drift. Manual edges and suppressions use the same flow-list map shape.
+
+`release-ci` selects exactly one project provider from `docs/release-manifest.yaml`. Provider
+settings live under the same declaration; repository identity, upstream ref, and expected revision
+come from each verified checkout rather than hardcoded repository prefixes:
 
 ```yaml
+ci:
+  provider: circleci # circleci | github-actions | cloud-build | none
+  circleci:
+    token_env: CIRCLECI_TOKEN
+    token_account: example-account # optional secret-api-key fallback
+  cloud-build:
+    project: example-project
+    region: global
+
 order:
   manual:
     web: [api]
   suppress:
     web: [legacy]
 ```
+
+The CI authority emits `---SOURCE---` metadata (`provider`,
+`availability=available|partial|unavailable`, and manifest presence), then bounded `---CI---` rows:
+
+```text
+service|status|ref|revision|expectedRevision|url|reason
+```
+
+`status` is `success|failed|running|error|unknown`. A successful native result is reported as
+`success` only when its provider revision exactly equals the checkout's upstream revision. Missing
+configuration, credentials, checkout, upstream, provider command, malformed response, timeout, or
+revision mismatch produces explicit unknown/unavailable evidence and never triggers or retries CI.
 
 `docs/release-manifest.yaml` and `.release-state.json` stay project-local.
 
@@ -86,18 +119,16 @@ watcher doesn't re-nag every tick. Create it if missing. Schema:
 
 - `deferred` — snoozed this session; cleared and re-prompted on the next tick (defer = "ask me again later").
 - `cancelled` — suppressed until the service's unpushed HEAD sha changes (new commits arrive).
-- `ciBeads` — dedup map of auto-filed beads → bead id. Keys: `<service>@<branch>` for red CI
-  builds; `coverage:<provider>` for contract-coverage gaps. Drop a key when its problem clears.
+- `ciBeads` — dedup map of auto-filed beads → bead id. Keys: `<service>@<ref>` for red CI
+  runs; `coverage:<provider>` for contract-coverage gaps. Drop a key when its problem clears.
 - `quietStreak` — count of consecutive **cold** ticks (nothing in flight, nothing queued). Drives
   the adaptive back-off in step 8: reset to 0 on any hot/warm tick, incremented on a cold one.
   Ignored entirely under a fixed-interval loop.
 - `rolloutWatch` — services pushed in a prior tick, awaiting their new tag in K8s. `fromTag` is the
-  live deploy tag captured **at push time** (the pre-push baseline). The exact post-push tag can't
-  be known at push: CircleCI tags images `<IMAGE_BASE_VERSION>.<CIRCLE_BUILD_NUM>` (e.g. `1.0.<N>`)
-  and `CIRCLE_BUILD_NUM` is assigned only when the build runs (after the push) and is not
-  `previous+1`. So confirmation (step 4) is "the live tag has moved **off** `fromTag`", not an
-  exact-tag match. `fromTag` may be `null` if deploy-status was unavailable at push — step 4 then
-  falls back to the older heuristic.
+  live deploy tag captured **at push time** (the pre-push baseline). The exact post-push tag cannot
+  be predicted because the build system assigns it only after the push. Confirmation (step 4) is
+  therefore "the live tag has moved **off** `fromTag`", not an exact-tag match. `fromTag` may be
+  `null` if deploy-status was unavailable at push — step 4 then falls back to the older heuristic.
 - `configApply` / `restartPending` / `restartWatch` — the **config-restart state machine**. Every
   service reads its ConfigMaps/Secrets only at startup, so a synced config change does NOT take
   effect until its consumers get a `kubectl rollout restart` — and only *after* Flux has applied it
@@ -129,25 +160,28 @@ as one plain call per service (parallel calls are fine; loops are not).
 
 ## Per-tick flow
 
-1. **Gather.** Run the shared mechanical digest — it keeps the raw kubectl/CircleCI/git dumps out
-   of this loop's context by emitting only a compact parsed result, so no subagent is needed:
+1. **Gather.** Run the shared mechanical digest — it keeps raw kubectl, CI-provider, and Git
+   output out of this loop's context by emitting only a compact parsed result, so no subagent is
+   needed:
 
    ```bash
    ./scripts/release-digest          # all services (or pass a service arg to scope the tick)
    ```
 
    Parse the delimited sections:
-   - `---META---`: `context=<kubectl ctx>`, `ci=<available|unavailable>` (CI is `available` only
-     when a CircleCI key is available through `secret-api-key`, `CIRCLECI_TOKEN`, or `.env.circleci`; otherwise every `ci` field is `unknown`).
+   - `---META---`: `context=<kubectl ctx>`, `ciProvider=<circleci|github-actions|cloud-build|none>`,
+     and `ci=<available|partial|unavailable>`. Missing or degraded provider evidence leaves affected
+     service `ci` fields `unknown`.
    - `---SERVICES---`: one pipe-delimited line per service after the header line:
-     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age`.
+     `service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age|ciRevision|ciExpectedRevision`.
      - `unpushed` (int), `uncommitted` (`true|false`), `head` = short sha of the current local
        HEAD (`-` if no checkout) — the tip identity for every sha comparison/record this tick
        (step 6 `cancelled` check, step 7 `rolloutWatch.sha`); never run per-service git commands
        to re-derive it.
-     - `ci` ∈ `success|failed|running|error|unknown`; `ciBranch` = the branch the latest pipeline
-       ran on (`-` if none). `gitBranch` = the service repo's current branch (what `git push`
-       sends). Both branches are needed for the step-6 branch-match gate.
+     - `ci` ∈ `success|failed|running|error|unknown`; `ciBranch` and `ciRevision` identify the
+       provider run, while `ciExpectedRevision` is the exact upstream revision that the authority
+       gated. `gitBranch` is the service checkout's current branch (what `git push` sends). The
+       original columns retain their order; revision evidence is appended for existing consumers.
      - `deploy` = a Deployment's `<ready>/<desired>` (e.g. `1/1`, `0/1`); for **CronJob-backed
        services** (digest, patrol, reconciler) it is a marker, not replicas: `cron` = the service's
        CronJobs all share one image (settled) and `cron:rollout` = images differ (Flux mid-bump).
@@ -208,14 +242,14 @@ as one plain call per service (parallel calls are fine; loops are not).
      pact graph remains usable but has no generated manifest block to reconcile.
 
 3. **CI failures → auto-bead (dedup).** For each service whose `ci` is `failed`/`error`:
-   - Compute key `<service>@<branch>`. If it's already in `state.ciBeads`, skip (already filed).
+   - Compute key `<service>@<ref>`. If it's already in `state.ciBeads`, skip (already filed).
    - Otherwise verify no open bead exists: `bd list --status=open` and grep for a matching
      `CI FAILED: <service>` title. If none, file one:
      ```bash
      bd create --title="CI FAILED: <service>" --type=bug --priority=1 --labels "<service>" \
-       --description="CI build failed on <branch>. Detected by /release-manager."
+       --description="CI run failed on <ref> at <ciRevision>. Detected by /release-manager."
      ```
-   - Record `state.ciBeads["<service>@<branch>"] = <new bead id>`. Print `🔴 CI FAILED <service> → filed <bead id>`.
+   - Record `state.ciBeads["<service>@<ref>"] = <new bead id>`. Print `🔴 CI FAILED <service> → filed <bead id>`.
    - When that service's CI later goes green, drop the key from `ciBeads` so a future failure re-files.
 
 4. **Rollout confirmation.** For each entry in `state.rolloutWatch`, compare the live deploy
@@ -319,42 +353,38 @@ as one plain call per service (parallel calls are fine; loops are not).
    column (a moved `head` means new commits landed — the cancel expires; this is a pure data
    comparison, no git commands). Then
    **partition** it:
-   - **Non-deploying repos** (in `manifest.non_deploying`, e.g. root, functional-tests) are NOT
-     CircleCI services — `git push` triggers no prod deploy, there's no pipeline to gate on and no
-     rollout to watch. **Skip every gate below** (CI/branch-match, deploy-order, contract
-     staleness/coverage) — none of their assumptions apply. Mark each `📦 READY (non-deploying)`
-     and carry it straight to step 7 with the non-deploying label. Do **not** treat their
-     `ci=unknown` as a stop; `unknown` there is expected, not a risk.
+   - **Non-deploying repos** (in `manifest.non_deploying`, e.g. root, functional-tests) do not
+     have a deployment pipeline or rollout to gate. **Skip every gate below** (CI/ref/revision,
+     deploy-order, contract staleness/coverage) — none of their assumptions apply. Mark each
+     `📦 READY (non-deploying)` and carry it straight to step 7 with the non-deploying label. Do
+     **not** treat their `ci=unknown` as a stop; `unknown` there is expected, not a risk.
    - **Deploying services** (everything else) run the full gate sequence below. For each:
    - **Pre-push verification gate (safety-critical — evaluate FIRST, before any other gate).**
-     `make git-push <service>` pushes the unpushed commits straight to the service's remote, and
-     CircleCI auto-deploys to **production** on green — there is no further human gate after the
-     push. So a service is only a push candidate when its branch is in a known-good state. Two
-     facts make this subtle:
-     1. `ci-status.sh` reports the **latest pipeline on the service's repo** — i.e. the last
-        *pushed* commit's build, on whatever branch that pipeline ran. It does **not** and
-        **cannot** reflect the candidate: the candidate commits are still unpushed, so remote CI
-        has never seen that SHA. Treat remote CI as a statement about the branch's *already-live*
-        tip, never about what you are about to push.
-     2. Therefore "remote CI is green" is necessary-but-not-sufficient, and "remote CI is
-        red/running/unknown" is a hard stop on offering the push.
+     `make git-push <service>` pushes the unpushed commits straight to the service's remote, whose
+     configured pipeline may deploy to **production** on green. There is no further human gate
+     after the push, so a service is only a push candidate when its current upstream revision is
+     known-good. Two facts matter:
+     1. The normalized CI row describes the exact **upstream** revision already on the remote. It
+        cannot describe the candidate commits because those commits are still unpushed and no
+        remote provider has seen them.
+     2. Therefore exact upstream CI success is necessary-but-not-sufficient, while failed,
+        running, unavailable, stale, malformed, or mismatched evidence is a hard stop.
 
      Apply, in order, and **drop from the prompt set** (print the line, don't ask) on any stop:
-     - **Branch match.** Confirm `ciBranch` equals `gitBranch` (both from the step-1 digest). If
-       they differ, the latest pipeline ran on an unrelated branch — the status says nothing about
-       the commits you'd push — so treat it as `unknown` below.
-     - `ci` = `failed`/`error` → mark `🔴 CI RED — not offering push` and drop. The branch tip
-       you'd be stacking onto is broken; pushing risks a bad prod deploy the moment it goes
-       green. (Step 3 already filed the bead.)
-     - `ci` = `running` → mark `⏳ CI RUNNING — wait` and drop this tick. The branch tip is
-       mid-build and unsettled; it resurfaces next tick.
-     - `ci` = `unknown` (no CircleCI key, no pipeline, or branch mismatch above) → mark
-       `❔ CI UNKNOWN — verify locally before pushing` and drop, **unless** you (the operator)
-       have confirmed the service's tests pass locally this session — only then keep it as READY.
-       Never silently offer a push on `unknown`.
-     - `ci` = `success` **and** branch matches → the branch tip is green. Keep it, but the
-       candidate is **still remotely unverified** (green is for the last pushed SHA, not the N
-       unpushed commits). Carry this caveat into the step-7 prompt.
+     - **Ref and revision match.** Require `ciBranch == gitBranch`, and require non-`-`
+       `ciRevision == ciExpectedRevision`. Any missing or mismatched value means the evidence is
+       for another ref/revision; treat it as `unknown` below even if its native status was green.
+     - `ci` = `failed`/`error` → mark `🔴 CI RED — not offering push` and drop. The exact upstream
+       tip is broken; pushing risks a bad production deploy. (Step 3 already filed the bead.)
+     - `ci` = `running` → mark `⏳ CI RUNNING — wait` and drop this tick. The exact upstream tip is
+       unsettled; it resurfaces next tick.
+     - `ci` = `unknown`, or any ref/revision mismatch above → mark
+       `❔ CI UNKNOWN — not offering push` and drop. Local tests do not replace missing remote
+       evidence for the exact upstream revision; the service resurfaces when the authority can
+       prove it.
+     - `ci` = `success` with matching ref and exact revision → the upstream tip is green. Keep it,
+       but the candidate is **still remotely unverified** because its unpushed commits have not run
+       remotely. Carry this caveat into the step-7 prompt.
    - **Deploy order (the rate limiter).** Look up the service's prereqs in the effective
      dependency map. A prereq P **blocks** this consumer only if P is *co-changing* — any of:
      (a) P has `unpushed > 0`, (b) P is mid-rollout — a Deployment showing `deploy` `N/M` (N<M),
@@ -450,7 +480,7 @@ as one plain call per service (parallel calls are fine; loops are not).
      (pods mid-cycle), **or** a candidate's `ci=running`, **or** a service was pushed or restarted
      *this* tick. External events that resolve in minutes; check again soon to catch them. →
      **~180s** (3 min — inside the prompt-cache window, but not so tight it burns the cache several
-     times per CircleCI build).
+     times per CI run).
    - **warm** — nothing in flight, but *pending work*: `state.deferred` non-empty, `state.restartPending`
      non-empty (config applied, awaiting your restart answer), unreconciled dependency drift (step 2b
      skipped), `k8sUnsynced` (step 5b — pending config not yet synced), or ready candidates still
@@ -471,18 +501,18 @@ as one plain call per service (parallel calls are fine; loops are not).
 
    e.g. `next-tick: hot (~180s) — dispatch mid-rollout` / `next-tick: cold (~1500s) — all settled, 2 quiet ticks`.
    The seconds are a recommendation; the adaptive loop clamps to `[60, 3600]`. Never let a hot
-   recommendation drop below ~120s — a CircleCI build takes minutes, so tighter polling just burns
-   the cache without catching the rollout sooner.
+   recommendation drop below ~120s — CI runs take minutes, so tighter polling just burns the cache
+   without catching the rollout sooner.
 
 ## Caveats
 
 - On a `/loop`, an AskUserQuestion **blocks the tick until you answer** — intended for an
   attended watcher tab, but an unattended tab will pause at the first prompt. If you want it to
   run unattended, prefer `/release-status` (no prompts) on the loop and act manually.
-- `push` runs `make git-push <service>` which triggers a production deploy (CircleCI auto-deploys
-  on green, no further human gate). The prompt is the explicit authorization; there is no
-  auto-push. The step-6 pre-push gate withholds the prompt entirely while CI is red/running/
-  unknown for the service's branch.
+- `push` runs `make git-push <service>`, which may trigger a production deploy through the
+  project's configured CI provider. The prompt is the explicit authorization; there is no
+  auto-push. The step-6 pre-push gate withholds the prompt while exact upstream evidence is
+  red/running/unknown or identifies another ref/revision.
 - **K8s config (step 5b) is watched but never `git-push`ed.** The `kubernetes` repo is in
   `manifest.ignore` so it's never a `make git-push` candidate — but the skill still reads its state
   from the digest's `---K8S---` section and, when it has unsynced config, warns and offers
@@ -505,14 +535,15 @@ as one plain call per service (parallel calls are fine; loops are not).
   only — they read fresh config on their next run). Apply-confirm uses `resourceVersion` movement;
   restart-confirm uses pod age-reset (a config restart doesn't move the image tag), so it's
   heuristic — it prefers waiting a tick over a false confirm.
-- **Remote CI never verifies the candidate.** `ci-status.sh` reports the latest pipeline on the
-  repo — the last *pushed* SHA — so it cannot have run the unpushed candidate commits. A green CI
-  is a statement about the branch's already-live tip, not about what you're about to ship; the
-  only true verification of the candidate is local tests before push (or the post-push pipeline
-  that runs once the commits land). The gate uses CI red/running/unknown as a hard stop, and
-  surfaces "candidate remotely unverified" in the push prompt even when CI is green.
-- Needs a CircleCI key available through `secret-api-key` (or `CIRCLECI_TOKEN`) and kubectl context `paperboy` for full data; degrade any missing
-  section to `unknown` rather than failing the tick.
+- **Remote CI never verifies the candidate.** `release-ci` verifies the checkout's exact upstream
+  revision, so it cannot have run the unpushed candidate commits. A green CI result describes the
+  already-remote tip, not what you are about to push; the only verification of the candidate is
+  local testing before push (or the post-push run after the commits land). The gate uses
+  failed/running/error/unknown or mismatched evidence as a hard stop and surfaces "candidate
+  remotely unverified" even when the exact upstream revision is green.
+- CI credentials/tooling for the selected provider and the project's Kubernetes context are needed
+  for full data. Missing configuration, auth, commands, checkouts, upstream revisions, or provider
+  responses degrade to `unknown` rather than failing the tick.
 - `.release-state.json` is gitignored and local — defer is per-session, cancel persists until
   new commits land on that service.
 - The deploy-order gate only blocks on *co-changing* providers (unpushed / mid-rollout / in
