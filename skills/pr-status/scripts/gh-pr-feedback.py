@@ -2,8 +2,11 @@
 """Read-only, bounded GitHub PR feedback inventory.
 
 Usage: gh-pr-feedback.py <owner> <repo> <number> [<number> ...]
+       gh-pr-feedback.py <owner> <repo> <number> --identity <identity> \\
+         --expected-update-key <update-key>
 
-The JSON envelope is deterministic for an unchanged GitHub response. Consumers compare
+Focused identity selection reuses the same inventory path, raises the body cap to GitHub's maximum,
+and withholds missing or changed records. The JSON envelope is deterministic for an unchanged GitHub response. Consumers compare
 `identity` plus `updatedAt`/`updateKey`, and use `stateKey` for lifecycle-only changes.
 Partial fetches remain machine-readable and exit successfully; `partial` and `errors`
 must be inspected before treating an inventory as complete.
@@ -20,6 +23,9 @@ import sys
 from typing import Any
 
 
+MAX_BODY_CHARS = 65_536
+
+
 class InventoryConfig:
     def __init__(
         self,
@@ -29,7 +35,7 @@ class InventoryConfig:
         max_records_per_pr: int = 500,
         page_size: int = 100,
     ) -> None:
-        self.body_limit = max(1, body_limit)
+        self.body_limit = max(1, min(MAX_BODY_CHARS, body_limit))
         self.max_source_items = max(1, max_source_items)
         self.max_records_per_pr = max(1, max_records_per_pr)
         self.page_size = max(1, min(100, page_size, self.max_source_items))
@@ -936,6 +942,40 @@ def inventory_envelope(
     }
 
 
+def select_inventory_record(
+    inventory: dict,
+    identity: str,
+    expected_update_key: str,
+) -> dict:
+    result = dict(inventory)
+    record = next(
+        (
+            item
+            for item in inventory.get("records", [])
+            if isinstance(item, dict) and item.get("identity") == identity
+        ),
+        None,
+    )
+    observed_update_key = record.get("updateKey") if record else None
+    if record is None:
+        status = "not-found"
+        records = []
+    elif observed_update_key != expected_update_key:
+        status = "stale"
+        records = []
+    else:
+        status = "matched"
+        records = [record]
+    result["records"] = records
+    result["selection"] = {
+        "identity": identity,
+        "expectedUpdateKey": expected_update_key,
+        "observedUpdateKey": observed_update_key,
+        "status": status,
+    }
+    return result
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("owner")
@@ -944,18 +984,31 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--body-limit", type=int, default=2_000)
     parser.add_argument("--max-source-items", type=int, default=200)
     parser.add_argument("--max-records-per-pr", type=int, default=500)
+    parser.add_argument("--identity")
+    parser.add_argument("--expected-update-key")
     parser.add_argument("--pretty", action="store_true")
-    return parser.parse_args(argv)
+    arguments = parser.parse_args(argv)
+    identity_supplied = arguments.identity is not None
+    update_key_supplied = arguments.expected_update_key is not None
+    if identity_supplied != update_key_supplied:
+        parser.error("--identity and --expected-update-key must be used together")
+    if identity_supplied and (not arguments.identity or not arguments.expected_update_key):
+        parser.error("focused identity selection values must not be empty")
+    if identity_supplied and len(arguments.numbers) != 1:
+        parser.error("focused identity selection requires exactly one PR number")
+    return arguments
 
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     config = InventoryConfig(
-        body_limit=args.body_limit,
+        body_limit=MAX_BODY_CHARS if args.identity is not None else args.body_limit,
         max_source_items=args.max_source_items,
         max_records_per_pr=args.max_records_per_pr,
     )
     result = collect_inventory(GhClient(), args.owner, args.repo, args.numbers, config)
+    if args.identity is not None:
+        result = select_inventory_record(result, args.identity, args.expected_update_key)
     json.dump(result, sys.stdout, indent=2 if args.pretty else None, sort_keys=args.pretty)
     sys.stdout.write("\n")
     return 0

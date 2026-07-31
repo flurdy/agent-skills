@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-lis
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -111,7 +111,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted gh-pr-checkout helper for optional local evidence. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -189,7 +189,9 @@ even when multiple repositories are present:
 
 Do not issue overlapping comment or thread queries. Keep records associated with their repository
 and PR throughout comparison and rendering. Existing org/workspace discovery behavior belongs to
-the shared list script and must remain unchanged.
+the shared list script and must remain unchanged. This normalized helper owns GitHub API access for
+feedback inventory: never invoke `gh api` directly, use `curl`, or call a bulk compatibility
+comments wrapper from this watcher.
 
 ### 2. Handle partial data safely
 
@@ -227,7 +229,21 @@ not truth. Validate at most 20 new or materially edited candidates per tick, ord
 security claim, human request, question, suggestion/change request, then other CI/bot findings.
 Leave overflow unseen so the next tick drains it rather than losing it.
 
-For each candidate, gather the smallest sufficient read-only evidence:
+For each candidate, gather the smallest sufficient read-only evidence. If its `bodyTruncated` value
+is true, fetch only that stable identity through the same normalized helper before validation:
+
+```bash
+~/.agents/skills/pr-status/scripts/gh-pr-feedback.py OWNER REPO PR_NUMBER \
+  --identity IDENTITY --expected-update-key UPDATE_KEY
+```
+
+Make at most one focused call per identity/update key per tick. Use the returned body only when
+`partial` is false, `selection.status` is `matched`, the selected `updateKey` still matches, and
+`bodyTruncated` is false. A `stale` or `not-found` selection is retained for the next normal
+inventory comparison rather than validated from obsolete text. A partial or still-truncated result
+means `unable to validate`; never bypass the helper with direct API access.
+
+Then gather:
 
 1. PR metadata and head SHA, description, changed paths, and CI state.
 2. The PR diff and referenced path/line.

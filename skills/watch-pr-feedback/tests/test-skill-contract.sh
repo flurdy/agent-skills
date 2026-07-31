@@ -35,6 +35,10 @@ for invariant in \
     '## Tick mode' \
     'gh-pr-list-open.sh' \
     'gh-pr-feedback.py' \
+    'gh-pr-feedback.py OWNER REPO PR_NUMBER' \
+    '--identity IDENTITY --expected-update-key UPDATE_KEY' \
+    '`selection.status` is `matched`' \
+    'never invoke `gh api` directly' \
     'gh-pr-checkout.py OWNER/REPO HEAD_SHA' \
     'The helper alone may enumerate registered workspace members and Git worktrees.' \
     'Never run ad-hoc shell/workspace probes' \
@@ -122,6 +126,8 @@ assert_not_contains 'git push'
 assert_not_contains 'git commit'
 assert_not_contains 'resolveReviewThread'
 assert_not_contains 'command -v pi'
+head -n 12 "$SKILL" | grep -Fq -- 'Bash(gh api' \
+    && fail 'watch-pr-feedback must not allow direct gh api access'
 assert_not_contains 'Bash(git'
 assert_not_contains 'for d in'
 

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import contextlib
 import copy
 import importlib.util
+import io
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 TEST_DIR = Path(__file__).resolve().parent
 SCRIPT = TEST_DIR.parent / "scripts" / "gh-pr-feedback.py"
@@ -60,6 +63,127 @@ def by_identity(result: dict) -> dict[str, dict]:
 
 
 class FeedbackInventoryTests(unittest.TestCase):
+    def test_caps_body_limit_at_githubs_maximum_comment_size(self) -> None:
+        config = feedback.InventoryConfig(body_limit=1_000_000)
+
+        self.assertEqual(feedback.MAX_BODY_CHARS, config.body_limit)
+
+    def test_selects_one_unchanged_identity_for_full_body_validation(self) -> None:
+        inventory = {
+            "records": [
+                {"identity": "conversation:C1", "updateKey": "conversation:C1@one", "rawBody": "full"},
+                {"identity": "inline:C2", "updateKey": "inline:C2@two", "rawBody": "other"},
+            ]
+        }
+
+        selected = feedback.select_inventory_record(
+            inventory,
+            "conversation:C1",
+            "conversation:C1@one",
+        )
+
+        self.assertEqual("matched", selected["selection"]["status"])
+        self.assertEqual(["conversation:C1"], [record["identity"] for record in selected["records"]])
+        self.assertEqual(2, len(inventory["records"]), "selection must not mutate the normal inventory")
+
+    def test_selection_withholds_missing_or_edited_feedback(self) -> None:
+        inventory = {
+            "records": [
+                {"identity": "conversation:C1", "updateKey": "conversation:C1@new", "rawBody": "changed"},
+            ]
+        }
+
+        stale = feedback.select_inventory_record(
+            inventory,
+            "conversation:C1",
+            "conversation:C1@old",
+        )
+        missing = feedback.select_inventory_record(
+            inventory,
+            "conversation:missing",
+            "conversation:missing@old",
+        )
+
+        self.assertEqual("stale", stale["selection"]["status"])
+        self.assertEqual("conversation:C1@new", stale["selection"]["observedUpdateKey"])
+        self.assertEqual([], stale["records"])
+        self.assertEqual("not-found", missing["selection"]["status"])
+        self.assertEqual([], missing["records"])
+
+    def test_focused_cli_requires_one_pr_and_an_expected_update_key(self) -> None:
+        with contextlib.redirect_stderr(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                feedback.parse_args(["acme", "widgets", "42", "--identity", "conversation:C1"])
+            with self.assertRaises(SystemExit):
+                feedback.parse_args(
+                    [
+                        "acme",
+                        "widgets",
+                        "42",
+                        "43",
+                        "--identity",
+                        "conversation:C1",
+                        "--expected-update-key",
+                        "conversation:C1@one",
+                    ]
+                )
+            with self.assertRaises(SystemExit):
+                feedback.parse_args(
+                    [
+                        "acme",
+                        "widgets",
+                        "42",
+                        "--identity",
+                        "",
+                        "--expected-update-key",
+                        "",
+                    ]
+                )
+
+    def test_focused_cli_uses_full_bounded_body_and_emits_one_record(self) -> None:
+        captured = {}
+
+        def collect(client, owner, repo, numbers, config):
+            captured["body_limit"] = config.body_limit
+            return {
+                "partial": False,
+                "records": [
+                    {
+                        "identity": "conversation:C1",
+                        "updateKey": "conversation:C1@one",
+                        "rawBody": "full",
+                        "bodyTruncated": False,
+                    },
+                    {
+                        "identity": "inline:C2",
+                        "updateKey": "inline:C2@two",
+                        "rawBody": "other",
+                        "bodyTruncated": False,
+                    },
+                ],
+            }
+
+        output = io.StringIO()
+        with mock.patch.object(feedback, "collect_inventory", side_effect=collect):
+            with contextlib.redirect_stdout(output):
+                exit_code = feedback.main(
+                    [
+                        "acme",
+                        "widgets",
+                        "42",
+                        "--identity",
+                        "conversation:C1",
+                        "--expected-update-key",
+                        "conversation:C1@one",
+                    ]
+                )
+
+        result = json.loads(output.getvalue())
+        self.assertEqual(0, exit_code)
+        self.assertEqual(feedback.MAX_BODY_CHARS, captured["body_limit"])
+        self.assertEqual("matched", result["selection"]["status"])
+        self.assertEqual(["conversation:C1"], [record["identity"] for record in result["records"]])
+
     def test_normalizes_every_feedback_surface_and_response_target(self) -> None:
         result = feedback.collect_inventory(
             FixtureClient(load_fixture("all-sources.json")),
