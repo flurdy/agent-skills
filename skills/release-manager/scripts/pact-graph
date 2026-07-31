@@ -2,13 +2,12 @@
 """Derive the service dependency graph from consumer-driven pact filenames and
 detect drift against the GENERATED block in docs/release-manifest.yaml.
 
-This is the deploy ORDERING authority only — the rate limiter that keeps a
-consumer from going live ahead of a provider it depends on. Contract HEALTH
-(staleness, sync gaps, and CI verification coverage) is /contract-check's job;
-this script does not duplicate it.
+This is the pact-specific deploy-order provider. release-order owns the effective
+rate-limiter map that keeps a consumer from going live ahead of a provider it
+depends on. Contract HEALTH (staleness, sync gaps, and CI verification coverage)
+is /contract-check's job; this script does not duplicate it.
 
-Used by /release-status (read-only render) and /release-manager (gate +
-reconcile).
+Used by release-order as the pact-specific read and reconcile provider.
 
 Pact filename convention:  <consumer>-consumer-<provider>-provider.json
 The ordering graph is built from synced provider pacts
@@ -16,16 +15,16 @@ The ordering graph is built from synced provider pacts
 (target/ build output would churn the committed manifest diff).
 
 Read-only by default. With --write it rewrites the GENERATED block in the
-manifest (used by /release-manager's reconcile step).
+manifest when release-order delegates an explicit reconcile.
 
 No third-party deps (no pyyaml): the script only ever parses the
-marker-delimited GENERATED block; humans own order.manual / order.suppress and
-the skills read those directly.
+marker-delimited GENERATED block. release-order merges the human-owned
+order.manual / order.suppress sections.
 
-Ships in agent-skills/shared (skills/release-manager/scripts/); projects invoke
-it via a ./scripts/pact-graph symlink. The project root is found by walking up
-from the working directory to the nearest .mgit.conf (same convention as
-contract-check.sh) — the manifest itself stays project-local.
+Ships in agent-skills/shared (skills/release-manager/scripts/) as a provider for
+release-order. RELEASE_PROJECT_ROOT pins the project when invoked by that authority;
+direct invocation otherwise prefers a .mgit.conf workspace, then a release manifest,
+then a Git root.
 """
 import glob
 import os
@@ -34,14 +33,28 @@ import sys
 
 
 def find_project_root():
-    d = os.getcwd()
-    while d != os.path.dirname(d):
-        if os.path.isfile(os.path.join(d, ".mgit.conf")):
-            return d
-        d = os.path.dirname(d)
-    sys.stderr.write("pact-graph: could not find .mgit.conf "
-                     "(run from within the project)\n")
-    sys.exit(1)
+    configured = os.environ.get("RELEASE_PROJECT_ROOT")
+    if configured:
+        return os.path.abspath(configured)
+
+    current = os.path.abspath(os.getcwd())
+    ancestors = []
+    while True:
+        ancestors.append(current)
+        parent = os.path.dirname(current)
+        if parent == current:
+            break
+        current = parent
+
+    for marker in (
+        ".mgit.conf",
+        os.path.join("docs", "release-manifest.yaml"),
+        ".git",
+    ):
+        for directory in ancestors:
+            if os.path.exists(os.path.join(directory, marker)):
+                return directory
+    return os.path.abspath(os.getcwd())
 
 
 ROOT = find_project_root()
@@ -114,6 +127,9 @@ def read_generated_block():
 
 
 def write_generated_block(by_consumer):
+    if not os.path.isfile(MANIFEST):
+        sys.stderr.write("pact-graph: release manifest not found\n")
+        return False
     text = open(MANIFEST, encoding="utf-8").read()
     block = "\n".join([GEN_START] + render_derived(by_consumer) + [GEN_END])
     pat = re.compile(re.escape(GEN_START) + r".*?" + re.escape(GEN_END), re.DOTALL)
@@ -139,6 +155,8 @@ def main():
         ok = write_generated_block(by_consumer)
         print("---WRITE---")
         print("ok" if ok else "failed")
+        if not ok:
+            sys.exit(1)
         return
 
     # --- ordering graph ---
@@ -150,7 +168,7 @@ def main():
     print("---DRIFT---")
     found, manifest_edges = read_generated_block()
     if not found:
-        print("status: no-generated-block (run with --write to bootstrap)")
+        print("status: no-generated-block")
     else:
         new = synced - manifest_edges
         removed = manifest_edges - synced

@@ -4,11 +4,11 @@ description: >
   Read-only release dashboard for letterbox — one view of what's built-but-unpushed,
   pushed-but-not-rolled-out, deployed-but-toggle-still-off, and what's blocked by deploy
   order. Passive: never prompts, never pushes. Use for a quick "where is everything" glance.
-allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*)"
+allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.4.1"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -61,28 +61,32 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
      value; everything still-`false` is present). For the full map run
      `./scripts/release-digest --full-toggles`; for disabled-only, `make feature-toggles-disabled`.
 
-2. **Read the manifest** at `docs/release-manifest.yaml` for the `order` block
-   (`derived` / `manual` / `suppress`), the `toggles` map, and the `ignore` list.
-   The effective dependency map = `(derived ∪ manual) − suppress`.
+2. **Read optional manifest context.** If `docs/release-manifest.yaml` is absent, use empty
+   defaults for `toggles`, `parked`, and `ignore`. Otherwise read those sections. Ordering never
+   depends on the skill parsing this file.
 
 2b. **Scan dependencies + contract coverage** (both read-only, no tokens/network):
 
    ```bash
-   ./scripts/pact-graph              # dependency ordering authority
+   ./scripts/release-order           # effective dependency ordering authority
    ./scripts/contract-check coverage # CI verification coverage
    ```
 
-   Both are project symlinks installed by their owning skills — `pact-graph` by
+   Both are project symlinks installed by their owning skills — `release-order` by
    /release-manager (see its Setup), `contract-check` by /contract-check.
 
-   From `pact-graph` parse:
-   - `---GRAPH---` — `consumer: [providers]`, derived live from pact filenames.
-   - `---DRIFT---` — `status: in-sync`, or `new:`/`removed:` edge lines = the manifest's
-     `order.derived` block no longer matches the pacts.
+   From `release-order` parse:
+   - `---SOURCE---` — `provider=pact|manifest|none`, `graph=generated|live|manual|none`, and
+     manifest presence.
+   - `---GRAPH---` — the accepted effective `consumer: [providers]` map after manual edges and
+     suppressions. Generated edges remain effective until explicit reconciliation. Use this graph
+     directly; do not merge order sections in the skill.
+   - `---DRIFT---` — `status: in-sync`, `new:`/`removed:` provider drift, or an
+     `unmanaged`/`not-applicable` status when reconciliation does not apply.
 
    From `contract-check coverage` parse the `GAP`/`OK` lines: a `GAP <provider> … not-verified=…`
-   means that provider's CI doesn't verify all its synced consumer contracts. (Contract *health*
-   lives in `/contract-check`, not `pact-graph` — the dependency graph is purely the rate limiter.)
+   means that provider's CI doesn't verify all its synced consumer contracts. Contract *health*
+   lives in `/contract-check`; the dependency graph is purely the rate limiter.
 
 2c. **Read in-flight pushes** from `.release-state.json` at the repo root, **read-only** — if the
    file is absent or unreadable, skip this (do NOT create it; that's `/release-manager`'s job).
@@ -111,8 +115,9 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
      A stable, already-live provider does **not**
      trigger this — only a provider that is itself changing right now. (This is the deploy
      rate limiter: a consumer waits a tick for its provider's rollout to confirm.)
-   - `📊 DEPENDENCY DRIFT` — if `---DRIFT---` is not `in-sync`, list the `new`/`removed`
-     edges and note `/release-manager` can reconcile them into `order.derived`.
+   - `📊 DEPENDENCY DRIFT` — only when `---DRIFT---` contains `new`/`removed` edges, list them
+     and note `/release-manager` can reconcile the provider block. An `unmanaged` or
+     `not-applicable` status is informational, not drift.
    - `🔗 CONTRACT COVERAGE GAP` — for each `contract-check coverage` `GAP` line, show
      `provider: <not-verified=…>` (e.g. `contactform: not-verified=digest,patrol,…`). This is a
      prod-safety signal — a provider whose CI doesn't verify all its consumer contracts can
@@ -135,7 +140,8 @@ beads, use `/release-manager`. For a deep gate on one service, use `/ready-to-re
   that's `/release-manager`.
 - A CircleCI key available through `secret-api-key` (or `CIRCLECI_TOKEN`) and kubectl context `paperboy` are needed for full data; degrade gracefully to
   `unknown` for any section that isn't available rather than failing the whole dashboard.
-- `./scripts/pact-graph` (ordering) and `./scripts/contract-check coverage` (contract health)
-  are pure-filesystem, need no network/tokens, and always run. The dependency graph is the
-  deploy rate limiter; coverage gaps are a standing prod-safety signal independent of the
-  current release. Full contract health (staleness, sync-gaps) is `/contract-check`.
+- `./scripts/release-order` (ordering) and `./scripts/contract-check coverage` (contract health)
+  are pure-filesystem, need no network/tokens, and always run. A `provider=none` result is a valid
+  empty dependency map, not an error. The graph is the deploy rate limiter; coverage gaps are a
+  standing prod-safety signal independent of the current release. Full contract health
+  (staleness, sync-gaps) is `/contract-check`.

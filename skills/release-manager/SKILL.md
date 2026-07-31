@@ -6,11 +6,11 @@ description: >
   enforces deploy order, watches rollouts, syncs k8s config and schedules the restarts that
   applied config needs, and nudges feature toggles. Drive it on a loop with
   /watch-release. Advisory: it only pushes after you explicitly choose "push".
-allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
+allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.10.0"
+version: "1.11.0"
 author: "flurdy"
 ---
 
@@ -41,16 +41,29 @@ use `/ready-to-release <service>`.
 
 ## Setup
 
-This skill ships `pact-graph` (the deploy ORDERING authority — also used by /release-status
-and /ready-to-release). On first run, ensure the project symlink exists:
+This skill ships `release-order`, the deploy-order authority also used by /release-status and
+/ready-to-release. On first run, ensure the project symlink exists:
 
 ```bash
-ln -sfn "$SKILLS_DIR/release-manager/scripts/pact-graph" ./scripts/pact-graph
-chmod +x ./scripts/pact-graph
+ln -sfn "$SKILLS_DIR/release-manager/scripts/release-order" ./scripts/release-order
+chmod +x ./scripts/release-order
 ```
 
-Where `$SKILLS_DIR` resolves to `${CLAUDE_HOME:-$HOME/.claude}/skills`. The script finds the
-project root by walking up to the nearest `.mgit.conf` (same convention as contract-check);
+Where `$SKILLS_DIR` resolves to `${CLAUDE_HOME:-$HOME/.claude}/skills`. The authority finds a
+multi-repo root from `.mgit.conf`, otherwise a release manifest or Git root. It selects the pact
+provider when live pact edges or a generated pact block exist, uses `order.manual` for a plain
+manifest-declared graph, and returns an empty graph when neither source exists. An accepted
+generated block remains effective until you explicitly reconcile provider drift. Manual edges and
+suppressions use the same flow-list map shape:
+
+```yaml
+order:
+  manual:
+    web: [api]
+  suppress:
+    web: [legacy]
+```
+
 `docs/release-manifest.yaml` and `.release-state.json` stay project-local.
 
 ## State file
@@ -165,29 +178,34 @@ as one plain call per service (parallel calls are fine; loops are not).
 1b. **Scan dependencies + contract coverage** (cheap, no subagent needed — compact output):
 
    ```bash
-   ./scripts/pact-graph              # ordering authority
+   ./scripts/release-order           # effective deploy-order authority
    ./scripts/contract-check coverage # CI verification coverage
    ```
 
-   If `./scripts/pact-graph` is missing, create the symlink first (see Setup).
+   If `./scripts/release-order` is missing, create the symlink first (see Setup).
 
-   From `pact-graph`: `---GRAPH---` (`consumer: [providers]`) and `---DRIFT---` (`in-sync` or
-   `new:`/`removed:` edges). From `contract-check coverage`: per-provider `GAP`/`OK` lines.
-   Keep these for steps 2b, 6, 6b. (pact-graph = ordering; contract-check = contract health.)
+   From `release-order`: `---SOURCE---` (`provider=pact|manifest|none` and
+   `graph=generated|live|manual|none`), `---GRAPH---` (the accepted effective
+   `consumer: [providers]` map), and `---DRIFT---`. From `contract-check coverage`:
+   per-provider `GAP`/`OK` lines. Keep these for steps 2b, 6, 6b. (`release-order` = ordering;
+   `contract-check` = contract health.)
 
-2. **Load context.** Read `.release-state.json` (create `{}`-shaped default if absent) and
-   `docs/release-manifest.yaml`. From `order`, build the **effective dependency map** =
-   `(derived ∪ manual) − suppress`. Also read `toggles`, `parked`, `ignore`,
-   `non_deploying`, and `config_restarts.suppress` (maps whose changes must never produce a
-   restart prompt — vetoes the digest's derived `restart` column in steps 5b/7b).
+2. **Load context.** Read `.release-state.json` (create `{}`-shaped default if absent).
+   If `docs/release-manifest.yaml` is absent, use empty defaults for `toggles`, `parked`,
+   `ignore`, `non_deploying`, and `config_restarts.suppress`; ordering still comes from
+   `release-order`.
+   Otherwise read those sections from the manifest. Use `---GRAPH---` as the effective dependency
+   map; do not rebuild or reinterpret ordering in the skill.
 
-2b. **Dependency drift reconcile.** If `---DRIFT---` is not `in-sync`, the pacts have diverged
-   from `order.derived`. Print the `new`/`removed` edges, then prompt once (AskUserQuestion):
-   *"Reconcile dependency map into the manifest?"* — `reconcile` / `skip`.
-   - `reconcile` → `./scripts/pact-graph --write` (rewrites the GENERATED block), then note any
-     **new** edges so you can decide whether any belong in `order.suppress` (backward-compatible,
-     shouldn't gate). Re-read the manifest after writing.
+2b. **Dependency drift reconcile.** Only `new:` or `removed:` lines in `---DRIFT---` are
+   reconcilable pact drift. Print those edges, then prompt once (AskUserQuestion): *"Reconcile
+   dependency map into the manifest?"* — `reconcile` / `skip`.
+   - `reconcile` → `./scripts/release-order --write` (rewrites the generated provider block), then
+     note any **new** edges so you can decide whether any belong in `order.suppress`
+     (backward-compatible, shouldn't gate). Re-run `release-order` after writing.
    - `skip` → leave it; drift resurfaces next tick.
+   - `in-sync`, `unmanaged`, and `not-applicable` statuses never prompt. `unmanaged` means the live
+     pact graph remains usable but has no generated manifest block to reconcile.
 
 3. **CI failures → auto-bead (dedup).** For each service whose `ci` is `failed`/`error`:
    - Compute key `<service>@<branch>`. If it's already in `state.ciBeads`, skip (already filed).
@@ -501,6 +519,6 @@ as one plain call per service (parallel calls are fine; loops are not).
   `rolloutWatch`), never on stable live ones — so it paces same-tick provider+consumer pushes
   without permanently withholding independent work. The 3-per-tick cap is a separate backstop
   against prompt overload; together they keep each tick small and dependency-safe.
-- `./scripts/pact-graph` is pure-filesystem (no tokens/network) and owns the manifest's
-  `order.derived` block between its markers; humans own `order.manual` / `order.suppress`.
-  `--write` is only invoked via the step 2b reconcile prompt — never silently.
+- `./scripts/release-order` is pure-filesystem (no tokens/network) and is the only effective-map
+  authority. Its pact provider owns the manifest's generated block; humans own `order.manual` /
+  `order.suppress`. `--write` is only invoked via the step 2b reconcile prompt — never silently.

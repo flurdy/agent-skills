@@ -4,11 +4,11 @@ description: >
   Deep release-readiness gate for a single letterbox service — checks CI green, contracts in
   sync, deploy-order prereqs satisfied, feature toggle present, and unpushed work vs the live
   deploy. Emits a gate table and a single verdict. Use before deciding to ship one service.
-allowed-tools: "Read,Skill,Bash(make git-status:*),Bash(make ci-status:*),Bash(make deploy-status:*),Bash(make feature-toggles:*),Bash(./scripts/mgit log:*),Bash(./scripts/pact-graph:*)"
+allowed-tools: "Read,Skill,Bash(make git-status:*),Bash(make ci-status:*),Bash(make deploy-status:*),Bash(make feature-toggles:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -47,24 +47,26 @@ Run these checks for the named service and present a gate table (✅ / ⚠️ / 
    coverage `GAP` (CI doesn't verify all its consumer pacts, e.g. commented-out consumers),
    flag ⚠️ (a contract change may break an unverified consumer).
 
-4. **Deploy order** — run `./scripts/pact-graph` (a project symlink installed by
-   /release-manager — see its Setup if missing) and read `docs/release-manifest.yaml`. Build
-   the effective dependency map = `(order.derived ∪ order.manual) − order.suppress`, and take
-   this service's prereqs. A prereq blocks only if it is *co-changing* — has unpushed commits,
-   is mid-rollout (`make deploy-status <prereq>` shows a Deployment `N/M`, N<M, or a CronJob
-   service — digest/patrol/reconciler — showing `cron:rollout`), or was pushed-but-not-rolled.
-   A stable, already-live prereq (a Deployment `1/1` at current tag, or a CronJob service showing
-   the settled `cron` marker) does **not** block. All clear → ✅; any
-   co-changing prereq → ❌ (waiting on `<prereq>`). (Contract coverage is checked in step 3, not
-   here — this step is purely deploy ordering.)
+4. **Deploy order** — run `./scripts/release-order` (a project symlink installed by
+   /release-manager — see its Setup if missing) and use its `---GRAPH---` as the effective
+   dependency map. Take this service's prereqs directly from that graph; do not parse or merge
+   manifest order sections in the skill. A prereq blocks only if it is *co-changing* — has
+   unpushed commits, is mid-rollout (`make deploy-status <prereq>` shows a Deployment `N/M`, N<M,
+   or a CronJob service — digest/patrol/reconciler — showing `cron:rollout`), or was
+   pushed-but-not-rolled. A stable, already-live prereq (a Deployment `1/1` at current tag, or a
+   CronJob service showing the settled `cron` marker) does **not** block. All clear → ✅; any
+   co-changing prereq → ❌ (waiting on `<prereq>`). `provider=none` is a valid empty map and reports
+   ✅ `no deploy ordering configured`. (Contract coverage is checked in step 3, not here — this
+   step is purely deploy ordering.)
 
-5. **Feature toggle** — if `docs/release-manifest.yaml` `toggles` has an entry whose `service`
-   is this one, report the flag, its live value (`make feature-toggles`), and the `flip_when`
-   condition so you know whether shipping needs a follow-up toggle flip. Missing-but-expected
-   toggle → ⚠️. A toggle with `status: dark-release` means the service is in a shadow launch —
-   report it as `🌓 dark-release` (flip is a later manual call), not a blocker. If the service
-   has a `parked` flag, note it as informational only (deliberately off, `superseded_by` /
-   `reconsider_if`) — never treat it as a pending flip.
+5. **Feature toggle** — If `docs/release-manifest.yaml` is absent, report `no manifest toggle`
+   and continue without a toggle blocker. Otherwise, if its `toggles` map has an entry whose
+   `service` is this one, report the flag, its live value (`make feature-toggles`), and the
+   `flip_when` condition so you know whether shipping needs a follow-up toggle flip.
+   Missing-but-expected toggle → ⚠️. A toggle with `status: dark-release` means the service is in
+   a shadow launch — report it as `🌓 dark-release` (flip is a later manual call), not a blocker.
+   If the service has a `parked` flag, note it as informational only (deliberately off,
+   `superseded_by` / `reconsider_if`) — never treat it as a pending flip.
 
 6. **Live deploy** — `make deploy-status <service>`: show current `ready/tag/age` so you can see
    what's running versus what you're about to ship. For a CronJob service (digest/patrol/reconciler)
