@@ -50,9 +50,18 @@ for invariant in \
     'Healthy no-change ticks are user status, not diagnostics.' \
     'do not render a table, repository list,' \
     'collector status, transition count, internal state, or budget.' \
-    'No new direct review requests across {repository_count} workspace repositories. Next check at {local_time}.' \
+    'No new direct review requests across {repository_count} workspace repositories.' \
+    'Do not show a next-check time or interval' \
+    'fixed mode can ignore the adaptive delay' \
+    'Each completed adaptive tick renders first' \
+    'while fixed mode ends the turn.' \
+    'The `next-tick:` line is terminal visible output.' \
+    'Never emit a line beginning' \
+    '`Tick complete`, `Queue empty`, or `Watcher continues`' \
     'Do not add another completion summary.' \
-    'bookkeeping explanation or task-tracking' \
+    'bookkeeping explanation or' \
+    'task-tracking' \
+    'commentary after the protocol line.' \
     'poll contains only the single human-facing status line specified above and this scheduler protocol' \
     'session-local' \
     '`completedWorkKeys`' \
@@ -236,5 +245,8 @@ assert_not_contains 'mcp__jira__'
 assert_not_contains 'unless selected by an explicit qualified recheck'
 assert_not_contains 'No new actionable direct review requests.'
 assert_not_contains '{tick_number}'
+assert_not_contains '{local_time}'
+assert_not_contains '{delay_minutes}'
+assert_not_contains 'Next check'
 
 printf '%s\n' 'watch-review-requests scenario contract tests passed'

@@ -166,9 +166,11 @@ start preflight. Use Claude's existing scheduling capability. If neither `Schedu
 For adaptive mode, apply the established Fable session-model guard: Fable must not start an
 adaptive watcher because its trailing scheduling call can discard visible output. Recommend a
 Sonnet/Opus session or fixed mode. Otherwise schedule the first tick after 60
-seconds with the same self-contained contract. Each completed tick renders first, waits for every
-answer, and calls `ScheduleWakeup` last using the numeric N from `next-tick:`. Never schedule while
-a question is open. Stop instead of scheduling past the deadline or after a terminal outcome.
+seconds with the same self-contained contract. Each completed adaptive tick renders first, waits
+for every answer, and calls `ScheduleWakeup` last using the numeric N from `next-tick:`. After the terminal
+`next-tick:` line, emit no more natural-language output; adaptive mode immediately calls
+`ScheduleWakeup`, while fixed mode ends the turn. Never schedule while a question is open. Stop
+instead of scheduling past the deadline or after a terminal outcome.
 
 For fixed mode use:
 
@@ -236,9 +238,11 @@ Render exactly one human-facing status line immediately before the required `nex
 line:
 
 ```text
-No new direct review requests across {repository_count} workspace repositories. Next check at {local_time}.
+No new direct review requests across {repository_count} workspace repositories.
 ```
 
+Do not show a next-check time or interval: fixed mode can ignore the adaptive delay in the
+following `next-tick:` line, and scheduler execution can cross a minute boundary.
 Do not add another completion summary. Do not add a bookkeeping explanation or task-tracking
 commentary after the protocol line.
 
@@ -436,7 +440,7 @@ identities are never conflated.
 
 ### 10. Complete and pace
 
-Never call a scheduler while an `AskUserQuestion` is open. End visible tick output with exactly one:
+Never call a scheduler while an `AskUserQuestion` is open. The `next-tick:` line is terminal visible output. End visible tick output with exactly one:
 
 ```text
 next-tick: {hot|warm|cold} (~{N}s) — {reason}
@@ -451,4 +455,6 @@ Reset the quiet streak on hot/warm work. In adaptive Pi ticks, call `action: com
 deadline, review budget exhaustion after the current complete result and disposition finish,
 third consecutive failure, external send attempt, or explicit stop/handoff. A healthy no-change
 poll contains only the single human-facing status line specified above and this scheduler protocol
-line; it never asks a question or repeats a completion summary.
+line; it never asks a question or repeats a completion summary. Never emit a line beginning
+`Tick complete`, `Queue empty`, or `Watcher continues`; after `next-tick:` make the scheduler call
+when required, otherwise end the turn without more prose.
