@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-lis
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.2"
+version: "1.1.3"
 author: "flurdy"
 ---
 
@@ -111,7 +111,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text, except that only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger state silent and never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -218,9 +218,11 @@ Retain factual state but do not validate or place these records in the decision 
 - non-actionable bot automated-status noise;
 - unchanged duplicate polls.
 
-Render only counts under **Suppressed updates**, grouped by reason. Show lifecycle-only transitions
-there with identity and transition when they are new this tick. CI annotations remain fix-only
-findings with no reply or resolution target.
+Treat unchanged duplicates, routine acknowledgments, informational notes, and non-actionable bot
+status noise as silent ledger updates. Render **Suppressed updates** only for a lifecycle-only transition
+or when suppression changes the disposition of previously queued or pending feedback; include the
+stable identity and transition in those cases. CI annotations remain fix-only findings with no reply
+or resolution target.
 
 ### 4. Validate new candidates independently
 
@@ -298,8 +300,9 @@ summary** sections on quiet ticks. Do not list identities or expose `unchanged d
 user-facing reason; that phrase is internal ledger terminology. The quiet line confirms the poll
 without narrating empty categories.
 
-For every non-quiet tick, render a timestamp, mode, baseline/recheck status, repositories and PRs
-checked, and partial status. Then show no more than 20 decision rows:
+For every non-quiet tick, render a timestamp, mode, baseline/recheck status, and repositories and
+PRs checked. Show partial status only when data is partial; do not narrate successful fetch defaults.
+Then show no more than 20 decision rows:
 
 | PR | Author/source | Feedback type | Lifecycle | Validation outcome | Evidence | Confidence | Recommended response |
 |---|---|---|---|---|---|---|---|
@@ -311,9 +314,11 @@ manually, or recheck. Include the stable identity in a short detail beneath each
 rechecks are auditable.
 
 On non-quiet ticks with no new or edited candidates, render
-`Decision queue: No new actionable feedback.` Do not replace it with a count delta. Then render
-only non-empty **Suppressed updates** and **Fetch failures** sections, followed by a bounded state
-summary. Omit any empty section instead of printing `None`, `No failures`, or equivalent filler.
+`Decision queue: No new actionable feedback.` Do not replace it with a count delta. Render only
+non-empty, user-relevant **Suppressed updates** and **Fetch failures** sections. Render **State
+summary** only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or
+lost ledger continuity. Omit normal identity counts, acknowledgment totals, healthy limits, and
+empty sections instead of printing `None`, `No failures`, or equivalent filler.
 
 ### 6. Handle interaction mode
 
@@ -341,7 +346,8 @@ watcher.
 
 ### 7. Complete and pace
 
-End visible output with exactly one cadence line:
+End visible output with exactly one cadence line. It must be the final visible text: do not follow
+it with a completion sentence, decision recap, or another summary.
 
 ```text
 next-tick: {hot|warm|cold} (~{N}s) — {reason}

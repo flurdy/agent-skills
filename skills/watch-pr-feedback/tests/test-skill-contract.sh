@@ -58,8 +58,19 @@ for invariant in \
     'Quiet tick — checked {N} PRs; {M} tracked feedback records unchanged.' \
     'Do not render empty **Decision queue**' \
     'internal ledger terminology' \
-    'Omit any empty section instead of printing' \
-    'only a non-baseline, non-recheck tick with complete inventories' \
+    'Omit normal identity counts, acknowledgment totals, healthy limits' \
+    'silent ledger updates' \
+    'only for a lifecycle-only transition' \
+    'Show partial status only when data is partial' \
+    'do not narrate successful fetch defaults' \
+    'summary** only for pending attended feedback' \
+    'a non-zero failure streak' \
+    'lost ledger continuity' \
+    'final visible text' \
+    'do not follow' \
+    'decision recap' \
+    'Keep healthy internal ledger state silent' \
+    'Only a non-baseline, non-recheck tick with complete inventories' \
     'exclusively unchanged duplicate records' \
     'no lifecycle transitions, pending candidates, capacity/pruning notices, or failures' \
     'lifecycle transitions,' \
@@ -124,6 +135,21 @@ for invariant in \
     'next-tick:'; do
     assert_contains "$invariant"
 done
+
+tick_prompt=$(grep -F -- 'Load and follow the skill named `watch-pr-feedback`' "$SKILL")
+for prompt_invariant in \
+    'keep routine suppressions silent' \
+    'only user-relevant lifecycle/disposition suppressions and actual failures' \
+    'mention partial status only when partial' \
+    'State summary only for pending attended feedback' \
+    'non-zero failure streak, or lost ledger continuity' \
+    'Keep healthy internal ledger state silent' \
+    'never add a prose recap after the final cadence line'; do
+    grep -Fq -- "$prompt_invariant" <<<"$tick_prompt" \
+        || fail "tick prompt missing output invariant: $prompt_invariant"
+done
+[[ "$tick_prompt" != *'suppression/failure summary'* ]] \
+    || fail 'tick prompt retains obsolete broad suppression-summary instruction'
 
 pi_line=$(line_of '### Pi protocol v1')
 claude_line=$(line_of '### Claude Code fallback')
