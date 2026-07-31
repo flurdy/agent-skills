@@ -47,7 +47,13 @@ for invariant in \
     '--expected-state-key' \
     '--verify-only' \
     'one review at a time' \
-    'No new actionable direct review requests.' \
+    'Healthy no-change ticks are user status, not diagnostics.' \
+    'do not render a table, repository list,' \
+    'collector status, transition count, internal state, or budget.' \
+    'No new direct review requests across {repository_count} workspace repositories. Next check at {local_time}.' \
+    'Do not add another completion summary.' \
+    'bookkeeping explanation or task-tracking' \
+    'poll contains only the single human-facing status line specified above and this scheduler protocol' \
     'session-local' \
     '`completedWorkKeys`' \
     '`reviewAttempts`' \
@@ -228,5 +234,7 @@ assert_not_contains 'for d in'
 assert_not_contains "--body 'EXACT_SHOWN_BODY'"
 assert_not_contains 'mcp__jira__'
 assert_not_contains 'unless selected by an explicit qualified recheck'
+assert_not_contains 'No new actionable direct review requests.'
+assert_not_contains '{tick_number}'
 
 printf '%s\n' 'watch-review-requests scenario contract tests passed'

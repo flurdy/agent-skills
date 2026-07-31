@@ -214,7 +214,7 @@ Pass prior collector state as the bounded `--state-json` argument to one call:
 ```
 
 On the first tick omit `--state-json`. Preserve the returned `state` even when no review runs.
-Inspect `status`, `scope`, `errors`, `failedRepositories`, `transitions`, and `queue` before acting. Require `scope.kind` to be `current-workspace`, render the resolved repository list in the tick summary, and reject any transition or queue row outside that list.
+Inspect `status`, `scope`, `errors`, `failedRepositories`, `transitions`, and `queue` before acting. Require `scope.kind` to be `current-workspace` and reject any transition or queue row outside its repository list. Retain the full resolved list for `status`, scope changes, and failures; a healthy no-change tick shows only its repository count.
 
 - `failed`: show the bounded error, increment its failure streak, and do not review or mark work. A missing or empty current/workspace scope is a collector failure, never permission for a global fallback.
 - `partial`: render every failed source and continue only with fully identified queue items.
@@ -226,12 +226,21 @@ the collector's draft exclusion. Render team requests separately as informationa
 direct requests. Render `re_requested`, `head_changed`, request removal, submitted review,
 closed/merged, and draft/ready transitions explicitly. A new commit alone is not a re-request.
 
-When no pending disposition, transition, or direct queue item needs attention, render only a
-header, checked/partial counts, bounded-state summary, and:
+Healthy no-change ticks are user status, not diagnostics. When no pending disposition,
+transition, or direct queue item needs attention, do not render a table, repository list,
+collector status, transition count, internal state, or budget. Keep those details in session state
+and show them only for `status`, a relevant transition, partial/failed collection, or another
+condition that needs attention.
+
+Render exactly one human-facing status line immediately before the required `next-tick:` protocol
+line:
 
 ```text
-No new actionable direct review requests.
+No new direct review requests across {repository_count} workspace repositories. Next check at {local_time}.
 ```
+
+Do not add another completion summary. Do not add a bookkeeping explanation or task-tracking
+commentary after the protocol line.
 
 ### 3. Select serial work
 
@@ -440,5 +449,6 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 Reset the quiet streak on hot/warm work. In adaptive Pi ticks, call `action: complete` with
 `outcome: continue` and `delaySeconds: N`; fixed mode omits the delay. Use `outcome: stop` after the
 deadline, review budget exhaustion after the current complete result and disposition finish,
-third consecutive failure, external send attempt, or explicit stop/handoff. A no-change poll
-remains concise and never asks a question.
+third consecutive failure, external send attempt, or explicit stop/handoff. A healthy no-change
+poll contains only the single human-facing status line specified above and this scheduler protocol
+line; it never asks a question or repeats a completion summary.
