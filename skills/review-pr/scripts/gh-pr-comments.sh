@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: gh-pr-comments.sh <number>
+# Usage: gh-pr-comments.sh <number> | <owner> <repo> <number>
 # Emits, in order:
 #   1. Reviews & issue-level comments (review states + body)
 #   2. Inline review threads via gh api graphql (with isResolved/isOutdated)
@@ -7,12 +7,21 @@
 # Use to surface unresolved feedback from other reviewers before producing
 # a review summary.
 set -euo pipefail
-NUM="${1:?PR number required}"
-REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
-OWNER="${REPO%/*}"; NAME="${REPO#*/}"
+if (($# == 1)); then
+  NUM=$1
+  REPO="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+elif (($# == 3)); then
+  REPO="$1/$2"
+  NUM=$3
+else
+  echo "usage: gh-pr-comments.sh <number> | <owner> <repo> <number>" >&2
+  exit 2
+fi
+OWNER="${REPO%/*}"
+NAME="${REPO#*/}"
 
 echo "=== Reviews & Issue Comments ==="
-gh pr view "$NUM" --json reviews,comments --jq '{
+gh pr view "$NUM" --repo "$REPO" --json reviews,comments --jq '{
   reviews: [.reviews[] | {author: .author.login, state: .state, body: .body, submittedAt: .submittedAt}],
   issueComments: [.comments[] | {author: .author.login, body: .body, createdAt: .createdAt}]
 }'

@@ -1,376 +1,252 @@
 ---
 name: review-pr
-description: Review a pull request by checking the code changes, PR description, and CI status against the linked Jira ticket requirements. Produces an AC checklist and flags concerns.
-allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(gh api:*),Bash(git:*),mcp__jira__*,AskUserQuestion"
+description: Review a repository-qualified pull request at an immutable head, compare it with Jira requirements, and return a read-only verdict with explicit evidence completeness.
+allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),mcp__jira__jira_get,AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "1.0.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
 # Review Pull Request
 
-Comprehensively review a PR by comparing code changes against Jira ticket requirements.
-
-## Requirements
-
-- GitHub CLI (`gh`) configured
-- Jira MCP server configured (for ticket lookup)
+Review one immutable GitHub pull-request snapshot. The workflow is read-only: it never submits a
+GitHub review, approval, change request, comment, Slack message, Jira mutation, checkout change, or
+other external action. No GitHub review is ever submitted by this skill.
 
 ## Usage
 
+```text
+/review-pr                                      # current branch
+/review-pr 123                                  # current-repository shorthand
+/review-pr owner/repo#123                       # repository-qualified
+/review-pr https://github.com/owner/repo/pull/123  # PR URL
+/review-pr owner/repo#123 --automation --premium-established --expected-head SHA
 ```
-/review-pr <PR-NUMBER>
-/review-pr 5753
-```
 
-If no PR number provided, use the current branch's PR.
+Accept a PR URL, `owner/repo#number`, a numeric current-repository shorthand, or no selector. A
+qualified selector never derives repository identity from the current working directory.
 
-## Instructions
+Optional controls:
 
-### Tier guard
+- `--expected-head` SHA — require the selected immutable head.
+- `--checkout` PATH — consider this local checkout, but use it only after exact verification.
+- `--automation` — return the machine-readable contract below and never ask a question.
+- `--premium-established` — assert that the caller selected the premium route before automation.
+- `--deadline-seconds N` — total attended review budget; default 300 seconds. Record one absolute
+  stop deadline at invocation, pass only the remaining seconds to each collector call, and return
+  partial evidence when the budget expires.
 
-This skill is `model-tier: premium`. Before starting, check which model you are
-running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
-Claude Code), say so and ask via `AskUserQuestion` whether to:
+## 1. Establish the premium route
 
-- **Continue here** — accept reduced depth on this run
-- **Stop** — switch model (`/model` in Claude Code) or rerun in a premium session
+This skill is `model-tier: premium`.
 
-Skip the prompt when the user explicitly chose the current model. On a premium model,
-stay silent and proceed.
+For a manual invocation below the premium tier, use `AskUserQuestion` once:
 
-Fetch context in this fixed order. Do not skip ahead to analysis or verdict
-until every step that applies has been completed — unresolved reviewer
-feedback must be surfaced **before** you form an opinion.
+- **Continue here** — accept reduced depth for this run.
+- **Stop** — switch model or rerun in a premium session.
 
-1. PR description
-2. Review threads (reviews + issue comments + GraphQL thread state)
-3. Inline comments per-file
-4. CI status
-5. Linked Jira ticket context (if a ticket is referenced)
+Skip the question when the user explicitly selected the current model.
 
-### 1. PR Description
+For `--automation`, the skill must not prompt. Require `--premium-established` and confirm the
+current route satisfies the premium tier. If either condition fails, return `status: failed`,
+`reason: premium-route-unavailable`, and no verdict. Frontmatter alone is not route attestation.
 
-If no PR number provided, resolve it first:
+## 2. Collect one qualified snapshot
+
+Run the collector once before analysis:
 
 ```bash
-~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh
+~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py \
+  'owner/repo#123' \
+  --expected-head HEAD_SHA_IF_SUPPLIED \
+  --checkout CHECKOUT_IF_SUPPLIED \
+  --timeout REMAINING_SECONDS \
+  --pretty
 ```
 
-If the script is unavailable, fall back to:
+Omit absent options. With numeric or no selector, the collector uses the current checkout only to
+resolve the shorthand, then passes explicit owner/repository to every remote request.
+
+The collector returns canonical repository/PR identity, node ID, base/head refs and SHAs, bounded
+file patches, exact-head CI rollup, normalized feedback, a review-state key, checkout verification,
+limits, and errors.
+It disables paging and lazy Git fetching, applies one deadline and command-output cap, and rechecks
+base/head identity after collection.
+
+Gate on its status:
+
+- `complete` with `reviewReady: true` — continue.
+- `partial` — name every unavailable/truncated source; do not issue a definitive verdict.
+- `stale` — stop and report the expected and observed revisions; never present mixed-SHA evidence.
+- `failed` — stop and report the bounded error; do not infer that missing evidence is empty.
+
+Draft or closed/merged state remains explicit in `target`; do not treat it as an open review.
+
+## 3. Use local code only after exact checkout proof
+
+A matching checkout is optional. Local repository reads are permitted only when
+`checkout.available` is true. That means the origin
+matches the selected repository, the working tree is clean, and local HEAD exactly matches the PR
+head SHA. Anchor every `Read`, `Grep`, or `Glob` path under `checkout.path`.
+
+When verification fails, state **Local repository search unavailable** with the collector's reason.
+Use only the bounded remote patches and metadata. Never search the workspace root or unrelated cwd,
+and never switch branches, fetch, reset, clean, create a worktree, or edit files.
+
+## 4. Read feedback before forming an opinion
+
+Read `evidence.feedback.records` before analyzing the patches. Preserve stable `identity`,
+`updateKey`, `stateKey`, source, lifecycle, author, targets, and path/line data. Inspect
+`evidence.feedback.partial` and its errors before treating absence as none.
+
+Build the unresolved list from:
+
+- unresolved, non-outdated inline-review records;
+- current `CHANGES_REQUESTED` reviews only when `target.reviewDecision` still reports changes
+  requested;
+- substantive current review summaries or conversations whose request remains unmet.
+
+Treat approvals, dismissed/outdated/resolved records, self-authored messages, and automated status
+noise separately. Bot findings require the same independent validation as human findings.
+
+## 5. Load Jira context when linked
+
+Find the first Jira key in title, body, or head branch using `[A-Z][A-Z0-9]{1,9}-[0-9]+`.
+
+- No key: record `jira.status: not-linked` and continue without an AC checklist.
+- Key found and lookup succeeds: extract summary, description, status, issue type, and acceptance
+  criteria with the read-only Jira get tool.
+- Key found but Jira is unavailable, malformed, or missing the acceptance field: record
+  `jira.status: unavailable`, include the error, and never claim requirements are satisfied.
+
+Do not use any Jira mutation tool.
+
+## 6. Analyze the exact-head evidence
+
+Use `target`, `evidence.files`, feedback, CI state, and verified local reads when available.
+
+Before Jira lookup and before each analysis phase, check the one invocation deadline. On expiry,
+return `partial` with `budget-expired`; do not start another tool call. The caller should also impose
+its normal turn/runtime budget so interruption does not depend on model compliance.
+
+For each changed file, assess:
+
+- alignment with linked acceptance criteria;
+- correctness, security, compatibility, and scope;
+- test coverage including happy, sad, and edge paths;
+- whether current patches address unresolved feedback;
+- deletions and repository-wide references, but only when checkout verification permits the search.
+
+If file patches, feedback, checks, Jira requirements, or repository-wide evidence needed for a
+claim are unavailable, make the limitation explicit. Missing evidence is never evidence of absence.
+
+## 7. Recheck the immutable revisions
+
+Immediately before writing any verdict, run the fast verifier using the original snapshot SHAs:
 
 ```bash
-gh pr view --json number --jq '.number'
+~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py \
+  'owner/repo#123' \
+  --expected-head ORIGINAL_HEAD_SHA \
+  --expected-base ORIGINAL_BASE_SHA \
+  --expected-state-key ORIGINAL_STATE_KEY \
+  --verify-only \
+  --timeout REMAINING_SECONDS
 ```
 
-Fetch the PR description and metadata (title, body, author, branches, file
-counts). Read the body in full — that is where the author explains intent,
-scope, and any caveats reviewers should already know about.
+The state key covers PR lifecycle, draft/review decision, exact-head CI state, and stable feedback
+identities/update state. If verification returns anything except `complete`, return `stale` or
+`failed` and suppress the verdict. Never reuse approval from a previous invocation or head SHA.
 
-```bash
-~/.agents/skills/review-pr/scripts/gh-pr-view.sh {PR_NUMBER}
-```
+## 8. Render unresolved comments before the verdict
 
-If the script is unavailable, fall back to:
-
-```bash
-gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,files,state,author,baseRefName,headRefName
-```
-
-Defer fetching the diff itself until step 6 (Analyze) — the description
-sets expectations the diff must then meet.
-
-### 2. Review Threads (`gh api`)
-
-Before forming your own opinion, check what other reviewers (human and bot)
-have already said. Duplicating their work wastes context; missing their
-objections produces wrong verdicts.
-
-The comments script runs three queries in order: reviews + issue comments,
-then GraphQL review threads (with `isResolved` / `isOutdated`), then inline
-comments grouped per-file. Run it once and read the first two sections now;
-the per-file section is step 3.
-
-```bash
-~/.agents/skills/review-pr/scripts/gh-pr-comments.sh {PR_NUMBER}
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh pr view {PR_NUMBER} --json reviews,comments
-gh api graphql -F owner={OWNER} -F repo={REPO} -F num={PR_NUMBER} -f query='
-query($owner:String!,$repo:String!,$num:Int!){repository(owner:$owner,name:$repo){pullRequest(number:$num){reviewThreads(first:100){nodes{isResolved isOutdated path line comments(first:20){nodes{author{login} body createdAt}}}}}}}'
-```
-
-What to extract:
-
-- **Review states**: `APPROVED`, `CHANGES_REQUESTED`, `COMMENTED`, `DISMISSED`. A `COMMENTED` review doesn't block merge but may still contain substantive objections — read the body.
-- **Unresolved inline threads**: `isResolved: false` on the GraphQL output. Each is a thread on a specific file/line. Read every comment in the thread to understand the conversation.
-- **Issue-level comments**: include any human feedback that wasn't attached to a review.
-
-Treat as noise (mention only if directly relevant):
-
-- Swarmia / Jira / Linear ticket-linker bots
-- CI sticky comments (e.g. `terraform-plan-summary`, coverage reports) — useful as data points, not as feedback
-- Auto-generated changelog / preview-deploy bots
-
-Treat as signal (must address in the review):
-
-- Human reviewer comments, especially `COMMENTED` reviews — these are often "I'm not blocking but you should know" notes that get missed
-- AI code-reviewer bot comments (e.g. `claude-reviewer`, `copilot`, `amazon-q-developer`) — weight them like a human reviewer's first-pass feedback
-- Any inline thread where `isResolved: false`
-
-### 3. Inline Comments Per-File
-
-The third section of `gh-pr-comments.sh` groups review comments by file path
-(via REST `/pulls/{num}/comments`). Reading per-file makes it easier to
-notice when multiple reviewers piled on the same file or when a file
-accumulated drive-by suggestions that never became formal threads.
-
-If the script is unavailable, fall back to:
-
-```bash
-gh api --paginate "/repos/{OWNER}/{REPO}/pulls/{PR_NUMBER}/comments" \
-  --jq 'group_by(.path) | map({path: .[0].path, comments: (sort_by(.created_at) | map({author: .user.login, line: (.line // .original_line), body: .body}))})'
-```
-
-For each file with comments, note:
-
-- Which reviewers commented and on which lines
-- Whether each comment was addressed in a later commit (cross-check against
-  the diff in step 6) or replied to
-- Repeated themes across files (e.g. "missing tests" raised on three files)
-
-Build a running list of **unresolved comments** (any thread with
-`isResolved: false`, plus any per-file comment without an addressing commit
-or reply). You will surface this list explicitly in step 8 before giving a
-verdict.
-
-### 4. CI Status
-
-```bash
-~/.agents/skills/review-pr/scripts/gh-pr-checks.sh {PR_NUMBER}
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh pr checks {PR_NUMBER} 2>/dev/null | awk -F'\t' '{print $2}' | sort | uniq -c
-```
-
-Note pass/fail counts and any specific failing or pending checks worth
-calling out.
-
-### 5. Linked Jira Ticket Context (Optional)
-
-Find the Jira ticket from (in order of preference):
-
-1. PR title (e.g., `feat: AB-841 pii warning`)
-2. PR body (e.g., `Jira ticket number? AB-841`)
-3. Branch name (e.g., `feat/AB-841-pii-warning`)
-
-Ticket pattern: 2-4 uppercase letters, dash, numbers (e.g., `AB-23`, `SSP-456`, `MAMA-89`)
-
-**If no ticket found:** Continue with the review without Jira comparison. Skip the AC checklist step, and note in the output that no Jira ticket was linked.
-
-If a ticket is found, fetch its details with the Jira MCP tool:
-
-```
-mcp__jira__jira_get with:
-  path: /rest/api/3/issue/{ticketNumber}
-  jq: "{key: key, summary: fields.summary, description: fields.description, status: fields.status.name, issuetype: fields.issuetype.name, acceptance: fields.customfield_10040}"
-```
-
-Parse the description to extract:
-
-- Overview/context
-- Acceptance criteria (look for "AC", "Acceptance Criteria", bullet points)
-- Any technical requirements
-
-### 6. Analyze the Code Changes
-
-Now fetch the diff and read it against everything gathered above:
-
-```bash
-~/.agents/skills/review-pr/scripts/gh-pr-diff.sh {PR_NUMBER}
-```
-
-If the script is unavailable, fall back to:
-
-```bash
-gh pr diff {PR_NUMBER}
-```
-
-For each changed file, understand:
-
-- What was added/modified/deleted
-- Whether changes align with ticket requirements
-- Whether commits in the diff address the inline comments from steps 2 & 3
-
-For large diffs, save to a file and read in chunks if needed.
-
-**Pay attention to:**
-
-- Deleted code: Is it safe? Are there still imports/usages elsewhere?
-- New dependencies: Are they appropriate?
-- Test coverage: Are new features tested?
-- Security: Any obvious vulnerabilities?
-
-To check if deleted code is used elsewhere:
-
-```bash
-# Search for imports of deleted modules
-grep -r "from.*{deleted-module}" --include="*.ts" --include="*.tsx"
-grep -r "import.*{deleted-module}" --include="*.ts" --include="*.tsx"
-```
-
-### 7. Compare PR Against Jira ACs (If Ticket Found)
-
-Create a checklist comparing each acceptance criterion against the implementation:
-
-| AC | Status | Implementation |
-|----|--------|----------------|
-| {AC from ticket} | {pass/fail/partial} | {How it's implemented or why it fails} |
-
-**If no ticket found:** Skip this step. The review will focus on code quality, CI status, and potential concerns without AC validation.
-
-### 8. Surface Unresolved Comments — Before Any Verdict
-
-**Do not write a verdict, an "overall assessment", or any opinion on the
-PR's mergeability until this section has been emitted.** It exists so that
-human and AI reviewer feedback is never silently overridden by your own
-analysis.
-
-Output an `### Unresolved Reviewer Comments` block listing every item from
-the running list built in step 3:
-
-- Each unresolved inline thread (`isResolved: false`) — author, file:line,
-  short summary, and your read of whether it is still valid given the
-  current diff.
-- Each per-file inline comment that lacks a reply or an addressing commit.
-- Each `CHANGES_REQUESTED` review or substantive `COMMENTED` review whose
-  ask has not been met.
-
-If, after careful reading, the list is genuinely empty, state
-`### Unresolved Reviewer Comments\n\n- None.` explicitly. Silence is not an
-acceptable substitute — the section must always be present so it is
-obvious you actually checked.
-
-### 9. Identify Concerns
-
-Flag any issues beyond the unresolved-comments list:
-
-- **Scope creep**: Changes not related to the ticket
-- **Missing ACs**: Requirements not implemented
-- **Deleted code**: Large deletions that might break things
-- **Missing tests**: New features without test coverage
-- **Security**: Potential vulnerabilities
-- **Breaking changes**: API changes, removed exports
-
-### 10. Produce Review Summary
-
-Output a structured review. **Order matters:** `Unresolved Reviewer
-Comments` must appear before `Verdict` — never the other way round.
+Every human-readable review must include this exact section before any assessment or verdict:
 
 ```markdown
-## PR #{number} Review
+### Unresolved Reviewer Comments
 
-**Title:** {title}
-**Jira:** {ticket} - {summary}  (or "No Jira ticket linked" if none found)
-**Status:** {CI status}
-**Reviews:** {e.g. "1 approved, 1 commented (unresolved)" — derived from step 2}
+- author — path:line — request — whether it remains valid at the reviewed head
+```
+
+If genuinely empty, emit:
+
+```markdown
+### Unresolved Reviewer Comments
+
+- None.
+```
+
+## 9. Output contract
+
+### Manual output
+
+```markdown
+## owner/repo#123 Review
+
+**Head:** {immutable head SHA}
+**Base:** {immutable base SHA}
+**Snapshot:** complete
+**Jira:** {key and summary | Not linked | Unavailable}
+**CI:** {exact-head rollup state}
+**Local checkout:** {verified path | unavailable reason}
 
 ### Changes Overview
-- {additions} additions, {deletions} deletions across {changedFiles} files
-- {Brief summary of what changed}
+- ...
 
 ### Unresolved Reviewer Comments
-- {Each item from step 8 — author, file:line, summary, your assessment of whether it's still valid}
-- {Or "None." if there genuinely are no unresolved items}
+- ...
 
-### AC Checklist (if Jira ticket found)
-| AC | Status | Implementation |
-|----|--------|----------------|
-| ... | ... | ... |
+### AC Checklist
+| AC | Status | Evidence |
+|----|--------|----------|
+| ... | pass/fail/partial | ... |
 
 ### Concerns
-- {List any concerns or none}
-- {If no Jira ticket: flag "No Jira ticket linked - cannot verify requirements"}
+- ...
 
 ### Verdict
-{Safe to merge / Needs changes / Needs discussion}
+{Safe to merge | Needs changes | Needs discussion}
 ```
 
 Verdict rules:
 
-- **Needs changes** if any reviewer has `CHANGES_REQUESTED`, or if any unresolved inline thread raises a valid architectural / correctness objection (even from a `COMMENTED` review or AI bot).
-- **Needs discussion** if reviewers disagree or a substantive comment lacks a clear resolution.
-- **Safe to merge** only when ACs are met, CI is green, and the `Unresolved Reviewer Comments` section is `None.`.
+- **Needs changes** for unmet ACs, failing exact-head CI, or a valid blocking concern.
+- **Needs discussion** for conflicting evidence or a substantive unresolved question.
+- **Safe to merge** only when the snapshot is complete, exact-head CI succeeds, Jira ACs are met
+  when linked, and unresolved comments are `None.`.
+- No definitive verdict for `partial`, `stale`, or `failed` snapshots.
 
-## Example Output
+### Automation output
 
-```
-## PR #5753 Review
+For `--automation`, emit one JSON object and no conversational prompt or surrounding prose:
 
-**Title:** feat: ab-841 pii warning
-**Jira:** AB-841 - FE | PII redaction warnings
-**Status:** All checks passing
-**Reviews:** 1 approved, 0 commented
-
-### Changes Overview
-- 136 additions, 1528 deletions across 37 files
-- Adds PII redaction instructions to file upload screens
-- Removes unused IdVerification component
-
-### Unresolved Reviewer Comments
-- None.
-
-### AC Checklist
-| AC | Status | Implementation |
-|----|--------|----------------|
-| Prompt users to redact PII | Pass | New `getUploadInstructionText` utility |
-| Different messages per user role | Pass | Three distinct messages |
-| Include data-testid | Pass | `data-testid="upload-instruction-text"` |
-| Region A only (ok for others) | Pass | Region check in utility |
-| Update primary user flow | Pass | Both screens updated |
-| Cleanup is fine if nothing breaks | Pass | Deleted unused code, CI green |
-
-### Concerns
-- None. Deleted code was not exported or used externally.
-
-### Verdict
-Safe to merge. PR fully implements all acceptance criteria.
+```json
+{
+  "schemaVersion": "review-pr/v1",
+  "status": "complete|partial|stale|failed",
+  "target": {
+    "repository": "owner/repo",
+    "number": 123,
+    "nodeId": "...",
+    "headSha": "...",
+    "baseSha": "...",
+    "stateKey": "..."
+  },
+  "evidence": {
+    "snapshotComplete": true,
+    "checkout": "verified|unavailable",
+    "jira": "available|not-linked|unavailable",
+    "ci": "SUCCESS|FAILURE|PENDING|UNKNOWN",
+    "errors": []
+  },
+  "unresolvedComments": [],
+  "acChecklist": [],
+  "concerns": [],
+  "verdict": "safe-to-merge|needs-changes|needs-discussion|null"
+}
 ```
 
-## Example Output (No Jira Ticket)
-
-```markdown
-## PR #5801 Review
-
-**Title:** chore: update dependencies
-**Jira:** No Jira ticket linked
-**Status:** All checks passing
-**Reviews:** 0 approved, 0 commented
-
-### Changes Overview
-- 45 additions, 32 deletions across 3 files
-- Updates npm dependencies to latest versions
-- Updates lock file
-
-### Unresolved Reviewer Comments
-- None.
-
-### Code Review
-- package.json: Minor version bumps for react, typescript
-- No breaking changes detected
-- No new dependencies added
-
-### Concerns
-- No Jira ticket linked - cannot verify against requirements
-- Consider adding a ticket reference for traceability
-
-### Verdict
-Looks safe to merge. Routine dependency update with passing CI. Recommend linking a Jira ticket for audit trail.
-```
+The watcher may consume a verdict only when `status` is `complete`, the final revision recheck
+succeeded, and `verdict` is non-null. This output authorizes no GitHub review or other external
+communication.
