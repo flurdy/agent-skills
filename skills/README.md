@@ -54,6 +54,7 @@
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
 | watch-flux-rollout | After a push, watch a CircleCI + FluxCD deploy until it lands — CircleCI green for the commit, then the k8s Deployment's image tag moves off its pre-push baseline and pods go ready — then run a read-only smoke test. Goal-terminating; kubectl/CircleCI sister of /watch-rollout |
+| watch-pr-feedback | Watch open PRs for normalized feedback, independently validate each new or edited actionable item once, and render a bounded decision queue. Read-only by default; attended mode pauses only for acknowledgment |
 | watch-prs | Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence (fast ~3m when CI is in flight, backing off 10→30m when settled) until end of day, with transition-driven suggested next actions. Unattended; pass `\d+m` for a fixed interval |
 | watch-release | Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence (fast ~3m when a push is mid-rollout or CI is running, backing off 10→30m when settled) until end of day. Pass `\d+m` for a fixed interval instead |
 | watch-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a smoke test scoped to the change (browser for UI, GET for read-only API) against staging. Goal-terminating; staging by default, prod read-only opt-in. Generic GitHub-Actions cousin of /watch-release |
