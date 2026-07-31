@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-lis
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.1"
+version: "1.1.2"
 author: "flurdy"
 ---
 
@@ -111,7 +111,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, independently validate only new or materially edited actionable records, and render the complete bounded queue and suppression/failure summary as visible text, except that only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -284,8 +284,22 @@ not raise confidence by itself.
 
 ### 5. Render the bounded decision queue
 
-Always render a timestamp, mode, baseline/recheck status, repositories and PRs checked, and partial
-status. Then show no more than 20 decision rows:
+A tick is **quiet** only when it is not a baseline or recheck, every inventory is complete, every
+observed record is an unchanged duplicate, and there are no lifecycle transitions, pending
+candidates, capacity/pruning notices, or failures. Render a quiet tick as exactly one summary line
+before the cadence line:
+
+```text
+Quiet tick — checked {N} PRs; {M} tracked feedback records unchanged.
+```
+
+Do not render empty **Decision queue**, **Suppressed updates**, **Fetch failures**, or **State
+summary** sections on quiet ticks. Do not list identities or expose `unchanged duplicate poll` as a
+user-facing reason; that phrase is internal ledger terminology. The quiet line confirms the poll
+without narrating empty categories.
+
+For every non-quiet tick, render a timestamp, mode, baseline/recheck status, repositories and PRs
+checked, and partial status. Then show no more than 20 decision rows:
 
 | PR | Author/source | Feedback type | Lifecycle | Validation outcome | Evidence | Confidence | Recommended response |
 |---|---|---|---|---|---|---|---|
@@ -296,9 +310,10 @@ recommended response is read-only guidance such as answer, discuss, fix later, n
 manually, or recheck. Include the stable identity in a short detail beneath each row so edits and
 rechecks are auditable.
 
-When there are no new or edited candidates, render `Decision queue: No new actionable feedback.`
-Do not replace it with a count delta. Then render **Suppressed updates**, **Fetch failures**, and a
-bounded state summary.
+On non-quiet ticks with no new or edited candidates, render
+`Decision queue: No new actionable feedback.` Do not replace it with a count delta. Then render
+only non-empty **Suppressed updates** and **Fetch failures** sections, followed by a bounded state
+summary. Omit any empty section instead of printing `None`, `No failures`, or equivalent filler.
 
 ### 6. Handle interaction mode
 
@@ -333,9 +348,12 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 ```
 
 - **hot (~180s):** new or materially edited actionable feedback was rendered.
-- **warm (~600s):** partial data, an attended recheck, or unresolved candidates remain.
-- **cold (1200 → 1500 → 1800s):** no-change complete ticks; increment the quiet streak and reset it
-  on any hot/warm tick.
+- **warm (~600s):** partial data, an attended recheck, unresolved candidates, lifecycle transitions,
+  or capacity/pruning notices remain.
+- **cold (1200 → 1500 → 1800s):** complete ticks with no new or edited candidates, lifecycle
+  transitions, pending candidates, capacity/pruning notices, or failures; increment the quiet streak
+  and reset it on any hot/warm tick. A non-baseline cold tick that meets the stricter quiet predicate
+  uses the compact quiet rendering above.
 
 In an injected Pi tick, call the matching `action: complete` only after the cadence line and any
 attended answer. Use `outcome: continue` and `delaySeconds: N` for adaptive mode; omit the delay for

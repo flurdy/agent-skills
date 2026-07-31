@@ -55,6 +55,16 @@ for invariant in \
     'new session' \
     'context loss' \
     'no-change' \
+    'Quiet tick — checked {N} PRs; {M} tracked feedback records unchanged.' \
+    'Do not render empty **Decision queue**' \
+    'internal ledger terminology' \
+    'Omit any empty section instead of printing' \
+    'only a non-baseline, non-recheck tick with complete inventories' \
+    'exclusively unchanged duplicate records' \
+    'no lifecycle transitions, pending candidates, capacity/pruning notices, or failures' \
+    'lifecycle transitions,' \
+    'capacity/pruning notices remain.' \
+    'non-baseline cold tick that meets the stricter quiet predicate' \
     'materially edited' \
     'lifecycle-only' \
     'resolved' \
