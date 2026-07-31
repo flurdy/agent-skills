@@ -21,7 +21,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_RESULTS_DIR = ROOT / "docs" / "evaluations" / "skill-effectiveness-pilot-runs"
+DEFAULT_ARTIFACT_DIR = ROOT / ".artifacts" / "skill-effectiveness-pilot"
+DEFAULT_RESULTS_DIR = DEFAULT_ARTIFACT_DIR / "runs"
+DEFAULT_REPORT = DEFAULT_ARTIFACT_DIR / "results.md"
 SCENARIO_PATH = ROOT / "tests" / "fixtures" / "skill-pilot" / "scenarios.json"
 
 
@@ -224,9 +226,9 @@ def report_markdown(results: list[dict[str, Any]]) -> str:
 
 def run(args: argparse.Namespace) -> int:
     if args.report_only:
-        Path(args.report).write_text(
-            report_markdown(load_results(Path(args.results_dir))), encoding="utf-8"
-        )
+        report = Path(args.report)
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(report_markdown(load_results(Path(args.results_dir))), encoding="utf-8")
         return 0
 
     scenarios = load_scenarios(Path(args.scenarios))
@@ -247,7 +249,9 @@ def run(args: argparse.Namespace) -> int:
                 print(f"{result['scenario']} {condition} #{repetition}: {result['grader']['status']} ({saved})")
 
     results = load_results(Path(args.results_dir))
-    Path(args.report).write_text(report_markdown(results), encoding="utf-8")
+    report = Path(args.report)
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(report_markdown(results), encoding="utf-8")
     return 0
 
 
@@ -258,10 +262,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--scenario", action="append", help="Run only this scenario ID (repeatable)")
     parser.add_argument("--scenarios", default=SCENARIO_PATH)
     parser.add_argument("--results-dir", default=DEFAULT_RESULTS_DIR)
-    parser.add_argument(
-        "--report",
-        default=ROOT / "docs" / "evaluations" / "skill-effectiveness-pilot-results.md",
-    )
+    parser.add_argument("--report", default=DEFAULT_REPORT)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--report-only", action="store_true", help="Regenerate the report from saved raw records")
     return parser.parse_args()

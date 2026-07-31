@@ -22,7 +22,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-ready-to-release test-release-ci test-release-order test-release-status test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-skill-pilot test-plan-to-backlog test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-ready-to-release test-release-ci test-release-order test-release-status test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make clean-code"
@@ -31,6 +31,7 @@ help:
 	@echo "make test-assemble"
 	@echo "make test-second-opinion"
 	@echo "make test-project-brief"
+	@echo "make test-skill-pilot"
 	@echo "make test-plan-to-backlog"
 	@echo "make test-next"
 	@echo "make test-handoffs"
@@ -88,6 +89,9 @@ test-second-opinion:
 test-project-brief:
 	@skills/project-brief/tests/test-collect.sh
 	@python3 -m unittest discover -s skills/project-brief/tests -p 'test_evaluation.py'
+
+test-skill-pilot:
+	@python3 -m unittest discover -s tests -p 'test_run_skill_pilot.py'
 
 test-plan-to-backlog:
 	@skills/plan-to-backlog/tests/test-helpers.sh

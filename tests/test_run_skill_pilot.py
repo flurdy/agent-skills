@@ -33,6 +33,15 @@ class RunSkillPilotTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.scenario = RUNNER.load_scenarios()[0]
 
+    def test_default_outputs_use_ignored_artifact_directory(self) -> None:
+        artifact_root = RUNNER.ROOT / ".artifacts" / "skill-effectiveness-pilot"
+        self.assertEqual(artifact_root / "runs", RUNNER.DEFAULT_RESULTS_DIR)
+        self.assertEqual(artifact_root / "results.md", RUNNER.DEFAULT_REPORT)
+
+    def test_artifact_root_is_ignored(self) -> None:
+        ignore_rules = (RUNNER.ROOT / ".gitignore").read_text().splitlines()
+        self.assertIn(".artifacts/", ignore_rules)
+
     def test_known_good_output_passes(self) -> None:
         output = "Reuse render_user_badge and add a conditional for is_new."
         graded = RUNNER.grade_output(output, 0, self.scenario)
@@ -73,6 +82,17 @@ class RunSkillPilotTest(unittest.TestCase):
         index = treatment_without_skill.index("--skill")
         del treatment_without_skill[index : index + 2]
         self.assertEqual(baseline, treatment_without_skill)
+
+    def test_report_only_creates_report_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            args = RUNNER.argparse.Namespace(
+                report_only=True,
+                report=root / "nested" / "results.md",
+                results_dir=root / "runs",
+            )
+            self.assertEqual(0, RUNNER.run(args))
+            self.assertTrue((root / "nested" / "results.md").is_file())
 
     def test_report_does_not_claim_benefit_for_equal_results(self) -> None:
         run = {

@@ -11,7 +11,8 @@ CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees
 
-# Pi subagent run artifacts
+# Local run artifacts
+.artifacts/
 .pi-subagents/
 
 # Beads / Dolt files (added by bd init)

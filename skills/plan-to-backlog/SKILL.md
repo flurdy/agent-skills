@@ -19,7 +19,7 @@ focused item, or a bounded epic is warranted, preview the exact write set, then 
 that confirmed proposal.
 
 The canonical behavior and thresholds are defined in the
-[plan-to-backlog contract](../../docs/plans/plan-to-backlog-contract.md).
+[plan-to-backlog contract](references/contract.md).
 
 ## When to use
 

@@ -16,7 +16,7 @@ change and does not adopt Bigpowers' fixed score threshold.
 - **Isolation:** each cell runs in a newly copied fixture with no session, context files,
   or extensions. The runner removes that workspace after recording its output.
 - **Grading:** deterministic output checks are frozen in
-  [`tests/fixtures/skill-pilot/scenarios.json`](../../tests/fixtures/skill-pilot/scenarios.json).
+  [`tests/fixtures/skill-pilot/scenarios.json`](../tests/fixtures/skill-pilot/scenarios.json).
   A non-zero Pi exit or empty output is `invalid`, never a pass.
 
 Calibration scenarios exercise fixture and grader mechanics. Hold-out scenarios are
@@ -38,10 +38,11 @@ Run the full, pinned 24-cell matrix:
 python3 scripts/run-skill-pilot.py --model openai-codex/gpt-5.6-luna
 ```
 
-Raw cell records are written to `docs/evaluations/skill-effectiveness-pilot-runs/` and
+Raw cell records are written to ignored `.artifacts/skill-effectiveness-pilot/runs/` and
 include the command, model, timing, stdout, stderr, exit status, and per-check grader
-outcome. The generated summary is
-[`skill-effectiveness-pilot-results.md`](skill-effectiveness-pilot-results.md).
+outcome. The generated summary is `.artifacts/skill-effectiveness-pilot/results.md`.
+These outputs are local and disposable by default; retaining a run as durable evidence
+requires a separate documentation-retention decision.
 
 ## Interpretation
 

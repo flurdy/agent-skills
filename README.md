@@ -104,7 +104,7 @@ layout and commands.
 - [Contributing](CONTRIBUTING.md) — authoring skills and agents, metadata,
   permissions, validation, and tests
 - [Model routing](MODEL_ROUTING.md) — portable tier and effort policy
-- [Documentation index](docs/README.md) — evaluations and historical plans
+- [Documentation index](docs/README.md) — public guides and component references
 
 ## Bugs and pull requests
 

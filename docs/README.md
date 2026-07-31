@@ -1,16 +1,14 @@
 # Documentation
 
-This directory contains repository documentation that is not part of an individual
-skill or agent.
-
-## Structure
+This directory contains public user and contributor guidance that is not owned by an
+individual skill or agent.
 
 - [`installation.md`](installation.md) — installation destinations, prompt setup,
   private overlays, migration, and cleanup.
-- [`evaluations/`](evaluations/) — documented, bounded skill-evaluation pilots and
-  their evidence.
-- [`plans/`](plans/) — historical and implementation plans, including their supporting
-  evidence.
+- [`skill-effectiveness-pilot.md`](skill-effectiveness-pilot.md) — reproducible,
+  directional evaluation methodology. Generated runs stay in ignored `.artifacts/`.
+- [`plan-to-backlog` contract](../skills/plan-to-backlog/references/contract.md) —
+  normative reference co-located with the shipped skill that owns it.
 
-Create additional documentation subdirectories only when they contain material that
-needs a distinct, stable home.
+Keep component contracts with their owning component. Do not track raw evaluation runs,
+maintainer-only dogfood evidence, or historical implementation plans as public guidance.

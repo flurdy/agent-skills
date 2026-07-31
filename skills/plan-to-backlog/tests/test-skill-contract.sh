@@ -5,6 +5,7 @@ TEST_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
 SKILL_DIR=$(dirname -- "$TEST_DIR")
 REPO_ROOT=$(CDPATH='' cd -- "$SKILL_DIR/../.." && pwd -P)
 SKILL="$SKILL_DIR/SKILL.md"
+CONTRACT="$SKILL_DIR/references/contract.md"
 ARCHITECT="$REPO_ROOT/skills/architect/SKILL.md"
 TRIAGE="$REPO_ROOT/skills/triage/SKILL.md"
 CATALOG="$REPO_ROOT/skills/README.md"
@@ -33,7 +34,10 @@ line_of() {
 }
 
 [[ -f "$SKILL" ]] || fail "missing plan-to-backlog skill"
+[[ -f "$CONTRACT" ]] || fail "missing plan-to-backlog contract"
 
+assert_contains "$SKILL" '[plan-to-backlog contract](references/contract.md).'
+assert_not_contains "$SKILL" '../../docs/plans/plan-to-backlog-contract.md'
 assert_not_contains "$SKILL" 'disable-model-invocation:'
 assert_contains "$SKILL" 'Select this skill dynamically, or through `/plan-to-backlog`, only when:'
 assert_contains "$SKILL" 'The existence or approval of a plan alone is not a trigger.'

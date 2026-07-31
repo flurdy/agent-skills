@@ -112,12 +112,3 @@ Related standalone work (unaffected by the pause):
 - The portable workspace scaffold is maintained in
   [`flurdy/ai-tools`](https://github.com/flurdy/ai-tools/tree/main/shared/project-workspace);
   `skills-88v.6` preserves the original project-context tracking history.
-
-## Evidence
-
-Initial cross-runtime dogfood and policy corrections are recorded in
-[`../../docs/plans/delegate-work-dogfood-evidence.md`](../../docs/plans/delegate-work-dogfood-evidence.md).
-Dependency-aware decomposition dogfood is recorded in
-[`../../docs/plans/delegate-work-decomposition-dogfood-evidence.md`](../../docs/plans/delegate-work-decomposition-dogfood-evidence.md).
-The original implementation plan is
-[`../../docs/plans/delegate-work-skill.md`](../../docs/plans/delegate-work-skill.md).
