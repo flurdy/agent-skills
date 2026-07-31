@@ -4,7 +4,7 @@ description: Review a repository-qualified pull request at an immutable head, co
 allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),mcp__jira__jira_get,AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -225,6 +225,7 @@ For `--automation`, emit one JSON object and no conversational prompt or surroun
 {
   "schemaVersion": "review-pr/v1",
   "status": "complete|partial|stale|failed",
+  "reason": null,
   "target": {
     "repository": "owner/repo",
     "number": 123,
@@ -233,10 +234,14 @@ For `--automation`, emit one JSON object and no conversational prompt or surroun
     "baseSha": "...",
     "stateKey": "..."
   },
+  "changesOverview": [],
   "evidence": {
     "snapshotComplete": true,
     "checkout": "verified|unavailable",
+    "checkoutReason": null,
     "jira": "available|not-linked|unavailable",
+    "jiraKey": null,
+    "jiraSummary": null,
     "ci": "SUCCESS|FAILURE|PENDING|UNKNOWN",
     "errors": []
   },
@@ -246,6 +251,14 @@ For `--automation`, emit one JSON object and no conversational prompt or surroun
   "verdict": "safe-to-merge|needs-changes|needs-discussion|null"
 }
 ```
+
+`reason` is null for complete results and names the bounded failure/stale reason otherwise,
+including `premium-route-unavailable`. Before snapshot identity is available, target fields are
+null rather than fabricated. `changesOverview` contains the complete bounded changes summary used
+by the manual report. `checkoutReason` explains unavailable local evidence. `jiraKey` is populated
+when a key is linked; `jiraSummary` is populated only when lookup succeeds. Each unresolved
+comment, AC row, and concern retains its concise evidence so an automation caller can render the
+same complete report without re-running analysis.
 
 The watcher may consume a verdict only when `status` is `complete`, the final revision recheck
 succeeded, and `verdict` is non-null. This output authorizes no GitHub review or other external

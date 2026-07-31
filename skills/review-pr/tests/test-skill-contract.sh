@@ -34,6 +34,13 @@ for invariant in \
     'No GitHub review' \
     'schemaVersion' \
     'review-pr/v1' \
+    '"reason"' \
+    'premium-route-unavailable' \
+    'target fields are' \
+    'changesOverview' \
+    'checkoutReason' \
+    'jiraKey' \
+    'jiraSummary' \
     'Unresolved Reviewer Comments'; do
     assert_contains "$invariant"
 done
