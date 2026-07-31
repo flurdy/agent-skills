@@ -67,7 +67,8 @@ for invariant in \
     'summary** only for pending attended feedback' \
     'a non-zero failure streak' \
     'lost ledger continuity' \
-    'final visible text' \
+    'End skill-authored visible output' \
+    'final watcher text' \
     'do not follow' \
     'decision recap' \
     'Keep healthy internal ledger and fetch state silent' \
@@ -135,9 +136,14 @@ for invariant in \
     '60–3600 seconds' \
     '### Claude Code fallback' \
     'ScheduleWakeup' \
-    'final tool action with N' \
-    'sole post-tool text and ends immediately' \
+    'calls `ScheduleWakeup` last with N' \
+    'emits no further' \
+    'render the cadence line before calling `ScheduleWakeup`' \
+    'no skill-authored text follows it' \
     'Fixed ticks ignore `next-tick:` for scheduling' \
+    'built-in `※ recap:`' \
+    'disabled by the user in `/config`' \
+    'Never duplicate it inside' \
     'Fable' \
     '/loop' \
     'next-tick:'; do
@@ -177,6 +183,7 @@ assert_not_contains 'git push'
 assert_not_contains 'git commit'
 assert_not_contains 'resolveReviewThread'
 assert_not_contains 'command -v pi'
+assert_not_contains 'sole post-tool text'
 head -n 12 "$SKILL" | grep -Fq -- 'Bash(gh api' \
     && fail 'watch-pr-feedback must not allow direct gh api access'
 assert_not_contains 'Bash(git'

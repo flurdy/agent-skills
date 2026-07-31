@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-lis
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.4"
+version: "1.1.5"
 author: "flurdy"
 ---
 
@@ -161,16 +161,21 @@ Before starting the Claude adaptive path, apply the established session-model gu
 would discard the tick's visible output. Recommend a Sonnet/Opus session or fixed mode instead.
 
 For adaptive mode, schedule a 60-second first wake with a self-contained prompt equivalent to the
-Pi tick prompt. Each completed tick computes N, renders all content except the cadence line, calls
-`ScheduleWakeup` as its final tool action with N, then emits the `next-tick:` cadence line as the
-sole post-tool text and ends immediately. Stop rather than reschedule past the local deadline or
-after the third consecutive failure for one repository/source. In attended mode, ask and wait
-before scheduling; an unanswered question must not create another wake.
+Pi tick prompt. Each completed tick computes N, renders all skill-authored content including the
+final `next-tick:` cadence line, then calls `ScheduleWakeup` last with N and emits no further
+skill-authored text. Stop rather than reschedule past the local deadline or after the third
+consecutive failure for one repository/source. In attended mode, ask and wait before the trailing
+schedule call; an unanswered question must not create another wake.
 
 For fixed mode, use `/loop {interval} /watch-pr-feedback tick {read-only|attended}` and state the
 local stop hour. Fixed ticks ignore `next-tick:` for scheduling but still emit it as their final
-line and end immediately without another summary. Every fallback tick must load this skill, enter
-`tick` mode, render visible output, and preserve the same session-local state and safety boundary.
+skill-authored line without another watcher summary. Every fallback tick must load this skill,
+enter `tick` mode, render visible output, and preserve the same session-local state and safety
+boundary.
+
+Claude Code may append its built-in `※ recap:` after a tick; that harness output is outside this
+skill's rendering contract and can be disabled by the user in `/config`. Never duplicate it inside
+the watcher or change user configuration automatically.
 
 ## Tick mode
 
@@ -356,8 +361,8 @@ watcher.
 
 ### 7. Complete and pace
 
-End visible output with exactly one cadence line. It must be the final visible text: do not follow
-it with a completion sentence, decision recap, or another summary.
+End skill-authored visible output with exactly one cadence line. It must be the final watcher text:
+do not follow it with a completion sentence, decision recap, or another watcher summary.
 
 ```text
 next-tick: {hot|warm|cold} (~{N}s) — {reason}
@@ -374,6 +379,7 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 In an injected Pi tick, call the matching `action: complete` only after the cadence line and any
 attended answer. Use `outcome: continue` and `delaySeconds: N` for adaptive mode; omit the delay for
 fixed mode. Use `outcome: stop` for the failure bound, **Open attended workflow**, or **Stop
-watcher**. In Claude adaptive mode, render everything except cadence, call `ScheduleWakeup` as the final tool
-action, then emit the cadence line as the sole post-tool text and end immediately. Fixed `/loop`
-owns scheduling and ends immediately after its cadence line.
+watcher**. In Claude adaptive mode, render the cadence line before calling `ScheduleWakeup`; scheduling is the
+final action and no skill-authored text follows it. Fixed `/loop` owns scheduling and the cadence
+remains the final watcher-authored line. Claude Code's optional built-in recap may appear afterward
+outside the skill.
