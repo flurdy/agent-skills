@@ -13,10 +13,9 @@ author: "flurdy"
 
 # Watch Review Requests
 
-Watch the authenticated user's inbound GitHub review requests. For each newly actionable direct
-request, run the repository-qualified read-only `/review-pr` workflow exactly once, render its
-complete report, then pause for disposition. Process one review at a time so analysis, reports,
-and questions cannot interleave.
+Watch the authenticated user's inbound GitHub review requests for the current repository plus registered workspace repositories. For each newly actionable direct request, run the repository-qualified read-only `/review-pr` workflow exactly once, render its complete report, then pause for disposition. Process one review at a time so analysis, reports, and questions cannot interleave.
+
+The bounded collector resolves repository scope inside each tick. It never falls back to an account-wide search: unavailable or empty local scope fails closed rather than searching the authenticated user's other GitHub repositories. Existing session state for repositories no longer in scope is discarded by the collector.
 
 This watcher does not replace `/review-pr`. It composes the bounded queue collector and immutable
 review contract. No external action is the default-safe outcome.
@@ -57,7 +56,7 @@ Queue collection and review analysis are read-only. Never switch branches, creat
 fetch, edit code, change Git history, mark notifications, alter requested reviewers, submit a
 review, or send Slack while polling or analyzing. Never infer permission to communicate from a
 verdict or disposition category. Do not run shell, Git, filesystem, workspace, or authentication
-preflight probes when starting the watcher; bounded tick collectors report their own failures.
+preflight probes when starting the watcher; the bounded tick collector resolves the current/workspace repository scope and reports its own failures.
 
 A GitHub submission is permitted only through the separate confirmation sequence below, after
 showing the exact text and repository and a fresh immutable-state check. Slack is draft-only in
@@ -88,7 +87,7 @@ manual new start may then announce a fresh baseline.
 `reset` first stops an armed/running/paused watcher, then clears queue state, pending dispositions,
 completed keys, review attempts, in-flight state, run deadline, cadence, budget, failure counts,
 and quiet streak. It
-does not mutate GitHub. `status` reports `/watch-status` when protocol v1 exists, state size, pending
+does not mutate GitHub. `status` reports `/watch-status` when protocol v1 exists, the resolved repository scope, state size, pending
 dispositions by state, current phase, failures, deadline, and budget. `recheck owner/repo#123` makes
 one bounded queue call with `--recheck`, selects only that qualified PR, and performs the serial
 review flow below; a draft remains non-actionable. It does not schedule a watcher or treat other
@@ -215,9 +214,9 @@ Pass prior collector state as the bounded `--state-json` argument to one call:
 ```
 
 On the first tick omit `--state-json`. Preserve the returned `state` even when no review runs.
-Inspect `status`, `errors`, `failedRepositories`, `transitions`, and `queue` before acting.
+Inspect `status`, `scope`, `errors`, `failedRepositories`, `transitions`, and `queue` before acting. Require `scope.kind` to be `current-workspace`, render the resolved repository list in the tick summary, and reject any transition or queue row outside that list.
 
-- `failed`: show the bounded error, increment its failure streak, and do not review or mark work.
+- `failed`: show the bounded error, increment its failure streak, and do not review or mark work. A missing or empty current/workspace scope is a collector failure, never permission for a global fallback.
 - `partial`: render every failed source and continue only with fully identified queue items.
 - After three consecutive failures for the same source, stop with retained state.
 - Complete data clears only the matching failure streak.

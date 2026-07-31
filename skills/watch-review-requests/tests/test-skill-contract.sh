@@ -34,6 +34,8 @@ for invariant in \
     'model-tier: premium' \
     'effort: xhigh' \
     'gh-pr-review-requests.py' \
+    'current repository plus registered workspace repositories' \
+    'fails closed rather than searching the authenticated user' \
     'gh-pr-checkout.py OWNER/REPO HEAD_SHA' \
     'This helper alone may enumerate registered workspace members and Git worktrees.' \
     'never run ad-hoc shell probes' \

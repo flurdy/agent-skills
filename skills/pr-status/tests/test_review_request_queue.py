@@ -8,6 +8,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 
 SCRIPT = Path(__file__).parents[1] / "scripts" / "gh-pr-review-requests.py"
@@ -95,7 +96,7 @@ class FakeClient:
         self.pages = pages
         self.snapshots = snapshots
         self.failures = failures or set()
-        self.search_calls: list[str | None] = []
+        self.search_calls: list[tuple[str, str | None]] = []
         self.repository_calls: list[tuple[str, tuple[int, ...]]] = []
         self.viewer_calls = 0
 
@@ -103,9 +104,11 @@ class FakeClient:
         self.viewer_calls += 1
         return "ivar"
 
-    def search_page(self, viewer: str, after: str | None, first: int) -> dict[str, Any]:
-        self.search_calls.append(after)
-        return self.pages[after]
+    def search_page(
+        self, viewer: str, repository: str, after: str | None, first: int
+    ) -> dict[str, Any]:
+        self.search_calls.append((repository, after))
+        return self.pages[(repository, after)]
 
     def fetch_repository(
         self,
@@ -803,11 +806,15 @@ class QueueCollectionTest(unittest.TestCase):
         }
         client = FakeClient(
             pages={
-                None: {
+                ("acme/widgets", None): {
                     "nodes": [{"repository": "acme/widgets", "number": 42}],
                     "pageInfo": {"hasNextPage": True, "endCursor": "page-2"},
                 },
-                "page-2": {
+                ("acme/widgets", "page-2"): {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                },
+                ("other/widgets", None): {
                     "nodes": [{"repository": "other/widgets", "number": 42}],
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
                 },
@@ -816,16 +823,151 @@ class QueueCollectionTest(unittest.TestCase):
         )
         limits = QUEUE.QueueLimits(page_size=1, max_candidates=2)
 
-        result = QUEUE.collect_queue(client, limits=limits)
+        result = QUEUE.collect_queue(
+            client,
+            repositories={"acme/widgets", "other/widgets"},
+            limits=limits,
+        )
 
         self.assertEqual("complete", result["status"])
         self.assertEqual(1, client.viewer_calls)
-        self.assertEqual([None, "page-2"], client.search_calls)
+        self.assertEqual(
+            [
+                ("acme/widgets", None),
+                ("acme/widgets", "page-2"),
+                ("other/widgets", None),
+            ],
+            client.search_calls,
+        )
         self.assertEqual(2, len(result["queue"]))
         self.assertEqual(
             [("acme/widgets", (42,)), ("other/widgets", (42,))],
             client.repository_calls,
         )
+        self.assertEqual(
+            ["acme/widgets", "other/widgets"],
+            result["scope"]["repositories"],
+        )
+
+    def test_collection_queries_only_scoped_repositories(self) -> None:
+        client = FakeClient(
+            pages={
+                ("acme/widgets", None): {
+                    "nodes": [{"repository": "acme/widgets", "number": 42}],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            },
+            snapshots={
+                "acme/widgets#42": snapshot("acme/widgets", 42, node_id="PR_A")
+            },
+        )
+
+        result = QUEUE.collect_queue(client, repositories={"acme/widgets"})
+
+        self.assertEqual("complete", result["status"])
+        self.assertEqual([("acme/widgets", None)], client.search_calls)
+        self.assertEqual(
+            ["acme/widgets#42"],
+            [item["key"] for item in result["queue"]],
+        )
+
+    def test_out_of_scope_retained_state_is_dropped_without_fetching(self) -> None:
+        prior = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"),
+            [snapshot("external/legacy", 7, node_id="PR_OLD")],
+            viewer_login="ivar",
+        )["state"]
+        client = FakeClient(
+            pages={
+                ("acme/widgets", None): {
+                    "nodes": [],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                }
+            },
+            snapshots={},
+        )
+
+        result = QUEUE.collect_queue(
+            client,
+            previous_state=prior,
+            repositories={"acme/widgets"},
+        )
+
+        self.assertEqual("complete", result["status"])
+        self.assertEqual([], result["state"]["entries"])
+        self.assertEqual([], client.repository_calls)
+
+    def test_collection_fails_closed_without_repository_scope(self) -> None:
+        client = FakeClient(pages={}, snapshots={})
+
+        result = QUEUE.collect_queue(client, repositories=set())
+
+        self.assertEqual("failed", result["status"])
+        self.assertEqual("scope", result["errors"][0]["source"])
+        self.assertEqual([], client.search_calls)
+        self.assertEqual(0, client.viewer_calls)
+
+    def test_viewer_failure_drops_out_of_scope_retained_state(self) -> None:
+        prior = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"),
+            [
+                snapshot("acme/widgets", 42, node_id="PR_LOCAL"),
+                snapshot("external/legacy", 7, node_id="PR_OLD"),
+            ],
+            viewer_login="ivar",
+        )["state"]
+        client = FakeClient(pages={}, snapshots={})
+        client.viewer_login = mock.Mock(side_effect=RuntimeError("viewer unavailable"))
+
+        result = QUEUE.collect_queue(
+            client,
+            previous_state=prior,
+            repositories={"acme/widgets"},
+        )
+
+        self.assertEqual("failed", result["status"])
+        self.assertEqual(
+            ["acme/widgets#42"],
+            [entry["key"] for entry in result["state"]["entries"]],
+        )
+
+    def test_scope_failure_preserves_prior_state_and_response_shape(self) -> None:
+        prior = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"),
+            [snapshot("acme/widgets", 42, node_id="PR_LOCAL")],
+            viewer_login="ivar",
+        )["state"]
+        output = io.StringIO()
+        with mock.patch.object(
+            QUEUE,
+            "resolve_repository_scope",
+            side_effect=QUEUE.CollectionError("scope unavailable"),
+        ), redirect_stdout(output):
+            exit_code = QUEUE.main(["--state-json", json.dumps(prior)])
+
+        result = json.loads(output.getvalue())
+        self.assertEqual(1, exit_code)
+        self.assertEqual("failed", result["status"])
+        self.assertEqual(prior, result["state"])
+        self.assertEqual([], result["queue"])
+        self.assertEqual([], result["transitions"])
+        self.assertEqual([], result["failedRepositories"])
+        self.assertIn("limits", result)
+
+    def test_scope_helper_gets_outer_cleanup_grace(self) -> None:
+        completed = mock.Mock(
+            returncode=0,
+            stdout=json.dumps(
+                {"status": "verified", "repositories": ["acme/widgets"]}
+            ),
+            stderr="",
+        )
+        with mock.patch.object(QUEUE.subprocess, "run", return_value=completed) as run:
+            scope = QUEUE.resolve_repository_scope(5.0)
+
+        self.assertEqual({"acme/widgets"}, scope)
+        self.assertEqual("5.0", run.call_args.args[0][-1])
+        self.assertGreater(run.call_args.kwargs["timeout"], 5.0)
 
     def test_repository_failure_is_partial_and_preserves_prior_state(self) -> None:
         failed_snapshot = snapshot("acme/widgets", 42, node_id="PR_A")
@@ -837,19 +979,24 @@ class QueueCollectionTest(unittest.TestCase):
         )["state"]
         client = FakeClient(
             pages={
-                None: {
-                    "nodes": [
-                        {"repository": "acme/widgets", "number": 42},
-                        {"repository": "other/widgets", "number": 7},
-                    ],
+                ("acme/widgets", None): {
+                    "nodes": [{"repository": "acme/widgets", "number": 42}],
                     "pageInfo": {"hasNextPage": False, "endCursor": None},
-                }
+                },
+                ("other/widgets", None): {
+                    "nodes": [{"repository": "other/widgets", "number": 7}],
+                    "pageInfo": {"hasNextPage": False, "endCursor": None},
+                },
             },
             snapshots={"other/widgets#7": healthy_snapshot},
             failures={"acme/widgets"},
         )
 
-        result = QUEUE.collect_queue(client, previous_state=prior)
+        result = QUEUE.collect_queue(
+            client,
+            previous_state=prior,
+            repositories={"acme/widgets", "other/widgets"},
+        )
 
         self.assertEqual("partial", result["status"])
         self.assertEqual(["acme/widgets"], result["failedRepositories"])

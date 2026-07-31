@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from time import monotonic
 from typing import Any
 
@@ -658,7 +659,9 @@ class GhClient:
         self._viewer_login = login
         return login
 
-    def search_page(self, viewer: str, after: str | None, first: int) -> dict[str, Any]:
+    def search_page(
+        self, viewer: str, repository: str, after: str | None, first: int
+    ) -> dict[str, Any]:
         query = """
         query($searchQuery: String!, $first: Int!, $after: String) {
           search(type: ISSUE, query: $searchQuery, first: $first, after: $after) {
@@ -677,7 +680,7 @@ class GhClient:
             "-f",
             f"query={query}",
             "-f",
-            f"searchQuery=review-requested:{viewer} is:pr is:open archived:false",
+            f"searchQuery=review-requested:{viewer} repo:{repository} is:pr is:open archived:false",
             "-F",
             f"first={first}",
         ]
@@ -1047,18 +1050,60 @@ def tracked_targets(state: dict[str, Any]) -> dict[str, set[int]]:
     return targets
 
 
+def state_for_scope(
+    state: dict[str, Any] | None, repositories: list[str]
+) -> dict[str, Any] | None:
+    if state is None or not isinstance(state.get("entries"), list):
+        return state
+    scope = {repository.casefold() for repository in repositories}
+    scoped = copy.deepcopy(state)
+    scoped["entries"] = [
+        entry
+        for entry in state["entries"]
+        if isinstance(entry, dict)
+        and str(entry.get("repository", "")).casefold() in scope
+    ]
+    return scoped
+
+
 def collect_queue(
     client: Any,
     *,
+    repositories: set[str],
     previous_state: dict[str, Any] | None = None,
     mode: str = "normal",
     limits: QueueLimits | None = None,
 ) -> dict[str, Any]:
     limits = (limits or QueueLimits()).normalized()
+    scope = sorted(
+        {repository for repository in repositories if repository},
+        key=str.casefold,
+    )
+    if not scope:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "status": "failed",
+            "mode": mode,
+            "viewerLogin": None,
+            "queue": [],
+            "transitions": [],
+            "errors": [
+                {
+                    "source": "scope",
+                    "kind": "unavailable",
+                    "message": "no current or registered workspace GitHub repositories were resolved",
+                }
+            ],
+            "failedRepositories": [],
+            "limits": limits.as_dict(),
+            "scope": {"kind": "current-workspace", "repositories": []},
+            "state": previous_state or empty_state(""),
+        }
+    scoped_previous = state_for_scope(previous_state, scope)
     try:
         viewer_login = client.viewer_login()
     except (CollectionError, RuntimeError) as error:
-        state = previous_state or empty_state("")
+        state = scoped_previous or empty_state("")
         return {
             "schemaVersion": SCHEMA_VERSION,
             "status": "failed",
@@ -1071,10 +1116,11 @@ def collect_queue(
             ],
             "failedRepositories": [],
             "limits": limits.as_dict(),
+            "scope": {"kind": "current-workspace", "repositories": scope},
             "state": state,
         }
 
-    prior = previous_state or empty_state(viewer_login)
+    prior = scoped_previous or empty_state(viewer_login)
     try:
         validate_state(prior, viewer_login)
         if len(prior["entries"]) > limits.max_state_entries:
@@ -1092,66 +1138,88 @@ def collect_queue(
             ],
             "failedRepositories": [],
             "limits": limits.as_dict(),
+            "scope": {"kind": "current-workspace", "repositories": scope},
             "state": prior,
         }
     collection_state = empty_state(viewer_login) if mode == "reset" else prior
     targets = tracked_targets(collection_state)
     errors = []
-    after = None
     candidate_count = 0
     search_failed = False
-    while candidate_count < limits.max_candidates:
-        first = min(limits.page_size, limits.max_candidates - candidate_count)
-        try:
-            page = client.search_page(viewer_login, after, first)
-        except (CollectionError, RuntimeError) as error:
-            errors.append(
-                {"source": "search", "kind": "unavailable", "message": str(error)}
-            )
-            search_failed = True
-            break
-        nodes = page.get("nodes")
-        page_info = page.get("pageInfo")
-        if not isinstance(nodes, list) or not isinstance(page_info, dict):
-            errors.append(
-                {
-                    "source": "search",
-                    "kind": "invalid",
-                    "message": "GitHub search page was malformed",
-                }
-            )
-            search_failed = True
-            break
-        for node in nodes:
+    search_truncated = False
+    for repository_index, scoped_repository in enumerate(scope):
+        after = None
+        page_info: dict[str, Any] = {}
+        while candidate_count < limits.max_candidates:
+            first = min(limits.page_size, limits.max_candidates - candidate_count)
             try:
-                repository = str(node["repository"])
-                number = int(node["number"])
-            except (KeyError, TypeError, ValueError):
+                page = client.search_page(
+                    viewer_login, scoped_repository, after, first
+                )
+            except (CollectionError, RuntimeError) as error:
                 errors.append(
                     {
                         "source": "search",
-                        "kind": "invalid",
-                        "message": "GitHub search item was malformed",
+                        "repository": scoped_repository,
+                        "kind": "unavailable",
+                        "message": str(error),
                     }
                 )
                 search_failed = True
-                continue
-            targets.setdefault(repository, set()).add(number)
-        candidate_count += len(nodes)
-        if not page_info.get("hasNextPage"):
-            break
-        after = page_info.get("endCursor")
-        if not isinstance(after, str) or not after:
-            errors.append(
-                {
-                    "source": "search",
-                    "kind": "invalid",
-                    "message": "GitHub search pagination cursor was unavailable",
-                }
+                break
+            nodes = page.get("nodes")
+            page_info = page.get("pageInfo")
+            if not isinstance(nodes, list) or not isinstance(page_info, dict):
+                errors.append(
+                    {
+                        "source": "search",
+                        "repository": scoped_repository,
+                        "kind": "invalid",
+                        "message": "GitHub search page was malformed",
+                    }
+                )
+                search_failed = True
+                break
+            for node in nodes:
+                try:
+                    repository = str(node["repository"])
+                    number = int(node["number"])
+                    if repository.casefold() != scoped_repository.casefold():
+                        raise ValueError("search result was outside repository scope")
+                except (KeyError, TypeError, ValueError) as error:
+                    errors.append(
+                        {
+                            "source": "search",
+                            "repository": scoped_repository,
+                            "kind": "invalid",
+                            "message": str(error) or "GitHub search item was malformed",
+                        }
+                    )
+                    search_failed = True
+                    continue
+                targets.setdefault(repository, set()).add(number)
+            candidate_count += len(nodes)
+            if not page_info.get("hasNextPage"):
+                break
+            after = page_info.get("endCursor")
+            if not isinstance(after, str) or not after:
+                errors.append(
+                    {
+                        "source": "search",
+                        "repository": scoped_repository,
+                        "kind": "invalid",
+                        "message": "GitHub search pagination cursor was unavailable",
+                    }
+                )
+                search_failed = True
+                break
+        if candidate_count >= limits.max_candidates:
+            search_truncated = (
+                bool(page_info.get("hasNextPage"))
+                or repository_index < len(scope) - 1
             )
-            search_failed = True
             break
-    else:
+    if search_truncated:
         errors.append(
             {
                 "source": "search",
@@ -1199,6 +1267,7 @@ def collect_queue(
     reduced["limits"] = limits.as_dict()
     reduced["errors"] = errors + reduced["errors"]
     reduced["failedRepositories"] = sorted(failed_repositories)
+    reduced["scope"] = {"kind": "current-workspace", "repositories": scope}
     if reduced["errors"]:
         reduced["status"] = (
             "failed"
@@ -1206,6 +1275,46 @@ def collect_queue(
             else "partial"
         )
     return reduced
+
+
+def resolve_repository_scope(timeout: float) -> set[str]:
+    helper = Path(__file__).with_name("gh-pr-checkout.py")
+    environment = os.environ.copy()
+    environment.update({"GIT_PAGER": "cat", "PAGER": "cat", "NO_COLOR": "1"})
+    try:
+        completed = subprocess.run(
+            [str(helper), "--scope", "--timeout", str(timeout)],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=max(0.1, timeout) + 1.0,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise CollectionError("repository scope discovery deadline exceeded") from error
+    if len(completed.stdout.encode()) + len(completed.stderr.encode()) > 1_000_000:
+        raise CollectionError("repository scope discovery exceeded the output limit")
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise CollectionError("repository scope discovery returned invalid JSON") from error
+    repositories = result.get("repositories")
+    if (
+        completed.returncode != 0
+        or result.get("status") != "verified"
+        or not isinstance(repositories, list)
+        or not repositories
+    ):
+        errors = result.get("errors") or []
+        detail = errors[0].get("message") if errors and isinstance(errors[0], dict) else None
+        raise CollectionError(detail or "repository scope was unavailable")
+    scope = set()
+    for repository in repositories:
+        if not isinstance(repository, str):
+            raise CollectionError("repository scope contained an invalid repository")
+        split_repository(repository)
+        scope.add(repository)
+    return scope
 
 
 def parse_state(arguments: argparse.Namespace) -> dict[str, Any] | None:
@@ -1244,6 +1353,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     arguments = parse_args(argv)
+    state = None
+    mode = "reset" if arguments.reset else "recheck" if arguments.recheck else "normal"
+    limits = QueueLimits(
+        page_size=arguments.page_size,
+        max_candidates=arguments.max_candidates,
+        max_state_entries=arguments.max_state_entries,
+        max_history=arguments.max_history,
+        max_prs_per_query=arguments.max_prs_per_query,
+    ).normalized()
     try:
         state = parse_state(arguments)
         if arguments.mark_reviewed:
@@ -1256,28 +1374,49 @@ def main(argv: list[str]) -> int:
                 "state": mark_reviewed(state, arguments.mark_reviewed),
             }
         else:
-            mode = "reset" if arguments.reset else "recheck" if arguments.recheck else "normal"
+            deadline = monotonic() + max(0.1, arguments.timeout)
+            repositories = resolve_repository_scope(
+                min(15.0, max(0.1, deadline - monotonic()))
+            )
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                raise CollectionError("GitHub collection deadline exceeded")
             result = collect_queue(
                 GhClient(
-                    timeout=arguments.timeout,
+                    timeout=remaining,
                     max_output_bytes=arguments.max_output_bytes,
                 ),
+                repositories=repositories,
                 previous_state=state,
                 mode=mode,
-                limits=QueueLimits(
-                    page_size=arguments.page_size,
-                    max_candidates=arguments.max_candidates,
-                    max_state_entries=arguments.max_state_entries,
-                    max_history=arguments.max_history,
-                    max_prs_per_query=arguments.max_prs_per_query,
-                ),
+                limits=limits,
             )
+    except CollectionError as error:
+        retained = state or empty_state("")
+        result = {
+            "schemaVersion": SCHEMA_VERSION,
+            "status": "failed",
+            "mode": mode,
+            "viewerLogin": retained.get("viewerLogin"),
+            "queue": [],
+            "transitions": [],
+            "scope": {"kind": "current-workspace", "repositories": []},
+            "errors": [
+                {"source": "scope", "kind": "unavailable", "message": str(error)}
+            ],
+            "failedRepositories": [],
+            "limits": limits.as_dict(),
+            "state": retained,
+        }
     except ValueError as error:
         result = {
             "schemaVersion": SCHEMA_VERSION,
             "status": "failed",
             "mode": "invalid",
-            "errors": [{"source": "arguments", "kind": "invalid", "message": str(error)}],
+            "scope": {"kind": "current-workspace", "repositories": []},
+            "errors": [
+                {"source": "arguments", "kind": "invalid", "message": str(error)}
+            ],
         }
     json.dump(result, sys.stdout, indent=2 if arguments.pretty else None, sort_keys=True)
     sys.stdout.write("\n")

@@ -119,6 +119,61 @@ class CheckoutResolverTest(unittest.TestCase):
         self.assertEqual(self.head, result["checkout"]["headSha"])
         self.assertEqual([], result["errors"])
 
+    def test_resolves_repository_scope_from_registered_candidates(self) -> None:
+        result = CHECKOUT.resolve_repository_scope(
+            candidate_paths=[str(self.root)],
+            timeout=10.0,
+        )
+
+        self.assertEqual("verified", result["status"])
+        self.assertEqual(["acme/widgets"], result["repositories"])
+        self.assertEqual([], result["errors"])
+
+    def test_repository_scope_fails_closed_without_github_remotes(self) -> None:
+        git(
+            self.root,
+            "remote",
+            "set-url",
+            "origin",
+            "https://example.com/acme/widgets.git",
+        )
+
+        result = CHECKOUT.resolve_repository_scope(
+            candidate_paths=[str(self.root)],
+            timeout=10.0,
+        )
+
+        self.assertEqual("unavailable", result["status"])
+        self.assertEqual([], result["repositories"])
+
+    def test_repository_scope_is_partial_when_a_candidate_times_out(self) -> None:
+        with mock.patch.object(
+            CHECKOUT,
+            "inspect_repository",
+            side_effect=[
+                ("acme/widgets", []),
+                (None, [{"source": "remote", "message": "deadline exceeded"}]),
+            ],
+        ):
+            result = CHECKOUT.resolve_repository_scope(
+                candidate_paths=[str(self.root), str(self.root) + "-other"],
+                timeout=10.0,
+            )
+
+        self.assertEqual("partial", result["status"])
+        self.assertEqual(["acme/widgets"], result["repositories"])
+
+    def test_repository_scope_reports_candidate_overflow_as_partial(self) -> None:
+        with mock.patch.object(CHECKOUT, "MAX_CANDIDATES", 1):
+            result = CHECKOUT.resolve_repository_scope(
+                candidate_paths=[str(self.root), str(self.root) + "-other"],
+                timeout=10.0,
+            )
+
+        self.assertEqual("partial", result["status"])
+        self.assertEqual(["acme/widgets"], result["repositories"])
+        self.assertEqual("scope-candidates", result["errors"][0]["source"])
+
     def test_rejects_wrong_repository_and_wrong_head(self) -> None:
         wrong_repository = self.resolve(repository="other/widgets")
         wrong_head = self.resolve(head_sha="f" * 40)
@@ -201,6 +256,20 @@ class CheckoutResolverTest(unittest.TestCase):
         self.assertEqual("gh-pr-checkout/v1", result["schemaVersion"])
         self.assertEqual("verified", result["status"])
         self.assertEqual("", completed.stderr)
+
+    def test_scope_cli_emits_registered_github_repositories(self) -> None:
+        completed = subprocess.run(
+            [str(SCRIPT), "--scope"],
+            cwd=self.root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        result = json.loads(completed.stdout)
+        self.assertEqual("gh-pr-checkout/v1", result["schemaVersion"])
+        self.assertEqual("verified", result["status"])
+        self.assertEqual(["acme/widgets"], result["repositories"])
 
     def test_cli_has_no_candidate_or_output_limit_escape_hatches(self) -> None:
         help_text = subprocess.run(

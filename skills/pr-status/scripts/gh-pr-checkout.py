@@ -202,7 +202,15 @@ def discover_candidate_paths(
     except (RuntimeError, TimeoutError) as error:
         errors.append(error_record("workspace-members", str(error)))
 
-    return sorted(set(candidates))[:MAX_CANDIDATES], errors
+    unique_candidates = sorted(set(candidates))
+    if len(unique_candidates) > MAX_CANDIDATES:
+        errors.append(
+            error_record(
+                "scope-candidates",
+                f"repository scope exceeded {MAX_CANDIDATES} candidates",
+            )
+        )
+    return unique_candidates[:MAX_CANDIDATES], errors
 
 
 def worktree_paths(
@@ -227,6 +235,18 @@ def worktree_paths(
             if line.startswith("worktree "):
                 paths.add(str(Path(line.removeprefix("worktree ")).resolve()))
     return sorted(paths)[:MAX_CANDIDATES], errors
+
+
+def inspect_repository(
+    runner: CommandRunner, path: str
+) -> tuple[str | None, list[dict[str, str]]]:
+    try:
+        result = runner.run(["git", "-C", path, "remote", "get-url", "origin"])
+    except (RuntimeError, TimeoutError) as error:
+        return None, [error_record("remote", str(error), path)]
+    if result.returncode != 0:
+        return None, []
+    return github_repository(result.stdout.strip()), []
 
 
 def inspect_candidate(
@@ -279,6 +299,56 @@ def unavailable_checkout(reason: str) -> dict[str, Any]:
         "repository": None,
         "headSha": None,
         "clean": None,
+    }
+
+
+def resolve_repository_scope(
+    *,
+    candidate_paths: list[str] | None = None,
+    cwd: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+) -> dict[str, Any]:
+    runner = CommandRunner(timeout=timeout, max_output_bytes=max_output_bytes)
+    errors = []
+    if candidate_paths is None:
+        seeds, discovery_errors = discover_candidate_paths(
+            runner, Path(cwd or os.getcwd()).resolve()
+        )
+        errors.extend(discovery_errors)
+    else:
+        candidates = sorted(set(candidate_paths))
+        if len(candidates) > MAX_CANDIDATES:
+            errors.append(
+                error_record(
+                    "scope-candidates",
+                    f"repository scope exceeded {MAX_CANDIDATES} candidates",
+                )
+            )
+        seeds = candidates[:MAX_CANDIDATES]
+
+    repositories = set()
+    for path in seeds:
+        repository, candidate_errors = inspect_repository(runner, path)
+        errors.extend(candidate_errors)
+        if repository:
+            repositories.add(repository)
+
+    if errors and repositories:
+        status = "partial"
+    else:
+        status = "verified" if repositories else "unavailable"
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "status": status,
+        "repositories": sorted(repositories, key=str.casefold),
+        "candidatesChecked": len(seeds),
+        "errors": errors,
+        "limits": {
+            "maxCandidates": MAX_CANDIDATES,
+            "timeoutSeconds": timeout,
+            "maxOutputBytes": max_output_bytes,
+        },
     }
 
 
@@ -368,8 +438,9 @@ def resolve_checkout(
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("repository")
-    parser.add_argument("head_sha")
+    parser.add_argument("repository", nargs="?")
+    parser.add_argument("head_sha", nargs="?")
+    parser.add_argument("--scope", action="store_true")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--pretty", action="store_true")
     return parser.parse_args(argv)
@@ -378,13 +449,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     arguments = parse_args(argv)
     try:
-        result = resolve_checkout(
-            arguments.repository,
-            arguments.head_sha,
-            timeout=min(30.0, max(0.1, arguments.timeout)),
-            max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
-        )
-        exit_code = 0
+        timeout = min(30.0, max(0.1, arguments.timeout))
+        if arguments.scope:
+            if arguments.repository or arguments.head_sha:
+                raise ValueError("--scope does not accept a repository or head SHA")
+            result = resolve_repository_scope(
+                timeout=timeout,
+                max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
+            )
+        else:
+            if not arguments.repository or not arguments.head_sha:
+                raise ValueError("repository and head SHA are required")
+            result = resolve_checkout(
+                arguments.repository,
+                arguments.head_sha,
+                timeout=timeout,
+                max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
+            )
+        exit_code = 0 if result["status"] != "failed" else 1
     except (RuntimeError, TimeoutError, ValueError) as error:
         result = {
             "schemaVersion": SCHEMA_VERSION,
