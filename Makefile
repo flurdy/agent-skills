@@ -22,7 +22,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog test-next test-handoffs test-pi-spend test-review-pr test-pr-feedback test-pr-feedback-actions test-release-order test-watch-pr-feedback test-watch-prs test-watch-release test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help clean-code validate-skills test-validate-skills test-assemble test-second-opinion test-project-brief test-plan-to-backlog test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-release-order test-watch-pr-feedback test-watch-prs test-watch-release test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make clean-code"
@@ -36,6 +36,7 @@ help:
 	@echo "make test-handoffs"
 	@echo "make test-pi-spend"
 	@echo "make test-review-pr"
+	@echo "make test-review-requests"
 	@echo "make test-pr-feedback"
 	@echo "make test-pr-feedback-actions"
 	@echo "make test-release-order"
@@ -102,6 +103,9 @@ test-review-pr:
 	@python3 -m unittest discover -s skills/review-pr/tests -p 'test_snapshot.py'
 	@bash skills/review-pr/tests/test-wrappers.sh
 	@bash skills/review-pr/tests/test-skill-contract.sh
+
+test-review-requests:
+	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_review_request_queue.py'
 
 test-pr-feedback-actions:
 	@bash skills/review-comments/tests/test-attended-contract.sh
