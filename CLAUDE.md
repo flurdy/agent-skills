@@ -24,6 +24,13 @@ skill/agent dir changes the set of symlinks, so re-apply:
 non-managed skills/agents untouched. Options (`PROFILE`, `MACHINE`, `CLIENTS`, `FORCE`) are
 in `README.md`.
 
+## Documentation placement
+
+Keep public user, contributor, and component-contract documentation beside its component.
+Keep generated or disposable output under ignored `/.artifacts/`; do not commit raw run output
+without an explicit retention decision. Mark superseded durable records with their replacement,
+not a generic archive folder.
+
 ## Authoring conventions
 
 - A skill is `skills/<name>/SKILL.md`; declare `model-tier` (`economy`, `standard`, or
