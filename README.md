@@ -4,6 +4,16 @@ Portable AI-agent workflows for [Pi](https://pi.dev), Claude Code, and Codex.
 This repository keeps reusable skills, Claude-style sub-agents, and shared prompt
 templates in one source so workflows can be authored once and used across clients.
 
+## Related repositories
+
+These independently usable repositories are installed and versioned separately, but complement
+the workflows here:
+
+- [AI Tools](https://github.com/flurdy/ai-tools) — runtime tools and configuration glue for
+  Pi, Claude Code, and Codex.
+- [Pi Skill Model Router](https://github.com/flurdy/pi-skill-model-router) — an optional Pi
+  extension that maps this repository's portable routing metadata to locally configured models.
+
 ## What you get
 
 - **Skills** — focused workflows stored as `skills/<name>/SKILL.md` and installed
@@ -73,9 +83,8 @@ not a fixed provider or model. Exact model IDs, fallback order, billing
 classification, and spend controls remain runtime-local.
 
 See [MODEL_ROUTING.md](MODEL_ROUTING.md) for the policy. Pi can optionally enforce
-this metadata with the
-[Pi skill model router](https://github.com/flurdy/pi-skill-model-router). Claude Code
-and Codex use their own runtime configuration and capabilities.
+this metadata with the router described under [Related repositories](#related-repositories).
+Claude Code and Codex use their own runtime configuration and capabilities.
 
 ## Prompt templates
 
