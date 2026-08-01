@@ -159,6 +159,7 @@ cat > "$CONFIG" <<'JSON'
     },
     "mixed": {
       "quorum": 2,
+      "consensusQuorum": 3,
       "routes": [
         {"id":"claude-main","kind":"local","agent":"claude","model":"fable","effort":"high","role":"reasoning","provider":"forged","effectiveModel":"forged","modelSource":"forged","effectiveEffort":"forged","effortSource":"forged"},
         {"id":"codex-main","kind":"local","agent":"codex","role":"critique"},
@@ -166,6 +167,25 @@ cat > "$CONFIG" <<'JSON'
         {"id":"qwen-b","kind":"openrouter","model":"openrouter/QWEN/model-b","vendor":"Qwen","role":"corroboration"}
       ],
       "limits":{"maxParallel":4,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
+    },
+    "toggled": {
+      "enabled": true,
+      "quorum": 2,
+      "consensusQuorum": 2,
+      "routes": [
+        {"id":"toggled-claude","kind":"local","agent":"claude","enabled":true,"role":"reasoning"},
+        {"id":"toggled-codex","kind":"local","agent":"codex","enabled":false,"role":"critique"},
+        {"id":"toggled-qwen","kind":"openrouter","model":"openrouter/qwen/toggled","vendor":"Qwen","enabled":true,"role":"verification"}
+      ],
+      "limits":{"maxParallel":2,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
+    },
+    "disabled-profile": {
+      "enabled": false,
+      "quorum": 1,
+      "routes": [
+        {"id":"disabled-claude","kind":"local","agent":"claude","role":"review"}
+      ],
+      "limits":{"maxParallel":1,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
     },
     "invalid-gemini-effort": {
       "quorum": 1,
@@ -191,7 +211,7 @@ NO_GEMINI_ENV=(env "PATH=$TMP_DIR/bin-no-gemini:/usr/bin:/bin" "HOME=$TMP_DIR/ho
 
 focused_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel focused --prompt-file "$PROMPT")"
 jq -e '
-  .ready and .source == "built-in" and .quorum == 2 and
+  .ready and .source == "built-in" and .quorum == 2 and .consensusQuorum == 2 and
   .limits.defaultTimeoutSeconds == 600 and
   [.routes[].id] == ["claude","codex"] and .openrouter.requestCount == 0 and
   .openrouter.completionContractBytes == 0 and
@@ -206,7 +226,7 @@ jq -e '
 
 legacy_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel legacy --prompt-file "$PROMPT")"
 jq -e '
-  .legacy and .quorum == 2 and .openrouter.requestCount == 2 and
+  .legacy and .quorum == 2 and .consensusQuorum == 2 and .openrouter.requestCount == 2 and
   .openrouter.completionContractBytes > 0 and
   [.routes[].id] == ["openrouter-1","openrouter-2"]
 ' <<< "$legacy_json" >/dev/null || fail "legacy profile was not normalized"
@@ -277,13 +297,65 @@ mixed_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel mixed -
   --route-model claude-main=opus --route-effort claude-main=xhigh \
   --route-model codex-main=gpt-test --route-effort codex-main=high)"
 jq -e '
-  .quorum == 2 and .openrouter.requestCount == 2 and .openrouter.consentRequired and
+  .quorum == 2 and .consensusQuorum == 3 and .openrouter.requestCount == 2 and .openrouter.consentRequired and
   [.routes[].id] == ["claude-main","codex-main","qwen-a","qwen-b"] and
   (.routes[] | select(.id == "claude-main") | .effectiveModel == "opus" and .modelSource == "override" and .effectiveEffort == "xhigh") and
   (.routes[] | select(.id == "codex-main") | .effectiveModel == "gpt-test" and .effectiveEffort == "high") and
   (.routes[] | select(.id == "qwen-a") | .availability == "requires-consent" and .consentPolicy == "ask" and .consentBasis == "confirmation-required") and
   ([.routes[].provider] | unique | sort) == ["anthropic","openai","qwen"]
 ' <<< "$mixed_json" >/dev/null || fail "mixed profile, consent policy, or route overrides were incorrect"
+
+expect_failure 'panel is disabled: disabled-profile' "${RUN_ENV[@]}" "$HELPER" check \
+  --config "$CONFIG" --panel disabled-profile --prompt-file "$PROMPT"
+
+TOO_HIGH_CONFIG="$TMP_DIR/too-high.json"
+jq '.profiles.toggled.consensusQuorum = 3' "$CONFIG" > "$TOO_HIGH_CONFIG"
+expect_failure 'panel thresholds must be integers between 1 and the enabled unique provider count (2)' \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$TOO_HIGH_CONFIG" --panel toggled --prompt-file "$PROMPT"
+
+CONSENSUS_BELOW_QUORUM_CONFIG="$TMP_DIR/consensus-below-quorum.json"
+jq '.profiles.toggled.consensusQuorum = 1' "$CONFIG" > "$CONSENSUS_BELOW_QUORUM_CONFIG"
+expect_failure 'consensusQuorum must be greater than or equal to quorum' \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$CONSENSUS_BELOW_QUORUM_CONFIG" --panel toggled --prompt-file "$PROMPT"
+
+toggled_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel toggled --prompt-file "$PROMPT")"
+jq -e '
+  .quorum == 2 and .consensusQuorum == 2 and
+  [.routes[].id] == ["toggled-claude","toggled-codex","toggled-qwen"] and
+  (.routes[] | select(.id == "toggled-codex") | .enabled == false and .availability == "disabled") and
+  [.localRoutes[].id] == ["toggled-claude"] and [.openrouterRoutes[].id] == ["toggled-qwen"] and
+  .openrouter.requestCount == 1
+' <<< "$toggled_json" >/dev/null || fail "disabled route normalization was incorrect"
+toggled_panel_sha="$(jq -r '.panelSha256' <<< "$toggled_json")"
+toggled_openrouter_sha="$(jq -r '.openrouterSha256' <<< "$toggled_json")"
+toggled_prompt_sha="$(jq -r '.promptSha256' <<< "$toggled_json")"
+TOGGLED_COMMON=(--config "$CONFIG" --panel toggled --prompt-file "$PROMPT" \
+  --panel-sha256 "$toggled_panel_sha" --prompt-sha256 "$toggled_prompt_sha")
+: > "$AGENT_LOG"
+"${RUN_ENV[@]}" "$HELPER" run-local "${TOGGLED_COMMON[@]}" > "$TMP_DIR/toggled-local.json"
+[[ "$(wc -l < "$AGENT_LOG" | tr -d '[:space:]')" -eq 1 ]] || fail "disabled local route was invoked"
+jq -e 'length == 1 and .[0].id == "toggled-claude" and .[0].status == "ok"' \
+  "$TMP_DIR/toggled-local.json" >/dev/null || fail "enabled local route did not run alone"
+REENABLED_CONFIG="$TMP_DIR/reenabled.json"
+jq '.profiles.toggled.routes[1].enabled = true' "$CONFIG" > "$REENABLED_CONFIG"
+expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-local \
+  --config "$REENABLED_CONFIG" --panel toggled --prompt-file "$PROMPT" \
+  --panel-sha256 "$toggled_panel_sha" --prompt-sha256 "$toggled_prompt_sha"
+"${RUN_ENV[@]}" "$HELPER" decline-openrouter "${TOGGLED_COMMON[@]}" \
+  --openrouter-sha256 "$toggled_openrouter_sha" > "$TMP_DIR/toggled-declined.json"
+printf '%s\n' "$toggled_json" > "$TMP_DIR/toggled-check.json"
+"$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/toggled-check.json" \
+  --results-file "$TMP_DIR/toggled-local.json" --results-file "$TMP_DIR/toggled-declined.json" \
+  > "$TMP_DIR/toggled-eval.json"
+jq -e '
+  .quorumRequired == 2 and .consensusQuorumRequired == 2 and
+  .quorumMet == false and .consensusEligible == false and
+  [.results[] | {id,status}] == [
+    {"id":"toggled-claude","status":"ok"},
+    {"id":"toggled-codex","status":"disabled"},
+    {"id":"toggled-qwen","status":"declined"}
+  ]
+' "$TMP_DIR/toggled-eval.json" >/dev/null || fail "disabled route evaluation evidence was incorrect"
 
 completion_contract_bytes="$(jq -r '.openrouter.completionContractBytes' <<< "$mixed_json")"
 CONTRACT_OVERHEAD_PROMPT="$TMP_DIR/contract-overhead.txt"
@@ -344,9 +416,10 @@ printf '%s\n' "$mixed_json" > "$TMP_DIR/mixed-check.json"
 "$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/mixed-check.json" \
   --results-file "$local_results" --results-file "$declined_results" > "$declined_eval"
 jq -e '
-  .quorumMet and .consensusEligible and .successfulProviderCount == 2 and
+  .quorumRequired == 2 and .consensusQuorumRequired == 3 and
+  .quorumMet and (.consensusEligible | not) and .successfulProviderCount == 2 and
   (.unavailableRoutes | length) == 2 and (.sameProviderCorroboration | length) == 0
-' "$declined_eval" >/dev/null || fail "local-only quorum after decline was incorrect"
+' "$declined_eval" >/dev/null || fail "local-only quorum incorrectly enabled consensus after decline"
 
 : > "$CURL_LOG"
 openrouter_results="$TMP_DIR/openrouter-results.json"
@@ -368,6 +441,7 @@ approved_eval="$TMP_DIR/approved-eval.json"
 "$HELPER" evaluate --policy quorum --check-file "$TMP_DIR/mixed-check.json" \
   --results-file "$local_results" --results-file "$openrouter_results" > "$approved_eval"
 jq -e '
+  .quorumRequired == 2 and .consensusQuorumRequired == 3 and
   .quorumMet and (.consensusEligible | not) and .successfulProviderCount == 3 and
   .sameProviderCorroboration == [{"provider":"qwen","routeIds":["qwen-a","qwen-b"]}]
 ' "$approved_eval" >/dev/null || fail "provider quorum or same-provider corroboration was incorrect"
@@ -401,7 +475,9 @@ jq -e '
 jq '.[0].response = "contradicts every other route"' "$openrouter_results" > "$TMP_DIR/contradictory.json"
 "$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/mixed-check.json" \
   --results-file "$local_results" --results-file "$TMP_DIR/contradictory.json" > "$TMP_DIR/contradictory-eval.json"
-jq -e '.quorumMet and .consensusEligible and .interpretationRequired' "$TMP_DIR/contradictory-eval.json" >/dev/null || fail "mechanical evaluator attempted semantic consensus"
+jq -e '
+  .quorumMet and .consensusEligible and .consensusQuorumRequired == 3 and .interpretationRequired
+' "$TMP_DIR/contradictory-eval.json" >/dev/null || fail "mechanical evaluator attempted semantic consensus"
 
 # Cross-prompt/stale results are rejected before quorum evaluation.
 jq --arg wrong "$wrong_openrouter_sha" '.[0].promptSha256 = $wrong' "$local_results" > "$TMP_DIR/stale-local.json"

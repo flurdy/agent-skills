@@ -5,16 +5,16 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.0.2"
+version: "2.1.0"
 author: "flurdy"
 ---
 
 # Second Opinion
 
 Query one independent CLI peer or a bounded named review panel for plans, PRs, code, or bugs.
-`quorum` and `consensus` execute the same selected panel. Quorum means enough independent providers
-returned; consensus is a later claim-level interpretation that is allowed only after quorum.
-Agreement and vote count never establish correctness.
+`quorum` and `consensus` execute the same enabled routes from the selected panel exactly once. Quorum
+uses the profile's provider threshold; consensus interpretation requires its separately configurable
+consensus threshold. Agreement and vote count never establish correctness.
 
 ## Usage
 
@@ -214,7 +214,8 @@ the prompt with `Write`. Do not put panel prompt text in shell argv.
 Retain and display:
 
 - ordered route IDs, kinds, providers, roles, availability, effective model/effort, and provenance;
-- configured quorum and limits, including fixed OpenRouter completion-contract bytes;
+- configured quorum and consensus thresholds, enabled/disabled routes, and limits, including fixed
+  OpenRouter completion-contract bytes;
 - `panelSha256`, `openrouterSha256`, and `promptSha256`.
 
 If profile validation fails, stop before any route invocation. Missing route prerequisites degrade the
@@ -232,9 +233,9 @@ panel; they do not authorize substitution.
   {repeated_route_overrides}
 ```
 
-Save the returned JSON array to a mode-private result file. The coordinator invokes each configured
+Save the returned JSON array to a mode-private result file. The coordinator invokes each enabled
 local route at most once, in bounded parallel batches, with read-only tools/sandboxing and prompt
-stdin. Preserve missing CLIs, timeouts, and failures.
+stdin. Disabled routes are not invoked. Preserve missing CLIs, timeouts, and failures.
 
 ### 4.3 Decide the OpenRouter subset
 
@@ -272,8 +273,9 @@ Write the `check`, local-result, and OpenRouter-result JSON to private files, th
 ```
 
 Omit a result file only when that subset did not run and produced no results. The evaluator preserves
-panel order, counts unique successful providers, reports unavailable routes and same-provider
-corroboration, and sets `consensusEligible`. OpenRouter routes count as successful only when they
+panel order, reports disabled and unavailable routes, counts unique successful providers, reports
+same-provider corroboration, and evaluates `quorumMet` and `consensusEligible` against their separate
+thresholds. OpenRouter routes count as successful only when they
 return non-empty text with the fixed completion marker, normalized finish reason `stop`, and no tool
 calls. The helper strips the marker and classifies every other transport-success response as
 `incomplete`; this is protocol completion, not semantic validation. Results retain bounded response
@@ -292,11 +294,12 @@ First show every route faithfully:
 |---|---|---|---|---|---|
 | ... |
 
-**Quorum:** {successful unique providers}/{required} — met / not met
+**Quorum:** {successful unique providers}/{quorum required} — met / not met
 ```
 
-Then include each successful response under its route heading and every error, incomplete response,
-decline, or timeout under Unavailable routes. For an incomplete OpenRouter route, report its preserved
+For the consensus policy, add `**Consensus threshold:** {successful unique providers}/{consensus
+required} — eligible / not eligible`. Then include each successful response under its route heading and
+every error, incomplete response, decline, or timeout under Unavailable routes. For an incomplete OpenRouter route, report its preserved
 visible response and termination diagnostics without treating either as independent coverage.
 
 ### Quorum policy
@@ -308,7 +311,7 @@ consensus.
 ### Consensus policy
 
 If `consensusEligible` is false, state **no consensus assessment was made**. Preserve returned
-opinions but do not synthesize agreement.
+opinions but do not synthesize agreement, even when the lower ordinary quorum was met.
 
 If eligible, compare claims and report all five categories:
 
@@ -342,7 +345,8 @@ claims; repeated unsupported claims remain invalid.
 - Never send secrets or credentials to a route.
 - Never expose OpenRouter credentials or place the bearer token in argv.
 - Never give OpenRouter routes tools or repository access.
-- Never retry/substitute a failed route or silently change a configured panel.
+- Never invoke a disabled profile or route, retry/substitute a failed route, or silently change a
+  configured panel.
 - Always report effective OpenRouter consent policy and basis alongside route provenance.
 - Always report effective route provenance; use `skill-default` for the implicit direct-Claude
   `opus` selection and `native-default` when the runtime does not reveal a concrete setting.

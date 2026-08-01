@@ -17,7 +17,7 @@ quick-start and deliberately links to the detailed policy rather than reproducin
 | Structure a bug investigation | `/second-opinion triage-bug "…"` | Requests root-cause hypotheses and falsification steps. |
 | Ask a specific provider | `/second-opinion ask "…" --agent codex` | Runs exactly the named local CLI route. |
 | Check panel coverage | `/second-opinion review-pr 123 --agent quorum --panel focused` | Runs a named panel and reports whether enough distinct providers returned. |
-| Compare panel claims | `/second-opinion validate-plan "…" --agent consensus --panel extreme` | Runs a named panel, then compares claims only if quorum is met. |
+| Compare panel claims | `/second-opinion validate-plan "…" --agent consensus --panel extreme` | Runs a named panel, then compares claims only if its consensus threshold is met. |
 
 Use one peer for ordinary decisions. Use a panel when different provider perspectives are
 material enough to justify the extra time, review effort, and—where configured—cost.
@@ -48,12 +48,14 @@ Examples:
 ## Panels: quorum and consensus
 
 A panel is a configured set of local and optionally OpenRouter routes. `quorum` and `consensus`
-run the same panel; they differ only in the interpretation:
+run the same enabled routes exactly once; they differ only in interpretation thresholds:
 
-- **Quorum** is mechanical coverage: did the configured number of *distinct providers* return?
-  Multiple models from one provider count once.
-- **Consensus** is claim comparison after quorum. It must distinguish supported agreements,
-  disagreements, repeated assumptions, same-provider corroboration, and unavailable routes.
+- **Quorum** is mechanical coverage: did `quorum` distinct providers return? Multiple models from
+  one provider count once.
+- **Consensus** is claim comparison only after `consensusQuorum` distinct providers return. When
+  omitted, that threshold falls back to `quorum` for compatibility. It must distinguish supported
+  agreements, disagreements, repeated assumptions, same-provider corroboration, and unavailable or
+  disabled routes.
 
 Neither a vote count nor agreement proves a finding is correct. Verify each material finding in the
 repository.
@@ -68,9 +70,10 @@ Useful commands:
   --route-model claude-fable=opus --route-effort claude-fable=max
 ```
 
-`focused` is the local Claude-and-Codex built-in. `local-legacy` is a reserved local-only
-compatibility panel. `--agent all` is deprecated; use `--agent quorum` instead. Timeouts default to
-10 minutes and can be set from 1 to 30 minutes with `--timeout <minutes>`.
+`focused` is the local Claude-and-Codex built-in and may be overridden by an explicit local profile.
+`local-legacy` is a reserved local-only compatibility panel. Direct `peer` remains dynamic and is not
+a panel route. `--agent all` is deprecated; use `--agent quorum` instead. Timeouts default to 10
+minutes and can be set from 1 to 30 minutes with `--timeout <minutes>`.
 
 ## Setup
 
@@ -87,8 +90,10 @@ OpenRouter routes live in:
 ~/.agents/second-opinion/config.json
 ```
 
-The configuration contains route identities, limits, and optional user-local
-exact-model consent policies, not credentials. See
+The configuration contains route identities, `quorum`/`consensusQuorum` thresholds, optional
+profile/route `enabled` switches, limits, and optional user-local exact-model consent policies—not
+credentials. Disabled profiles fail when selected; disabled routes remain visible but are not run or
+counted. See
 [review-panels.md](references/review-panels.md) for the supported schema, built-ins, per-route
 model/effort overrides, and limits.
 
@@ -139,7 +144,8 @@ settings are reported as `native-default`—see
 | Symptom | What to do |
 |---|---|
 | `peer` route is unavailable | Install/authenticate another supported local CLI, or select an available route explicitly. The skill does not silently substitute one. |
-| A panel falls short of quorum | Read the unavailable-route statuses; partial results are still useful but are not complete coverage. |
+| A panel falls short of quorum | Read disabled/unavailable route statuses; partial results remain useful but are not complete coverage. |
+| Quorum passes but consensus is ineligible | Preserve individual opinions; the stricter `consensusQuorum` threshold was not met, so do not synthesize agreement. |
 | An OpenRouter route is `incomplete` | Inspect its visible partial response and termination diagnostics. It intentionally does not count toward quorum. |
 | OpenRouter routes were not run | Check the displayed prerequisite or consent status. Declining consent is expected to leave those routes as declined. |
 | A panel configuration is rejected | Check route IDs/models for uniqueness and use the schema in [review-panels.md](references/review-panels.md). |

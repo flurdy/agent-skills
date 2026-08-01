@@ -39,8 +39,10 @@ ordinary commands:
 - OpenRouter model identities come only from the selected profile and cannot be overridden at run
   time.
 
-The configured `extreme` OpenRouter-only profile remains valid. Mixed profiles add explicit local
-choices without changing single-agent defaults.
+The configured `extreme` profile remains OpenRouter-only but should use the modern `routes` shape,
+with separate quorum and consensus thresholds. Mixed profiles add explicit local choices without
+changing single-agent defaults. Optional profile/route `enabled` switches affect only named panels;
+direct `peer` remains dynamically selected.
 
 ## Effort
 

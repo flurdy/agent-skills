@@ -24,8 +24,9 @@ It contains no credentials. The API key remains in the user's secret manager and
 Exact model IDs belong in local configuration, not the shared skill. See
 [review-panels.md](review-panels.md) for the mixed-route schema.
 
-The existing version-1 legacy shape remains valid. The optional root-level `modelPolicies` object
-sets exact user-local authorization only; it never contains credentials:
+The existing version-1 legacy `models` shape remains valid, but actively maintained profiles should
+use `routes`. The optional root-level `modelPolicies` object sets exact user-local authorization only;
+it never contains credentials or route availability:
 
 ```json
 {
@@ -38,11 +39,41 @@ sets exact user-local authorization only; it never contains credentials:
   },
   "profiles": {
     "extreme": {
-      "models": [
+      "enabled": true,
+      "quorum": 2,
+      "consensusQuorum": 4,
+      "routes": [
         {
-          "model": "openrouter/<provider>/<model-id>",
-          "vendor": "Vendor name",
+          "id": "qwen",
+          "kind": "openrouter",
+          "enabled": true,
+          "model": "openrouter/qwen/<configured-model-id>",
+          "vendor": "Qwen",
           "role": "independent reasoning"
+        },
+        {
+          "id": "grok",
+          "kind": "openrouter",
+          "enabled": true,
+          "model": "openrouter/x-ai/<configured-model-id>",
+          "vendor": "xAI",
+          "role": "adversarial critique"
+        },
+        {
+          "id": "deepseek",
+          "kind": "openrouter",
+          "enabled": true,
+          "model": "openrouter/deepseek/<configured-model-id>",
+          "vendor": "DeepSeek",
+          "role": "technical verification"
+        },
+        {
+          "id": "kimi",
+          "kind": "openrouter",
+          "enabled": true,
+          "model": "openrouter/moonshotai/kimi-k3",
+          "vendor": "Moonshot AI",
+          "role": "long-context review"
         }
       ],
       "limits": {
@@ -56,8 +87,11 @@ sets exact user-local authorization only; it never contains credentials:
 }
 ```
 
+A `consensusQuorum: 4` profile must retain at least four enabled unique providers. Disabled OpenRouter
+routes make no request and are excluded from consent.
+
 A panel may contain 1–8 unique model identities. Repeated provider namespaces are allowed for
-corroboration but count once toward quorum. `vendor` is display-only; the helper derives provider
+corroboration but count once toward either threshold. `vendor` is display-only; the helper derives provider
 identity from canonical `openrouter/<provider>/<model-id>` values. Each policy must use the exact
 canonical OpenRouter model ID, declare `metered: true`, and set `consent` to `ask` or `allow`.
 `allow` does not apply to a provider, panel, renamed model, or unlisted model.
@@ -176,7 +210,8 @@ post-call telemetry, not a reliable pre-run estimate.
 Quorum is mechanical: count unique providers with successful responses. Same-provider successes are
 reported separately and cannot inflate quorum.
 
-Consensus is semantic and only eligible after quorum. Report:
+Consensus is semantic and only eligible after the configured `consensusQuorum` threshold, which may
+be stricter than ordinary quorum. Report:
 
 - claim-level evidence-backed agreements;
 - disagreements and uncertainty;
@@ -196,7 +231,8 @@ list only actionable items.
 - Never print credentials or put the bearer token in argv.
 - Never exceed compiled model, concurrency, prompt, output, or timeout ceilings.
 - Never give OpenRouter models tools, repository access, environment contents, or unsanitized data.
-- Never count an `incomplete` response toward quorum or treat the completion marker as semantic review.
+- Never invoke disabled routes, count a disabled or `incomplete` response toward either threshold,
+  or treat the completion marker as semantic review.
 
 ## Maintainer validation
 

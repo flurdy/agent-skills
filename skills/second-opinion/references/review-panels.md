@@ -1,9 +1,9 @@
 # Review panel configuration and execution
 
-Review panels are policy-neutral route sets. `quorum` and `consensus` execute the same selected
-panel; only interpretation differs. Quorum asks whether enough independent providers returned.
-Consensus first requires quorum, then the caller compares claim-level evidence. Neither policy treats
-route count or agreement as correctness.
+Review panels are policy-neutral route sets. `quorum` and `consensus` execute the same enabled routes
+from the selected panel exactly once; only interpretation differs. Quorum asks whether `quorum`
+independent providers returned. Consensus comparison requires `consensusQuorum` providers. Neither
+policy treats route count or agreement as correctness.
 
 ## Configuration
 
@@ -19,9 +19,15 @@ It stays at schema version 1. Each entry under `profiles` contains exactly one o
 - `routes`: the policy-neutral panel shape below.
 
 A route profile requires `quorum`, measured in **unique successful providers**, and the existing
-bounded `limits` object. Routes from the same provider may corroborate each other but count once
-toward quorum. The optional root-level `modelPolicies` object is user-local spend authority for
-exact OpenRouter model IDs; it is separate from every profile.
+bounded `limits` object. Optional `consensusQuorum` defaults to `quorum` for compatibility and must
+be at least `quorum`. Both thresholds must fit the enabled unique-provider count. Routes from the
+same provider may corroborate each other but count once toward either threshold.
+
+Optional `enabled` defaults to `true` on profiles and routes. Selecting a disabled profile fails
+without fallback. Disabled routes remain visible in check/evaluation output with status `disabled`,
+but are never invoked and never count toward a threshold. The optional root-level `modelPolicies`
+object remains exact OpenRouter spend authority; it is separate from profile/route availability and
+does not accept `enabled`.
 
 ```json
 {
@@ -33,30 +39,51 @@ exact OpenRouter model IDs; it is separate from every profile.
     }
   },
   "profiles": {
-    "large": {
-      "quorum": 4,
+    "focused": {
+      "enabled": true,
+      "quorum": 2,
+      "consensusQuorum": 2,
       "routes": [
         {
-          "id": "claude-fable",
+          "id": "claude",
           "kind": "local",
           "agent": "claude",
-          "model": "fable",
-          "effort": "xhigh",
-          "role": "architecture reasoning"
+          "enabled": true,
+          "role": "independent review"
         },
         {
           "id": "codex",
           "kind": "local",
           "agent": "codex",
-          "effort": "high",
-          "role": "implementation critique"
-        },
+          "enabled": true,
+          "role": "independent review"
+        }
+      ],
+      "limits": {
+        "maxParallel": 2,
+        "maxPromptBytes": 65536,
+        "maxOutputTokensPerModel": 2000,
+        "defaultTimeoutSeconds": 600
+      }
+    },
+    "extreme": {
+      "enabled": true,
+      "quorum": 2,
+      "consensusQuorum": 4,
+      "routes": [
         {
           "id": "qwen",
           "kind": "openrouter",
           "model": "openrouter/qwen/<configured-model-id>",
           "vendor": "Qwen",
           "role": "independent reasoning"
+        },
+        {
+          "id": "grok",
+          "kind": "openrouter",
+          "model": "openrouter/x-ai/<configured-model-id>",
+          "vendor": "xAI",
+          "role": "adversarial critique"
         },
         {
           "id": "deepseek",
@@ -71,13 +98,6 @@ exact OpenRouter model IDs; it is separate from every profile.
           "model": "openrouter/moonshotai/<configured-model-id>",
           "vendor": "Moonshot AI",
           "role": "long-context review"
-        },
-        {
-          "id": "grok",
-          "kind": "openrouter",
-          "model": "openrouter/x-ai/<configured-model-id>",
-          "vendor": "xAI",
-          "role": "adversarial critique"
         }
       ],
       "limits": {
@@ -101,7 +121,9 @@ when omitted. `effort` is optional and route-specific:
 
 The coordinator derives local providers (`anthropic`, `openai`, `google`) and the OpenRouter provider
 namespace. Route IDs and model identities must be unique. Repeated provider namespaces are allowed
-but cannot inflate quorum.
+but cannot inflate either threshold. `peer` remains a direct-route convenience selected from the
+current session provider; panel configuration intentionally uses explicit `claude`, `codex`, or
+`gemini` local routes.
 
 ### Configured OpenRouter consent
 
@@ -130,15 +152,25 @@ the fixed completion contract, so a policy or contract change invalidates a prio
 
 Panel availability:
 
-- `focused`: local Claude + Codex, quorum 2; local config may override it;
-- `local-legacy`: reserved built-in local Claude + Codex + Gemini, quorum 2; a same-named config
-  entry is ignored so compatibility workflows remain guaranteed local-only.
+- `focused`: local Claude + Codex, quorum and consensus threshold 2; local config may override it;
+- `local-legacy`: reserved built-in local Claude + Codex + Gemini, both thresholds 2; a same-named
+  config entry is ignored so compatibility workflows remain guaranteed local-only.
 
 The deprecated `--agent all` spelling maps to `--agent quorum --panel local-legacy`.
 
-A legacy profile with `models` remains valid and normalizes to OpenRouter routes. Its quorum defaults
-to `min(2, unique providers)`. The configured `extreme` profile is not changed or synthesized;
-`--agent consensus` continues to default to it.
+A legacy profile with `models` remains valid and normalizes to enabled OpenRouter routes. Its quorum
+defaults to `min(2, unique providers)` and its omitted `consensusQuorum` falls back to that quorum.
+Modernize actively maintained profiles to `routes`; `--agent consensus` continues to default to the
+configured `extreme` profile.
+
+### Migrating a legacy profile
+
+For each legacy `models` entry, add a stable `id`, set `kind: "openrouter"`, and move it unchanged
+into `routes`. Add explicit `quorum` and, when consensus should be stricter, `consensusQuorum`.
+Optional `enabled` switches belong on the profile or routes. Leave root `modelPolicies` unchanged:
+they authorize exact OpenRouter spend and are not route-selection configuration. Run `check` against
+the migrated profile before invoking any route; `legacy: false`, the intended thresholds, and the
+expected enabled route/request counts prove the migration took effect.
 
 ## Route overrides
 
@@ -159,10 +191,12 @@ is invalid with `quorum` or `consensus`.
 
 The skill invokes `scripts/review-panel.sh` in four bounded stages:
 
-1. `check` normalizes the selected profile, applies overrides, checks route availability, and binds the
-   canonical panel, OpenRouter subset, and exact prompt with SHA-256 digests.
-2. `run-local` verifies the panel and prompt digests and executes only local routes. Every local route
-   receives the same private prompt through stdin, runs at most once, and is read-only/sandboxed.
+1. `check` rejects a disabled profile, normalizes its routes and thresholds, applies overrides, checks
+   enabled-route availability, and binds the canonical panel, OpenRouter subset, and exact prompt with
+   SHA-256 digests.
+2. `run-local` verifies the panel and prompt digests and executes only enabled local routes. Every
+   enabled local route receives the same private prompt through stdin, runs at most once, and is
+   read-only/sandboxed.
 3. If OpenRouter routes exist and prerequisites are available, the skill discloses **only the routes
    whose exact policies remain `ask`** and asks for fresh metered consent. If every selected route is
    explicitly `allow`, it invokes `run-openrouter --configured-consent`; otherwise it invokes
@@ -171,9 +205,9 @@ The skill invokes `scripts/review-panel.sh` in four bounded stages:
    contract, strips its marker from completed output, and classifies missing markers, non-stop
    termination, or tool-call attempts as `incomplete`. Declining uses `decline-openrouter` and makes
    no request.
-4. `evaluate` preserves route order and failures, counts unique successful providers, and reports
-   whether quorum was met. It reports same-provider corroboration separately and does no semantic
-   consensus analysis.
+4. `evaluate` preserves route order, disabled evidence, and failures; counts unique successful
+   providers; and reports both `quorumMet` and `consensusEligible` against their configured thresholds.
+   It reports same-provider corroboration separately and does no semantic consensus analysis.
 
 Every result reports route ID, kind, provider, effective model and effort, their source (`panel`,
 `override`, or `native-default`), effective OpenRouter consent policy/basis when applicable, status,
@@ -190,7 +224,9 @@ completion contract and no tools. Their combined bytes stay within `maxPromptByt
 timeouts, incomplete responses, declined metered routes, and model errors remain explicit; routes are
 never retried or substituted.
 
-For consensus, the caller may synthesize agreements only when `consensusEligible` is true. The
-synthesis must separately report evidence-backed agreements, disagreements, shared assumptions,
-same-provider corroboration, and unavailable routes. Material claims still require repository-grounded
+For consensus, the caller may synthesize agreements only when the successful unique-provider count
+meets `consensusQuorum` and `consensusEligible` is true. Falling short can still meet ordinary quorum;
+in that case preserve the individual opinions but make no consensus assessment. The synthesis must
+separately report evidence-backed agreements, disagreements, shared assumptions, same-provider
+corroboration, and unavailable or disabled routes. Material claims still require repository-grounded
 verification.

@@ -32,9 +32,11 @@ Usage:
   review-panel.sh evaluate --policy quorum|consensus --check-file FILE --results-file FILE...
 
 Profiles live under version-1 config "profiles". A profile contains either legacy
-OpenRouter "models" or policy-neutral "routes", never both. Built-in focused is
-used when absent from config. The local-only local-legacy panel is reserved and
-cannot be overridden. Local response and error capture are bounded while streaming.
+OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes may
+be disabled; quorum and optional consensusQuorum count enabled unique providers.
+Built-in focused is used when absent from config. The local-only local-legacy panel
+is reserved and cannot be overridden. Local response and error capture are bounded
+while streaming.
 USAGE
 }
 
@@ -175,10 +177,14 @@ normalize_profile() {
 
   if ! jq -e '
     (type == "object") and
+    ((has("enabled") | not) or (.enabled | type == "boolean")) and
     (((.models | type == "array") and (has("routes") | not)) or
      ((.routes | type == "array") and (has("models") | not)))
   ' <<< "$RAW_PROFILE" >/dev/null 2>&1; then
-    die "panel must contain exactly one of models or routes"
+    die "panel must contain exactly one of models or routes and an optional boolean enabled field"
+  fi
+  if jq -e '.enabled == false' <<< "$RAW_PROFILE" >/dev/null; then
+    die "panel is disabled: $PANEL_NAME"
   fi
 
   if jq -e 'has("models")' <<< "$RAW_PROFILE" >/dev/null; then
@@ -194,11 +200,14 @@ normalize_profile() {
     fi
     PANEL_JSON="$(jq -c '
       (.models | map(.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase) | unique | length) as $providers |
+      (.quorum // ([2, $providers] | min)) as $quorum |
       {
-        quorum: (.quorum // ([2, $providers] | min)),
+        quorum: $quorum,
+        consensusQuorum: (.consensusQuorum // $quorum),
         routes: [.models | to_entries[] | {
           id: ("openrouter-" + ((.key + 1) | tostring)),
           kind: "openrouter",
+          enabled: true,
           model: .value.model,
           vendor: .value.vendor,
           role: .value.role
@@ -208,7 +217,7 @@ normalize_profile() {
     ' <<< "$RAW_PROFILE")"
     LEGACY_PROFILE=true
   else
-    PANEL_JSON="$(jq -c '{quorum, routes, limits}' <<< "$RAW_PROFILE")"
+    PANEL_JSON="$(jq -c '{quorum, consensusQuorum: (.consensusQuorum // .quorum), routes, limits}' <<< "$RAW_PROFILE")"
     LEGACY_PROFILE=false
   fi
 
@@ -231,6 +240,7 @@ validate_limits_and_routes() {
     all(.routes[];
       (.id | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and
       (.role | type == "string" and length > 0) and
+      ((has("enabled") | not) or (.enabled | type == "boolean")) and
       (
         (.kind == "local" and (.agent == "claude" or .agent == "codex" or .agent == "gemini") and
           ((has("model") | not) or (.model | type == "string" and length > 0)) and
@@ -255,6 +265,7 @@ validate_limits_and_routes() {
   PANEL_JSON="$(jq -c --argjson model_policies "$MODEL_POLICIES" '
     .routes |= map(
       . + {
+        enabled: (if has("enabled") then .enabled else true end),
         provider: (if .kind == "local" then ({claude:"anthropic",codex:"openai",gemini:"google"}[.agent]) else (.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase) end),
         effectiveModel: (.model // "native-default"),
         modelSource: (if has("model") then "panel" else "native-default" end),
@@ -273,11 +284,15 @@ validate_limits_and_routes() {
   ' <<< "$PANEL_JSON")"
 
   local provider_count
-  provider_count="$(jq -r '[.routes[].provider] | unique | length' <<< "$PANEL_JSON")"
+  provider_count="$(jq -r '[.routes[] | select(.enabled) | .provider] | unique | length' <<< "$PANEL_JSON")"
   if ! jq -e --argjson providers "$provider_count" '
-    (.quorum | type == "number" and floor == . and . >= 1 and . <= $providers)
+    all([.quorum, .consensusQuorum][];
+      type == "number" and floor == . and . >= 1 and . <= $providers)
   ' <<< "$PANEL_JSON" >/dev/null 2>&1; then
-    die "panel quorum must be an integer between 1 and the unique provider count ($provider_count)"
+    die "panel thresholds must be integers between 1 and the enabled unique provider count ($provider_count)"
+  fi
+  if ! jq -e '.consensusQuorum >= .quorum' <<< "$PANEL_JSON" >/dev/null 2>&1; then
+    die "consensusQuorum must be greater than or equal to quorum"
   fi
 }
 
@@ -350,7 +365,7 @@ validate_and_apply_overrides() {
     --argjson contract_bytes "$completion_contract_bytes" \
     --arg contract_sha256 "$completion_contract_sha256" '
     {
-      routes: [.routes[] | select(.kind == "openrouter")],
+      routes: [.routes[] | select(.kind == "openrouter" and .enabled)],
       limits,
       completionContract: {bytes: $contract_bytes, sha256: $contract_sha256}
     }
@@ -409,7 +424,8 @@ check_panel() {
   routes="$(jq -c --arg openrouter_availability "$openrouter_availability" '
     [.routes[] | . + {
       availability: (
-        if .kind != "openrouter" then "unchecked"
+        if (.enabled | not) then "disabled"
+        elif .kind != "openrouter" then "unchecked"
         elif $openrouter_availability != "available" then "unavailable"
         elif .consentPolicy == "allow" then "configured-allow"
         else "requires-consent"
@@ -418,8 +434,8 @@ check_panel() {
     }]
   ' <<< "$PANEL_JSON")"
   local local_routes openrouter_routes
-  local_routes="$(jq '[.[] | select(.kind == "local")]' <<< "$routes")"
-  openrouter_routes="$(jq '[.[] | select(.kind == "openrouter")]' <<< "$routes")"
+  local_routes="$(jq '[.[] | select(.kind == "local" and .enabled)]' <<< "$routes")"
+  openrouter_routes="$(jq '[.[] | select(.kind == "openrouter" and .enabled)]' <<< "$routes")"
 
   local route_count completion_contract_bytes=0
   route_count="$(jq 'length' <<< "$local_routes")"
@@ -433,6 +449,9 @@ check_panel() {
       if command -v "$agent" >/dev/null 2>&1; then availability="installed (auth-unverified)"; else availability="unavailable"; fi
       local_routes="$(jq -c --argjson i "$index" --arg availability "$availability" '.[$i].availability = $availability' <<< "$local_routes")"
     done
+    routes="$(jq -c --argjson local_routes "$local_routes" '
+      map(. as $route | (($local_routes[] | select(.id == $route.id)) // $route))
+    ' <<< "$routes")"
   fi
 
   jq -n \
@@ -443,6 +462,7 @@ check_panel() {
     --arg openrouter_sha256 "$OPENROUTER_SHA256" \
     --arg prompt_sha256 "$prompt_sha" \
     --argjson panel_data "$PANEL_JSON" \
+    --argjson routes "$routes" \
     --argjson local_routes "$local_routes" \
     --argjson openrouter_routes "$openrouter_routes" \
     --arg openrouter_auth "$openrouter_auth" \
@@ -455,13 +475,12 @@ check_panel() {
       source: $source,
       legacy: $legacy,
       quorum: $panel_data.quorum,
+      consensusQuorum: $panel_data.consensusQuorum,
       limits: $panel_data.limits,
       panelSha256: $panel_sha256,
       openrouterSha256: $openrouter_sha256,
       promptSha256: (if $prompt_sha256 == "" then null else $prompt_sha256 end),
-      routes: ($panel_data.routes | map(. as $route |
-        (($local_routes + $openrouter_routes)[] | select(.id == $route.id))
-      )),
+      routes: $routes,
       localRoutes: $local_routes,
       openrouterRoutes: $openrouter_routes,
       openrouter: {
@@ -700,7 +719,7 @@ run_local() {
   local max_parallel
   max_parallel="$(jq -r '.limits.maxParallel' <<< "$PANEL_JSON")"
   local routes_json count
-  routes_json="$(jq -c '[.routes[] | select(.kind == "local")]' <<< "$PANEL_JSON")"
+  routes_json="$(jq -c '[.routes[] | select(.kind == "local" and .enabled)]' <<< "$PANEL_JSON")"
   count="$(jq 'length' <<< "$routes_json")"
   [[ "$count" -gt 0 ]] || { printf '[]\n'; return; }
 
@@ -856,7 +875,12 @@ evaluate_results() {
     ($returned[0]) as $results |
     ([$panel.routes[] | . as $route |
       (($results[] | select(.id == $route.id)) // null) as $result |
-      if $result == null then
+      if ($route.enabled | not) then
+        $route + {
+          status:"disabled", response:null, error:"route disabled by panel configuration",
+          panelSha256:$panel.panelSha256, promptSha256:$panel.promptSha256
+        }
+      elif $result == null then
         $route + {
           status:"missing", response:null, error:"route returned no result",
           panelSha256:$panel.panelSha256, promptSha256:$panel.promptSha256
@@ -885,10 +909,11 @@ evaluate_results() {
       panelSha256: $panel.panelSha256,
       promptSha256: $panel.promptSha256,
       quorumRequired: $panel.quorum,
+      consensusQuorumRequired: $panel.consensusQuorum,
       successfulProviderCount: ($successful_providers | length),
       successfulProviders: $successful_providers,
       quorumMet: (($successful_providers | length) >= $panel.quorum),
-      consensusEligible: ($policy == "consensus" and (($successful_providers | length) >= $panel.quorum)),
+      consensusEligible: ($policy == "consensus" and (($successful_providers | length) >= $panel.consensusQuorum)),
       results: $ordered,
       unavailableRoutes: $unavailable,
       sameProviderCorroboration: $same_provider,
