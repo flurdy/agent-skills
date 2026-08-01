@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.11.2"
+version: "0.12.0"
 author: "flurdy"
 ---
 
@@ -98,7 +98,8 @@ It emits delimited sections:
 - `---DATE---` — today's `YYYY-MM-DD` (the script's window).
 - `---AUTHOR---` — `git config user.email` for the commit filter.
 - `---COMMITS---` — one pipe-delimited line per commit: `{worktree_basename}|{branch}|{sha}|{subject}|{when}`. Empty if no commits today.
-- `---GH-STATUS---` — `OK` or `UNAVAILABLE` (gh missing or not authenticated).
+- `---GH-STATUS---` — `OK`, `UNAVAILABLE` (gh missing or not authenticated), or `ERROR` (one or more searches failed).
+- `---GH-DIAGNOSTICS---` — bounded names of failed PR searches; empty for `OK` and `UNAVAILABLE`.
 - `---PRS-CREATED---` / `---PRS-MERGED---` / `---PRS-CLOSED-UNMERGED---` — JSON arrays (always `[]` when empty) from `gh search prs --author=@me`.
 - `---BEADS-STATUS---` — `OK` / `NO_BD` / `NO_BEADS_IN_REPO`.
 - `---BEADS-IN-PROGRESS---` — output of `bd list --status=in_progress` (state being left for tomorrow).
@@ -106,6 +107,11 @@ It emits delimited sections:
 - `---BEADS-STALE-CANDIDATES---` — `bd list --status=in_progress --updated-before={today − STALE_DAYS}`: in-progress beads idle for the **whole grace period**, not merely "not touched today". This is §3a's candidate set. Windowing on a multi-day cutoff (rather than midnight) means a bead a parallel session set `in_progress` today, a bead you've worked over several days without committing, and a bead you touched earlier on a day of repeated wrap-ups all stay out of the candidate set — only genuinely-idle WIP surfaces.
 - `---BEADS-CREATED-TODAY---` — output of `bd list --created-after=TODAY` (open beads created today; closed-same-day beads appear in `BEADS-CLOSED` instead, no double-counting).
 - `---BEADS-CLOSED---` — output of `bd list --status=closed --closed-after=TODAY`.
+
+`activity.sh --workspace` is the reusable, read-only catch-up contract used by `/today`. It
+preserves this default no-argument contract, resolves members through
+`multirepo.sh --members-only`, and repository-qualifies commits and JSON Beads lists. Do not parse workspace
+configuration separately in consumers.
 
 #### Commits
 
@@ -124,9 +130,9 @@ If empty: `_No commits today._` (Still useful — confirms admin-only session.)
 
 #### PRs created / merged / closed today
 
-If `---GH-STATUS---` is `UNAVAILABLE`, render `_GitHub CLI not authenticated — PR roundup skipped._` and skip the sub-section.
+If `---GH-STATUS---` is `UNAVAILABLE`, render `_GitHub CLI not authenticated — PR roundup skipped._` and skip the sub-section. If it is `ERROR`, retain rows from successful searches and render `_GitHub query failed — PR roundup may be incomplete._` plus the bounded `---GH-DIAGNOSTICS---` entries.
 
-Otherwise, parse the three JSON arrays. De-duplicate (a PR may appear in created + merged on the same day — merged wins). Render a single table if anything remains:
+For `OK` or `ERROR`, parse the three JSON arrays. De-duplicate (a PR may appear in created + merged on the same day — merged wins). Render a single table if anything remains:
 
 ```markdown
 ### 🔀 PRs today

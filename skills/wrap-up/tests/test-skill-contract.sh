@@ -26,7 +26,7 @@ assert_not_contains() {
 
 [[ -f "$SKILL" ]] || fail "missing wrap-up skill"
 
-assert_contains "$SKILL" 'version: "0.11.2"'
+assert_contains "$SKILL" 'version: "0.12.0"'
 assert_contains "$SKILL" 'Follow `/name-session`'"'"'s client-selection convention.'
 assert_contains "$SKILL" 'Harness selection comes from the current tool surface.'
 assert_contains "$SKILL" 'Never use the shell, PATH, filesystem, process list, or installed binaries to detect another client.'

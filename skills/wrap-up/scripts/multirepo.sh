@@ -29,10 +29,11 @@
 #
 # ahead/behind are "-" when there is no upstream. upstream is yes|no.
 #
-# --members-only skips the per-repo git status sweep and emits just MARKER, ROOT and
-# bare member paths under ---REPOS---. Callers that only need the workspace shape (who
-# are the members?) pay one root-walk instead of a `git status` per member, which on a
-# large monorepo member is the whole cost of the call.
+# --members-only skips the per-repo git status sweep and emits MARKER, ROOT, bare
+# member paths under ---REPOS---, and unavailable configured paths under
+# ---DIAGNOSTICS---. Callers that only need the workspace shape (who are the members?)
+# pay one root-walk instead of a `git status` per member, which on a large monorepo
+# member is the whole cost of the call.
 set -u
 
 MEMBERS_ONLY=0
@@ -108,9 +109,17 @@ echo "---REPOS---"
 [ "$marker" = "none" ] && exit 0
 
 if [ "$MEMBERS_ONLY" -eq 1 ]; then
+  unavailable=()
   for m in "${members[@]}"; do
-    git -C "$root/$m" rev-parse --git-dir >/dev/null 2>&1 || continue
-    echo "$m"
+    if git -C "$root/$m" rev-parse --git-dir >/dev/null 2>&1; then
+      echo "$m"
+    else
+      unavailable+=("$m")
+    fi
+  done
+  echo "---DIAGNOSTICS---"
+  for m in "${unavailable[@]}"; do
+    echo "Unavailable configured workspace member: $m"
   done
   exit 0
 fi
