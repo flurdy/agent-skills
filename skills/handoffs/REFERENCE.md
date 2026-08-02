@@ -72,6 +72,7 @@ Delimited sections:
 ### Supersede (`superseded-by`, `supersede-reason`)
 
 - `superseded-by` is the filename of the **newest** handoff in the same repo that continues this thread, or empty if this is the live tip. `supersede-reason` is `branch` (same branch), `slug` (same exact topic slug), or `collision` (same-day re-wrap). Ticket/cwd overlap is deliberately *not* a supersede signal — a ticket legitimately spans many handoffs.
+- Recency is date first, then the `# Resume:` time when both records have one. Equal or unknown same-day times are conservatively unordered, except an established filename collision family (`topic` → `topic-2` → `topic-3`): higher collision suffixes are newer. A trailing numeric topic component such as `GE-1869` is never a global recency signal unless an unsuffixed `GE` handoff establishes that exact collision family.
 - **Trunk co-residence never supersedes.** The `branch` reason excludes the default branch (`main`/`master`): two distinct threads both recorded on the trunk (the wrap-up trunk-parking case) are *not* the same thread — they only supersede on an exact slug or same-day collision.
 
 ### Branch-state (`branch-state`) — only populated with `--check-branches`, current-repo **and workspace-member** rows
@@ -275,8 +276,9 @@ After archiving, **drop the archived rows** from any subsequent listing or picke
 
 ## §Archive-flow-members — archiving workspace-member handoffs from the root
 
-Used by `/handoffs-tidy` only. `/handoffs` lists and picks member rows (§Workspace-members) but does
-not archive them — tidying is this flow's job.
+Used by `/handoffs` and `/handoffs-tidy`. Both commands use this separate, per-member confirmation
+flow after their current-repo archive steps; `/handoffs` must not leave classified `safe` member rows
+as a table-only dead end.
 
 Member rows feed `workspace_member_stale`, never `current_repo_stale`, so §Archive-flow's candidate
 set stays strictly current-repo. That guard is deliberate and stays: a prompt aimed at the repo you're

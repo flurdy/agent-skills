@@ -26,8 +26,8 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 1. List handoffs across all repos, with per-repo counts.
 2. **Fully detail** handoffs in the current repo as a pickable table, flagging which are superseded by a newer handoff, done (PR merged, all beads closed, or Jira ticket Done), or stale (branch gone / PR closed).
 3. **Summarise** handoffs in other repos (count per repo, not full listing).
-4. Optionally archive confirmed superseded, done, stale, or assisted-review handoffs to keep the picker focused.
-5. Prompt you to pick one — only handoffs for the current repo are pickable.
+4. Optionally archive confirmed superseded, done, stale, or assisted-review handoffs to keep the picker focused, including safe workspace-member rows through separate per-repo confirmation.
+5. Prompt you to pick one — only handoffs for the current repo and workspace members are pickable.
 6. On pick, render the resume block inline and surface the `cd` if the recorded worktree differs from pwd.
 
 ## Important — what this skill cannot do
@@ -35,7 +35,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
 - It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
 - It **cannot pick handoffs from unrelated repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in an unrelated repo, `cd` there and run `/handoffs` again. **Exception:** repos in the same multi-repo workspace are listed and pickable (§2b/§4b), because from a workspace root they'd otherwise be invisible; picking one requires an explicit `cd` before any repo-scoped command runs.
-- It **never deletes** handoff files. The opt-in archive steps (§3b–§3d) only *move* explicitly confirmed candidates into `~/.claude/handoffs/archive/` — they stay on disk and greppable.
+- It **never deletes** handoff files. The opt-in archive steps (§3b–§3e) only *move* explicitly confirmed candidates into `~/.claude/handoffs/archive/` — they stay on disk and greppable.
 
 ## Instructions
 
@@ -135,10 +135,10 @@ Render from `---WORKSPACE-MEMBER-HANDOFFS---` (24 fields: the usual 22 plus
 Then subtract these repos from §3's other-repos table so the same handoffs aren't counted twice —
 a member repo listed here must not also appear as an "other repo".
 
-Member rows are **listed and pickable here but never archived here** — §3b's archive flow stays
-strictly current-repo. Tidying members is `/handoffs-tidy`'s job (REFERENCE §Archive-flow-members).
-When members hold archivable rows, say so once under this table:
-`_{N} member handoff(s) look finished — `/handoffs-tidy` to archive them._`
+Member rows are listed and pickable here. Archive only their `safe` rows through the separate §3e
+per-member confirmation flow (REFERENCE §Archive-flow-members); `keep` rows still need inspection
+from the member repo. When members hold archivable rows, say so once under this table:
+`_{N} member handoff(s) look finished — separate confirmation follows._`
 
 ### 3. Render the other-repos summary
 
@@ -214,6 +214,12 @@ judgement group for old, trunk-parked rows with no usable PR signal or resolvabl
 done signal: leave every option unselected, archive only explicit choices, and never fold these rows
 into §3b's automatic candidate classes. Drop confirmed archives from the table and picker as in §3b.
 Skip entirely when no row is flagged.
+
+### 3e. 🧱 Workspace-member archive candidates (opt-in)
+
+After the current-repo flows, run **REFERENCE §Archive-flow-members**. It is a separate explicit
+confirmation per member repo: offer only `safe` rows, never sweep `keep` rows, and archive every
+confirmed selection in one `archive.sh` call. Drop archived member rows from the table and picker.
 
 ### 4. Pick a handoff (current repo only)
 
@@ -428,7 +434,7 @@ Each step is independent — a failure in one should not block the others.
 
 - Handoffs are written by `/wrap-up`. If a session ends without `/wrap-up`, there is nothing here to recover. That's intentional — the index lists `/wrap-up` next to `/handoffs` for a reason.
 - File naming convention: `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
-- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* rows (and only on request); §3d separately offers sufficiently old signal-less rows for explicit judgement. Neither flow touches live/open-PR work automatically, and neither sweeps anything by itself.
+- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows (and only on request); §3d separately offers sufficiently old signal-less rows for explicit judgement, and §3e offers only `safe` workspace-member rows through per-repo confirmation. No flow touches live/open-PR work automatically or sweeps anything by itself.
 - **"Done" detection** has three independent sources, each ground truth in its own domain: a **merged PR** (matched by branch *or* by a number recorded in the body — the latter rescues trunk-parked handoffs that recorded `main`), **all referenced beads closed** (local `bd`, works even on trunk repos with no PR), and a **Jira ticket in the Done category** (§1a, skill-resolved). Any one is enough; together they cover the cases — trunk-based completion, post-merge wrap-ups on `main`, ticket-only closure — that the old branch/PR-only check reported as `🟢 live`.
 - Supersede classification comes from `list.sh`, not the model — same source `/wrap-up` uses for its at-save archive offer, so both skills agree on what supersedes what. Reasons: `branch` > `slug` > `collision`; ticket/cwd overlap is intentionally excluded.
 - Liveness (branch-state + PR) is **current-repo-only** and opt-in via `--check-branches` — the queries run in pwd, so other repos always report `unknown`. PR state (from `gh`, auto-enabled when present) is ground truth and overrides the local branch-state heuristic; crucially it's the only signal that catches a **squash-merge**, where the feature branch is never an ancestor of the default tip. Liveness is deliberately separate from supersede: superseded = "a newer handoff continues this" (low-regret); merged-PR = "the work shipped" (low-regret); stale = "the branch is dead/abandoned and nothing supersedes it" (may be the only record — higher regret).

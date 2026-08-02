@@ -470,7 +470,7 @@ Options:
 - **Overwrite** — write to `{target-path}` only after the user explicitly chooses overwrite.
 - **Don't save** — leave no file; keep the resume block visible in the transcript.
 
-The `-N` collision suffix is a first-class convention `/handoffs` understands: `list.sh` strips it for grouping but folds it into recency rank, so suffixed files sort correctly and read each file's real time from its `# Resume:` header. If the user chooses a different name, still use the helper so uniqueness is mechanical.
+The `-N` collision suffix is a first-class convention `/handoffs` understands: `list.sh` uses each file's `# Resume:` time for normal same-day ordering, then uses the suffix only to order an established collision family. If the user chooses a different name, still use the helper so uniqueness is mechanical.
 
 #### Save failure
 

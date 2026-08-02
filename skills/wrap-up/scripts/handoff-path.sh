@@ -9,9 +9,8 @@
 #
 # This makes the "never overwrite — append -2/-3" rule mechanical instead of
 # relying on the model to remember to check first. The -N collision suffix is a
-# first-class convention the /handoffs picker already understands (list.sh folds
-# it into recency rank), so several same-day re-wraps of the same topic each get
-# their own file and sort newest-last.
+# first-class convention the /handoffs picker understands: it uses the resume
+# time first, then orders an established same-day collision family by suffix.
 set -uo pipefail
 
 date="${1:-}"

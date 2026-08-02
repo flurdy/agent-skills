@@ -517,10 +517,10 @@ OTHER_COUNTS=()
 R_FILE=()
 R_DATE=()
 R_TIME=()       # HH:MM from the handoff's "# Resume:" header, falling back to file mtime
+R_HAS_HEADER_TIME=()
 R_SLUG=()
 R_BASESLUG=()   # slug with a trailing collision suffix (-2, -3, …) removed
 R_SUFFIX=()     # the stripped collision suffix, or empty
-R_RANK=()       # sortable recency key: "{date}#{suffix3}" (no-suffix → 000)
 R_CWD=()
 R_BRANCH=()
 R_REPO=()
@@ -564,6 +564,8 @@ if [ -d "$HANDOFFS_DIR" ]; then
         # time. `?` only if neither is available.
         TIME=$(grep -m1 '^# Resume:' "$F" 2>/dev/null \
             | sed -n 's/.*[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}[[:space:]]\{1,\}\([0-2][0-9]:[0-5][0-9]\).*/\1/p')
+        HAS_HEADER_TIME=""
+        [ -n "$TIME" ] && HAS_HEADER_TIME="Y"
         [ -z "$TIME" ] && TIME=$(date -r "$F" +%H:%M 2>/dev/null)
         [ -z "$TIME" ] && TIME="?"
 
@@ -634,25 +636,24 @@ if [ -d "$HANDOFFS_DIR" ]; then
             fi
         fi
 
-        # Recency key for supersede ordering. A trailing collision suffix
-        # (-2, -3, … appended by wrap-up on same-day filename collision) makes
-        # the suffixed file the newer of the pair, so fold it into the rank.
+        # A trailing -N can be a same-day filename collision suffix, but it
+        # can also be part of a normal topic (for example, ticket-123). Keep
+        # it only for the exact base/suffix collision tie-breaker below; the
+        # header time is the normal same-day recency signal.
         SUFFIX=$(printf '%s' "$SLUG" | sed -n 's/.*-\([0-9]\{1,\}\)$/\1/p')
         if [ -n "$SUFFIX" ]; then
             BASESLUG="${SLUG%-$SUFFIX}"
-            RANK_SUFFIX=$(printf '%03d' "$((10#$SUFFIX))" 2>/dev/null || echo "000")
         else
             BASESLUG="$SLUG"
-            RANK_SUFFIX="000"
         fi
 
         R_FILE+=("$BASE")
         R_DATE+=("$DATE")
         R_TIME+=("$TIME")
+        R_HAS_HEADER_TIME+=("$HAS_HEADER_TIME")
         R_SLUG+=("$SLUG")
         R_BASESLUG+=("$BASESLUG")
         R_SUFFIX+=("$SUFFIX")
-        R_RANK+=("${DATE}#${RANK_SUFFIX}")
         R_CWD+=("$CWD")
         R_BRANCH+=("$BRANCH")
         R_REPO+=("$REPO_KEY")
@@ -686,12 +687,65 @@ fi
 # same thread, so trunk co-residence must not collapse them — they only
 # supersede on an exact slug or same-day collision. For each record we keep the
 # newest superseding file and the reason. UNRESOLVED records never participate.
+# Date orders records across days. On the same day, the authoritative header
+# time orders records when available; unknown/equal times do not assert an
+# order. The one safe tie-breaker is an established filename collision family
+# (`topic`, `topic-2`, `topic-3`), because wrap-up creates those suffixes only
+# after the original filename exists. A numeric topic slug alone is never a
+# rank signal.
+collision_base() {
+    local index="$1" base="${R_BASESLUG[$1]}" k=0
+    if [ -n "${R_SUFFIX[$index]}" ]; then
+        while [ "$k" -lt "$N" ]; do
+            if [ "${R_REPO[$k]}" = "${R_REPO[$index]}" ] \
+                && [ "${R_DATE[$k]}" = "${R_DATE[$index]}" ] \
+                && [ "${R_SLUG[$k]}" = "$base" ]; then
+                printf '%s' "$base"
+                return
+            fi
+            k=$((k+1))
+        done
+        return 1
+    fi
+    while [ "$k" -lt "$N" ]; do
+        if [ "${R_REPO[$k]}" = "${R_REPO[$index]}" ] \
+            && [ "${R_DATE[$k]}" = "${R_DATE[$index]}" ] \
+            && [ -n "${R_SUFFIX[$k]}" ] \
+            && [ "${R_BASESLUG[$k]}" = "${R_SLUG[$index]}" ]; then
+            printf '%s' "${R_SLUG[$index]}"
+            return
+        fi
+        k=$((k+1))
+    done
+    return 1
+}
+
+record_is_newer() {
+    local older="$1" newer="$2" older_time="${R_TIME[$1]}" newer_time="${R_TIME[$2]}"
+    local older_base newer_base older_suffix newer_suffix
+    [[ "${R_DATE[$newer]}" > "${R_DATE[$older]}" ]] && return 0
+    [ "${R_DATE[$newer]}" = "${R_DATE[$older]}" ] || return 1
+    if [ "${R_HAS_HEADER_TIME[$older]}" = "Y" ] \
+        && [ "${R_HAS_HEADER_TIME[$newer]}" = "Y" ] \
+        && [[ "$older_time" =~ ^[0-2][0-9]:[0-5][0-9]$ ]] \
+        && [[ "$newer_time" =~ ^[0-2][0-9]:[0-5][0-9]$ ]] \
+        && [ "$older_time" != "$newer_time" ]; then
+        [[ "$newer_time" > "$older_time" ]]
+        return
+    fi
+    older_base=$(collision_base "$older" 2>/dev/null || true)
+    newer_base=$(collision_base "$newer" 2>/dev/null || true)
+    [ -n "$older_base" ] && [ "$older_base" = "$newer_base" ] || return 1
+    older_suffix="${R_SUFFIX[$older]:-0}"
+    newer_suffix="${R_SUFFIX[$newer]:-0}"
+    (( 10#$newer_suffix > 10#$older_suffix ))
+}
+
 R_SUPBY=()
 R_SUPREASON=()
 N=${#R_FILE[@]}
 i=0
 while [ "$i" -lt "$N" ]; do
-    best_rank=""
     best_idx=-1
     best_reason=""
     j=0
@@ -699,7 +753,7 @@ while [ "$i" -lt "$N" ]; do
         if [ "$j" -ne "$i" ] \
             && [ "${R_REPO[$i]}" != "UNRESOLVED" ] \
             && [ "${R_REPO[$j]}" = "${R_REPO[$i]}" ] \
-            && [[ "${R_RANK[$j]}" > "${R_RANK[$i]}" ]]; then
+            && record_is_newer "$i" "$j"; then
             reason=""
             if [ "${R_BRANCH[$i]}" != "?" ] && [ "${R_BRANCH[$j]}" = "${R_BRANCH[$i]}" ] \
                 && ! is_trunk_branch "${R_BRANCH[$i]}"; then
@@ -711,8 +765,8 @@ while [ "$i" -lt "$N" ]; do
                 && [ "${R_DATE[$j]}" = "${R_DATE[$i]}" ]; then
                 reason="collision"
             fi
-            if [ -n "$reason" ] && { [ -z "$best_rank" ] || [[ "${R_RANK[$j]}" > "$best_rank" ]]; }; then
-                best_rank="${R_RANK[$j]}"
+            if [ -n "$reason" ] \
+                && { [ "$best_idx" -lt 0 ] || record_is_newer "$best_idx" "$j"; }; then
                 best_idx="$j"
                 best_reason="$reason"
             fi

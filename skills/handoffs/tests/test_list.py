@@ -56,11 +56,14 @@ class HandoffListFixture:
         beads: str = "—",
         jira: str = "—",
         prs: str = "—",
+        time: str = "12:00",
+        header_time: bool = True,
     ) -> str:
         date = dt.date.today() - dt.timedelta(days=age_days)
         filename = f"{date.isoformat()}-{slug}.md"
+        resume_header = f"# Resume: {slug} — {date.isoformat()} {time}" if header_time else f"# Resume: {slug}"
         (self.handoffs / filename).write_text(
-            f"# Resume: {slug} — {date.isoformat()} 12:00\n\n"
+            f"{resume_header}\n\n"
             f"**Where to pick up:** `{self.repo}` on branch `{branch}`\n"
             f"**Repo root:** `{self.repo}`\n"
             f"**Beads:** {beads}\n"
@@ -69,6 +72,10 @@ class HandoffListFixture:
             encoding="utf-8",
         )
         return filename
+
+    def set_mtime(self, filename: str, time: str) -> None:
+        timestamp = dt.datetime.combine(dt.date.today(), dt.time.fromisoformat(time)).timestamp()
+        os.utime(self.handoffs / filename, (timestamp, timestamp))
 
     def run(self, *args: str) -> str:
         env = os.environ.copy()
@@ -91,6 +98,57 @@ def section(output: str, name: str) -> list[str]:
     start = lines.index(marker) + 1
     end = next((i for i in range(start, len(lines)) if lines[i].startswith("---")), len(lines))
     return lines[start:end]
+
+
+class SupersedeOrderingTests(unittest.TestCase):
+    def test_same_day_time_beats_numeric_topic_suffix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            older = fixture.add_handoff(0, "ticket-123", branch="feature/work", time="09:00")
+            newer = fixture.add_handoff(0, "follow-up", branch="feature/work", time="12:00")
+
+            rows = {
+                fields[0]: fields
+                for fields in (line.split("|") for line in section(fixture.run(), "HANDOFFS"))
+            }
+
+            self.assertEqual(rows[older][7], newer)
+            self.assertEqual(rows[older][13], "safe")
+            self.assertEqual(rows[newer][7], "")
+            self.assertEqual(rows[newer][13], "")
+
+    def test_headerless_handoff_does_not_use_mtime_for_recency(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            headerless = fixture.add_handoff(0, "ticket-123", branch="feature/work", header_time=False)
+            fixture.set_mtime(headerless, "23:59")
+            newer = fixture.add_handoff(0, "follow-up", branch="feature/work", time="12:00")
+
+            rows = {
+                fields[0]: fields
+                for fields in (line.split("|") for line in section(fixture.run(), "HANDOFFS"))
+            }
+
+            self.assertEqual(rows[headerless][7], "")
+            self.assertEqual(rows[newer][7], "")
+
+    def test_collision_family_orders_same_minute_rewraps(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            original = fixture.add_handoff(0, "resume", branch="feature/work")
+            second = fixture.add_handoff(0, "resume-2", branch="feature/work")
+            third = fixture.add_handoff(0, "resume-3", branch="feature/work")
+
+            rows = {
+                fields[0]: fields
+                for fields in (line.split("|") for line in section(fixture.run(), "HANDOFFS"))
+            }
+
+            self.assertEqual(rows[original][7], third)
+            self.assertEqual(rows[original][8], "branch")
+            self.assertEqual(rows[second][7], third)
+            self.assertEqual(rows[second][13], "safe")
+            self.assertEqual(rows[third][7], "")
 
 
 class TrunkReviewClassificationTests(unittest.TestCase):
@@ -243,6 +301,12 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("promotion is itself an effective Done candidate", reference)
         self.assertIn("never auto-selected", reference)
         self.assertIn("never auto-archived", reference)
+        self.assertIn("Used by `/handoffs` and `/handoffs-tidy`", reference)
+        self.assertIn("§Archive-flow-members", handoffs)
+        self.assertIn("offer only `safe` rows", handoffs)
+        self.assertIn("per-member confirmation", handoffs)
+        self.assertIn("one question per member repo", reference)
+        self.assertIn("Only `safe` rows are offered here.", reference)
 
 
 if __name__ == "__main__":
