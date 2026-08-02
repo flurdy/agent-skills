@@ -31,7 +31,11 @@ for invariant in \
     'Detailed plans are working input, not current architecture documentation.' \
     'Do not create Markdown solely to preserve planning reasoning.' \
     'Exactly one blocked human review owner' \
-    'Prefer the source spike/design bead' \
+    'An existing matching review is the sole owner' \
+    'Only when no separate review exists, prefer the source spike/design bead' \
+    'Whether reusing the source or using a dedicated decision, apply both:' \
+    'add the canonical `human` label' \
+    'set status `blocked`' \
     'bd list --status open,in_progress,blocked --label human' \
     'source_bead=<source-id>' \
     'Never create a second review item' \

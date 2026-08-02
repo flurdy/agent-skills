@@ -317,25 +317,32 @@ review there; do not create a shadow Beads decision.
 
 **Exactly one blocked human review owner** must own an unapproved plan in an active Beads repository:
 
-1. **Check the source first.** Prefer the source spike/design bead when it is still open and can
-   carry the pending decision. Keeping that source open avoids a second tracker object.
-2. **Check existing review work.** Inspect the source and use targeted duplicate queries, including
+1. **Inspect the source.** Decide whether the source spike/design bead is still open and can carry
+   the pending decision, but do not select it until duplicate review work has been checked.
+2. **Check existing review work.** Use targeted duplicate queries, including
    `bd list --status open,in_progress,blocked --label human` and, when a source id exists,
    `bd list --status open,in_progress,blocked --label human --metadata-field source_bead=<source-id>`.
-   Also inspect high-signal title/spec matches. Reuse a matching review even if its wording needs a
-   bounded update. Never create a second review item for the same source or decision.
-3. **Choose the owner.** Reuse the source when it can own review; otherwise reuse an existing
-   dedicated review. Create at most one dedicated review only when the Beads source is closed or
-   cannot clearly represent the decision.
+   Also inspect high-signal title/spec matches. An existing matching review is the sole owner; reuse
+   it even when the source could also carry the decision. Never create a second review item for the
+   same source or decision.
+3. **Choose the owner.** Only when no separate review exists, prefer the source spike/design bead
+   when it can own review. Create at most one dedicated review only when the Beads source is closed
+   or cannot clearly represent the decision.
 4. **Confirm before writing.** Show the exact source update or dedicated-review proposal first.
    Ask for explicit confirmation immediately before any tracker mutation. If confirmation is
    declined, make no tracker change, do not claim durable ownership, and keep the plan inline rather
    than creating a planning document with no owner.
 
-A reused source remains its existing work type; block it for human review rather than converting it
-solely for workflow mechanics. A dedicated review uses type `decision`, the canonical `human` label,
-and status `blocked`. Use the configured human assignee when one is available; otherwise do not guess.
-Add optional descriptive metadata such as `review_owner=human`, `review_status=pending`, and
+A reused source remains its existing work type rather than being converted solely for workflow
+mechanics. A dedicated review uses type `decision`.
+
+Whether reusing the source or using a dedicated decision, apply both:
+
+- add the canonical `human` label; and
+- set status `blocked`.
+
+Use the configured human assignee when one is available; otherwise do not guess. Add optional
+descriptive metadata such as `review_owner=human`, `review_status=pending`, and
 `source_bead=<source-id>`. Whether reusing or creating, the review content must include:
 
 - the concise recommendation and exact decision question;
