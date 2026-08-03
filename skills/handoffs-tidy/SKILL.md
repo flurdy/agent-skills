@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: low
-version: "0.4.0"
+version: "0.5.0"
 author: "flurdy"
 ---
 
@@ -19,11 +19,12 @@ common one isn't supersede:
   its Jira ticket is Done. These are usually **never re-wrapped**, so nothing supersedes them — they
   just sit in the picker looking `🟢 live` until you notice the work is long gone.
 - **Stale** — abandoned: the PR was closed unmerged, or the branch is gone with no merge evidence.
-- **Old and signal-less** — trunk-parked with no usable PR signal or resolvable beads. Age only earns an assisted
+- **Old and signal-less** — unknown branch liveness with no usable PR signal or resolvable beads. Age only earns an assisted
   question; it never makes the handoff an automatic archive candidate.
 
-This command finds all four and archives the ones you confirm. Nothing is deleted — archived files
-move to `~/.claude/handoffs/archive/` and stay greppable.
+This command finds all four and archives the ones you confirm. A recent handoff is retained even when
+finished or stale; superseded rows are the sole immediate exception. Nothing is deleted — archived
+files move to `~/.claude/handoffs/archive/` and stay greppable.
 
 Run it **ad-hoc** whenever the picker feels noisy, or right after a `/wrap-up`. It is the standalone
 twin of `/handoffs`'s opt-in archive step (§3b): same `list.sh` classification, same archive flow —
@@ -59,8 +60,9 @@ each row, and run the archive flow — the same definitions `/handoffs` uses, so
 ~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
 ```
 
-Forward `--stale-days N` when the user supplied it; otherwise use the 30-day default. The threshold
-only controls the assisted age-review group and never changes `archive-class`.
+Forward `--stale-days N` when the user supplied it; otherwise let the script match the age-review
+floor to the recent window (3 days, or 4 on Tuesday). Shorter values are clamped to that window. The
+threshold only controls the assisted age-review group and never changes `archive-class`.
 
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is
 present) `pr-state`, so the script can mark merged PRs, landed branches, and closed PRs. Bead-closure
@@ -75,7 +77,7 @@ assisted judgement groups, never automatic archive candidates.
 
 ### 3. Resolve Jira-Done (optional)
 
-Follow REFERENCE §Jira-Done for any still-live current-repo row that names a Jira ticket. This catches
+Follow REFERENCE §Jira-Done for any current-repo row without another done/stale/supersede signal that names a Jira ticket. This catches
 handoffs whose *only* finished signal is a closed ticket (no merged PR, no closed beads). It's gated
 exactly as REFERENCE describes and degrades silently if the Jira MCP isn't configured — skip it freely
 if you want to stay network-light; PR/bead/branch/supersede classification still stands.
@@ -83,13 +85,13 @@ if you want to stay network-light; PR/bead/branch/supersede classification still
 ### 4. Present the candidates
 
 If `current_repo_superseded == 0` **and** `current_repo_stale == 0` **and** §Jira-Done promoted no
-row to `safe` **and** no row has `needs-review=Y` **and** no row has `needs-age-review=Y` **and** no
+older row to `safe` **and** no row has `needs-review=Y` **and** no row has `needs-age-review=Y` **and** no
 member row is
 archivable (step 5d's gate), report
 nothing and stop at step 6 — the picker is already tidy:
 
 ```markdown
-_No archivable handoffs — every handoff for this repo still points at live work._
+_No archivable handoffs — remaining rows are live, unknown, or still inside the recent grace window._
 ```
 
 > **Check step 5d's gate before stopping.** In a multi-repo workspace the current repo can be
@@ -157,7 +159,7 @@ already classified against their own repo when `--check-branches` was passed.
 
 Key points from that section, so they aren't missed:
 
-- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`.
+- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`; recent non-superseded member rows have an empty class and are not offered.
 - **Only `safe` rows are offered from here.** `keep`-class member rows (PR closed unmerged, branch
   gone with no merge evidence) are higher-regret — name them and point at `cd {path} && /handoffs-tidy`
   rather than offering them.

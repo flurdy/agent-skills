@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.18.0"
+version: "0.19.0"
 author: "flurdy"
 ---
 
@@ -47,10 +47,11 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 ~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
 ```
 
-Forward `--stale-days N` when the user supplied it; otherwise use the script's 30-day default. The
-flag only controls the assisted §3d age-review group and never marks a row stale.
+Forward `--stale-days N` when the user supplied it; otherwise let the script match the age-review
+floor to its recent window (3 days, or 4 on Tuesday). Shorter values are clamped to that window. The
+flag only controls the assisted §3d group and never marks a row stale.
 
-`--check-branches` adds branch-liveness + PR classification for current-repo handoffs. The full flag
+`--check-branches` adds branch-liveness + PR classification for current-repo and workspace-member handoffs. The full flag
 semantics, the 22-field `---HANDOFFS---` line format, and every field's meaning (supersede,
 branch-state, pr-state, archive-class, beads-done, deliverable-field, beads-progress, needs-review,
 needs-age-review)
@@ -74,8 +75,9 @@ renders the full table instead and can ignore them.
 `list.sh` can read PR and bead state but **cannot call the Jira MCP** — so a handoff whose only
 "finished" signal is its ticket being closed in Jira still arrives with `archive-class` empty
 (`🟢 live`). Close that gap here, model-side, per **REFERENCE §Jira-Done**: same gate (only under
-`--check-branches`, only for still-live rows naming a ticket), same batched JQL query, same
-promote-to-`safe` rule. Skip silently if the Jira MCP errors or isn't configured.
+`--check-branches`, only for rows without another done/stale/supersede signal that name a ticket),
+same batched JQL query, and the same recent-retention rule. Skip silently if the Jira MCP errors or
+isn't configured.
 
 ### 2. Render the current-repo table
 
@@ -95,7 +97,7 @@ If `current_repo_total > 0`:
 - **Worktree**: ✅ if `exists=Y`; ✂️ (icon only, no word) if `exists=N`. The ✂️ reads as "pruned" and the footnote legend below spells it out; everything in the current-repo table is pickable by definition (handoffs that couldn't be matched to a repo never reach this table), so no separate Pickable column.
   - Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️` (the wide colored forms, not the narrow text `✂︎`/`⚠︎`). Mixing the two presentations across rows makes column widths jump — keep one form so the cells line up.
 - **Status**: classify the row per **REFERENCE §Status** (the 9-step precedence: supersede → open PR → merged PR → beads-done → Jira-Done → closed PR → merged → gone → live). Emit the glyphs exactly as written there.
-- **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—` (a §1a Jira-Done promotion counts as `safe`).
+- **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—`. Recent non-superseded rows stay `—` even when Status says merged/done/stale; a §1a Jira-Done promotion counts as `safe` only outside the recent window.
 
 If `current_repo_total == 0` and `CURRENT-REPO != NONE`:
 `_No handoffs for this repo ({CURRENT-REPO-DISPLAY})._`
@@ -186,7 +188,7 @@ This is a tooltip-style explainer keyed to the column legend, not a count. Skip 
 ### 3b. 🗂️ Archive cleanup candidates (opt-in)
 
 Run the archive flow exactly as **REFERENCE §Archive-flow** specifies: skip only if
-`current_repo_superseded == 0`, `current_repo_stale == 0`, **and** §1a produced no Jira-Done
+`current_repo_superseded == 0`, `current_repo_stale == 0`, **and** §1a produced no older Jira-Done
 promotions; otherwise present the effective candidates in
 the three regret-ordered groups (Superseded / Done / Stale), prompt with `AskUserQuestion`
 (multiSelect, labelled and described per that section), archive the selected filenames in one
@@ -210,7 +212,7 @@ archives from the table and §4 picker, same as §3b. Skip the step entirely whe
 
 If any current-repo row still has `needs-age-review=Y` after §1a Jira-Done promotion, run the
 assisted prompt exactly as **REFERENCE §Age-review** specifies. This is a separate, clearly-labelled
-judgement group for old, trunk-parked rows with no usable PR signal or resolvable beads. Age is not a
+judgement group for old rows with unknown branch liveness and no usable PR signal or resolvable beads. Age is not a
 done signal: leave every option unselected, archive only explicit choices, and never fold these rows
 into §3b's automatic candidate classes. Drop confirmed archives from the table and picker as in §3b.
 Skip entirely when no row is flagged.
@@ -434,13 +436,13 @@ Each step is independent — a failure in one should not block the others.
 
 - Handoffs are written by `/wrap-up`. If a session ends without `/wrap-up`, there is nothing here to recover. That's intentional — the index lists `/wrap-up` next to `/handoffs` for a reason.
 - File naming convention: `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
-- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows (and only on request); §3d separately offers sufficiently old signal-less rows for explicit judgement, and §3e offers only `safe` workspace-member rows through per-repo confirmation. No flow touches live/open-PR work automatically or sweeps anything by itself.
+- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after the recent grace window (superseded rows are the sole immediate exception); §3d separately offers older signal-less rows for explicit judgement, and §3e offers only eligible `safe` workspace-member rows through per-repo confirmation. No flow touches live/open-PR work automatically or sweeps anything by itself.
 - **"Done" detection** has three independent sources, each ground truth in its own domain: a **merged PR** (matched by branch *or* by a number recorded in the body — the latter rescues trunk-parked handoffs that recorded `main`), **all referenced beads closed** (local `bd`, works even on trunk repos with no PR), and a **Jira ticket in the Done category** (§1a, skill-resolved). Any one is enough; together they cover the cases — trunk-based completion, post-merge wrap-ups on `main`, ticket-only closure — that the old branch/PR-only check reported as `🟢 live`.
 - Supersede classification comes from `list.sh`, not the model — same source `/wrap-up` uses for its at-save archive offer, so both skills agree on what supersedes what. Reasons: `branch` > `slug` > `collision`; ticket/cwd overlap is intentionally excluded.
-- Liveness (branch-state + PR) is **current-repo-only** and opt-in via `--check-branches` — the queries run in pwd, so other repos always report `unknown`. PR state (from `gh`, auto-enabled when present) is ground truth and overrides the local branch-state heuristic; crucially it's the only signal that catches a **squash-merge**, where the feature branch is never an ancestor of the default tip. Liveness is deliberately separate from supersede: superseded = "a newer handoff continues this" (low-regret); merged-PR = "the work shipped" (low-regret); stale = "the branch is dead/abandoned and nothing supersedes it" (may be the only record — higher regret).
+- Liveness (branch-state + PR) is opt-in via `--check-branches` and runs in the current repo plus each discovered workspace member; unrelated repos remain `unknown`. PR state (from `gh`, auto-enabled when present) is ground truth and overrides the local branch-state heuristic; crucially it's the only signal that catches a **squash-merge**, where the feature branch is never an ancestor of the default tip. Liveness is deliberately separate from supersede: superseded = "a newer handoff continues this" (low-regret); merged-PR = "the work shipped" (low-regret); stale = "the branch is dead/abandoned and nothing supersedes it" (may be the only record — higher regret).
 - Repo matching uses `remote.origin.url` first, then realpath of git-common-dir. Linked worktrees of one repo share the same key. Two independent clones with the same origin URL collapse to one row.
 - **`.claude` symlink unification** has two flavours:
   - **Non-bare** — A's `.claude` symlinks to B's `.claude` subdir. A defers to B's identity. Display is B's basename.
   - **Bare** — A's `.claude` symlinks to B's repo root itself (B is just a scratch state-holder, not a working project). A keeps its own identity (and display); when B resolves on its own (e.g. via a handoff whose cwd lands inside B), a one-level sibling scan finds A's bare link pointing at B and defers up. Net effect: both ends group under A, the "real" repo. The follow is one-hop in either direction, so reciprocal links don't cycle.
 - Pruned-worktree handoffs are pickable: the script walks up the recorded path to find the parent repo, so even after `git worktree remove` the handoff still groups correctly. When picked, the user resumes from their current checkout (or creates a fresh worktree).
-- **`list.sh --bead <id>` / `--ticket <key>`** (consumed by `/next` and `/start-ticket`, not by this skill) emit an extra `---MATCHED-HANDOFFS---` section: current-repo, non-stale handoffs whose `**Beads:**` / `**Jira:**` header field contains that exact token. It reuses the same supersede + bead-closure + (with `--check-branches`) PR liveness machinery, so a bead/ticket resume surfaces only the *live tip*, never a superseded or shipped handoff — and because bead-closure is local, a handoff whose beads are all closed is filtered out even without `--check-branches`. Matching is exact-token and case-insensitive (`bd-12` never matches `bd-123`). The flags leave every other section byte-identical, so this skill, `/wrap-up`, and `/landscape` are unaffected.
+- **`list.sh --bead <id>` / `--ticket <key>`** (consumed by `/next` and `/start-ticket`, not by this skill) emit an extra `---MATCHED-HANDOFFS---` section: current-repo, active handoffs whose `**Beads:**` / `**Jira:**` header field contains that exact token. It reuses the same supersede + bead-closure + (with `--check-branches`) PR liveness machinery, so a bead/ticket resume surfaces only the *live tip*, never a superseded or shipped handoff — even when recent retention keeps that shipped row in the picker. Matching is exact-token and case-insensitive (`bd-12` never matches `bd-123`). The flags leave every other section byte-identical, so this skill, `/wrap-up`, and `/landscape` are unaffected.

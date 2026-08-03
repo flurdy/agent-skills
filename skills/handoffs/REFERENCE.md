@@ -3,7 +3,7 @@
 Normative reference for **`/handoffs`** (the picker) and **`/handoffs-tidy`** (the pruner). Both
 skills run `list.sh` and `Read` this file; it is the single source of truth for **how to read the
 script's output, classify each handoff, and run the archive flow**. The *signals* themselves come
-from `list.sh` (the `archive-class` field already encodes the safe/keep verdict) — this file is the
+from `list.sh` (the `archive-class` field already encodes the safe/keep verdict after recent-retention) — this file is the
 single source for how to render and act on them, so the two skills can never drift on classification.
 
 Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review.
@@ -13,15 +13,18 @@ Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph
 ## §Run — invoking `list.sh`
 
 ```bash
-~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days 30]
+~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
 ```
 
-`--stale-days` sets the positive-integer age floor for §Age-review (default `30`). It changes only
-which otherwise unclassifiable rows are offered for judgement; it never changes `archive-class`.
+`--stale-days` sets the positive-integer age floor for §Age-review. By default it matches the recent
+window (3 days, or 4 on Tuesday), so signal-less rows become reviewable only after the same grace
+period that protects completed rows. An explicit value can extend that floor; shorter values are
+clamped to the recent window so assisted review cannot bypass retention. It never changes
+`archive-class`.
 
 `--check-branches` adds branch-liveness classification (the `branch-state` field) for current-repo
-handoffs. It runs one `git ls-remote` (network, timeout-guarded) plus local merge-base checks. It is
-current-repo-only — the git queries run in pwd, so handoffs in other repos always report `unknown`.
+and discovered workspace-member handoffs. It runs one `git ls-remote` (network, timeout-guarded) plus
+local merge-base checks in each classified repo. Unrelated-repo rows remain `unknown`.
 
 **PR detection auto-enables** (no separate flag) whenever `--check-branches` is active **and** `gh`
 is on `PATH`. It adds one batched, timeout-guarded `gh pr list` (mapped to branches locally) and
@@ -40,11 +43,11 @@ Delimited sections:
 - `---CURRENT-REPO---` — current repo identity (origin URL preferred, falling back to realpath of git-common-dir), or `NONE` if not in a repo.
 - `---CURRENT-REPO-DISPLAY---` — short label for the current repo (basename of the repo root), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
-- `---STALE-DAYS---` — configured age floor for assisted age review (30 default).
+- `---STALE-DAYS---` — configured age floor for assisted age review (the recent-window size by default).
 - `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
-- `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent non-superseded current-repo handoff. (Consumed by `/landscape`; ignore here.)
+- `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent active current-repo handoff; completed, stale, and superseded rows are excluded. (Consumed by `/landscape`; ignore here.)
 - `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_classified=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
 - `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
@@ -105,18 +108,20 @@ row wrongly shows `🟢 live`, but the merged PR's number is still in the body).
 - `{beads-done}` — `Y` when **every** bead in the **closure-check set** is closed (all resolve to `status=closed`), else empty. The closure-check set is the **`**Deliverable:**` field when present**, else the full `**Beads:**` field (legacy fallback). Computed locally via `bd` for current-repo rows whenever beads exist — **independent of `--check-branches`**. A field truncated with `(+N more)` can't be fully verified and stays empty (conservative).
   - **Why Deliverable matters:** in trunk repos all work commits to `master`, so wrap-up records every handoff with `branch: master` → `branch-state=unknown` (the default-branch guard) and no PR. The bead is then the only "done" signal — but the `**Beads:**` list mixes own work with recurring "in-progress elsewhere" context beads and parent epics that never close, so an all-`**Beads:**`-closed rule can never fire. Keying off `**Deliverable:**` (own work only) fixes that. Safety: over-including a bead in Deliverable only ever *under*-detects (a never-closing bead keeps the row live); **omitting** an own-work bead is the only way to false-positive, so wrap-up errs toward including.
 - `{beads-progress}` — `{closed}/{total}` over the closure-check set (Deliverable if present, else Beads), or empty when there are no resolvable beads. Lets a caller distinguish *partial* closure (something shipped, something open) from all-open (nothing done) and all-closed (done).
-- `{needs-review}` — `Y` for a current-repo row that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are already `safe`; all-open rows are genuinely live.
-- `{needs-age-review}` — `Y` for an old current-repo row that has no usable completion or liveness signal and warrants §Age-review: `--check-branches` was used, the row is older than `---STALE-DAYS---`, trunk-parked, has no usable PR signal (`pr-state=none`, or `unknown` with no recorded PR number), has no resolvable beads (`beads-progress` empty), and still has empty `archive-class`. Age is not evidence of doneness, so this flag never changes `archive-class` or stale counts. Rows with an open/merged/closed PR, or an unknown lookup plus a recorded PR number, are not flagged.
+- `{needs-review}` — `Y` for a current-repo row outside the recent window that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are already `safe`; all-open rows are genuinely live.
+- `{needs-age-review}` — `Y` for an old current-repo row that has no usable completion or liveness signal and warrants §Age-review: `--check-branches` was used, the row is older than `---STALE-DAYS---`, `branch-state=unknown`, it has no usable PR signal (`pr-state=none`, or `unknown` with no recorded PR number), and it has no resolvable beads (`beads-progress` empty). Age is not evidence of doneness, so this flag never changes `archive-class` or stale counts. Rows with an open/merged/closed PR, a known-live branch, or an unknown lookup plus a recorded PR number are not flagged.
 
-### Archive-class (`archive-class`) — current-repo rows only
+### Archive-class (`archive-class`) — current-repo and workspace-member rows
 
 The script's per-row archive recommendation, so callers read straight off it instead of re-deriving:
 
-- `safe` — superseded, or `pr-state=merged`, or `beads-done=Y`, or `branch-state=merged`. Low regret — the context lives on, or the work demonstrably shipped.
-- `keep` — `pr-state=closed`, or `branch-state=gone` with no merged/done evidence. Higher regret — may be the only record.
-- empty — live work (incl. an open PR) or `unknown`. **Not an archive candidate.**
+- `safe` — superseded, or an **older-than-recent** row with `pr-state=merged`, `beads-done=Y`, or `branch-state=merged`. Low regret — the context lives on, or the work demonstrably shipped.
+- `keep` — an **older-than-recent** row with `pr-state=closed`, or `branch-state=gone` with no merged/done evidence. Higher regret — may be the only record.
+- empty — live/unknown work, or a recent non-superseded row retained by the grace window. **Not an archive candidate.** Status still comes from §Status, so a retained row can truthfully show `✅ merged` while its Archive column stays `—`.
 
-Precedence: supersede > open PR > merged PR > **beads-done** > closed PR > local `merged` > `gone`.
+Precedence before retention: supersede > open PR > merged PR > **beads-done** > closed PR > local `merged` > `gone`.
+Supersede remains immediately `safe`; every other non-empty result is cleared while `{date}` is inside
+`---RECENT-WINDOW-DAYS---` (inclusive). This applies identically to current-repo and workspace-member rows.
 Beads-done (keyed off `**Deliverable:**` when present, else the full `**Beads:**` field) sits just
 under a merged PR (the finished-work signal when there's no live branch/PR — the trunk case) but
 **below** an open PR. Jira-Done is *not* in this list — the script can't query Jira; the skill folds
@@ -169,8 +174,9 @@ directory change explicit, not by hiding the handoff.
 network-/tool-light may skip it and let the PR/bead/supersede classification stand.
 
 **Gate — skip entirely unless _all_ of:** you ran with `--check-branches`, the Jira MCP is
-configured, and there is at least one current-repo row that is **still live** (`archive-class` empty)
-**and** has a non-`—` `{jira-field}`. If none qualify, do nothing.
+configured, and there is at least one current-repo row with no existing done/stale/supersede signal
+**and** a non-`—` `{jira-field}`. A recent completed row can also have empty `archive-class`, so do not
+use that field alone as the live-row test. If none qualify, do nothing.
 
 For the qualifying rows, collect the distinct Jira keys and resolve their status in **one batched** query:
 
@@ -185,8 +191,9 @@ mcp__jira__jira_get
 
 Any key the query returns is **Done** (Jira's `Done` status *category* covers Done / Closed /
 Resolved / Won't Do across workflow variants). For each live row whose ticket is in that set,
-**promote it to done**: treat its `archive-class` as `safe` for the rest of this run. A row with
-several tickets counts as done only when **every** ticket it names is Done.
+**promote it to done**: render the Jira-Done status, and treat its `archive-class` as `safe` only when
+the row is outside `---RECENT-WINDOW-DAYS---`. A recent Jira-Done row stays retained with an empty
+`archive-class`. A row with several tickets counts as done only when **every** ticket it names is Done.
 
 If the Jira MCP errors or isn't configured, skip silently — never fail over Jira.
 
@@ -209,7 +216,8 @@ Pick the first that applies, in this order:
 Supersede wins because "a newer handoff continues this" is the most actionable signal. PR state beats
 `branch-state` because it's ground truth (and the only thing that catches a squash-merge); an open PR
 specifically means *don't archive*. The two `✅ done` states (beads / Jira) rank above closed/gone for
-the same reason a merged PR does — the work shipped — and mirror the script's `archive-class=safe`.
+the same reason a merged PR does — the work shipped. Recent-retention can still leave
+`archive-class` empty; status and archive eligibility are deliberately separate.
 
 Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️`
 (the wide colored forms, not the narrow text `✂︎`/`⚠︎`) — mixing presentations makes column widths jump.
@@ -219,7 +227,7 @@ Emit emoji glyphs **exactly as written here**, including the variation selector 
 ## §Archive-glyph — archive recommendation column
 
 Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty →
-`—` (treat a §Jira-Done promotion as `safe`). `safe` is low-regret (superseded / merged / done);
+`—` (a §Jira-Done promotion is `safe` only outside the recent window). `safe` is low-regret (superseded / merged / done);
 `keep?` is higher-regret (abandoned / branch gone with no merge evidence).
 
 ---
@@ -227,8 +235,9 @@ Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `k
 ## §Archive-flow — the opt-in archive cleanup
 
 Skip entirely only if `current_repo_superseded == 0`, `current_repo_stale == 0`, **and** §Jira-Done
-promoted no live row to `safe`. The script counters cannot include model-side Jira results, so a
-promotion is itself an effective Done candidate even when both counters remain zero.
+promoted no older row to `safe`. The script counters cannot include model-side Jira results, so an
+older promotion is itself an effective Done candidate even when both counters remain zero. A recent
+Jira-Done status is retained and does not open this flow.
 
 Archiving **moves** handoffs to `~/.claude/handoffs/archive/` (still on disk, still greppable; just
 out of the active listing). It is opt-in and never automatic — rows stay pickable until the user says so.
@@ -240,8 +249,10 @@ them as **distinct groups** and be honest about the difference:
 - **Done** (`archive-class=safe`, not superseded — Status `✅ PR merged`, `✅ done (beads closed)`, `✅ done ({KEY} done)`, or `🔵 merged`) — the work shipped: the PR landed, every referenced bead is closed, the ticket is Done, or the branch tip is in the default branch. Low regret. This is the group that catches finished trunk work and trunk-parked PR handoffs that used to masquerade as `🟢 live`.
 - **Stale** (`archive-class=keep` — Status `🚫 PR closed` or `⚪ branch gone`) — abandoned, and *no newer handoff supersedes it*. Higher regret: this may be the **only** record of that thread. Default to leaving these unless the user is sure.
 
-A row is **never** a candidate while its PR is open (`🟠`) — that's live work. A row that is both
-superseded and otherwise archivable belongs in the Superseded group (supersede is the safest reason to archive).
+A row is **never** a candidate while its PR is open (`🟠`) — that's live work. A recent row is also
+never a candidate unless it is superseded; completion and stale signals remain visible in Status but
+receive no archive glyph until the grace window passes. A row that is both superseded and otherwise
+archivable belongs in the Superseded group (supersede is the safest reason to archive).
 
 Prompt with `AskUserQuestion` (multiSelect). One option per candidate, labelled `{date} {slug}`,
 described by its group:
@@ -369,10 +380,11 @@ goes quiet on its own.
 
 ## §Age-review — assisted prompt for old rows with no usable signals
 
-A trunk-parked handoff can remain `🟢 live` forever when it has no usable PR signal, no resolvable
-beads, and no other completion signal. Age does **not** prove that it finished; it only makes the row worth asking
-about. `list.sh` flags these current-repo rows with `needs-age-review=Y` once they are older than
-`---STALE-DAYS---` (30 by default, configurable with `--stale-days N`).
+A handoff with `branch-state=unknown` can remain `🟢 live` forever when it has no usable PR signal,
+no resolvable beads, and no other completion signal. This includes trunk-parked rows and feature
+branches whose liveness cannot be established. Age does **not** prove that it finished; it only makes
+the row worth asking about. `list.sh` flags these current-repo rows with `needs-age-review=Y` once they
+are older than `---STALE-DAYS---` (the recent-window size by default, configurable with `--stale-days N`).
 
 Run this after §Jira-Done. If Jira promoted a flagged row to `safe`, handle it as Done instead and do
 not include it here. Present the remaining rows as a separate assisted group, never mixed into
@@ -381,7 +393,7 @@ not include it here. Present the remaining rows as a separate assisted group, ne
 ```markdown
 ## 🕰️ Old handoffs with no completion signal ({count})
 
-These are older than {stale-days} days, trunk-parked, have no usable PR signal, and have no
+These are older than {stale-days} days, have unknown branch liveness, no usable PR signal, and no
 resolvable beads. Age is only a reason to ask; skip anything still waiting on external work.
 
 | Date | Slug | Jira | Evidence |

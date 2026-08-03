@@ -6,16 +6,16 @@
 #   --recent-days N   override the "recent" window (default: 3, with Mon=3, Tue=4
 #                     weekend buffer to mirror gh-pr-list-closed.sh)
 #   --stale-days N    age floor for assisted review of otherwise unclassifiable
-#                     trunk handoffs (default: 30; never auto-archives)
+#                     handoffs (default: recent window; never auto-archives)
 #   --summary-only    suppress per-file lines in the HANDOFFS section (landscape's
 #                     footer only needs the SUMMARY counts)
-#   --bead ID         emit a `---MATCHED-HANDOFFS---` section: current-repo, NON-stale
+#   --bead ID         emit a `---MATCHED-HANDOFFS---` section: current-repo, active
 #   --ticket KEY      handoffs whose `**Beads:**` / `**Jira:**` header field contains
 #                     an exact ID/KEY token. Lets /next and /start-ticket surface
 #                     "you have a handoff for this" at bead/ticket resume — without
-#                     re-implementing repo-matching or staleness. "Non-stale" =
-#                     archive-class empty (live / open-PR / unknown); superseded and
-#                     merged/closed rows are dropped so dead context isn't resurfaced.
+#                     re-implementing repo-matching or liveness. Active excludes
+#                     superseded and completed/stale rows even when recent retention
+#                     clears archive-class so those rows stay in the picker.
 #                     Pair with --check-branches for full staleness (merged-PR) filtering;
 #                     without it only supersede filtering applies. Leaves every other
 #                     section byte-identical, so existing callers are unaffected.
@@ -24,7 +24,7 @@ set -uo pipefail
 HANDOFFS_DIR="${HOME}/.claude/handoffs"
 
 RECENT_DAYS=""
-STALE_DAYS=30
+STALE_DAYS=""
 SUMMARY_ONLY=0
 CHECK_BRANCHES=0
 MATCH_BEAD=""
@@ -59,17 +59,27 @@ field_has_token() {
     done
     return 1
 }
+TODAY="${HANDOFFS_TODAY:-$(date +%Y-%m-%d)}"
+DOW=$(date -d "$TODAY" +%u 2>/dev/null \
+    || date -j -f "%Y-%m-%d" "$TODAY" +%u 2>/dev/null)
 if [ -z "$RECENT_DAYS" ]; then
-    DOW=$(date +%u)  # 1=Mon..7=Sun
     case "$DOW" in
         1) RECENT_DAYS=3 ;;  # Mon → covers Fri+weekend
         2) RECENT_DAYS=4 ;;  # Tue → covers Fri+weekend+Mon
         *) RECENT_DAYS=3 ;;
     esac
 fi
+if ! [[ "$RECENT_DAYS" =~ ^[1-9][0-9]*$ ]]; then
+    echo "ERROR: --recent-days must be a positive integer" >&2
+    exit 2
+fi
+[ -n "$STALE_DAYS" ] || STALE_DAYS="$RECENT_DAYS"
 if ! [[ "$STALE_DAYS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: --stale-days must be a positive integer" >&2
     exit 2
+fi
+if (( 10#$STALE_DAYS < 10#$RECENT_DAYS )); then
+    STALE_DAYS="$RECENT_DAYS"
 fi
 
 # Check whether any sibling of $1 has a *bare* `.claude` symlink pointing at
@@ -193,14 +203,23 @@ else
     CURRENT_REPO_DISPLAY="NONE"
 fi
 
-CUTOFF=$(date -I -d "${RECENT_DAYS} days ago" 2>/dev/null || date -j -v-${RECENT_DAYS}d +%Y-%m-%d 2>/dev/null)
-AGE_REVIEW_CUTOFF=$(date -I -d "${STALE_DAYS} days ago" 2>/dev/null || date -j -v-${STALE_DAYS}d +%Y-%m-%d 2>/dev/null)
+date_days_ago() {
+    local days="$1"
+    date -I -d "$TODAY - ${days} days" 2>/dev/null \
+        || date -j -f "%Y-%m-%d" "-v-${days}d" "$TODAY" +%Y-%m-%d 2>/dev/null
+}
+CUTOFF=$(date_days_ago "$RECENT_DAYS")
+AGE_REVIEW_CUTOFF=$(date_days_ago "$STALE_DAYS")
+if [ -z "$CUTOFF" ] || [ -z "$AGE_REVIEW_CUTOFF" ]; then
+    echo "ERROR: unable to calculate handoff age cutoffs" >&2
+    exit 2
+fi
 
 # --- Branch-liveness setup (only with --check-branches, only in a repo) -----
-# Staleness is current-repo-only: the git queries run in the invocation pwd, so
-# we can't speak to branches in other repos. One `git ls-remote` (network,
-# timeout-guarded) covers remote existence; merged/ancestor checks are local
-# against the default branch tip. Degrades gracefully when offline.
+# Each classified repo gets one `git ls-remote` (network, timeout-guarded) for
+# remote existence; merged/ancestor checks are local against that repo's default
+# branch tip. The current repo is set up first and workspace members are repointed
+# through setup_liveness below. Degrades gracefully when offline.
 TIMEOUT=""
 if command -v timeout >/dev/null 2>&1; then TIMEOUT="timeout 8"
 elif command -v gtimeout >/dev/null 2>&1; then TIMEOUT="gtimeout 8"; fi
@@ -787,18 +806,18 @@ while [ "$i" -lt "$N" ]; do
     i=$((i+1))
 done
 
-# --- Branch/PR-liveness pass (current-repo rows only; needs --check-branches) -
+# --- Branch/PR-liveness pass (current + workspace; needs --check-branches) ---
 # Fills R_STATE (live/merged/gone/unknown) and, when gh is available, the PR
-# fields R_PRSTATE/R_PRNUM/R_PRURL. Rows in other repos stay `unknown` — we can
-# only query the repo we're standing in.
+# fields R_PRSTATE/R_PRNUM/R_PRURL. The same classifier is repointed per workspace
+# member; unrelated-repo rows stay `unknown`.
 #
 # R_ARCHCLASS is the per-row archive recommendation used by §3b:
-#   safe — superseded, or PR merged, or branch-tip merged locally. Low regret;
+#   safe — superseded, or an older PR/bead/branch completion signal. Low regret;
 #          the context lives on (newer handoff) or the work demonstrably landed.
-#   keep — PR closed unmerged, or branch gone with no merged evidence. Higher
+#   keep — an older closed PR or gone branch with no merged evidence. Higher
 #          regret; may be the only record of an abandoned thread.
-#   ""   — live work (incl. an OPEN PR — never a candidate) or unknown.
-# Precedence: supersede > open PR > merged PR > beads-closed > closed PR >
+#   ""   — live/unknown work, or a recent non-superseded row retained for context.
+# Precedence before recent-retention: supersede > open PR > merged PR > beads-closed > closed PR >
 # local merged > gone. A merged PR is ground truth that beats local ancestry —
 # the fix for squash-merges, where the branch is never an ancestor of the
 # default tip. Beads-closed ("done") is the fix for the trunk case, where there
@@ -829,6 +848,7 @@ R_BEADSDONE=()
 R_BEADSPROGRESS=()
 R_NEEDSREVIEW=()
 R_NEEDSAGEREVIEW=()
+R_INACTIVE=()       # completion/stale/supersede signal, independent of archive retention
 CUR_STALE=0
 CUR_AGE_REVIEW=0
 WS_STALE=0
@@ -847,6 +867,7 @@ while [ "$i" -lt "$N" ]; do
     R_BEADSPROGRESS+=("")
     R_NEEDSREVIEW+=("")
     R_NEEDSAGEREVIEW+=("")
+    R_INACTIVE+=("")
     i=$((i+1))
 done
 
@@ -858,7 +879,7 @@ done
 classify_row() {
     local i="$1" scope="$2"
     local state="unknown" ps="unknown" pnum="" purl=""
-    local archclass="" beadsdone="" beadsprogress="" needsreview="" needsagereview=""
+    local archclass="" beadsdone="" beadsprogress="" needsreview="" needsagereview="" inactive=""
     local bead_src bclosed btotal recordedpr=""
     printf '%s' "${R_PRS[$i]}" | grep -qE '#[0-9]+' && recordedpr="Y"
 
@@ -899,7 +920,18 @@ classify_row() {
     elif [ "$state" = "gone" ]; then
         archclass="keep"
     fi
-    # "stale" group = archivable, but not via supersede.
+    [ -n "$archclass" ] && inactive="Y"
+
+    # Keep recent handoffs in the picker even when they are demonstrably done
+    # or stale. Superseded rows remain immediately archivable because their
+    # context continues in a newer handoff.
+    if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ] \
+        && [ -n "${R_DATE[$i]}" ] \
+        && { [[ "${R_DATE[$i]}" > "$CUTOFF" ]] || [ "${R_DATE[$i]}" = "$CUTOFF" ]; }; then
+        archclass=""
+    fi
+    # "stale" group = archivable after applying the recent-retention guard,
+    # but not via supersede.
     if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ]; then
         if [ "$scope" = "cur" ]; then CUR_STALE=$((CUR_STALE+1)); else WS_STALE=$((WS_STALE+1)); fi
     fi
@@ -907,19 +939,20 @@ classify_row() {
     # closure (something shipped, something open) and no Deliverable field to
     # disambiguate → flag for the assisted prompt. All-closed rows already
     # became archclass=safe above; all-open rows are genuinely live.
-    if [ -z "$archclass" ] && [ -z "${R_DELIV[$i]}" ] \
+    if [ -z "$archclass" ] && [ -z "$inactive" ] && [ -z "${R_DELIV[$i]}" ] \
         && is_trunk_branch "${R_BRANCH[$i]}" && [ -n "$beadsprogress" ] \
-        && [ "${beadsprogress%%/*}" -gt 0 ]; then
+        && [ "${beadsprogress%%/*}" -gt 0 ] \
+        && [ -n "${R_DATE[$i]}" ] && [[ "${R_DATE[$i]}" < "$CUTOFF" ]]; then
         needsreview="Y"
     fi
     # Age is only a reason to ask, never evidence of completion. Flag old
-    # current-repo rows when every stronger signal is absent: trunk parked,
-    # no usable PR signal, no resolvable beads, and otherwise unclassified.
+    # current-repo rows when every stronger signal is absent: unknown branch
+    # liveness, no usable PR signal, no resolvable beads, and otherwise unclassified.
     # An unavailable PR lookup still qualifies when the handoff records no PR;
     # this is assisted review, not evidence-backed auto-archiving.
     if [ "$scope" = "cur" ] && [ "$CHECK_BRANCHES" -eq 1 ] \
-        && [ -z "$archclass" ] && [ -z "$needsreview" ] \
-        && is_trunk_branch "${R_BRANCH[$i]}" && [ -z "$recordedpr" ] \
+        && [ -z "$archclass" ] && [ -z "$inactive" ] && [ -z "$needsreview" ] \
+        && [ "$state" = "unknown" ] && [ -z "$recordedpr" ] \
         && { [ "$ps" = "none" ] || [ "$ps" = "unknown" ]; } \
         && [ -z "$beadsprogress" ] && [ -n "${R_DATE[$i]}" ] \
         && [[ "${R_DATE[$i]}" < "$AGE_REVIEW_CUTOFF" ]]; then
@@ -936,6 +969,7 @@ classify_row() {
     R_BEADSPROGRESS[i]="$beadsprogress"
     R_NEEDSREVIEW[i]="$needsreview"
     R_NEEDSAGEREVIEW[i]="$needsagereview"
+    R_INACTIVE[i]="$inactive"
 }
 
 # Current-repo rows (liveness globals already point at pwd).
@@ -983,11 +1017,11 @@ if [ "$CHECK_BRANCHES" -eq 1 ] && [ "${#WS_KEYS[@]}" -gt 0 ]; then
 fi
 
 # --- Current-repo "last session" + live-recent count (offline; for landscape) -
-# LATEST_* is the newest current-repo handoff (records are newest-first, and the
-# newest is always live — nothing newer can supersede it). recent_live counts
-# recent current-repo handoffs that are still live work — archive-class empty,
-# which excludes superseded AND finished (bead-closed; or, under --check-branches,
-# merged/gone/closed) threads. So the morning nudge reflects distinct resumable
+# LATEST_* is the newest current-repo handoff (records are newest-first).
+# recent_live counts recent current-repo handoffs without a completion, stale,
+# or supersede signal. It uses R_INACTIVE rather than archive-class because the
+# retention guard deliberately clears archive-class on recent finished rows.
+# So the morning nudge reflects distinct resumable
 # threads, not re-wraps of the same one nor work that has already shipped.
 CUR_RECENT_LIVE=0
 LATEST_SLUG=""
@@ -1008,7 +1042,7 @@ if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
                 LATEST_BRANCH="${R_BRANCH[$i]}"
                 LATEST_DATE="${R_DATE[$i]}"
             fi
-            if [ -z "${R_ARCHCLASS[$i]}" ] \
+            if [ -z "${R_INACTIVE[$i]}" ] \
                 && { [[ "${R_DATE[$i]}" > "$CUTOFF" ]] || [ "${R_DATE[$i]}" = "$CUTOFF" ]; }; then
                 CUR_RECENT_LIVE=$((CUR_RECENT_LIVE+1))
                 CUR_LIVE_LINES+=("${R_SLUG[$i]}|${R_BRANCH[$i]}|${R_DATE[$i]}|${R_TIME[$i]}")
@@ -1045,10 +1079,10 @@ if [ -n "$LATEST_DATE" ]; then
     echo "${LATEST_SLUG}|${LATEST_BRANCH}|${LATEST_DATE}"
 fi
 
-# Recent, non-superseded current-repo handoffs (newest first) — the live threads
-# behind the current_repo_recent_live count. One `{slug}|{branch}|{date}|{time}`
-# line each; first line is the same as ---CURRENT-REPO-LATEST--- when both exist.
-# Empty when there are none.
+# Recent active current-repo handoffs (newest first) — the live threads behind
+# current_repo_recent_live. One `{slug}|{branch}|{date}|{time}` line each. The
+# first live row may differ from CURRENT-REPO-LATEST when the newest handoff has
+# already completed. Empty when there are none.
 echo "---CURRENT-REPO-LIVE---"
 if [ "${#CUR_LIVE_LINES[@]}" -gt 0 ]; then
     for line in "${CUR_LIVE_LINES[@]}"; do
@@ -1117,10 +1151,10 @@ if [ "$SUMMARY_ONLY" -eq 0 ]; then
 fi
 
 # --- Matched handoffs (only under --bead/--ticket) ------------------------
-# Current-repo, NON-stale handoffs whose Beads/Jira field exactly contains the
-# queried ID/KEY. "Non-stale" = R_ARCHCLASS empty: live, open-PR, or unknown.
-# Superseded rows (archclass=safe) and merged/closed rows are dropped, so a
-# resume nudge never points at dead context — the newer/live tip wins. Emitted
+# Current-repo, active handoffs whose Beads/Jira field exactly contains the
+# queried ID/KEY. R_INACTIVE excludes superseded, completed, and stale rows even
+# when recent retention leaves archive-class empty, so a resume nudge never
+# points at dead context — the newer/live tip wins. Emitted
 # only when a filter is active; absent otherwise, so existing parsers are
 # untouched. Rows arrive newest-first (same order as ---HANDOFFS---).
 # Line: {filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}
@@ -1130,7 +1164,7 @@ if [ -n "$MATCH_FILTER" ]; then
     while [ "$i" -lt "$N" ]; do
         if [ "$CURRENT_REPO_KEY" != "NONE" ] \
             && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ] \
-            && [ -z "${R_ARCHCLASS[$i]}" ]; then
+            && [ -z "${R_INACTIVE[$i]}" ]; then
             matched=0
             if [ -n "$MATCH_BEAD" ] && field_has_token "${R_BEADS[$i]}" "$MATCH_BEAD"; then matched=1; fi
             if [ -n "$MATCH_TICKET" ] && field_has_token "${R_JIRA[$i]}" "$MATCH_TICKET"; then matched=1; fi

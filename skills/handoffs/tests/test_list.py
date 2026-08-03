@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime as dt
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -16,8 +17,14 @@ REFERENCE = SKILL_DIR / "REFERENCE.md"
 
 
 class HandoffListFixture:
-    def __init__(self, root: Path, pr_line: str | None = "") -> None:
+    def __init__(
+        self,
+        root: Path,
+        pr_line: str | None = "",
+        today: dt.date | None = None,
+    ) -> None:
         self.root = root
+        self.today = today or dt.date.today()
         self.home = root / "home"
         self.repo = root / "repo"
         self.handoffs = self.home / ".claude" / "handoffs"
@@ -35,6 +42,47 @@ class HandoffListFixture:
         else:
             gh.write_text(f"#!/bin/sh\nprintf '%s\\n' '{pr_line}'\n", encoding="utf-8")
         gh.chmod(0o755)
+
+    def add_workspace_member(self) -> Path:
+        member = self.repo / "member"
+        member.mkdir()
+        subprocess.run(["git", "init", "-b", "main", str(member)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(member), "config", "user.email", "test@example.com"], check=True)
+        subprocess.run(["git", "-C", str(member), "config", "user.name", "Test"], check=True)
+        subprocess.run(
+            ["git", "-C", str(member), "commit", "--allow-empty", "-m", "init"],
+            check=True,
+            capture_output=True,
+        )
+        (self.repo / ".mgit.conf").write_text("services=member\n", encoding="utf-8")
+        return member
+
+    def force_bsd_date_fallback(self) -> None:
+        date = self.bin / "date"
+        date.write_text(
+            f"""#!{sys.executable}
+import datetime as dt
+import re
+import sys
+
+args = sys.argv[1:]
+if "-d" in args:
+    raise SystemExit(1)
+if args[:3] != ["-j", "-f", "%Y-%m-%d"]:
+    raise SystemExit(2)
+rest = args[3:]
+adjustment = next((arg for arg in rest if re.fullmatch(r"-v-[0-9]+d", arg)), None)
+base = next((arg for arg in rest if re.fullmatch(r"[0-9]{{4}}-[0-9]{{2}}-[0-9]{{2}}", arg)), None)
+if base is None or (adjustment is not None and rest.index(adjustment) > rest.index(base)):
+    raise SystemExit(2)
+value = dt.date.fromisoformat(base)
+if adjustment is not None:
+    value -= dt.timedelta(days=int(adjustment[3:-1]))
+print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
+""",
+            encoding="utf-8",
+        )
+        date.chmod(0o755)
 
     def add_beads_store(self, *statuses: str) -> None:
         (self.repo / ".beads").mkdir()
@@ -58,14 +106,16 @@ class HandoffListFixture:
         prs: str = "—",
         time: str = "12:00",
         header_time: bool = True,
+        repo: Path | None = None,
     ) -> str:
-        date = dt.date.today() - dt.timedelta(days=age_days)
+        date = self.today - dt.timedelta(days=age_days)
+        handoff_repo = repo or self.repo
         filename = f"{date.isoformat()}-{slug}.md"
         resume_header = f"# Resume: {slug} — {date.isoformat()} {time}" if header_time else f"# Resume: {slug}"
         (self.handoffs / filename).write_text(
             f"{resume_header}\n\n"
-            f"**Where to pick up:** `{self.repo}` on branch `{branch}`\n"
-            f"**Repo root:** `{self.repo}`\n"
+            f"**Where to pick up:** `{handoff_repo}` on branch `{branch}`\n"
+            f"**Repo root:** `{handoff_repo}`\n"
             f"**Beads:** {beads}\n"
             f"**Jira:** {jira}\n"
             f"**PRs:** {prs}\n",
@@ -81,6 +131,7 @@ class HandoffListFixture:
         env = os.environ.copy()
         env["HOME"] = str(self.home)
         env["PATH"] = f"{self.bin}:{env['PATH']}"
+        env["HANDOFFS_TODAY"] = self.today.isoformat()
         result = subprocess.run(
             [str(SCRIPT), "--check-branches", *args],
             cwd=self.repo,
@@ -151,7 +202,156 @@ class SupersedeOrderingTests(unittest.TestCase):
             self.assertEqual(rows[third][7], "")
 
 
+class ArchiveRetentionTests(unittest.TestCase):
+    MONDAY = dt.date(2026, 8, 3)
+
+    def test_recent_completed_handoff_is_retained_without_looking_live(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp),
+                "feature/work\tmerged\t123\thttps://example.test/pr/123",
+                today=self.MONDAY,
+            )
+            fixture.add_handoff(
+                1,
+                "recent-complete",
+                branch="feature/work",
+                jira="`ABC-123`",
+            )
+
+            output = fixture.run("--ticket", "ABC-123")
+            fields = section(output, "HANDOFFS")[0].split("|")
+
+            self.assertEqual(fields[10], "merged")
+            self.assertEqual(fields[13], "")
+            self.assertIn("current_repo_recent_live=0", section(output, "SUMMARY"))
+            self.assertIn("current_repo_stale=0", section(output, "SUMMARY"))
+            self.assertEqual(section(output, "CURRENT-REPO-LIVE"), [])
+            self.assertEqual(section(output, "MATCHED-HANDOFFS"), [])
+
+    def test_active_handoff_remains_live_and_matchable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=self.MONDAY)
+            filename = fixture.add_handoff(1, "active", jira="`ABC-123`")
+
+            output = fixture.run("--ticket", "ABC-123")
+            live = section(output, "CURRENT-REPO-LIVE")
+            matched = section(output, "MATCHED-HANDOFFS")
+
+            self.assertEqual(live, ["active|main|2026-08-02|12:00"])
+            self.assertEqual(matched[0].split("|")[0], filename)
+            self.assertIn("current_repo_recent_live=1", section(output, "SUMMARY"))
+
+    def test_recent_stale_handoff_is_retained(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp),
+                "feature/work\tclosed\t123\thttps://example.test/pr/123",
+                today=self.MONDAY,
+            )
+            fixture.add_handoff(1, "recent-stale", branch="feature/work")
+
+            output = fixture.run()
+            fields = section(output, "HANDOFFS")[0].split("|")
+
+            self.assertEqual(fields[10], "closed")
+            self.assertEqual(fields[13], "")
+            self.assertIn("current_repo_recent_live=0", section(output, "SUMMARY"))
+            self.assertIn("current_repo_stale=0", section(output, "SUMMARY"))
+
+    def test_workspace_member_retention_uses_the_same_boundary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp),
+                "feature/complete\tmerged\t123\thttps://example.test/pr/123\n"
+                "feature/old\tmerged\t124\thttps://example.test/pr/124",
+                today=self.MONDAY,
+            )
+            member = fixture.add_workspace_member()
+            recent = fixture.add_handoff(
+                1,
+                "member-recent",
+                branch="feature/complete",
+                repo=member,
+            )
+            old = fixture.add_handoff(
+                4,
+                "member-old",
+                branch="feature/old",
+                repo=member,
+            )
+            superseded = fixture.add_handoff(
+                1,
+                "member-first",
+                branch="feature/superseded",
+                repo=member,
+            )
+            newer = fixture.add_handoff(
+                0,
+                "member-second",
+                branch="feature/superseded",
+                repo=member,
+            )
+
+            rows = {
+                fields[0]: fields
+                for fields in (
+                    line.split("|")
+                    for line in section(fixture.run(), "WORKSPACE-MEMBER-HANDOFFS")
+                )
+            }
+
+            self.assertEqual(rows[recent][13], "")
+            self.assertEqual(rows[old][13], "safe")
+            self.assertEqual(rows[superseded][7], newer)
+            self.assertEqual(rows[superseded][13], "safe")
+
+    def test_recent_superseded_handoff_remains_archivable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=self.MONDAY)
+            older = fixture.add_handoff(1, "first", branch="feature/work")
+            newer = fixture.add_handoff(0, "second", branch="feature/work")
+
+            rows = {
+                fields[0]: fields
+                for fields in (line.split("|") for line in section(fixture.run(), "HANDOFFS"))
+            }
+
+            self.assertEqual(rows[older][7], newer)
+            self.assertEqual(rows[older][13], "safe")
+
+    def test_friday_completed_handoff_is_retained_on_monday(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp),
+                "feature/work\tmerged\t123\thttps://example.test/pr/123",
+                today=self.MONDAY,
+            )
+            fixture.add_handoff(3, "friday-complete", branch="feature/work")
+
+            output = fixture.run()
+            fields = section(output, "HANDOFFS")[0].split("|")
+
+            self.assertIn("3", section(output, "RECENT-WINDOW-DAYS"))
+            self.assertEqual(fields[13], "")
+            self.assertIn("current_repo_stale=0", section(output, "SUMMARY"))
+
+
 class TrunkReviewClassificationTests(unittest.TestCase):
+    def test_recent_partial_bead_closure_is_retained(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp),
+                today=ArchiveRetentionTests.MONDAY,
+            )
+            fixture.add_beads_store("closed", "open")
+            fixture.add_handoff(1, "partial-closure", beads="`repo-closed`, `repo-open`")
+
+            fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+
+            self.assertEqual(fields[19], "1/2")
+            self.assertEqual(fields[20], "")
+
     def test_partial_bead_closure_still_needs_assisted_trunk_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fixture = HandoffListFixture(Path(tmp))
@@ -182,13 +382,38 @@ class AgeReviewClassificationTests(unittest.TestCase):
             self.assertIn("current_repo_age_review=1", section(output, "SUMMARY"))
             self.assertIn("current_repo_stale=0", section(output, "SUMMARY"))
 
-    def test_default_age_floor_is_30_days(self) -> None:
+    def test_short_age_floor_cannot_expose_a_recent_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            fixture = HandoffListFixture(Path(tmp))
-            fixture.add_handoff(40, "default-threshold")
+            fixture = HandoffListFixture(Path(tmp), today=ArchiveRetentionTests.MONDAY)
+            fixture.add_handoff(2, "still-recent")
 
-            fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+            output = fixture.run("--stale-days", "1")
+            fields = section(output, "HANDOFFS")[0].split("|")
 
+            self.assertIn("3", section(output, "STALE-DAYS"))
+            self.assertEqual(fields[21], "")
+
+    def test_bsd_date_fallback_computes_cutoffs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=ArchiveRetentionTests.MONDAY)
+            fixture.force_bsd_date_fallback()
+            fixture.add_handoff(4, "bsd-cutoff")
+
+            output = fixture.run()
+            fields = section(output, "HANDOFFS")[0].split("|")
+
+            self.assertIn("2026-07-31", section(output, "CUTOFF"))
+            self.assertEqual(fields[21], "Y")
+
+    def test_default_age_floor_starts_after_the_recent_window(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=ArchiveRetentionTests.MONDAY)
+            fixture.add_handoff(4, "default-threshold")
+
+            output = fixture.run()
+            fields = section(output, "HANDOFFS")[0].split("|")
+
+            self.assertIn("3", section(output, "STALE-DAYS"))
             self.assertEqual(fields[21], "Y")
 
     def test_recent_equivalent_is_not_offered(self) -> None:
@@ -218,14 +443,15 @@ class AgeReviewClassificationTests(unittest.TestCase):
 
             self.assertEqual(fields[21], "")
 
-    def test_non_trunk_handoff_is_not_offered_for_age_review(self) -> None:
+    def test_unknown_non_trunk_handoff_is_offered_for_age_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            fixture = HandoffListFixture(Path(tmp))
+            fixture = HandoffListFixture(Path(tmp), None)
             fixture.add_handoff(40, "feature-branch", branch="feature/work")
 
             fields = section(fixture.run("--stale-days", "30"), "HANDOFFS")[0].split("|")
 
-            self.assertEqual(fields[21], "")
+            self.assertEqual(fields[9], "unknown")
+            self.assertEqual(fields[21], "Y")
 
     def test_resolvable_bead_keeps_the_handoff_out_of_age_review(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -297,8 +523,8 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("REFERENCE §Age-review", handoffs)
         self.assertIn("REFERENCE §Age-review", tidy)
         self.assertIn("mcp__jira__jira_get", handoffs)
-        self.assertIn("§1a produced no Jira-Done", handoffs)
-        self.assertIn("promotion is itself an effective Done candidate", reference)
+        self.assertIn("§1a produced no older Jira-Done", handoffs)
+        self.assertIn("A recent Jira-Done row stays retained", reference)
         self.assertIn("never auto-selected", reference)
         self.assertIn("never auto-archived", reference)
         self.assertIn("Used by `/handoffs` and `/handoffs-tidy`", reference)
@@ -307,6 +533,9 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("per-member confirmation", handoffs)
         self.assertIn("one question per member repo", reference)
         self.assertIn("Only `safe` rows are offered here.", reference)
+        self.assertIn("A recent row is also", reference)
+        self.assertIn("Supersede remains immediately `safe`", reference)
+        self.assertIn("inside the recent grace window", tidy)
 
 
 if __name__ == "__main__":
