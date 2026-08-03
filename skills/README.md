@@ -63,6 +63,7 @@
 | watch-review-requests | Watch direct inbound GitHub review requests, run one bounded repository-qualified review at a time, and pause for private, draft-only, deferred, or separately confirmed external dispositions |
 | watch-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a smoke test scoped to the change (browser for UI, GET for read-only API) against staging. Goal-terminating; staging by default, prod read-only opt-in. Generic GitHub-Actions cousin of /watch-release |
 | wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees, incl. worktree-only settings drift), and a paste-ready resume block for the next session |
+| yesterday | Read-only previous-workday stand-up recap across objective commits, PRs, Jira touches, and Beads activity; selects Friday when run on Monday |
 
 ## Model routing
 

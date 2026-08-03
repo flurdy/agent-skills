@@ -96,6 +96,7 @@ It emits delimited sections:
 
 - `---STATUS---` — `OK` or `NO_GIT`. If `NO_GIT`, skip the Commits sub-section.
 - `---DATE---` — today's `YYYY-MM-DD` (the script's window).
+- `---WINDOW-START---` / `---WINDOW-END---` — the local, exclusive-end interval bounding activity.
 - `---AUTHOR---` — `git config user.email` for the commit filter.
 - `---COMMITS---` — one pipe-delimited line per commit: `{worktree_basename}|{branch}|{sha}|{subject}|{when}`. Empty if no commits today.
 - `---GH-STATUS---` — `OK`, `UNAVAILABLE` (gh missing or not authenticated), or `ERROR` (one or more searches failed).
@@ -105,13 +106,19 @@ It emits delimited sections:
 - `---BEADS-IN-PROGRESS---` — output of `bd list --status=in_progress` (state being left for tomorrow).
 - `---BEADS-STALE-DAYS---` — the idle grace period in days (`WRAP_UP_STALE_DAYS`, default 7). §3a names it in the prompt.
 - `---BEADS-STALE-CANDIDATES---` — `bd list --status=in_progress --updated-before={today − STALE_DAYS}`: in-progress beads idle for the **whole grace period**, not merely "not touched today". This is §3a's candidate set. Windowing on a multi-day cutoff (rather than midnight) means a bead a parallel session set `in_progress` today, a bead you've worked over several days without committing, and a bead you touched earlier on a day of repeated wrap-ups all stay out of the candidate set — only genuinely-idle WIP surfaces.
-- `---BEADS-CREATED-TODAY---` — output of `bd list --created-after=TODAY` (open beads created today; closed-same-day beads appear in `BEADS-CLOSED` instead, no double-counting).
-- `---BEADS-CLOSED---` — output of `bd list --status=closed --closed-after=TODAY`.
+- `---BEADS-CREATED-TODAY---` — open Beads created inside the emitted local window; the helper queries with equivalent UTC bounds and excludes closed-same-day rows so they appear only in `BEADS-CLOSED`.
+- `---BEADS-CLOSED---` — closed Beads whose closure timestamp falls inside the same UTC-normalized window.
 
 `activity.sh --workspace` is the reusable, read-only catch-up contract used by `/today`. It
 preserves this default no-argument contract, resolves members through
-`multirepo.sh --members-only`, and repository-qualifies commits and JSON Beads lists. Do not parse workspace
-configuration separately in consumers.
+`multirepo.sh --members-only`, and repository-qualifies commits and JSON Beads lists. Workspace
+mode also emits the generic `BEADS-CREATED` marker with every issue created in the window,
+including issues now closed; the compatibility `BEADS-CREATED-TODAY` marker retains the existing
+open-only behavior. `--workspace --previous-workday` selects Friday on Monday and the preceding
+calendar day otherwise for `/yesterday`. The helper converts the emitted local
+`WINDOW-START`/`WINDOW-END` interval to UTC for timestamp filtering and requires Python 3.10+ for
+date and JSON processing. Do not parse workspace configuration or reproduce date-window logic in
+consumers.
 
 #### Commits
 

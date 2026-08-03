@@ -39,6 +39,7 @@ It reuses `/wrap-up`'s local-day filtering and GitHub queries, plus its authorit
 multi-repository resolver. It emits:
 
 - `---DATE---` — local calendar date used by every same-day filter.
+- `---WINDOW-START---` / `---WINDOW-END---` — the local, exclusive-end interval applied to commits and Beads records.
 - `---SCOPE---` — `WORKSPACE` or `CURRENT_REPO`.
 - `---REPOSITORIES---` — `{repository}|{absolute_path}` for validated repositories.
 - `---DIAGNOSTICS---` — bounded discovery or member failures.
@@ -47,22 +48,23 @@ multi-repository resolver. It emits:
 - `---GH-STATUS---`, `---GH-DIAGNOSTICS---`, and the three PR JSON sections used by `/wrap-up`.
 - `---BEADS-STATUS---` — `{repository}|OK|NO_BD|NO_BEADS_IN_REPO|ERROR`.
 - The three Beads sections — `{repository}|{JSON array}` for in-progress, open items
-  created today, and items closed today.
+  created today (`BEADS-CREATED-TODAY`), and items closed today. The generic
+  `BEADS-CREATED` section includes closed rows for historical consumers; ignore it here.
 
 At the same time, query Jira for issues the current user changed today:
 
-```
-mcp__jira__jira_get
-  path: /rest/api/3/search/jql
-  queryParams:
-    jql: updatedBy = currentUser() AND updated >= startOfDay() ORDER BY updated DESC
-    fields: summary,status,issuetype,updated
-    maxResults: 20
-  jq: issues[*].{key: key, summary: fields.summary, status: fields.status.name, type: fields.issuetype.name, updated: fields.updated}
+1. Fetch `/rest/api/3/myself` and project only `accountId`.
+2. Query `/rest/api/3/search/jql` with:
+
+```text
+issuekey IN updatedBy("{account-id}", "{DATE}", "{DATE}") ORDER BY updated DESC
 ```
 
-`updatedBy` deliberately means changed, commented on, or transitioned. It does not claim to
-find tickets that were only read.
+Request fields `summary,status,issuetype,updated`, `maxResults: 20`, and project key, summary,
+status, type, and updated. `updatedBy` supports day precision and an inclusive end date; repeating
+`DATE` selects exactly that Jira calendar day. It deliberately means changed, commented on, or
+transitioned and does not claim to find tickets that were only read. If either Jira call fails,
+render Jira as unavailable and continue.
 
 Render the following sections in order.
 
