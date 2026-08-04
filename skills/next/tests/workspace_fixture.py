@@ -14,6 +14,7 @@ FAKE_BD = """#!/usr/bin/env python3
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 arguments = sys.argv[1:]
@@ -37,6 +38,8 @@ if command == 'show':
     key = 'show'
 elif command == 'update':
     key = 'update'
+elif command == 'comments':
+    key = 'comments-add' if arguments[1] == 'add' else 'comments'
 elif command == 'blocked':
     key = 'blocked'
 elif '--id' in arguments:
@@ -55,6 +58,9 @@ if fault == 'error':
 if fault == 'invalid-json':
     print('{')
     raise SystemExit(0)
+delay = payload.get('delays', {}).get(key)
+if delay:
+    time.sleep(delay)
 
 issues = [i for k in ('ready', 'blocked', 'in_progress', 'other') for i in payload.get(k, [])]
 if key == 'show':
@@ -69,6 +75,29 @@ if key == 'show':
     print(json.dumps(matches[:1]))
     raise SystemExit(0)
 if key == 'update':
+    issue_id = arguments[1]
+    for bucket in ('ready', 'blocked', 'other'):
+        retained = []
+        for issue in payload.get(bucket, []):
+            if issue['id'] == issue_id:
+                payload.setdefault('in_progress', []).append(issue)
+            else:
+                retained.append(issue)
+        payload[bucket] = retained
+    (directory / '.beads' / 'fixture.json').write_text(json.dumps(payload))
+    raise SystemExit(0)
+if key == 'comments':
+    print(json.dumps(payload.get('comments', [])))
+    raise SystemExit(0)
+if key == 'comments-add':
+    payload.setdefault('comments', []).append({
+        'issue_id': arguments[2],
+        'text': arguments[3],
+    })
+    (directory / '.beads' / 'fixture.json').write_text(json.dumps(payload))
+    if fault == 'after-write-error':
+        print('simulated comments-add ambiguous failure', file=sys.stderr)
+        raise SystemExit(9)
     raise SystemExit(0)
 if key == 'probe':
     issue_id = arguments[arguments.index('--id') + 1]
@@ -132,7 +161,9 @@ class WorkspaceFixture(unittest.TestCase):
         blocked: list[dict[str, Any]] | None = None,
         in_progress: list[dict[str, Any]] | None = None,
         other: list[dict[str, Any]] | None = None,
+        comments: list[dict[str, Any]] | None = None,
         faults: dict[str, str] | None = None,
+        delays: dict[str, float] | None = None,
     ) -> None:
         directory.mkdir(parents=True)
         subprocess.run(
@@ -149,7 +180,9 @@ class WorkspaceFixture(unittest.TestCase):
                     "blocked": blocked or [],
                     "in_progress": in_progress or [],
                     "other": other or [],
+                    "comments": comments or [],
                     "faults": faults or {},
+                    "delays": delays or {},
                 }
             ),
             encoding="utf-8",

@@ -44,6 +44,13 @@ class NextSelectTest(WorkspaceFixture):
             call for call in self.recorded_calls() if call["arguments"][0] == "update"
         ]
 
+    def comment_add_calls(self) -> list[dict[str, object]]:
+        return [
+            call
+            for call in self.recorded_calls()
+            if call["arguments"][:2] == ["comments", "add"]
+        ]
+
     def test_index_selection_resolves_the_owning_store(self) -> None:
         workspace = self.colliding_workspace()
 
@@ -102,6 +109,152 @@ class NextSelectTest(WorkspaceFixture):
                 )
             ],
         )
+
+    def test_start_records_one_idempotent_claim_in_the_owning_store(self) -> None:
+        workspace = self.colliding_workspace()
+        self.environment["PI_SESSION_ID"] = "pi-session-123"
+
+        first = self.run_select(workspace, "start", "repo-b:dup-1")
+        retry = self.run_select(workspace, "start", "repo-b:dup-1")
+
+        self.assertEqual(first.returncode, 0)
+        self.assertEqual(retry.returncode, 0)
+        additions = self.comment_add_calls()
+        self.assertEqual(len(additions), 1)
+        self.assertEqual(
+            Path(str(additions[0]["directory"])),
+            (self.base / "sources" / "repo-b").resolve(),
+        )
+        arguments = additions[0]["arguments"]
+        self.assertEqual(arguments[2], "dup-1")
+        comment = str(arguments[3])
+        self.assertIn("agent-claim:v1", comment)
+        self.assertIn("session_id: pi-session-123", comment)
+        self.assertIn(
+            f"owning_store: {(self.base / 'sources' / 'repo-b').resolve()}",
+            comment,
+        )
+        self.assertRegex(
+            comment,
+            r"claimed_at_utc: \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z",
+        )
+        self.assertIn("Session activity is unverified.", comment)
+
+    def test_new_session_records_a_distinct_claim_on_an_in_progress_issue(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]
+            }
+        )
+        self.environment["PI_SESSION_ID"] = "pi-session-one"
+        self.assertEqual(
+            self.run_select(workspace, "start", "root-task").returncode, 0
+        )
+        self.environment["PI_SESSION_ID"] = "pi-session-two"
+
+        second = self.run_select(workspace, "start", "root-task")
+
+        self.assertEqual(second.returncode, 0)
+        comments = [str(call["arguments"][3]) for call in self.comment_add_calls()]
+        self.assertEqual(len(comments), 2)
+        self.assertIn("session_id: pi-session-one", comments[0])
+        self.assertIn("session_id: pi-session-two", comments[1])
+
+    def test_failed_update_reuses_the_attribution_on_retry(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")],
+                "faults": {"update": "error"},
+            }
+        )
+        self.environment["PI_SESSION_ID"] = "pi-retry-session"
+
+        failed = self.run_select(workspace, "start", "root-task")
+        fixture = workspace / ".beads" / "fixture.json"
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+        payload["faults"] = {}
+        fixture.write_text(json.dumps(payload), encoding="utf-8")
+        retry = self.run_select(workspace, "start", "root-task")
+
+        self.assertEqual(failed.returncode, 9)
+        self.assertEqual(retry.returncode, 0)
+        self.assertEqual(len(self.comment_add_calls()), 1)
+        updated = json.loads(fixture.read_text(encoding="utf-8"))
+        self.assertEqual([item["id"] for item in updated["in_progress"]], ["root-task"])
+
+    def test_ambiguous_comment_write_is_reconciled_without_a_duplicate(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")],
+                "faults": {"comments-add": "after-write-error"},
+            }
+        )
+        self.environment["PI_SESSION_ID"] = "pi-ambiguous-session"
+
+        failed = self.run_select(workspace, "start", "root-task")
+        fixture = workspace / ".beads" / "fixture.json"
+        payload = json.loads(fixture.read_text(encoding="utf-8"))
+        payload["faults"] = {}
+        fixture.write_text(json.dumps(payload), encoding="utf-8")
+        retry = self.run_select(workspace, "start", "root-task")
+
+        self.assertEqual(failed.returncode, 9)
+        self.assertEqual(retry.returncode, 0)
+        self.assertEqual(len(self.comment_add_calls()), 1)
+        updated = json.loads(fixture.read_text(encoding="utf-8"))
+        self.assertEqual(len(updated["comments"]), 1)
+        self.assertEqual([item["id"] for item in updated["in_progress"]], ["root-task"])
+
+    def test_concurrent_retries_are_serialized(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")],
+                "delays": {"comments": 0.2},
+            }
+        )
+        self.environment["PI_SESSION_ID"] = "pi-concurrent-session"
+        command = [str(SCRIPT), "start", "root-task"]
+
+        first = subprocess.Popen(
+            command,
+            cwd=workspace,
+            env=self.environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        second = subprocess.Popen(
+            command,
+            cwd=workspace,
+            env=self.environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        first.communicate(timeout=10)
+        second.communicate(timeout=10)
+
+        self.assertEqual(first.returncode, 0)
+        self.assertEqual(second.returncode, 0)
+        self.assertEqual(len(self.comment_add_calls()), 1)
+
+    def test_unreadable_claim_history_fails_without_risking_a_duplicate(self) -> None:
+        workspace = self.create_workspace(
+            root_data={
+                "ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")],
+                "faults": {"comments": "invalid-json"},
+            }
+        )
+
+        result = self.run_select(workspace, "start", "root-task")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("invalid comment JSON", result.stderr)
+        self.assertEqual(self.comment_add_calls(), [])
+        payload = json.loads(
+            (workspace / ".beads" / "fixture.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(payload["in_progress"], [])
 
     def test_unqualified_id_outside_the_ready_list_resolves_to_its_owner(self) -> None:
         workspace = self.colliding_workspace()

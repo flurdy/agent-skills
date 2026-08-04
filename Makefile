@@ -112,6 +112,7 @@ test-plan-to-backlog:
 
 test-beads:
 	@bash skills/beads/tests/test-skill-contract.sh
+	@python3 -m unittest discover -s skills/next/tests -p 'test_next_select.py'
 
 test-next:
 	@python3 -m unittest discover -s skills/next/tests -p 'test_*.py'

@@ -111,6 +111,13 @@ Discovery does not authorize mutation. Do not claim, update, or close a bead mer
 was found; mutate only when user intent and repository lifecycle rules justify the change, and
 close only when the tracked outcome is actually complete.
 
+Every agent-driven transition to `in_progress` records one claim-attribution comment containing
+the available harness session ID, a UTC timestamp, and the proven owning store. The comment must
+say that session activity is unverified: it attributes the claim but is not liveness evidence.
+Make the attribution idempotent for the same session, issue, and store so retries and no-op claim
+attempts do not create duplicate comments. Mutation helpers such as `next-select start` enforce
+this convention; prose alone is not sufficient.
+
 ## Use current CLI guidance
 
 Use `bd prime` to recover the active repository's current workflow context after compaction or

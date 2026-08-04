@@ -167,7 +167,9 @@ When invoked:
      ```bash
      ~/.agents/skills/next/scripts/next-select start <selector>
      ```
-     This marks it `in_progress` and shows its full details in that store only
+     This marks it `in_progress`, records one idempotent claim-attribution comment for the
+     current harness session with session activity explicitly unverified, and shows its full
+     details in that store only.
    - If bead has description with steps, highlight the first step
 
 ## Resume awareness (handoff check before starting)

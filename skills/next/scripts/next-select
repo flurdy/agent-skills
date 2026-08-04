@@ -4,12 +4,19 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
+import hashlib
 import importlib.util
 import json
+import os
 import subprocess
 import sys
+import tempfile
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from time import monotonic, sleep
+from typing import Any, Iterator
 
 sys.dont_write_bytecode = True
 
@@ -20,6 +27,14 @@ AMBIGUOUS_EXIT = 3
 NOT_FOUND_EXIT = 4
 UNAVAILABLE_EXIT = 5
 STALE_EXIT = 6
+CLAIM_VERSION = "agent-claim:v1"
+SESSION_ID_VARIABLES = (
+    "PI_SESSION_ID",
+    "CLAUDE_SESSION_ID",
+    "CLAUDE_CODE_SESSION_ID",
+    "CODEX_SESSION_ID",
+    "CODEX_THREAD_ID",
+)
 
 
 def load_collector() -> Any:
@@ -245,17 +260,150 @@ def run_handoff(directory: Path, issue_id: str, extra: list[str]) -> int:
     return result.returncode
 
 
-def run_start(directory: Path, issue_id: str) -> int:
-    update = subprocess.run(
-        ["bd", "-C", str(directory), "update", issue_id, "--status=in_progress"],
-        check=False,
+def harness_session_id() -> str:
+    for variable in SESSION_ID_VARIABLES:
+        value = os.environ.get(variable, "").strip()
+        if value:
+            return " ".join(value.split())
+    return "unavailable"
+
+
+def claim_marker(directory: Path, session_id: str) -> str:
+    identity = json.dumps(
+        {
+            "owning_store": str(directory.resolve()),
+            "session_id": session_id,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
     )
-    if update.returncode != 0:
-        return update.returncode
-    return subprocess.run(
-        ["bd", "-C", str(directory), "show", issue_id],
-        check=False,
-    ).returncode
+    return f"{CLAIM_VERSION} {identity}"
+
+
+def claim_lock_path(directory: Path, issue_id: str) -> Path:
+    identity = f"{directory.resolve()}\0{issue_id}".encode()
+    digest = hashlib.sha256(identity).hexdigest()
+    return Path(tempfile.gettempdir()) / f"next-select-claim-{digest}.lock"
+
+
+@contextmanager
+def claim_lock(directory: Path, issue_id: str) -> Iterator[None]:
+    descriptor = os.open(
+        claim_lock_path(directory, issue_id),
+        os.O_CREAT | os.O_RDWR,
+        0o600,
+    )
+    lock = os.fdopen(descriptor, "w")
+    deadline = monotonic() + COMMAND_TIMEOUT_SECONDS
+    try:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if monotonic() >= deadline:
+                    raise TimeoutError("claim attribution lock timed out")
+                sleep(0.05)
+        yield
+    finally:
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        lock.close()
+
+
+def record_claim(directory: Path, issue_id: str) -> int:
+    session_id = harness_session_id()
+    marker = claim_marker(directory, session_id)
+    try:
+        existing = subprocess.run(
+            [
+                "bd",
+                "-C",
+                str(directory),
+                "comments",
+                issue_id,
+                "--json",
+                "--readonly",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"next-select: claim lookup failed: {error}", file=sys.stderr)
+        return 1
+    if existing.returncode != 0:
+        sys.stderr.write(existing.stderr)
+        return existing.returncode
+    try:
+        comments = json.loads(existing.stdout)
+    except json.JSONDecodeError as error:
+        print(f"next-select: invalid comment JSON: {error}", file=sys.stderr)
+        return 1
+    if not isinstance(comments, list):
+        print("next-select: invalid comment JSON: expected a list", file=sys.stderr)
+        return 1
+    if any(
+        isinstance(comment, dict)
+        and isinstance(comment.get("text"), str)
+        and marker in comment["text"]
+        for comment in comments
+    ):
+        return 0
+
+    timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
+        "+00:00", "Z"
+    )
+    body = "\n".join(
+        (
+            marker,
+            "Agent-driven in_progress claim attribution.",
+            f"session_id: {session_id}",
+            f"claimed_at_utc: {timestamp}",
+            f"owning_store: {directory.resolve()}",
+            "Session activity is unverified.",
+        )
+    )
+    try:
+        added = subprocess.run(
+            ["bd", "-C", str(directory), "comments", "add", issue_id, body],
+            check=False,
+            timeout=COMMAND_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"next-select: claim attribution failed: {error}", file=sys.stderr)
+        return 1
+    return added.returncode
+
+
+def run_start(directory: Path, issue_id: str) -> int:
+    try:
+        with claim_lock(directory, issue_id):
+            claimed = record_claim(directory, issue_id)
+            if claimed != 0:
+                return claimed
+            update = subprocess.run(
+                [
+                    "bd",
+                    "-C",
+                    str(directory),
+                    "update",
+                    issue_id,
+                    "--status=in_progress",
+                ],
+                check=False,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            )
+            if update.returncode != 0:
+                return update.returncode
+            return subprocess.run(
+                ["bd", "-C", str(directory), "show", issue_id],
+                check=False,
+                timeout=COMMAND_TIMEOUT_SECONDS,
+            ).returncode
+    except (OSError, subprocess.TimeoutExpired, TimeoutError) as error:
+        print(f"next-select: claim failed: {error}", file=sys.stderr)
+        return 1
 
 
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
