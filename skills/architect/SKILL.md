@@ -1,10 +1,10 @@
 ---
 name: architect
-description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed prior-art decisions, reviewable slices, acceptance evidence, and conditional tracking recommendations without editing code.
+description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed decisions, reviewable slices, acceptance evidence, and conditional human review ownership without editing code.
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
-version: "1.7.0"
+version: "1.8.0"
 author: "flurdy"
 ---
 
@@ -123,8 +123,10 @@ Never block on model selection if the user has already made the intent clear.
 
 ### 3. Gather Context Read-Only
 
-Stay read-only. Do **not** edit code, create branches, create beads, transition tickets, or
-commit changes.
+Stay read-only while gathering context. Do **not** edit code, create branches, create beads,
+transition tickets, or commit changes during investigation. The bounded human-review flow in
+step 4 may mutate Beads only after the plan is complete and the user gives immediate explicit
+confirmation.
 
 Gather only the context needed to plan:
 
@@ -183,10 +185,24 @@ Keep the context summary concise and cite file paths, official URLs, or upstream
 
 Output a plan that is implementation-ready but does not perform implementation.
 
-Use this structure:
+Detailed plans are working input, not current architecture documentation.
+Do not create Markdown solely to preserve planning reasoning.
+
+Render the plan inline by default. If the user explicitly requests a durable file or a stable source
+is required for later review, label it as planning input, link its human review owner, and state its
+outcome-based disposition.
+
+The final user-facing plan starts with the decision summary, before investigation detail:
 
 ```markdown
 ## Architect Plan: <short title>
+
+### Decision brief
+- Recommendation: <one or two sentences>
+- Decision needed: <none, or the exact approval question>
+- Choices: <approve | defer or reject | request revision, when human approval is required>
+- Detailed input: <this inline plan or one stable source reference>
+- Documentation disposition: <what happens on approval, defer/reject, or revision>
 
 ### Planning tier
 - Tier: <standard|premium|second-opinion|all-in>
@@ -290,12 +306,72 @@ For an approved structured plan in an active Beads repository:
 - A one-focused-item or epic recommendation with a stable source should end with a paste-ready
   `/plan-to-backlog <plan-source>` handoff.
 - A no-additional-item recommendation needs no materialization handoff.
-- Architect must not invoke `/plan-to-backlog` automatically or reproduce its proposal/apply logic;
-  the architecture run remains read-only.
+- Architect must not invoke `/plan-to-backlog` automatically or reproduce its proposal/apply logic.
+
+#### Human decision ownership for unapproved plans
+
+Apply this lifecycle only when the recommendation requires an explicit human approval before work
+can responsibly proceed. Informational answers, already-approved plans, and plans with no pending
+approval do not need a review bead. If an established non-Beads tracker owns the source, keep the
+review there; do not create a shadow Beads decision.
+
+**Exactly one blocked human review owner** must own an unapproved plan in an active Beads repository:
+
+1. **Inspect the source.** Decide whether the source spike/design bead is still open and can carry
+   the pending decision, but do not select it until duplicate review work has been checked.
+2. **Check existing review work.** Use targeted duplicate queries, including
+   `bd list --status open,in_progress,blocked --label human` and, when a source id exists,
+   `bd list --status open,in_progress,blocked --label human --metadata-field source_bead=<source-id>`.
+   Also inspect high-signal title/spec matches. An existing matching review is the sole owner; reuse
+   it even when the source could also carry the decision. Never create a second review item for the
+   same source or decision.
+3. **Choose the owner.** Only when no separate review exists, prefer the source spike/design bead
+   when it can own review. Create at most one dedicated review only when the Beads source is closed
+   or cannot clearly represent the decision.
+4. **Confirm before writing.** Show the exact source update or dedicated-review proposal first.
+   Ask for explicit confirmation immediately before any tracker mutation. If confirmation is
+   declined, make no tracker change, do not claim durable ownership, and keep the plan inline rather
+   than creating a planning document with no owner.
+
+A reused source remains its existing work type rather than being converted solely for workflow
+mechanics. A dedicated review uses type `decision`.
+
+Whether reusing the source or using a dedicated decision, apply both:
+
+- add the canonical `human` label; and
+- set status `blocked`.
+
+Use the configured human assignee when one is available; otherwise do not guess. Add optional
+descriptive metadata such as `review_owner=human`, `review_status=pending`, and
+`source_bead=<source-id>`. Whether reusing or creating, the review content must include:
+
+- the concise recommendation and exact decision question;
+- three explicit outcomes: **Approve**, **Defer or reject**, and **Request revision**;
+- the stable detailed-input reference, when one exists;
+- the documentation disposition for every outcome; and
+- acceptance stating that human rationale is recorded before the owner is resolved.
+
+Mark the owner as awaiting explicit human review so it cannot be mistaken for agent-ready
+implementation. Do not create implementation children or any implementation tracker item from
+Architect. If a create succeeds but a later blocking/update step fails, surface the partial state
+and repair or reuse that same item; never create a replacement.
+
+Resolve the decision lifecycle explicitly:
+
+- **Approve** — record the rationale and approved scope. When durable materialization is requested,
+  hand off to `/plan-to-backlog <plan-source>`; do not invoke it automatically. Retain detailed
+  planning input only until the approved outcome is represented by its implementation owner or
+  owning component documentation.
+- **Defer or reject** — record the rationale and remove the detailed planning input unless a concise,
+  clearly labelled historical decision record has deliberate retention value.
+- **Request revision** — record the requested changes, keep the same blocked review owner, and keep
+  the planning input only while those changes are pending.
+
+Do not resolve a review owner while its outcome or documentation disposition is still unknown.
 
 Use `/triage` for raw prompt or Jira intake, not approved-plan materialization. For Jira, Trello, or
 other established trackers without Beads, recommend that tracker's normal creation workflow as a
-later explicit user action.
+later explicit user action; do not create a parallel Beads decision.
 
 ### 5. External Validation, When Requested
 
@@ -366,9 +442,10 @@ accordingly, and explicitly state that external validation was skipped.
 ### 6. Guardrails
 
 - Do not implement code changes.
-- Do not create or mutate Jira issues/beads unless the user explicitly asks after the plan.
-- Label every proposed tracker item as not created and route later creation through the established
-  triage/tracker workflow.
+- Do not create or mutate Jira issues. Do not mutate Beads except for the bounded human-review
+  ownership flow above, after immediate explicit confirmation.
+- Do not create implementation tracker items. Label implementation proposals as not created and
+  route approved-plan materialization through `/plan-to-backlog`.
 - Prefer small, reversible implementation slices with observable outcomes and proportionate proof.
 - Do not invent commands for documentation-only or inherently manual acceptance; name the
   necessary source evidence or UAT flow instead.
