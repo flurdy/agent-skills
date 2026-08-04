@@ -198,11 +198,19 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             "RAW_SESSION_SENTINEL",
             "BINARY_FINDING_MARKER",
             "SYMLINK_FINDING_MARKER",
+            "ARTIFACT_TRACKED_FINDING_MARKER",
+            "ARTIFACT_UNTRACKED_FINDING_MARKER",
+            "ARTIFACT_IGNORED_FINDING_MARKER",
+            "BACKSLASH_WORKTREE_FINDING_MARKER",
+            "BACKSLASH_INDEX_FINDING_MARKER",
+            "BACKSLASH_HISTORY_SESSION_SENTINEL",
         ]
-        self.repository.write(".gitignore", "ignored.txt\n")
+        self.repository.write(".gitignore", "ignored.txt\n.artifacts/ignored.txt\n")
         self.repository.write("inherited.txt", sentinels[0] + " # gitleaks:allow\n")
         self.repository.write("tracked.txt", "clean\n")
         self.repository.write("index-only.txt", "clean\n")
+        self.repository.write(".artifacts/tracked.txt", sentinels[9] + "\n")
+        self.repository.write(r"index\path.txt", "clean\n")
         (self.repository.root / "binary.bin").write_bytes(b"\0" + sentinels[7].encode())
         outside = self.repository.root.parent / "outside-secret.txt"
         outside.write_text(sentinels[8] + "\n", encoding="utf-8")
@@ -213,7 +221,13 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.mark_base()
         self.repository.run("switch", "-c", "feature")
         self.repository.write("history.txt", "HISTORY_FINDING_MARKER\n")
+        self.repository.write(
+            r"history\path.txt",
+            "https://chatgpt.com/share/" + sentinels[14] + "\n",
+        )
         self.repository.commit_all("history")
+        (self.repository.root / r"history\path.txt").unlink()
+        self.repository.commit_all("remove backslash history path")
         self.repository.write("staged.txt", sentinels[1] + "\n")
         self.repository.run("add", "staged.txt")
         self.repository.write("index-only.txt", sentinels[2] + "\n")
@@ -222,6 +236,12 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("tracked.txt", sentinels[3] + "\n")
         self.repository.write("untracked.txt", sentinels[4] + "\n")
         self.repository.write("ignored.txt", sentinels[5] + "\n")
+        self.repository.write(".artifacts/untracked.txt", sentinels[10] + "\n")
+        self.repository.write(".artifacts/ignored.txt", sentinels[11] + "\n")
+        self.repository.write(r"worktree\path.txt", sentinels[12] + "\n")
+        self.repository.write(r"index\path.txt", sentinels[13] + "\n")
+        self.repository.run("add", r"index\path.txt")
+        self.repository.write(r"index\path.txt", "clean after staging\n")
         self.repository.write(
             "session.txt",
             "https://chatgpt.com/share/" + sentinels[6] + "\n",
@@ -266,12 +286,25 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                 "index-only.txt",
                 "tracked.txt",
                 "untracked.txt",
+                ".artifacts/tracked.txt",
+                ".artifacts/untracked.txt",
+                r"worktree\path.txt",
+                r"index\path.txt",
             }.issubset(paths)
         )
         self.assertNotIn("ignored.txt", paths)
+        self.assertNotIn(".artifacts/ignored.txt", paths)
         self.assertNotIn("binary.bin", paths)
         self.assertNotIn("symlink.txt", paths)
         self.assertIn("session-link", {item["category"] for item in payload["findings"]})
+        self.assertTrue(
+            any(
+                item["category"] == "session-link"
+                and item["location"]["source"] == "branch-history"
+                and item["location"]["path"] == r"history\path.txt"
+                for item in payload["findings"]
+            )
+        )
         self.assertIn("suppression-attempt", {item["category"] for item in payload["findings"]})
 
         serialized = json.dumps(payload, sort_keys=True)

@@ -279,7 +279,7 @@ def decode_text(value: bytes) -> str:
 
 
 def safe_path(value: str) -> str | None:
-    normalized = value.replace("\\", "/")
+    normalized = value
     pure = PurePosixPath(normalized)
     if not normalized or pure.is_absolute() or ".." in pure.parts:
         return None
@@ -509,12 +509,10 @@ def collect_candidates(
     candidates: list[Candidate] = []
     total_bytes = 0
     for raw_path in raw_paths:
-        decoded = os.fsdecode(raw_path).replace("\\", "/")
+        decoded = os.fsdecode(raw_path)
         relative = safe_path(decoded)
         if relative is None or relative != decoded:
             coverage.partial("unsafe-path")
-            continue
-        if relative == ".artifacts" or relative.startswith(".artifacts/"):
             continue
         try:
             data = read_candidate(repository, relative)
@@ -553,12 +551,10 @@ def collect_candidates(
         if not OBJECT_ID.fullmatch(object_text):
             coverage.partial("index-invalid-output")
             continue
-        decoded = os.fsdecode(raw_path).replace("\\", "/")
+        decoded = os.fsdecode(raw_path)
         relative = safe_path(decoded)
         if relative is None or relative != decoded:
             coverage.partial("unsafe-path")
-            continue
-        if relative == ".artifacts" or relative.startswith(".artifacts/"):
             continue
         try:
             size_result = git(runner, repository, "cat-file", "-s", object_text)
@@ -915,7 +911,7 @@ def commit_paths(
     ).stdout
     paths: list[str] = []
     for raw_path in dict.fromkeys(filter(None, output.split(b"\0"))):
-        decoded = os.fsdecode(raw_path).replace("\\", "/")
+        decoded = os.fsdecode(raw_path)
         path = safe_path(decoded)
         if path is None or path != decoded:
             coverage.partial("unsafe-path")
