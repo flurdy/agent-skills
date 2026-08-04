@@ -119,6 +119,10 @@ class NextBdTest(WorkspaceFixture):
 
         markdown = self.run_next(workspace, "--in-progress").stdout
         self.assertIn("| # | Repo | ID | Pri | Type | Labels | Title |", markdown)
+        self.assertIn(
+            "Tracker status: in progress (session activity unverified):", markdown
+        )
+        self.assertNotIn("other sessions", markdown)
         self.assertIn('[repo-a] `active-a`', markdown)
 
     def test_bug_filter_preserves_global_ranking(self) -> None:
@@ -298,6 +302,9 @@ class NextBdTest(WorkspaceFixture):
         self.create_store(
             local,
             ready=[issue("local-task", 2, "task", "2026-01-01T00:00:00Z")],
+            in_progress=[
+                issue("local-claimed", 2, "bug", "2026-01-02T00:00:00Z")
+            ],
         )
 
         candidates = json.loads(self.run_next(local, "--json").stdout)
@@ -307,9 +314,14 @@ class NextBdTest(WorkspaceFixture):
         self.assertNotIn("repository_path", candidates[0])
         self.assertNotIn("selector", candidates[0])
 
-        markdown = self.run_next(local).stdout
+        markdown = self.run_next(local, "--in-progress").stdout
         self.assertIn("| # | ID | Pri | Type | Labels | Title |", markdown)
         self.assertNotIn("| Repo |", markdown)
+        self.assertIn(
+            "Tracker status: in progress (session activity unverified):", markdown
+        )
+        self.assertNotIn("other sessions", markdown)
+        self.assertIn('`local-claimed` (P2 bug)', markdown)
 
 
 if __name__ == "__main__":

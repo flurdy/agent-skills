@@ -44,8 +44,8 @@ Help select the next bead to work on based on readiness and user preferences.
    - Run the `next-bd` collector to get open, unblocked tasks
    - At a valid project-workspace root, collect the root and every registered repository
      with a usable Beads store
-   - Exclude `in_progress` beads (another session may be working on them)
-   - Show current in-progress work with repository identity (for awareness, not selection)
+   - Exclude `in_progress` beads as tracker claims; session activity remains unverified
+   - Show current in-progress tracker claims with repository identity (for awareness, not selection)
 
 2. **Rank by Suitability**
    - Apply priority ranking algorithm (see below)
@@ -101,7 +101,7 @@ Help select the next bead to work on based on readiness and user preferences.
 | 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV       |
 | 3 | events   | event-ghi  | P2  | task    | auth            | Update dependencies     |
 
-In progress (other sessions):
+Tracker status: in progress (session activity unverified):
 - [frontend] `web-xyz` (P2 feature) "Implement caching layer"
 
 Which would you like to work on? (1-3, or specify ID, or "task" to auto-pick)
@@ -131,7 +131,8 @@ When invoked:
    ```
 
    This outputs a globally ranked markdown table with labels, blocked filtering, and
-   owner-qualified in-progress awareness. `--json` adds `repository`, `repository_path`,
+   owner-qualified in-progress tracker awareness with session activity explicitly unverified.
+   `--json` adds `repository`, `repository_path`,
    and `selector` to workspace candidates; local JSON remains backward compatible.
 
    Workspace stores are read independently and read-only. A missing or unusable `.beads`
@@ -250,8 +251,8 @@ Listing mode never marks anything `in_progress`. It only selects work once the u
 ## Handling Edge Cases
 
 - **No ready beads (P0-P3)**: Show blocked beads and what's blocking them; mention P4 backlog exists if any, but don't auto-pick
-- **All open beads in progress**: Warn that another session may be working on them; ask user if they want to see in_progress beads anyway (may cause conflicts)
-- **User picks in_progress bead**: Warn that another session may be working on it; require explicit confirmation before starting
+- **All open beads in progress**: Explain that tracker claims may be active, parked, interrupted, or stale and do not prove session activity; ask whether to show them anyway
+- **User picks in_progress bead**: Warn that it may be claimed, parked, interrupted, or stale and require explicit confirmation before starting; never infer session activity from Beads status, a branch, a worktree, a handoff, or a clean working copy
 - **Invalid ID**: Show error and list valid options
 - **ID owned by several stores**: `next-select` returns `ambiguous` and writes nothing; ask which `repo:id` to start
 - **Ownership probe failed**: `next-select` returns `unavailable` and writes nothing; report the failed stores and ask for a qualified healthy owner or retry

@@ -114,7 +114,7 @@ jq -r \
       end
     ) | join("\n")) +
     if $show_ip == "true" and ($in_progress | length) > 0 then
-      "\n\nIn progress (other sessions):\n" +
+      "\n\nTracker status: in progress (session activity unverified):\n" +
       ($in_progress | map(
         if $workspace then
           "- [\(.repository)] `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\""
