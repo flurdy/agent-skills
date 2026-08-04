@@ -29,6 +29,7 @@ assert_contains "$SKILL" 'name: beads'
 assert_contains "$SKILL" 'whenever an agent uses `bd`'
 assert_contains "$SKILL" 'resolves durable work ownership'
 assert_contains "$SKILL" 'ephemeral execution checklist and durable tracking'
+assert_contains "$SKILL" 'blockers, dependencies, follow-ups, or shared handoff memory'
 
 assert_contains "$SKILL" 'Repository-local instructions remain authoritative'
 assert_contains "$SKILL" '<!-- BEGIN BEADS INTEGRATION -->'
@@ -52,7 +53,15 @@ assert_contains "$SKILL" 'Dispatch to the focused skill instead of reproducing i
 assert_contains "$SKILL" 'If a focused skill has no owner-routing input and the selected store is not the current active store, do not invoke it there.'
 assert_contains "$SKILL" 'render a switch-directory and focused-invocation handoff, then stop'
 
+assert_contains "$SKILL" 'Do not use `bd edit`; it opens an interactive editor.'
+assert_contains "$SKILL" 'prefer `--json` when parsing output programmatically.'
+assert_contains "$SKILL" 'Discovery does not authorize mutation.'
+assert_contains "$SKILL" 'close only when the tracked outcome is actually complete.'
+
 assert_contains "$SKILL" '`bd prime`'
+assert_contains "$SKILL" 'hooks may already have injected it.'
+assert_contains "$SKILL" '`bd where`'
+assert_contains "$SKILL" 'existing-bead ownership still requires the shared resolver.'
 assert_contains "$SKILL" '`bd <command> --help`'
 assert_contains "$SKILL" 'Do not turn this baseline into a version-specific command catalog.'
 assert_not_contains "$SKILL" 'bd create --title='

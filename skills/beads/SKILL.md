@@ -2,13 +2,14 @@
 name: beads
 description: >
   Shared Beads workflow and durable-tracking baseline. Use whenever an agent uses `bd`,
+  manages durable tasks, blockers, dependencies, follow-ups, or shared handoff memory,
   resolves durable work ownership, or decides between an ephemeral execution checklist and durable tracking.
   Covers store ownership, local authority, focused-skill routing, and remote Dolt safety without duplicating command procedures.
 allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 
@@ -99,12 +100,27 @@ When a focused skill is selected, its narrower confirmation, read-only, ownershi
 rules govern the operation. This baseline remains the fallback for store ownership and remote
 safety.
 
+## Routine CLI safeguards
+
+For routine operations that do not need a focused skill, use the `bd` CLI only after the owning
+store is proven, and keep every call qualified with `bd -C <directory>`. Inspect an existing bead
+before changing it. Do not use `bd edit`; it opens an interactive editor. Use non-interactive
+update flags instead, and prefer `--json` when parsing output programmatically.
+
+Discovery does not authorize mutation. Do not claim, update, or close a bead merely because it
+was found; mutate only when user intent and repository lifecycle rules justify the change, and
+close only when the tracked outcome is actually complete.
+
 ## Use current CLI guidance
 
 Use `bd prime` to recover the active repository's current workflow context after compaction or
-when local Beads policy is unclear. Use `bd <command> --help` immediately before a
-version-sensitive or unfamiliar operation. Treat the installed CLI and repository configuration
-as evidence; do not assume a command form from another repository or older session.
+when local Beads policy is unclear; hooks may already have injected it. Use `bd where` when the
+current repository's active store is uncertain. That identifies the local active store, not the
+owner of an arbitrary selector, so existing-bead ownership still requires the shared resolver.
+
+Use `bd <command> --help` immediately before a version-sensitive or unfamiliar operation. Treat
+the installed CLI and repository configuration as evidence; do not assume a command form from
+another repository or older session.
 
 Do not turn this baseline into a version-specific command catalog. Detailed command sequences
 belong in the focused skills or current CLI help so upgrades do not leave copied procedures stale.
