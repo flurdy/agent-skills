@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import shutil
@@ -9,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = SKILL_ROOT / "scripts" / "artifact_hygiene.py"
@@ -51,6 +53,16 @@ class RepositoryFixture:
             self.run("rev-parse", "HEAD"),
             self.run("for-each-ref", "--format=%(refname) %(objectname)"),
         )
+
+
+def load_helper_module():
+    spec = importlib.util.spec_from_file_location("artifact_hygiene_test_target", SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("unable to load artifact-hygiene helper")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def add_command_links(directory: Path) -> None:
@@ -342,6 +354,122 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         log_options = history_arguments[history_arguments.index("--log-opts") + 1]
         self.assertIn("--no-ext-diff", log_options)
         self.assertIn("--no-textconv", log_options)
+
+    def test_custom_detector_caps_dense_records_and_output(self) -> None:
+        sentinel = "DENSE_RAW_VALUE"
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        dense = (f"gitleaks:allow {sentinel}\n" * 5_000)
+        for index in range(3):
+            self.repository.write(f"dense-{index}.txt", dense)
+
+        completed = self.run_audit()
+
+        self.assertEqual(completed.returncode, 2, completed.stdout)
+        self.assertEqual(completed.stderr, "")
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["verdict"], "partial")
+        working = next(
+            item for item in payload["coverage"] if item["source"] == "working-tree"
+        )
+        self.assertIn("custom-finding-limit", working["errors"])
+        self.assertIn("finding-limit", working["errors"])
+        self.assertIn("custom-finding-limit", working["limits"])
+        self.assertIn("finding-limit", working["limits"])
+        self.assertLessEqual(len(payload["findings"]), 2_000)
+        self.assertLess(len(completed.stdout.encode()), 4_000_000)
+        self.assertNotIn(sentinel, completed.stdout)
+        self.assertNotIn(sentinel, self.invocation_log.read_text())
+
+    def test_report_output_cap_handles_worst_case_escaped_paths(self) -> None:
+        helper = load_helper_module()
+        path = "\U0001f600" * 500
+        findings = [
+            helper.finding(
+                category="session-link",
+                detector="session.share-link",
+                severity="high",
+                confidence="high",
+                source="working-tree",
+                path=path,
+                line=line,
+            )
+            for line in range(1, helper.MAX_FINDINGS + 1)
+        ]
+        for pretty in (False, True):
+            with self.subTest(pretty=pretty):
+                payload = helper.failed_payload("unused")
+                payload["status"] = "complete"
+                payload["verdict"] = "findings"
+                payload["coverage"] = [
+                    helper.Coverage("working-tree").as_dict(),
+                    helper.Coverage("branch-history").as_dict(),
+                ]
+                payload["findings"] = findings
+                payload["summary"] = helper.summarize_findings(findings)
+
+                rendered, exit_code = helper.render_payload(payload, pretty=pretty)
+
+                self.assertEqual(exit_code, 2)
+                self.assertLessEqual(
+                    len((rendered + "\n").encode()), helper.MAX_REPORT_OUTPUT_BYTES
+                )
+                self.assertEqual(payload["status"], "partial")
+                self.assertEqual(payload["verdict"], "partial")
+                self.assertLess(len(payload["findings"]), helper.MAX_FINDINGS)
+                for entry in payload["coverage"]:
+                    self.assertEqual(entry["status"], "partial")
+                    self.assertIn("report-output-limit", entry["limits"])
+                    self.assertIn("report-output-limit", entry["errors"])
+
+    def test_custom_detector_honors_deadline_during_matching(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("working-tree")
+        data = (
+            b"https://chatgpt.com/share/FIRST\n"
+            b"https://chatgpt.com/share/SECOND\n"
+        )
+        with mock.patch.object(helper, "monotonic", side_effect=[0.0, 0.0, 2.0]):
+            findings = helper.detect_non_secret(
+                data,
+                source="working-tree",
+                path="lines.txt",
+                deadline=1.0,
+                coverage=coverage,
+            )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(coverage.status, "partial")
+        self.assertIn("custom-detector-timeout", coverage.errors)
+        self.assertIn("custom-detector-timeout", coverage.limits)
+
+    def test_custom_detector_preserves_line_attribution(self) -> None:
+        sentinel = "LINE_RAW_VALUE"
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.write(
+            "lines.txt",
+            "first\n"
+            f"https://chatgpt.com/share/{sentinel}\n"
+            "third\n"
+            "gitleaks:\n allow\n",
+        )
+
+        completed = self.run_audit()
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        lines = {
+            item["detector"]: item["location"]["line"]
+            for item in payload["findings"]
+            if item["location"]["path"] == "lines.txt"
+        }
+        self.assertEqual(lines["session.share-link"], 2)
+        self.assertEqual(lines["scanner.inline-allow"], 4)
+        self.assertNotIn(sentinel, completed.stdout)
 
     def test_noop_scanner_fails_capability_probe_and_cannot_report_clean(self) -> None:
         self.repository.write("tracked.txt", "clean\n")

@@ -29,9 +29,12 @@ SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
 DEFAULT_TIMEOUT_SECONDS = 120.0
 MAX_COMMAND_OUTPUT_BYTES = 4_000_000
+MAX_REPORT_OUTPUT_BYTES = 4_000_000
 MAX_FILE_BYTES = 1_000_000
 MAX_TOTAL_BYTES = 50_000_000
 MAX_RECORDS = 100_000
+MAX_FINDINGS = 2_000
+MAX_CUSTOM_FINDINGS_PER_RECORD = 1_000
 
 OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 RULE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
@@ -70,6 +73,7 @@ class Coverage:
     records: int = 0
     bytes: int = 0
     base: str | None = None
+    limits: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def partial(self, code: str) -> None:
@@ -77,18 +81,41 @@ class Coverage:
         if code not in self.errors:
             self.errors.append(code)
 
+    def limited(self, code: str) -> None:
+        self.partial(code)
+        if code not in self.limits:
+            self.limits.append(code)
+
     def as_dict(self) -> dict[str, Any]:
         result: dict[str, Any] = {
             "source": self.source,
             "status": self.status,
             "records": self.records,
             "bytes": self.bytes,
-            "limits": [],
+            "limits": self.limits,
             "errors": self.errors,
         }
         if self.base is not None:
             result["base"] = self.base
         return result
+
+
+@dataclass
+class FindingCollector:
+    items: list[dict[str, Any]] = field(default_factory=list)
+    occurrence_ids: set[str] = field(default_factory=set)
+
+    def add(self, additions: list[dict[str, Any]], coverage: Coverage) -> bool:
+        for item in additions:
+            occurrence_id_value = item["occurrenceId"]
+            if occurrence_id_value in self.occurrence_ids:
+                continue
+            if len(self.items) >= MAX_FINDINGS:
+                coverage.limited("finding-limit")
+                return False
+            self.items.append(item)
+            self.occurrence_ids.add(occurrence_id_value)
+        return True
 
 
 class BoundedRunner:
@@ -732,26 +759,63 @@ def detect_non_secret(
     *,
     source: str,
     path: str,
+    deadline: float,
+    coverage: Coverage,
     commit: str | None = None,
     field_name: str | None = None,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    for match in SESSION_LINK.finditer(data):
-        line = data.count(b"\n", 0, match.start()) + 1
-        results.append(
-            finding(
-                category="session-link",
-                detector="session.share-link",
-                severity="high",
-                confidence="high",
-                source=source,
-                path=path,
-                line=line,
-                commit=commit,
-                field_name=field_name,
+
+    def append_matches(
+        pattern: re.Pattern[bytes],
+        *,
+        category: str,
+        detector: str,
+        severity: str,
+    ) -> bool:
+        line = 1
+        cursor = 0
+        for match in pattern.finditer(data):
+            if monotonic() >= deadline:
+                coverage.limited("custom-detector-timeout")
+                return False
+            if len(results) >= MAX_CUSTOM_FINDINGS_PER_RECORD:
+                coverage.limited("custom-finding-limit")
+                return False
+            line += data.count(b"\n", cursor, match.start())
+            cursor = match.start()
+            results.append(
+                finding(
+                    category=category,
+                    detector=detector,
+                    severity=severity,
+                    confidence="high",
+                    source=source,
+                    path=path,
+                    line=line,
+                    commit=commit,
+                    field_name=field_name,
+                )
             )
-        )
+        if monotonic() >= deadline:
+            coverage.limited("custom-detector-timeout")
+            return False
+        return True
+
+    if monotonic() >= deadline:
+        coverage.limited("custom-detector-timeout")
+        return results
+    if not append_matches(
+        SESSION_LINK,
+        category="session-link",
+        detector="session.share-link",
+        severity="high",
+    ):
+        return results
     if PurePosixPath(path).name in SUPPRESSION_FILES:
+        if len(results) >= MAX_CUSTOM_FINDINGS_PER_RECORD:
+            coverage.limited("custom-finding-limit")
+            return results
         results.append(
             finding(
                 category="suppression-attempt",
@@ -764,21 +828,12 @@ def detect_non_secret(
                 field_name=field_name,
             )
         )
-    for match in INLINE_GITLEAKS_ALLOW.finditer(data):
-        line = data.count(b"\n", 0, match.start()) + 1
-        results.append(
-            finding(
-                category="suppression-attempt",
-                detector="scanner.inline-allow",
-                severity="info",
-                confidence="high",
-                source=source,
-                path=path,
-                line=line,
-                commit=commit,
-                field_name=field_name,
-            )
-        )
+    append_matches(
+        INLINE_GITLEAKS_ALLOW,
+        category="suppression-attempt",
+        detector="scanner.inline-allow",
+        severity="info",
+    )
     return results
 
 
@@ -954,8 +1009,8 @@ def scan_history_records(
     deadline: float,
     environment: dict[str, str],
     coverage: Coverage,
-) -> list[dict[str, Any]]:
-    findings: list[dict[str, Any]] = []
+    collector: FindingCollector,
+) -> None:
     total_bytes = 0
     path_records = 0
     for commit in commits:
@@ -968,15 +1023,19 @@ def scan_history_records(
             coverage.partial("byte-limit")
             break
         total_bytes += len(message)
-        findings.extend(
+        if not collector.add(
             detect_non_secret(
                 message,
                 source="branch-history",
                 path="[commit-message]",
+                deadline=deadline,
+                coverage=coverage,
                 commit=commit,
                 field_name="message",
-            )
-        )
+            ),
+            coverage,
+        ):
+            break
         try:
             result = runner.run(
                 scanner_arguments(executable, "stdin", ignore_path, deadline),
@@ -985,15 +1044,17 @@ def scan_history_records(
                 allowed_returncodes=(0, 1),
                 environment_overrides=environment,
             )
-            findings.extend(
+            if not collector.add(
                 parse_scanner_findings(
                     result.stdout,
                     source="branch-history",
                     fallback_path="[commit-message]",
                     fallback_commit=commit,
                     field_name="message",
-                )
-            )
+                ),
+                coverage,
+            ):
+                break
         except AuditError as error:
             coverage.partial(
                 "scanner-invalid-output"
@@ -1021,14 +1082,18 @@ def scan_history_records(
                 coverage.partial("byte-limit")
                 break
             total_bytes += len(patch)
-            findings.extend(
+            if not collector.add(
                 detect_non_secret(
                     patch,
                     source="branch-history",
                     path=path,
+                    deadline=deadline,
+                    coverage=coverage,
                     commit=commit,
-                )
-            )
+                ),
+                coverage,
+            ):
+                break
             try:
                 result = runner.run(
                     scanner_arguments(executable, "stdin", ignore_path, deadline),
@@ -1037,14 +1102,16 @@ def scan_history_records(
                     allowed_returncodes=(0, 1),
                     environment_overrides=environment,
                 )
-                findings.extend(
+                if not collector.add(
                     parse_scanner_findings(
                         result.stdout,
                         source="branch-history",
                         fallback_path=path,
                         fallback_commit=commit,
-                    )
-                )
+                    ),
+                    coverage,
+                ):
+                    break
             except AuditError as error:
                 coverage.partial(
                     "scanner-invalid-output"
@@ -1055,31 +1122,43 @@ def scan_history_records(
         if coverage.status == "partial":
             break
     coverage.bytes = total_bytes
-    return findings
+
+
+def summarize_findings(findings: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {level: 0 for level in ("critical", "high", "medium", "low", "info")}
+    for item in findings:
+        summary[item["severity"]] += 1
+    summary["suppressed"] = 0
+    return summary
 
 
 def scan(
     repository: Path,
     head: str | None,
     executable: str,
-    timeout_seconds: float,
+    deadline: float,
 ) -> tuple[dict[str, Any], int]:
-    deadline = monotonic() + timeout_seconds
     runner = BoundedRunner(deadline)
     identity = repository_identity(runner, repository)
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
     candidates = collect_candidates(runner, repository, working)
-    findings: list[dict[str, Any]] = []
+    collector = FindingCollector()
     for candidate in candidates:
-        findings.extend(
+        if not collector.add(
             detect_non_secret(
                 candidate.data,
                 source="working-tree",
                 path=candidate.path,
-            )
-        )
+                deadline=deadline,
+                coverage=working,
+            ),
+            working,
+        ):
+            break
+        if "custom-detector-timeout" in working.errors:
+            break
 
     scanner_version_value = scanner_version(runner, repository, executable)
     with tempfile.TemporaryDirectory(
@@ -1123,13 +1202,15 @@ def scan(
                         allowed_returncodes=(0, 1),
                         environment_overrides=scanner_environment,
                     )
-                    findings.extend(
+                    if not collector.add(
                         parse_scanner_findings(
                             result.stdout,
                             source="working-tree",
                             fallback_path=candidate.path,
-                        )
-                    )
+                        ),
+                        working,
+                    ):
+                        break
                 except AuditError as error:
                     working.partial(
                         "scanner-invalid-output"
@@ -1162,12 +1243,13 @@ def scan(
                         allowed_returncodes=(0, 1),
                         environment_overrides=scanner_environment,
                     )
-                    findings.extend(
+                    collector.add(
                         parse_scanner_findings(
                             result.stdout,
                             source="branch-history",
                             fallback_path=None,
-                        )
+                        ),
+                        history,
                     )
                 except AuditError as error:
                     history.partial(
@@ -1176,17 +1258,16 @@ def scan(
                         else "scanner-failed"
                     )
                 if history.status == "complete":
-                    findings.extend(
-                        scan_history_records(
-                            runner,
-                            repository,
-                            commits,
-                            executable,
-                            ignore_path,
-                            deadline,
-                            scanner_environment,
-                            history,
-                        )
+                    scan_history_records(
+                        runner,
+                        repository,
+                        commits,
+                        executable,
+                        ignore_path,
+                        deadline,
+                        scanner_environment,
+                        history,
+                        collector,
                     )
 
     try:
@@ -1197,9 +1278,8 @@ def scan(
         working.partial("state-recheck-failed")
         history.partial("state-recheck-failed")
 
-    unique_findings = {item["occurrenceId"]: item for item in findings}
     ordered_findings = sorted(
-        unique_findings.values(),
+        collector.items,
         key=lambda item: (
             item["location"]["source"],
             item["location"]["path"],
@@ -1211,10 +1291,6 @@ def scan(
     complete = all(item.status == "complete" for item in coverages)
     status = "complete" if complete else "partial"
     verdict = ("findings" if ordered_findings else "clean") if complete else "partial"
-    summary = {level: 0 for level in ("critical", "high", "medium", "low", "info")}
-    for item in ordered_findings:
-        summary[item["severity"]] += 1
-    summary["suppressed"] = 0
     payload = {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1239,7 +1315,7 @@ def scan(
         "coverage": [item.as_dict() for item in coverages],
         "findings": ordered_findings,
         "suppressed": [],
-        "summary": summary,
+        "summary": summarize_findings(ordered_findings),
     }
     return payload, 0 if complete else 2
 
@@ -1278,6 +1354,52 @@ def failed_payload(code: str) -> dict[str, Any]:
     }
 
 
+def serialize_payload(payload: dict[str, Any], pretty: bool) -> str:
+    return json.dumps(
+        payload,
+        indent=2 if pretty else None,
+        sort_keys=True,
+        separators=None if pretty else (",", ":"),
+    )
+
+
+def render_payload(
+    payload: dict[str, Any], pretty: bool
+) -> tuple[str, int | None]:
+    rendered = serialize_payload(payload, pretty)
+    if len(rendered.encode("utf-8")) + 1 <= MAX_REPORT_OUTPUT_BYTES:
+        return rendered, None
+
+    for entry in payload["coverage"]:
+        entry["status"] = "partial"
+        for field_name in ("limits", "errors"):
+            if "report-output-limit" not in entry[field_name]:
+                entry[field_name].append("report-output-limit")
+    payload["status"] = "partial"
+    payload["verdict"] = "partial"
+    original_findings = payload["findings"]
+    best_count: int | None = None
+    low = 0
+    high = len(original_findings)
+    while low <= high:
+        count = (low + high) // 2
+        payload["findings"] = original_findings[:count]
+        payload["summary"] = summarize_findings(payload["findings"])
+        candidate = serialize_payload(payload, pretty)
+        if len(candidate.encode("utf-8")) + 1 <= MAX_REPORT_OUTPUT_BYTES:
+            best_count = count
+            low = count + 1
+        else:
+            high = count - 1
+
+    if best_count is None:
+        failed = serialize_payload(failed_payload("report-output-limit"), pretty)
+        return failed, 3
+    payload["findings"] = original_findings[:best_count]
+    payload["summary"] = summarize_findings(payload["findings"])
+    return serialize_payload(payload, pretty), 2
+
+
 def interrupted(_signum: int, _frame: Any) -> None:
     raise AuditError("interrupted")
 
@@ -1298,7 +1420,8 @@ def main() -> int:
         payload = failed_payload("invalid-timeout")
         exit_code = 3
     else:
-        initial_runner = BoundedRunner(monotonic() + arguments.timeout)
+        deadline = monotonic() + arguments.timeout
+        initial_runner = BoundedRunner(deadline)
         handled_signals = [signal.SIGINT, signal.SIGTERM]
         previous_handlers = {
             handled_signal: signal.getsignal(handled_signal)
@@ -1315,7 +1438,7 @@ def main() -> int:
                 repository,
                 head,
                 scanner or "__artifact_hygiene_missing_gitleaks__",
-                arguments.timeout,
+                deadline,
             )
         except AuditError as error:
             payload = failed_payload(error.code)
@@ -1326,14 +1449,10 @@ def main() -> int:
         finally:
             for handled_signal, previous_handler in previous_handlers.items():
                 signal.signal(handled_signal, previous_handler)
-    json.dump(
-        payload,
-        sys.stdout,
-        indent=2 if arguments.pretty else None,
-        sort_keys=True,
-        separators=None if arguments.pretty else (",", ":"),
-    )
-    sys.stdout.write("\n")
+    rendered, output_exit_code = render_payload(payload, arguments.pretty)
+    if output_exit_code is not None:
+        exit_code = max(exit_code, output_exit_code)
+    sys.stdout.write(rendered + "\n")
     return exit_code
 
 
