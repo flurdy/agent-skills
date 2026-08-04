@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import json
 import os
+import selectors
 import shutil
+import signal
 import stat
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -83,6 +87,7 @@ def make_fake_gitleaks(directory: Path) -> tuple[Path, Path]:
 import json
 import os
 import sys
+import time
 
 root = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(root, "invocations.jsonl")
@@ -103,6 +108,10 @@ if command == "version":
     print("8.30.1")
     raise SystemExit(0)
 mode = open(mode_path, encoding="utf-8").read().strip() if os.path.exists(mode_path) else ""
+if command == "stdin" and mode == "sleep-scan":
+    with open(os.path.join(root, "child-pid"), "w", encoding="utf-8") as handle:
+        handle.write(str(os.getpid()))
+    time.sleep(60)
 if command == "git" and mode == "fail-history":
     print("RAW_CHILD_ERROR", file=sys.stderr)
     raise SystemExit(2)
@@ -354,6 +363,290 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         log_options = history_arguments[history_arguments.index("--log-opts") + 1]
         self.assertIn("--no-ext-diff", log_options)
         self.assertIn("--no-textconv", log_options)
+
+    def test_runner_reaps_child_across_setup_failures(self) -> None:
+        helper = load_helper_module()
+        real_popen = subprocess.Popen
+        for failure in ("pipe", "selector"):
+            with self.subTest(failure=failure):
+                spawned: list[subprocess.Popen[bytes]] = []
+
+                def capture_process(*args, **kwargs):
+                    process = real_popen(*args, **kwargs)
+                    spawned.append(process)
+                    return process
+
+                setup_patch = (
+                    mock.patch.object(
+                        helper.os,
+                        "set_blocking",
+                        side_effect=OSError("RAW_SETUP_ERROR"),
+                    )
+                    if failure == "pipe"
+                    else mock.patch.object(
+                        helper.selectors,
+                        "DefaultSelector",
+                        side_effect=RuntimeError("RAW_SETUP_ERROR"),
+                    )
+                )
+                caught: BaseException | None = None
+                try:
+                    with (
+                        mock.patch.object(
+                            helper.subprocess,
+                            "Popen",
+                            side_effect=capture_process,
+                        ),
+                        setup_patch,
+                    ):
+                        try:
+                            helper.BoundedRunner(helper.monotonic() + 5).run(
+                                [
+                                    sys.executable,
+                                    "-c",
+                                    "import time; time.sleep(60)",
+                                ],
+                                cwd=self.repository.root,
+                            )
+                        except BaseException as error:
+                            caught = error
+
+                    self.assertIsInstance(caught, helper.AuditError)
+                    self.assertEqual(caught.code, "command-setup-failed")
+                    self.assertNotIn("RAW_SETUP_ERROR", str(caught))
+                    self.assertEqual(len(spawned), 1)
+                    self.assertIsNotNone(
+                        spawned[0].poll(),
+                        "child process survived setup failure",
+                    )
+                finally:
+                    for process in spawned:
+                        if process.poll() is None:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            process.wait()
+
+    def test_runner_reaps_child_on_runtime_timeout_and_output_failures(self) -> None:
+        helper = load_helper_module()
+        real_selector = selectors.DefaultSelector
+        real_popen = subprocess.Popen
+
+        class SelectFailingSelector:
+            def __init__(self) -> None:
+                self.inner = real_selector()
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            def select(self, _timeout=None):
+                raise RuntimeError("RAW_RUNTIME_ERROR")
+
+        cases = (
+            (
+                "runtime",
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                5.0,
+                "command-failed",
+            ),
+            (
+                "timeout",
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                0.05,
+                "command-timeout",
+            ),
+            (
+                "output",
+                [
+                    sys.executable,
+                    "-c",
+                    "import os; os.write(1, b'x' * 4100000)",
+                ],
+                5.0,
+                "command-output-limit",
+            ),
+        )
+        for failure, command, timeout, expected_code in cases:
+            with self.subTest(failure=failure):
+                spawned: list[subprocess.Popen[bytes]] = []
+
+                def capture_process(*args, **kwargs):
+                    process = real_popen(*args, **kwargs)
+                    spawned.append(process)
+                    return process
+
+                selector_patch = (
+                    mock.patch.object(
+                        helper.selectors,
+                        "DefaultSelector",
+                        side_effect=SelectFailingSelector,
+                    )
+                    if failure == "runtime"
+                    else contextlib.nullcontext()
+                )
+                caught: BaseException | None = None
+                try:
+                    with (
+                        mock.patch.object(
+                            helper.subprocess,
+                            "Popen",
+                            side_effect=capture_process,
+                        ),
+                        selector_patch,
+                    ):
+                        try:
+                            helper.BoundedRunner(helper.monotonic() + timeout).run(
+                                command,
+                                cwd=self.repository.root,
+                            )
+                        except BaseException as error:
+                            caught = error
+
+                    self.assertIsInstance(caught, helper.AuditError)
+                    self.assertEqual(caught.code, expected_code)
+                    self.assertNotIn("RAW_", str(caught))
+                    self.assertEqual(len(spawned), 1)
+                    self.assertIsNotNone(
+                        spawned[0].poll(),
+                        "child process survived runner failure",
+                    )
+                finally:
+                    for process in spawned:
+                        if process.poll() is None:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            process.wait()
+
+    def test_selector_close_failure_does_not_override_command_result(self) -> None:
+        helper = load_helper_module()
+        real_selector = selectors.DefaultSelector
+        real_popen = subprocess.Popen
+        spawned: list[subprocess.Popen[bytes]] = []
+
+        class CloseFailingSelector:
+            def __init__(self) -> None:
+                self.inner = real_selector()
+
+            def __getattr__(self, name):
+                return getattr(self.inner, name)
+
+            def close(self) -> None:
+                self.inner.close()
+                raise RuntimeError("RAW_CLOSE_ERROR")
+
+        def capture_process(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            spawned.append(process)
+            return process
+
+        with (
+            mock.patch.object(
+                helper.subprocess,
+                "Popen",
+                side_effect=capture_process,
+            ),
+            mock.patch.object(
+                helper.selectors,
+                "DefaultSelector",
+                side_effect=CloseFailingSelector,
+            ),
+        ):
+            result = helper.BoundedRunner(helper.monotonic() + 5).run(
+                [sys.executable, "-c", "print('ok')"],
+                cwd=self.repository.root,
+            )
+
+        self.assertEqual(result.stdout, b"ok\n")
+        self.assertEqual(len(spawned), 1)
+        self.assertIsNotNone(spawned[0].poll())
+        self.assertTrue(spawned[0].stdout.closed)
+        self.assertTrue(spawned[0].stderr.closed)
+
+    def test_runner_reaps_child_when_signal_arrives_after_popen(self) -> None:
+        helper = load_helper_module()
+        real_popen = subprocess.Popen
+        spawned: list[subprocess.Popen[bytes]] = []
+
+        def spawn_then_interrupt(*args, **kwargs):
+            process = real_popen(*args, **kwargs)
+            spawned.append(process)
+            os.kill(os.getpid(), signal.SIGTERM)
+            return process
+
+        caught: BaseException | None = None
+        previous_handler = signal.signal(signal.SIGTERM, helper.interrupted)
+        try:
+            with mock.patch.object(
+                helper.subprocess,
+                "Popen",
+                side_effect=spawn_then_interrupt,
+            ):
+                try:
+                    helper.BoundedRunner(helper.monotonic() + 5).run(
+                        [sys.executable, "-c", "import time; time.sleep(60)"],
+                        cwd=self.repository.root,
+                    )
+                except BaseException as error:
+                    caught = error
+
+            self.assertIsInstance(caught, helper.AuditError)
+            self.assertEqual(caught.code, "interrupted")
+            self.assertEqual(len(spawned), 1)
+            self.assertIsNotNone(
+                spawned[0].poll(),
+                "child process survived post-Popen interruption",
+            )
+        finally:
+            signal.signal(signal.SIGTERM, previous_handler)
+            for process in spawned:
+                if process.poll() is None:
+                    os.killpg(process.pid, signal.SIGKILL)
+                    process.wait()
+
+    def test_interruption_reaps_scanner_and_private_temp_directory(self) -> None:
+        mode_path = self.fake_gitleaks.with_name("fake-mode")
+        mode_path.write_text("sleep-scan", encoding="utf-8")
+        environment = os.environ.copy()
+        environment["PATH"] = str(self.fake_gitleaks.parent)
+        audit = subprocess.Popen(
+            [sys.executable, str(SCRIPT), str(self.repository.root)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=environment,
+        )
+        child_pid_path = self.fake_gitleaks.with_name("child-pid")
+        child_pid: int | None = None
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and not child_pid_path.exists():
+                time.sleep(0.01)
+            self.assertTrue(child_pid_path.exists(), "scanner child did not start")
+            child_pid = int(child_pid_path.read_text(encoding="utf-8"))
+            invocations = [
+                json.loads(line) for line in self.invocation_log.read_text().splitlines()
+            ]
+            scanner_temp = Path(
+                next(item["tempDir"] for item in invocations if item["argv"][0] == "stdin")
+            )
+            self.assertTrue(scanner_temp.exists())
+
+            audit.send_signal(signal.SIGTERM)
+            stdout, stderr = audit.communicate(timeout=10)
+
+            self.assertIn(audit.returncode, {2, 3})
+            self.assertEqual(stderr, "")
+            payload = json.loads(stdout)
+            self.assertIn(payload["status"], {"partial", "failed"})
+            self.assertFalse(scanner_temp.exists())
+            with self.assertRaises(ProcessLookupError):
+                os.kill(child_pid, 0)
+        finally:
+            if audit.poll() is None:
+                audit.kill()
+                audit.wait()
+            if child_pid is not None:
+                try:
+                    os.killpg(child_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
 
     def test_custom_detector_caps_dense_records_and_output(self) -> None:
         sentinel = "DENSE_RAW_VALUE"

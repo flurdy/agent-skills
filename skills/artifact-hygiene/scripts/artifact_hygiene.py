@@ -118,6 +118,59 @@ class FindingCollector:
         return True
 
 
+def block_termination_signals() -> set[signal.Signals] | None:
+    if not hasattr(signal, "pthread_sigmask"):
+        return None
+    try:
+        return signal.pthread_sigmask(
+            signal.SIG_BLOCK,
+            {signal.SIGINT, signal.SIGTERM},
+        )
+    except (OSError, ValueError):
+        return None
+
+
+def restore_signal_mask(previous_mask: set[signal.Signals] | None) -> None:
+    if previous_mask is None:
+        return
+    signal.pthread_sigmask(signal.SIG_SETMASK, previous_mask)
+
+
+def cleanup_process(
+    process: subprocess.Popen[bytes],
+    selector: selectors.BaseSelector | None,
+) -> None:
+    previous_mask = block_termination_signals()
+    try:
+        if process.returncode is None:
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except OSError:
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+        try:
+            process.wait()
+        except (ChildProcessError, OSError):
+            pass
+        if selector is not None:
+            try:
+                selector.close()
+            except Exception:
+                pass
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream is None or stream.closed:
+                continue
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
+    finally:
+        restore_signal_mask(previous_mask)
+
+
 class BoundedRunner:
     def __init__(self, deadline: float) -> None:
         self.deadline = deadline
@@ -136,6 +189,7 @@ class BoundedRunner:
         environment = sanitized_environment()
         if environment_overrides:
             environment.update(environment_overrides)
+        spawn_signal_mask = block_termination_signals()
         try:
             process = subprocess.Popen(
                 args,
@@ -147,39 +201,41 @@ class BoundedRunner:
                 start_new_session=True,
             )
         except OSError as error:
+            restore_signal_mask(spawn_signal_mask)
             raise AuditError("command-unavailable") from error
+        except BaseException:
+            restore_signal_mask(spawn_signal_mask)
+            raise
 
-        assert process.stdout is not None and process.stderr is not None
-        os.set_blocking(process.stdout.fileno(), False)
-        os.set_blocking(process.stderr.fileno(), False)
-        if process.stdin is not None:
-            os.set_blocking(process.stdin.fileno(), False)
-        output = bytearray()
-        error_output = bytearray()
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ, output)
-        selector.register(process.stderr, selectors.EVENT_READ, error_output)
-        input_view = memoryview(input_bytes or b"")
-        input_offset = 0
-        if process.stdin is not None:
-            if input_view:
-                selector.register(process.stdin, selectors.EVENT_WRITE)
-            else:
-                process.stdin.close()
-
-        def kill_process_group() -> None:
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            if process.poll() is None:
-                process.wait()
-
+        selector: selectors.BaseSelector | None = None
+        setup_complete = False
+        returncode: int | None = None
         try:
+            restore_signal_mask(spawn_signal_mask)
+            spawn_signal_mask = None
+            if process.stdout is None or process.stderr is None:
+                raise AuditError("command-setup-failed")
+            os.set_blocking(process.stdout.fileno(), False)
+            os.set_blocking(process.stderr.fileno(), False)
+            if process.stdin is not None:
+                os.set_blocking(process.stdin.fileno(), False)
+            output = bytearray()
+            error_output = bytearray()
+            selector = selectors.DefaultSelector()
+            selector.register(process.stdout, selectors.EVENT_READ, output)
+            selector.register(process.stderr, selectors.EVENT_READ, error_output)
+            input_view = memoryview(input_bytes or b"")
+            input_offset = 0
+            if process.stdin is not None:
+                if input_view:
+                    selector.register(process.stdin, selectors.EVENT_WRITE)
+                else:
+                    process.stdin.close()
+            setup_complete = True
+
             while selector.get_map():
                 remaining = self.deadline - monotonic()
                 if remaining <= 0:
-                    kill_process_group()
                     raise AuditError("command-timeout")
                 events = selector.select(min(remaining, 0.25))
                 for key, mask in events:
@@ -208,16 +264,17 @@ class BoundedRunner:
                         continue
                     key.data.extend(chunk)
                     if len(output) + len(error_output) > MAX_COMMAND_OUTPUT_BYTES:
-                        kill_process_group()
                         raise AuditError("command-output-limit")
             returncode = process.wait()
+        except AuditError:
+            raise
+        except Exception as error:
+            raise AuditError(
+                "command-failed" if setup_complete else "command-setup-failed"
+            ) from error
         finally:
-            selector.close()
-            kill_process_group()
-            process.stdout.close()
-            process.stderr.close()
-            if process.stdin is not None and not process.stdin.closed:
-                process.stdin.close()
+            cleanup_process(process, selector)
+            restore_signal_mask(spawn_signal_mask)
 
         if returncode not in set(allowed_returncodes):
             raise AuditError("command-failed")
