@@ -377,6 +377,9 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.run("commit", "-F", str(message_file))
         (self.repository.root / "history-only.txt").unlink()
         self.repository.commit_all("remove historical content")
+        self.repository.run("switch", "-c", "feature")
+        self.repository.write("feature.txt", "clean\n")
+        self.repository.commit_all("feature")
 
         completed = self.run_audit(scanner=self.real_scanner("history-real-bin"))
 
@@ -386,7 +389,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(history["status"], "complete")
         self.assertEqual(history["base"], "all-reachable")
         self.assertIn("base-fallback-all-reachable", history["errors"])
-        self.assertEqual(history["records"], 3)
+        self.assertEqual(history["records"], 4)
         history_findings = [
             item for item in payload["findings"] if item["location"]["source"] == "branch-history"
         ]

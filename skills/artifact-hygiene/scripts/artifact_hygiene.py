@@ -818,8 +818,6 @@ def resolve_history_range(
         [
             "refs/remotes/origin/main",
             "refs/remotes/origin/master",
-            "refs/heads/main",
-            "refs/heads/master",
         ]
     )
 
@@ -836,8 +834,6 @@ def resolve_history_range(
         )
         candidate_oid = decode_text(verified.stdout)
         if not OBJECT_ID.fullmatch(candidate_oid):
-            continue
-        if candidate.startswith("refs/heads/") and candidate_oid == head:
             continue
         base_ref = candidate
         break
