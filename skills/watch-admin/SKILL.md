@@ -7,8 +7,9 @@ description: >
 allowed-tools: "Bash(~/.agents/skills/watch-admin/scripts/collect.py:*),Bash(~/.agents/skills/watch-admin/scripts/jira_adapter.py:*),Bash(~/.agents/skills/watch-admin/scripts/reducer.py:*),mcp__jira__jira_get"
 model-tier: standard
 effort: medium
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
+status: no-go
 ---
 
 # Watch workspace administration
@@ -20,6 +21,15 @@ Run one bounded protocol-v1 watch over two explicitly separate evidence domains:
 
 The watcher is unattended and structurally read-only. It reports normalized transitions and may
 print one paste-ready attended workflow recommendation. It never runs that workflow.
+
+## Rollout gate — no-go
+
+Do not start this watcher. A fresh dedicated Pi UAT on 2026-08-06 consumed 54,771 uncached input
+tokens before tick 1 because loading this standard-tier skill changed the session route, exceeding
+the approved 50,000-token ceiling. The watch was stopped before its first tick; before/after Git,
+Beads, and Pi configuration captures were identical. Report this measured no-go and stop without
+calling a helper, Jira, or `watch_loop`. The retained implementation and protocol below are evidence
+for a future separately approved revision; they are not permission to bypass or relax the gate.
 
 ## Usage
 

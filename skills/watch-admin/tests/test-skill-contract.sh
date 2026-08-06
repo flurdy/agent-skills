@@ -17,6 +17,14 @@ assert_contains() {
 
 for invariant in \
     'name: watch-admin' \
+    'status: no-go' \
+    'Rollout gate — no-go' \
+    'Do not start this watcher.' \
+    '54,771 uncached input' \
+    'before tick 1' \
+    'Report this measured no-go and stop' \
+    'Beads, and Pi configuration captures were identical.' \
+    'calling a helper, Jira, or `watch_loop`' \
     'Pi-only' \
     '/watch-admin --ticks N' \
     '/watch-admin --until HH:MM' \

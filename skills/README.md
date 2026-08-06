@@ -56,7 +56,7 @@
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
-| watch-admin | Watch validated workspace Git/Beads state and the assigned non-Done Jira portfolio for bounded material transitions; Pi-only, unattended, structurally read-only, and recommendation-only |
+| watch-admin | Retained no-go implementation of a bounded Pi workspace/Jira watcher; its rollout guard stops before scheduling after the fresh-session input-token gate failed |
 | watch-flux-rollout | After a push, watch a CircleCI + FluxCD deploy until it lands — CircleCI green for the commit, then the k8s Deployment's image tag moves off its pre-push baseline and pods go ready — then run a read-only smoke test. Goal-terminating; kubectl/CircleCI sister of /watch-rollout |
 | watch-pr-feedback | Watch open PRs for normalized feedback, independently validate each new or edited actionable item once, and render a bounded decision queue. Read-only by default; attended mode pauses only for acknowledgment |
 | watch-prs | Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence (fast ~3m when CI is in flight, backing off 10→30m when settled) until end of day, with transition-driven suggested next actions. Unattended; pass `\d+m` for a fixed interval |
