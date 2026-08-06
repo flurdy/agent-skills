@@ -6,6 +6,7 @@ Shared slash-command templates for Pi and Claude Code:
 - [`/ask-claude <question>`](ask-claude.md) — ask Claude for a repository-grounded second opinion
 - [`/ask-fable <question>`](ask-fable.md) — ask Claude Fable for a repository-grounded second opinion
 - [`/ask-premium <question>`](ask-premium.md) — ask the premium multi-provider quorum for a second opinion
+- [`/ask-quorum <question>`](ask-quorum.md) — ask the default multi-provider quorum for a repository-grounded second opinion
 - [`/ask-sol <question>`](ask-sol.md) — ask Codex Sol for a repository-grounded second opinion
 - [`/discuss <question>`](discuss.md) — inspect and research without changing files or external state
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
