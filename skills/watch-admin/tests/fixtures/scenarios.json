@@ -1,0 +1,71 @@
+{
+  "git": {
+    "source": "git",
+    "scope": "workspace",
+    "status": "complete",
+    "observedAt": "2026-08-05T09:00:00Z",
+    "coverage": {
+      "total": 1,
+      "included": 1,
+      "omitted": 0,
+      "selectionBasis": "repository identity"
+    },
+    "records": [
+      {
+        "id": "agent-skills",
+        "entityType": "repository",
+        "head": "aaa",
+        "dirty": false,
+        "upstream": true,
+        "ahead": 0,
+        "behind": 0,
+        "detached": false,
+        "present": true
+      }
+    ]
+  },
+  "beads": {
+    "source": "beads",
+    "scope": "workspace",
+    "status": "complete",
+    "observedAt": "2026-08-05T09:00:00Z",
+    "coverage": {
+      "total": 1,
+      "included": 1,
+      "omitted": 0,
+      "selectionBasis": "owning store and bead id"
+    },
+    "records": [
+      {
+        "id": "agents-l1i",
+        "status": "in_progress",
+        "priority": 2,
+        "blockers": [],
+        "dependencies": [],
+        "owningStore": "workspace"
+      }
+    ]
+  },
+  "jira": {
+    "source": "jira",
+    "scope": "assigned-jira-portfolio",
+    "status": "complete",
+    "observedAt": "2026-08-05T09:00:00Z",
+    "coverage": {
+      "total": 1,
+      "included": 1,
+      "omitted": 0,
+      "selectionBasis": "issue key"
+    },
+    "records": [
+      {
+        "id": "GE-1669",
+        "status": "In Progress",
+        "priority": "Medium",
+        "assignee": "ivar",
+        "sprint": "37",
+        "due": null
+      }
+    ]
+  }
+}
