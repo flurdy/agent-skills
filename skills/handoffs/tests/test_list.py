@@ -514,6 +514,17 @@ class AgeReviewClassificationTests(unittest.TestCase):
             self.assertEqual(fields[16], "`ABC-123`")
             self.assertEqual(fields[21], "Y")
 
+    def test_workspace_member_selection_names_the_supported_workspace_flow(self) -> None:
+        handoffs = HANDOFFS_SKILL.read_text(encoding="utf-8")
+
+        self.assertIn("This is a workspace-member handoff for `{member-display}`.", handoffs)
+        self.assertIn("**Switch first:** `cd {member-path}`", handoffs)
+        self.assertIn("cannot pick handoffs from unrelated repos", handoffs)
+        self.assertNotIn(
+            "This handoff belongs to `{member-display}`, not the repo you're in.",
+            handoffs,
+        )
+
     def test_both_skills_delegate_age_review_to_the_shared_reference(self) -> None:
         reference = REFERENCE.read_text(encoding="utf-8")
         handoffs = HANDOFFS_SKILL.read_text(encoding="utf-8")

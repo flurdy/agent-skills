@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.19.0"
+version: "0.19.1"
 author: "flurdy"
 ---
 
@@ -252,7 +252,7 @@ current-repo rows.
 On picking a member handoff, render the resume block per §5, then **lead with the switch**:
 
 ```markdown
-⚠️ **This handoff belongs to `{member-display}`, not the repo you're in.**
+⚠️ **This is a workspace-member handoff for `{member-display}`.**
 **Switch first:** `cd {member-path}`
 
 Everything in the resume block below — branches, beads, commands — refers to that repo.
