@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.1.0"
+version: "2.1.1"
 author: "flurdy"
 ---
 
@@ -39,8 +39,6 @@ consensus threshold. Agreement and vote count never establish correctness.
 /second-opinion ask "..." --agent quorum --panel large \
   --route-model claude-fable=opus --route-effort claude-fable=max
 
-# Temporary compatibility
-/second-opinion review-pr --agent all   # deprecated alias: quorum --panel local-legacy
 ```
 
 `--timeout <minutes>` defaults to 10 and is capped at 30.
@@ -54,8 +52,8 @@ consensus threshold. Agreement and vote count never establish correctness.
   file may set `consent: "allow"`; absent or invalid policies remain confirmation-required.
 - `gh` for PR context.
 
-Read [references/review-panels.md](references/review-panels.md) when `quorum`, `consensus`, or the
-compatibility alias `all` is selected. If the selected panel contains OpenRouter routes, also read
+Read [references/review-panels.md](references/review-panels.md) when `quorum` or `consensus` is
+selected. If the selected panel contains OpenRouter routes, also read
 [references/openrouter-consensus.md](references/openrouter-consensus.md) completely before executing.
 Model/effort precedence is in
 [references/external-model-resolution.md](references/external-model-resolution.md).
@@ -96,23 +94,22 @@ Extract:
 
 - mode: `review-pr`, `validate-plan`, `triage-bug`, or `ask`;
 - target: PR number, plan, bug description, or question;
-- agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, `consensus`, or deprecated `all`;
+- agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, or `consensus`;
 - panel: a local profile name;
 - timeout: 1–30 minutes, default 10;
 - direct model or repeated route-specific model/effort overrides.
 
-Defaults and compatibility:
+Defaults and validation:
 
 - no agent → `peer`;
 - `quorum` with no panel → `focused`;
 - `consensus` with no panel → `extreme`;
-- `all` → warn once that it is deprecated, then use the reserved local-only built-in
-  `quorum --panel local-legacy`;
+- reject unsupported agent names;
 - reject `--panel`, `--route-model`, or `--route-effort` for a direct single agent;
 - reject generic `--model` for `quorum` or `consensus`.
 
 If no mode is supplied, ask what to review. `consensus` must always be explicitly named; never infer
-it from task risk, panel size, `all`, or an API key.
+it from task risk, panel size, or an API key.
 
 ## 2. Gather and sanitize context
 
