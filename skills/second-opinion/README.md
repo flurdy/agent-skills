@@ -71,8 +71,8 @@ Useful commands:
 ```
 
 `focused` is the local Claude-and-Codex built-in and may be overridden by an explicit local profile.
-`local-legacy` is a reserved broad local panel. Direct `peer` remains dynamic and is not a panel
-route. Timeouts default to 10 minutes and can be set from 1 to 30 minutes with `--timeout <minutes>`.
+Direct `peer` remains dynamic and is not a panel route. Timeouts default to 10 minutes and can be set
+from 1 to 30 minutes with `--timeout <minutes>`.
 
 ## Setup
 

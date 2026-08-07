@@ -34,9 +34,8 @@ Usage:
 Profiles live under version-1 config "profiles". A profile contains either legacy
 OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes may
 be disabled; quorum and optional consensusQuorum count enabled unique providers.
-Built-in focused is used when absent from config. The local-only local-legacy panel
-is reserved and cannot be overridden. Local response and error capture are bounded
-while streaming.
+Built-in focused is used when absent from config. Local response and error capture
+are bounded while streaming.
 USAGE
 }
 
@@ -77,11 +76,6 @@ built_in_panel() {
     focused)
       cat <<'JSON'
 {"quorum":2,"routes":[{"id":"claude","kind":"local","agent":"claude","role":"independent review"},{"id":"codex","kind":"local","agent":"codex","role":"independent review"}],"limits":{"maxParallel":2,"maxPromptBytes":65536,"maxOutputTokensPerModel":2000,"defaultTimeoutSeconds":600}}
-JSON
-      ;;
-    local-legacy)
-      cat <<'JSON'
-{"quorum":2,"routes":[{"id":"claude","kind":"local","agent":"claude","role":"independent review"},{"id":"codex","kind":"local","agent":"codex","role":"independent review"},{"id":"gemini","kind":"local","agent":"gemini","role":"long-context review"}],"limits":{"maxParallel":3,"maxPromptBytes":65536,"maxOutputTokensPerModel":2000,"defaultTimeoutSeconds":600}}
 JSON
       ;;
     *) return 1 ;;
@@ -148,12 +142,6 @@ load_raw_profile() {
       )
     ' <<< "$MODEL_POLICIES" >/dev/null 2>&1 || \
       die "modelPolicies must map exact OpenRouter model IDs to {metered: true, consent: ask|allow}"
-  fi
-
-  if [[ "$PANEL_NAME" == "local-legacy" ]]; then
-    RAW_PROFILE="$(built_in_panel "$PANEL_NAME")"
-    PROFILE_SOURCE="reserved-built-in"
-    return
   fi
 
   if [[ -f "$CONFIG_PATH" ]]; then

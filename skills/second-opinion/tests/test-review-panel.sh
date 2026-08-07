@@ -192,9 +192,9 @@ cat > "$CONFIG" <<'JSON'
       "routes": [{"id":"gemini","kind":"local","agent":"gemini","effort":"high","role":"review"}],
       "limits":{"maxParallel":1,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
     },
-    "local-legacy": {
+    "missing-gemini": {
       "quorum": 1,
-      "routes": [{"id":"metered","kind":"openrouter","model":"openrouter/qwen/must-not-run","vendor":"Qwen","role":"review"}],
+      "routes": [{"id":"gemini","kind":"local","agent":"gemini","role":"review"}],
       "limits":{"maxParallel":1,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
     }
   }
@@ -218,11 +218,8 @@ jq -e '
   (.promptSha256 | test("^[a-f0-9]{64}$"))
 ' <<< "$focused_json" >/dev/null || fail "focused built-in was not normalized"
 
-reserved_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel local-legacy --prompt-file "$PROMPT")"
-jq -e '
-  .ready and .source == "reserved-built-in" and .quorum == 2 and
-  [.routes[].id] == ["claude","codex","gemini"] and .openrouter.requestCount == 0
-' <<< "$reserved_json" >/dev/null || fail "local-legacy config override was not ignored"
+expect_failure 'panel not found: local-legacy' "${RUN_ENV[@]}" "$HELPER" check \
+  --config "$CONFIG" --panel local-legacy --prompt-file "$PROMPT"
 
 legacy_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel legacy --prompt-file "$PROMPT")"
 jq -e '
@@ -553,12 +550,15 @@ for pid_file in "$TMP_DIR/home/route-parent-pid-codex" "$TMP_DIR/home/route-desc
 done
 rm -f "$TMP_DIR/home/route-parent-pid-codex" "$TMP_DIR/home/route-descendant-pid-codex"
 
-# Missing Gemini is unavailable, not substituted.
-local_legacy_json="$("${NO_GEMINI_ENV[@]}" "$HELPER" check --config "$TMP_DIR/no-config.json" --panel local-legacy --prompt-file "$PROMPT")"
-legacy_local_sha="$(jq -r '.panelSha256' <<< "$local_legacy_json")"
-"${NO_GEMINI_ENV[@]}" "$HELPER" run-local --config "$TMP_DIR/no-config.json" --panel local-legacy \
-  --prompt-file "$PROMPT" --panel-sha256 "$legacy_local_sha" --prompt-sha256 "$prompt_sha" > "$TMP_DIR/missing-local.json"
-jq -e 'length == 3 and (.[2].id == "gemini" and .[2].status == "unavailable")' "$TMP_DIR/missing-local.json" >/dev/null || fail "missing local route was not preserved"
+# Missing local routes remain unavailable without substitution.
+missing_gemini_json="$("${NO_GEMINI_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel missing-gemini --prompt-file "$PROMPT")"
+missing_gemini_panel_sha="$(jq -r '.panelSha256' <<< "$missing_gemini_json")"
+missing_gemini_prompt_sha="$(jq -r '.promptSha256' <<< "$missing_gemini_json")"
+"${NO_GEMINI_ENV[@]}" "$HELPER" run-local --config "$CONFIG" --panel missing-gemini \
+  --prompt-file "$PROMPT" --panel-sha256 "$missing_gemini_panel_sha" \
+  --prompt-sha256 "$missing_gemini_prompt_sha" > "$TMP_DIR/missing-gemini-local.json"
+jq -e 'length == 1 and (.[0].id == "gemini" and .[0].status == "unavailable")' \
+  "$TMP_DIR/missing-gemini-local.json" >/dev/null || fail "missing local route was not preserved"
 
 expect_failure 'prompt changed since check' bash -c '
   printf changed >> "$1"

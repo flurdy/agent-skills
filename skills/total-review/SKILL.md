@@ -4,7 +4,7 @@ description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, cod
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "0.2.0"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -247,29 +247,28 @@ If iterating, jump back to Phase 1 (re-lint the new state) and proceed through P
 
 If not iterating, proceed to Phase 9.
 
-### 9. Phase 9 — Local Quorum Review Panel
+### 9. Phase 9 — Premium Quorum Review Panel
 
 If `--skip-external` is set, jump to Phase 10. A normal `/total-review` run approves one standard
-external pass, not necessarily a broad panel. Because this phase may invoke multiple premium local
-routes, ask for confirmation unless the user explicitly requested a wide panel or full premium
-review. This `local-legacy` panel contains no OpenRouter routes.
+external pass, not necessarily a premium panel. Because this phase may invoke multiple premium and
+potentially metered routes, ask for confirmation unless the user explicitly requested a premium panel
+or full premium review. Let `/second-opinion` enforce the configured panel's OpenRouter consent policy.
 
 Same PR-detection as Phase 7. Branch with an open PR:
 
 ```
-Skill /second-opinion review-pr --agent quorum --panel local-legacy
+Skill /second-opinion review-pr --agent quorum --panel premium
 ```
 
 No PR (fall back to ask mode):
 
 ```
-Skill /second-opinion ask "Review this diff as a broad local panel. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and the prior peer pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent quorum --panel local-legacy
+Skill /second-opinion ask "Review this diff as a premium panel. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and the prior peer pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent quorum --panel premium
 ```
 
-This runs the configured local Claude, Codex, and Gemini routes in parallel and requires the panel's
-provider quorum. It does not invoke OpenRouter. The purpose is confirmation, not new criticism — the
-code should already be clean. Claude is a deliberate premium review lane; Gemini is especially useful
-for long-context review.
+This runs the configured `premium` routes in parallel and requires the panel's unique-provider
+quorum. The panel may mix local and OpenRouter routes or contain multiple routes from one provider.
+The purpose is a final deep review after cheaper phases have already made the code clean.
 
 Verify every material finding against repository evidence before classifying it. Assign priority from
 the validated impact and severity, not from how many routes repeat it. Repeated support is useful

@@ -148,13 +148,10 @@ basis (`configured` or `confirmation-required`) are included in the check and ro
 values are included in the panel and OpenRouter subset digests. The OpenRouter subset digest also binds
 the fixed completion contract, so a policy or contract change invalidates a prior check.
 
-### Built-in panels
+### Built-in panel
 
-Panel availability:
-
-- `focused`: local Claude + Codex, quorum and consensus threshold 2; local config may override it;
-- `local-legacy`: reserved built-in local Claude + Codex + Gemini, both thresholds 2; a same-named
-  config entry is ignored so broad local reviews remain guaranteed local-only.
+`focused` provides local Claude + Codex with quorum and consensus threshold 2. Local config may
+override it.
 
 A legacy profile with `models` remains valid and normalizes to enabled OpenRouter routes. Its quorum
 defaults to `min(2, unique providers)` and its omitted `consensusQuorum` falls back to that quorum.
