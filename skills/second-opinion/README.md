@@ -16,7 +16,7 @@ quick-start and deliberately links to the detailed policy rather than reproducin
 | Challenge an implementation plan | `/second-opinion validate-plan "…"` | Reviews feasibility, gaps, risks, dependencies, and simpler alternatives. |
 | Structure a bug investigation | `/second-opinion triage-bug "…"` | Requests root-cause hypotheses and falsification steps. |
 | Ask a specific provider | `/second-opinion ask "…" --agent codex` | Runs exactly the named local CLI route. |
-| Check panel coverage | `/second-opinion review-pr 123 --agent quorum --panel focused` | Runs a named panel and reports whether enough distinct providers returned. |
+| Check panel coverage | `/second-opinion review-pr 123 --agent quorum --panel focused` | Runs a named panel and reports whether enough configured routes returned. |
 | Compare panel claims | `/second-opinion validate-plan "…" --agent consensus --panel extreme` | Runs a named panel, then compares claims only if its consensus threshold is met. |
 
 Use one peer for ordinary decisions. Use a panel when different provider perspectives are
@@ -50,10 +50,11 @@ Examples:
 A panel is a configured set of local and optionally OpenRouter routes. `quorum` and `consensus`
 run the same enabled routes exactly once; they differ only in interpretation thresholds:
 
-- **Quorum** is mechanical coverage: did `quorum` distinct providers return? Multiple models from
-  one provider count once.
-- **Consensus** is claim comparison only after `consensusQuorum` distinct providers return. When
-  omitted, that threshold falls back to `quorum` for compatibility. It must distinguish supported
+- **Quorum** is mechanical coverage: did `quorum` configured routes return successfully? Distinct
+  models from one provider count separately.
+- **Consensus** is claim comparison only after route quorum is met and `consensusQuorum` distinct
+  providers return. When omitted, that threshold defaults to the smaller of `quorum` and the enabled
+  unique-provider count. It must distinguish supported
   agreements, disagreements, repeated assumptions, same-provider corroboration, and unavailable or
   disabled routes.
 
@@ -123,7 +124,7 @@ for the full safety boundary.
 Expect the result to include each route's status and effective model/effort, followed by the raw
 successful opinions or explicit incomplete responses, failures, timeouts, and declines. OpenRouter
 termination diagnostics include bounded response identity, normalized/native finish reason, and
-tool-call count. `incomplete` routes never contribute provider quorum; the completion contract checks
+tool-call count. `incomplete` routes never contribute route quorum; the completion contract checks
 transport completion, not correctness or semantic consensus.
 
 Treat the final assessment as a review checklist:

@@ -4,7 +4,7 @@ description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, cod
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "0.3.0"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -266,8 +266,8 @@ No PR (fall back to ask mode):
 Skill /second-opinion ask "Review this diff as a premium panel. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and the prior peer pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent quorum --panel premium
 ```
 
-This runs the configured `premium` routes in parallel and requires the panel's unique-provider
-quorum. The panel may mix local and OpenRouter routes or contain multiple routes from one provider.
+This runs the configured `premium` routes in parallel and requires its successful-route quorum.
+The panel may mix local and OpenRouter routes or contain multiple routes from one provider.
 The purpose is a final deep review after cheaper phases have already made the code clean.
 
 Verify every material finding against repository evidence before classifying it. Assign priority from

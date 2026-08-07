@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.0.0"
+version: "3.1.0"
 author: "flurdy"
 ---
 
@@ -13,8 +13,8 @@ author: "flurdy"
 
 Query one independent CLI peer or a bounded named review panel for plans, PRs, code, or bugs.
 `quorum` and `consensus` execute the same enabled routes from the selected panel exactly once. Quorum
-uses the profile's provider threshold; consensus interpretation requires its separately configurable
-consensus threshold. Agreement and vote count never establish correctness.
+uses the profile's successful-route threshold; consensus interpretation additionally requires its
+unique-provider threshold. Agreement and vote count never establish correctness.
 
 ## Usage
 
@@ -270,9 +270,9 @@ Write the `check`, local-result, and OpenRouter-result JSON to private files, th
 ```
 
 Omit a result file only when that subset did not run and produced no results. The evaluator preserves
-panel order, reports disabled and unavailable routes, counts unique successful providers, reports
-same-provider corroboration, and evaluates `quorumMet` and `consensusEligible` against their separate
-thresholds. OpenRouter routes count as successful only when they
+panel order, reports disabled and unavailable routes, counts successful routes and unique successful
+providers, reports same-provider corroboration, and evaluates `quorumMet` and `consensusEligible`
+against their separate threshold units. OpenRouter routes count as successful only when they
 return non-empty text with the fixed completion marker, normalized finish reason `stop`, and no tool
 calls. The helper strips the marker and classifies every other transport-success response as
 `incomplete`; this is protocol completion, not semantic validation. Results retain bounded response
@@ -291,7 +291,8 @@ First show every route faithfully:
 |---|---|---|---|---|---|
 | ... |
 
-**Quorum:** {successful unique providers}/{quorum required} — met / not met
+**Quorum:** {successful routes}/{quorum required} — met / not met
+**Provider coverage:** {successful unique providers}
 ```
 
 For the consensus policy, add `**Consensus threshold:** {successful unique providers}/{consensus
@@ -302,7 +303,7 @@ visible response and termination diagnostics without treating either as independ
 ### Quorum policy
 
 When quorum is met, present findings by route/provider without requiring agreement. When not met,
-state that quorum failed and identify unavailable providers. Do not relabel repeated claims as
+state that quorum failed and identify unavailable routes. Do not relabel repeated claims as
 consensus.
 
 ### Consensus policy

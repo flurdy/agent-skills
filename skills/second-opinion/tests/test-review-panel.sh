@@ -168,6 +168,16 @@ cat > "$CONFIG" <<'JSON'
       ],
       "limits":{"maxParallel":4,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
     },
+    "same-provider-quorum": {
+      "quorum": 3,
+      "consensusQuorum": 2,
+      "routes": [
+        {"id":"claude-fable","kind":"local","agent":"claude","model":"fable","role":"reasoning"},
+        {"id":"claude-opus","kind":"local","agent":"claude","model":"opus","role":"critical review"},
+        {"id":"codex-main","kind":"local","agent":"codex","role":"verification"}
+      ],
+      "limits":{"maxParallel":3,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
+    },
     "toggled": {
       "enabled": true,
       "quorum": 2,
@@ -220,6 +230,32 @@ jq -e '
 
 expect_failure 'panel not found: local-legacy' "${RUN_ENV[@]}" "$HELPER" check \
   --config "$CONFIG" --panel local-legacy --prompt-file "$PROMPT"
+
+same_provider_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel same-provider-quorum --prompt-file "$PROMPT")"
+same_provider_panel_sha="$(jq -r '.panelSha256' <<< "$same_provider_json")"
+same_provider_prompt_sha="$(jq -r '.promptSha256' <<< "$same_provider_json")"
+"${RUN_ENV[@]}" "$HELPER" run-local --config "$CONFIG" --panel same-provider-quorum \
+  --prompt-file "$PROMPT" --panel-sha256 "$same_provider_panel_sha" \
+  --prompt-sha256 "$same_provider_prompt_sha" > "$TMP_DIR/same-provider-results.json"
+printf '%s\n' "$same_provider_json" > "$TMP_DIR/same-provider-check.json"
+"$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/same-provider-check.json" \
+  --results-file "$TMP_DIR/same-provider-results.json" > "$TMP_DIR/same-provider-eval.json"
+jq -e '
+  .quorumRequired == 3 and .quorumUnit == "routes" and
+  .consensusQuorumRequired == 2 and .consensusQuorumUnit == "providers" and
+  .successfulRouteCount == 3 and .successfulProviderCount == 2 and
+  .quorumMet and .consensusEligible and
+  .sameProviderCorroboration == [{"provider":"anthropic","routeIds":["claude-fable","claude-opus"]}]
+' "$TMP_DIR/same-provider-eval.json" >/dev/null || fail "route quorum collapsed same-provider reviews"
+jq 'map(select(.id != "claude-opus"))' "$TMP_DIR/same-provider-results.json" \
+  > "$TMP_DIR/same-provider-partial-results.json"
+"$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/same-provider-check.json" \
+  --results-file "$TMP_DIR/same-provider-partial-results.json" > "$TMP_DIR/same-provider-partial-eval.json"
+jq -e '
+  .successfulRouteCount == 2 and .successfulProviderCount == 2 and
+  (.quorumMet | not) and (.consensusEligible | not)
+' "$TMP_DIR/same-provider-partial-eval.json" >/dev/null || \
+  fail "provider threshold enabled consensus before route quorum"
 
 legacy_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel legacy --prompt-file "$PROMPT")"
 jq -e '
@@ -305,15 +341,22 @@ jq -e '
 expect_failure 'panel is disabled: disabled-profile' "${RUN_ENV[@]}" "$HELPER" check \
   --config "$CONFIG" --panel disabled-profile --prompt-file "$PROMPT"
 
-TOO_HIGH_CONFIG="$TMP_DIR/too-high.json"
-jq '.profiles.toggled.consensusQuorum = 3' "$CONFIG" > "$TOO_HIGH_CONFIG"
-expect_failure 'panel thresholds must be integers between 1 and the enabled unique provider count (2)' \
-  "${RUN_ENV[@]}" "$HELPER" check --config "$TOO_HIGH_CONFIG" --panel toggled --prompt-file "$PROMPT"
+TOO_HIGH_CONSENSUS_CONFIG="$TMP_DIR/too-high-consensus.json"
+jq '.profiles.toggled.consensusQuorum = 3' "$CONFIG" > "$TOO_HIGH_CONSENSUS_CONFIG"
+expect_failure 'consensusQuorum must be an integer between 1 and the enabled unique provider count (2)' \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$TOO_HIGH_CONSENSUS_CONFIG" --panel toggled --prompt-file "$PROMPT"
 
-CONSENSUS_BELOW_QUORUM_CONFIG="$TMP_DIR/consensus-below-quorum.json"
-jq '.profiles.toggled.consensusQuorum = 1' "$CONFIG" > "$CONSENSUS_BELOW_QUORUM_CONFIG"
-expect_failure 'consensusQuorum must be greater than or equal to quorum' \
-  "${RUN_ENV[@]}" "$HELPER" check --config "$CONSENSUS_BELOW_QUORUM_CONFIG" --panel toggled --prompt-file "$PROMPT"
+TOO_HIGH_QUORUM_CONFIG="$TMP_DIR/too-high-quorum.json"
+jq '.profiles.toggled.quorum = 3' "$CONFIG" > "$TOO_HIGH_QUORUM_CONFIG"
+expect_failure 'quorum must be an integer between 1 and the enabled route count (2)' \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$TOO_HIGH_QUORUM_CONFIG" --panel toggled --prompt-file "$PROMPT"
+
+LOWER_CONSENSUS_CONFIG="$TMP_DIR/lower-consensus.json"
+jq '.profiles.toggled.consensusQuorum = 1' "$CONFIG" > "$LOWER_CONSENSUS_CONFIG"
+lower_consensus_json="$("${RUN_ENV[@]}" "$HELPER" check \
+  --config "$LOWER_CONSENSUS_CONFIG" --panel toggled --prompt-file "$PROMPT")"
+jq -e '.quorum == 2 and .consensusQuorum == 1' <<< "$lower_consensus_json" >/dev/null || \
+  fail "independent route and provider thresholds were not accepted"
 
 toggled_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$CONFIG" --panel toggled --prompt-file "$PROMPT")"
 jq -e '
@@ -441,7 +484,7 @@ jq -e '
   .quorumRequired == 2 and .consensusQuorumRequired == 3 and
   .quorumMet and (.consensusEligible | not) and .successfulProviderCount == 3 and
   .sameProviderCorroboration == [{"provider":"qwen","routeIds":["qwen-a","qwen-b"]}]
-' "$approved_eval" >/dev/null || fail "provider quorum or same-provider corroboration was incorrect"
+' "$approved_eval" >/dev/null || fail "route quorum or same-provider corroboration was incorrect"
 
 # Preamble-only responses remain visible but cannot contribute provider coverage.
 : > "$CURL_LOG"
@@ -466,7 +509,7 @@ jq -e '
   ([.unavailableRoutes[] | select(.provider == "qwen" and .status == "incomplete")] | length) == 2 and
   all(.results[] | select(.provider == "qwen"); .termination.finishReason == "stop") and
   (.sameProviderCorroboration | length) == 0
-' "$TMP_DIR/incomplete-eval.json" >/dev/null || fail "incomplete responses contributed to provider quorum"
+' "$TMP_DIR/incomplete-eval.json" >/dev/null || fail "incomplete responses contributed to route quorum"
 
 # Different successful response text never changes mechanical quorum.
 jq '.[0].response = "contradicts every other route"' "$openrouter_results" > "$TMP_DIR/contradictory.json"
@@ -490,7 +533,7 @@ printf '%s\n' fail > "$TMP_DIR/home/fake-agent-mode-codex"
 rm -f "$TMP_DIR/home/fake-agent-mode-codex"
 jq -e 'length == 2 and (.[1].status == "error" and .[1].exitCode == 9)' "$TMP_DIR/failing-local.json" >/dev/null || fail "local failure was not preserved"
 
-# Empty output is an error and cannot satisfy provider quorum.
+# Empty output is an error and cannot satisfy route quorum.
 printf '%s\n' empty > "$TMP_DIR/home/fake-agent-mode-codex"
 "${RUN_ENV[@]}" "$HELPER" run-local "${COMMON[@]}" > "$TMP_DIR/empty-local.json"
 rm -f "$TMP_DIR/home/fake-agent-mode-codex"

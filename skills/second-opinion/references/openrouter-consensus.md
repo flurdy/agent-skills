@@ -90,9 +90,9 @@ it never contains credentials or route availability:
 A `consensusQuorum: 4` profile must retain at least four enabled unique providers. Disabled OpenRouter
 routes make no request and are excluded from consent.
 
-A panel may contain 1–8 unique model identities. Repeated provider namespaces are allowed for
-corroboration but count once toward either threshold. `vendor` is display-only; the helper derives provider
-identity from canonical `openrouter/<provider>/<model-id>` values. Each policy must use the exact
+A panel may contain 1–8 unique model identities. Repeated provider namespaces count as separate
+routes toward quorum but only once toward the consensus provider threshold. `vendor` is display-only;
+the helper derives provider identity from canonical `openrouter/<provider>/<model-id>` values. Each policy must use the exact
 canonical OpenRouter model ID, declare `metered: true`, and set `consent` to `ask` or `allow`.
 `allow` does not apply to a provider, panel, renamed model, or unlisted model.
 
@@ -207,11 +207,11 @@ provenance. OpenRouter results also preserve bounded response ID/model/provider,
 finish reasons, and tool-call count. Tool arguments and hidden reasoning text are discarded. Usage is
 post-call telemetry, not a reliable pre-run estimate.
 
-Quorum is mechanical: count unique providers with successful responses. Same-provider successes are
-reported separately and cannot inflate quorum.
+Quorum is mechanical: count routes with successful responses. Same-provider successes count as
+separate configured reviews and are also reported as corroboration.
 
-Consensus is semantic and only eligible after the configured `consensusQuorum` threshold, which may
-be stricter than ordinary quorum. Report:
+Consensus is semantic and only eligible after route quorum and the configured unique-provider
+`consensusQuorum` threshold are both met. Report:
 
 - claim-level evidence-backed agreements;
 - disagreements and uncertainty;

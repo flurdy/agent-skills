@@ -2,8 +2,8 @@
 
 Review panels are policy-neutral route sets. `quorum` and `consensus` execute the same enabled routes
 from the selected panel exactly once; only interpretation differs. Quorum asks whether `quorum`
-independent providers returned. Consensus comparison requires `consensusQuorum` providers. Neither
-policy treats route count or agreement as correctness.
+routes returned successfully. Consensus comparison additionally requires `consensusQuorum` unique
+providers. Neither route count nor agreement establishes correctness.
 
 ## Configuration
 
@@ -18,10 +18,11 @@ It stays at schema version 1. Each entry under `profiles` contains exactly one o
 - legacy `models`: the existing OpenRouter-only shape; or
 - `routes`: the policy-neutral panel shape below.
 
-A route profile requires `quorum`, measured in **unique successful providers**, and the existing
-bounded `limits` object. Optional `consensusQuorum` defaults to `quorum` for compatibility and must
-be at least `quorum`. Both thresholds must fit the enabled unique-provider count. Routes from the
-same provider may corroborate each other but count once toward either threshold.
+A route profile requires `quorum`, measured in **successful routes**, and the existing bounded
+`limits` object. Optional `consensusQuorum` is measured in **unique successful providers** and
+defaults to the smaller of `quorum` and the enabled unique-provider count. Each threshold must fit
+its own unit. Routes from the same provider count separately toward quorum but remain
+same-provider corroboration for consensus interpretation.
 
 Optional `enabled` defaults to `true` on profiles and routes. Selecting a disabled profile fails
 without fallback. Disabled routes remain visible in check/evaluation output with status `disabled`,
@@ -150,11 +151,12 @@ the fixed completion contract, so a policy or contract change invalidates a prio
 
 ### Built-in panel
 
-`focused` provides local Claude + Codex with quorum and consensus threshold 2. Local config may
-override it.
+`focused` provides local Claude + Codex with route quorum and provider consensus threshold 2. Local
+config may override it.
 
-A legacy profile with `models` remains valid and normalizes to enabled OpenRouter routes. Its quorum
-defaults to `min(2, unique providers)` and its omitted `consensusQuorum` falls back to that quorum.
+A legacy profile with `models` remains valid and normalizes to enabled OpenRouter routes. Its route
+quorum defaults to `min(2, enabled routes)` and its provider consensus threshold defaults to the
+smaller of quorum and enabled unique providers.
 Modernize actively maintained profiles to `routes`; `--agent consensus` continues to default to the
 configured `extreme` profile.
 
@@ -200,9 +202,10 @@ The skill invokes `scripts/review-panel.sh` in four bounded stages:
    contract, strips its marker from completed output, and classifies missing markers, non-stop
    termination, or tool-call attempts as `incomplete`. Declining uses `decline-openrouter` and makes
    no request.
-4. `evaluate` preserves route order, disabled evidence, and failures; counts unique successful
-   providers; and reports both `quorumMet` and `consensusEligible` against their configured thresholds.
-   It reports same-provider corroboration separately and does no semantic consensus analysis.
+4. `evaluate` preserves route order, disabled evidence, and failures; counts successful routes and
+   unique successful providers; and reports route-based `quorumMet` plus provider-based
+   `consensusEligible` against their configured thresholds. It reports same-provider corroboration
+   separately and does no semantic consensus analysis.
 
 Every result reports route ID, kind, provider, effective model and effort, their source (`panel`,
 `override`, or `native-default`), effective OpenRouter consent policy/basis when applicable, status,
@@ -219,9 +222,10 @@ completion contract and no tools. Their combined bytes stay within `maxPromptByt
 timeouts, incomplete responses, declined metered routes, and model errors remain explicit; routes are
 never retried or substituted.
 
-For consensus, the caller may synthesize agreements only when the successful unique-provider count
-meets `consensusQuorum` and `consensusEligible` is true. Falling short can still meet ordinary quorum;
-in that case preserve the individual opinions but make no consensus assessment. The synthesis must
+For consensus, the caller may synthesize agreements only when route quorum is met, the successful
+unique-provider count meets `consensusQuorum`, and `consensusEligible` is true. Falling short can
+still meet ordinary quorum; in that case preserve the individual opinions but make no consensus
+assessment. The synthesis must
 separately report evidence-backed agreements, disagreements, shared assumptions, same-provider
 corroboration, and unavailable or disabled routes. Material claims still require repository-grounded
 verification.

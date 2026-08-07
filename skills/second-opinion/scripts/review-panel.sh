@@ -33,9 +33,9 @@ Usage:
 
 Profiles live under version-1 config "profiles". A profile contains either legacy
 OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes may
-be disabled; quorum and optional consensusQuorum count enabled unique providers.
-Built-in focused is used when absent from config. Local response and error capture
-are bounded while streaming.
+be disabled; quorum counts enabled routes while optional consensusQuorum counts
+unique providers. Built-in focused is used when absent from config. Local response
+and error capture are bounded while streaming.
 USAGE
 }
 
@@ -187,11 +187,10 @@ normalize_profile() {
       die "legacy models must contain 1-$HARD_MAX_ROUTES canonical OpenRouter entries"
     fi
     PANEL_JSON="$(jq -c '
-      (.models | map(.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase) | unique | length) as $providers |
-      (.quorum // ([2, $providers] | min)) as $quorum |
+      (.models | length) as $routes |
       {
-        quorum: $quorum,
-        consensusQuorum: (.consensusQuorum // $quorum),
+        quorum: (.quorum // ([2, $routes] | min)),
+        consensusQuorum,
         routes: [.models | to_entries[] | {
           id: ("openrouter-" + ((.key + 1) | tostring)),
           kind: "openrouter",
@@ -205,7 +204,7 @@ normalize_profile() {
     ' <<< "$RAW_PROFILE")"
     LEGACY_PROFILE=true
   else
-    PANEL_JSON="$(jq -c '{quorum, consensusQuorum: (.consensusQuorum // .quorum), routes, limits}' <<< "$RAW_PROFILE")"
+    PANEL_JSON="$(jq -c '{quorum, consensusQuorum, routes, limits}' <<< "$RAW_PROFILE")"
     LEGACY_PROFILE=false
   fi
 
@@ -271,16 +270,21 @@ validate_limits_and_routes() {
     )
   ' <<< "$PANEL_JSON")"
 
-  local provider_count
+  local route_count provider_count
+  route_count="$(jq -r '[.routes[] | select(.enabled)] | length' <<< "$PANEL_JSON")"
   provider_count="$(jq -r '[.routes[] | select(.enabled) | .provider] | unique | length' <<< "$PANEL_JSON")"
-  if ! jq -e --argjson providers "$provider_count" '
-    all([.quorum, .consensusQuorum][];
-      type == "number" and floor == . and . >= 1 and . <= $providers)
+  PANEL_JSON="$(jq -c --argjson providers "$provider_count" '
+    .consensusQuorum = (.consensusQuorum // ([.quorum, $providers] | min))
+  ' <<< "$PANEL_JSON")"
+  if ! jq -e --argjson routes "$route_count" '
+    .quorum | type == "number" and floor == . and . >= 1 and . <= $routes
   ' <<< "$PANEL_JSON" >/dev/null 2>&1; then
-    die "panel thresholds must be integers between 1 and the enabled unique provider count ($provider_count)"
+    die "quorum must be an integer between 1 and the enabled route count ($route_count)"
   fi
-  if ! jq -e '.consensusQuorum >= .quorum' <<< "$PANEL_JSON" >/dev/null 2>&1; then
-    die "consensusQuorum must be greater than or equal to quorum"
+  if ! jq -e --argjson providers "$provider_count" '
+    .consensusQuorum | type == "number" and floor == . and . >= 1 and . <= $providers
+  ' <<< "$PANEL_JSON" >/dev/null 2>&1; then
+    die "consensusQuorum must be an integer between 1 and the enabled unique provider count ($provider_count)"
   fi
 }
 
@@ -463,7 +467,9 @@ check_panel() {
       source: $source,
       legacy: $legacy,
       quorum: $panel_data.quorum,
+      quorumUnit: "routes",
       consensusQuorum: $panel_data.consensusQuorum,
+      consensusQuorumUnit: "providers",
       limits: $panel_data.limits,
       panelSha256: $panel_sha256,
       openrouterSha256: $openrouter_sha256,
@@ -885,7 +891,8 @@ evaluate_results() {
         }
       end
     ]) as $ordered |
-    ([$ordered[] | select(.status == "ok") | .provider] | unique) as $successful_providers |
+    ([$ordered[] | select(.status == "ok")]) as $successful_routes |
+    ([$successful_routes[].provider] | unique) as $successful_providers |
     ([$ordered[] | select(.status != "ok") | {id, provider, status, error}]) as $unavailable |
     ([$successful_providers[] as $provider |
       [$ordered[] | select(.status == "ok" and .provider == $provider) | .id] as $ids |
@@ -897,11 +904,19 @@ evaluate_results() {
       panelSha256: $panel.panelSha256,
       promptSha256: $panel.promptSha256,
       quorumRequired: $panel.quorum,
+      quorumUnit: "routes",
       consensusQuorumRequired: $panel.consensusQuorum,
+      consensusQuorumUnit: "providers",
+      successfulRouteCount: ($successful_routes | length),
+      successfulRouteIds: [$successful_routes[].id],
       successfulProviderCount: ($successful_providers | length),
       successfulProviders: $successful_providers,
-      quorumMet: (($successful_providers | length) >= $panel.quorum),
-      consensusEligible: ($policy == "consensus" and (($successful_providers | length) >= $panel.consensusQuorum)),
+      quorumMet: (($successful_routes | length) >= $panel.quorum),
+      consensusEligible: (
+        $policy == "consensus" and
+        (($successful_routes | length) >= $panel.quorum) and
+        (($successful_providers | length) >= $panel.consensusQuorum)
+      ),
       results: $ordered,
       unavailableRoutes: $unavailable,
       sameProviderCorroboration: $same_provider,
