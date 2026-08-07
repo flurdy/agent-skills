@@ -26,7 +26,8 @@ print one paste-ready attended workflow recommendation. It never runs that workf
 
 This skill remains no-go for ordinary use. It may run only in the approved isolated BLC UAT process
 at `/home/ivar/Code/blc/workspace`, with `WATCH_ADMIN_UAT=1` and `WATCH_ADMIN_UAT_WORKSPACE` set to
-that exact absolute path.
+that exact absolute path. The 2026-08-07 BLC UAT returned no-go; no further run is authorized
+without a newly approved plan.
 That process must be a fresh dedicated Pi session launched on the configured standard model and
 thinking level and invoke Pi's canonical `/skill:watch-admin` command. The preflight rejects missing
 UAT authorization or route telemetry, the wrong workspace, a resumed session, a non-standard route,
