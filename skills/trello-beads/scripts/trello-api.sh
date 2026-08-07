@@ -13,8 +13,31 @@ check_auth() {
   [[ -n "${TRELLO_TOKEN:-}" ]]   || die "TRELLO_TOKEN not set"
 }
 
-auth_params() {
-  echo "key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}"
+oauth_encode() {
+  printf '%s' "$1" | jq -sRr '@uri'
+}
+
+trello_request() {
+  local method="$1"
+  local path="$2"
+  shift 2
+
+  check_auth
+  case "$method" in
+    GET|POST|PUT) ;;
+    *) die "Unsupported Trello request method: $method" ;;
+  esac
+  [[ "$path" == /* && "$path" != *$'\n'* && "$path" != *$'\r'* ]] \
+    || die "Trello request path must be a single-line absolute path"
+
+  local encoded_key encoded_token
+  encoded_key=$(oauth_encode "$TRELLO_API_KEY")
+  encoded_token=$(oauth_encode "$TRELLO_TOKEN")
+
+  printf 'header = "Authorization: OAuth oauth_consumer_key=\\"%s\\", oauth_token=\\"%s\\""\n' \
+    "$encoded_key" "$encoded_token" \
+    | curl --disable --config - --silent --show-error --fail --request "$method" \
+      "${BASE_URL}${path}" "$@"
 }
 
 require_board() {
@@ -25,20 +48,20 @@ require_board() {
 resolve_list_id() {
   local name="$1"
   require_board
-  curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/lists?$(auth_params)" \
+  trello_request GET "/boards/${TRELLO_BOARD_ID}/lists" --get --data-urlencode "fields=name" \
     | jq -r --arg name "$name" '.[] | select(.name == $name) | .id'
 }
 
 cmd_boards() {
   echo "Fetching your boards..."
-  curl -sf "${BASE_URL}/members/me/boards?$(auth_params)&fields=name,url,shortUrl" \
+  trello_request GET "/members/me/boards" --get --data-urlencode "fields=name,url,shortUrl" \
     | jq -r '.[] | "\(.name)\t\(.id)\t\(.shortUrl)"' \
     | column -t -s $'\t'
 }
 
 cmd_lists() {
   require_board
-  curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/lists?$(auth_params)&fields=name" \
+  trello_request GET "/boards/${TRELLO_BOARD_ID}/lists" --get --data-urlencode "fields=name" \
     | jq -r '.[] | "\(.name)\t\(.id)"' \
     | column -t -s $'\t'
 }
@@ -49,14 +72,14 @@ cmd_cards() {
 
   if [[ -z "$list_name" ]]; then
     # All cards on board
-    curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/cards?$(auth_params)&fields=name,idList,labels,desc,shortUrl" \
-      | jq '.'
+    trello_request GET "/boards/${TRELLO_BOARD_ID}/cards" \
+      --get --data-urlencode "fields=name,idList,labels,desc,shortUrl" | jq '.'
   else
     local list_id
     list_id=$(resolve_list_id "$list_name")
     [[ -n "$list_id" ]] || die "List not found: $list_name"
-    curl -sf "${BASE_URL}/lists/${list_id}/cards?$(auth_params)&fields=name,labels,desc,shortUrl" \
-      | jq '.'
+    trello_request GET "/lists/${list_id}/cards" \
+      --get --data-urlencode "fields=name,labels,desc,shortUrl" | jq '.'
   fi
 }
 
@@ -65,14 +88,16 @@ cmd_cards_summary() {
   require_board
 
   if [[ -z "$list_name" ]]; then
-    curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/cards?$(auth_params)&fields=name,idList,labels,shortUrl" \
+    trello_request GET "/boards/${TRELLO_BOARD_ID}/cards" \
+      --get --data-urlencode "fields=name,idList,labels,shortUrl" \
       | jq -r '.[] | "\(.name)\t\(.labels | map(.name) | join(","))\t\(.shortUrl)"' \
       | column -t -s $'\t'
   else
     local list_id
     list_id=$(resolve_list_id "$list_name")
     [[ -n "$list_id" ]] || die "List not found: $list_name"
-    curl -sf "${BASE_URL}/lists/${list_id}/cards?$(auth_params)&fields=name,labels,shortUrl" \
+    trello_request GET "/lists/${list_id}/cards" \
+      --get --data-urlencode "fields=name,labels,shortUrl" \
       | jq -r '.[] | "\(.name)\t\(.labels | map(.name) | join(","))\t\(.shortUrl)"' \
       | column -t -s $'\t'
   fi
@@ -81,8 +106,8 @@ cmd_cards_summary() {
 cmd_card() {
   local card_id="$1"
   [[ -n "$card_id" ]] || die "Usage: trello-api.sh card <card-id>"
-  curl -sf "${BASE_URL}/cards/${card_id}?$(auth_params)&fields=name,desc,labels,idList,shortUrl" \
-    | jq '.'
+  trello_request GET "/cards/${card_id}" \
+    --get --data-urlencode "fields=name,desc,labels,idList,shortUrl" | jq '.'
 }
 
 cmd_move() {
@@ -96,7 +121,7 @@ cmd_move() {
   list_id=$(resolve_list_id "$target_list_name")
   [[ -n "$list_id" ]] || die "List not found: $target_list_name"
 
-  curl -sf -X PUT "${BASE_URL}/cards/${card_id}?$(auth_params)" \
+  trello_request PUT "/cards/${card_id}" \
     -H "Content-Type: application/json" \
     -d "{\"idList\": \"${list_id}\"}" \
     | jq '{id, name, idList}'
@@ -119,7 +144,7 @@ cmd_create() {
   payload=$(jq -n --arg name "$title" --arg desc "$desc" --arg idList "$list_id" \
     '{name: $name, desc: $desc, idList: $idList}')
 
-  curl -sf -X POST "${BASE_URL}/cards?$(auth_params)" \
+  trello_request POST "/cards" \
     -H "Content-Type: application/json" \
     -d "$payload" \
     | jq '{id, name, shortUrl}'
@@ -127,7 +152,7 @@ cmd_create() {
 
 cmd_labels() {
   require_board
-  curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/labels?$(auth_params)" \
+  trello_request GET "/boards/${TRELLO_BOARD_ID}/labels" \
     | jq -r '.[] | "\(.name)\t\(.color)\t\(.id)"' \
     | column -t -s $'\t'
 }
@@ -140,7 +165,7 @@ ensure_label() {
 
   # Check if label already exists
   local label_id
-  label_id=$(curl -sf "${BASE_URL}/boards/${TRELLO_BOARD_ID}/labels?$(auth_params)" \
+  label_id=$(trello_request GET "/boards/${TRELLO_BOARD_ID}/labels" \
     | jq -r --arg name "$label_name" '.[] | select(.name == $name) | .id' | head -1)
 
   if [[ -n "$label_id" ]]; then
@@ -151,7 +176,7 @@ ensure_label() {
   # Create the label
   local payload
   payload=$(jq -n --arg name "$label_name" --arg color "$label_color" '{name: $name, color: $color}')
-  curl -sf -X POST "${BASE_URL}/boards/${TRELLO_BOARD_ID}/labels?$(auth_params)" \
+  trello_request POST "/boards/${TRELLO_BOARD_ID}/labels" \
     -H "Content-Type: application/json" \
     -d "$payload" \
     | jq -r '.id'
@@ -168,7 +193,7 @@ cmd_add_label() {
   label_id=$(ensure_label "$label_name" "$label_color")
   [[ -n "$label_id" ]] || die "Could not find or create label: $label_name"
 
-  curl -sf -X POST "${BASE_URL}/cards/${card_id}/idLabels?$(auth_params)&value=${label_id}" >/dev/null
+  trello_request POST "/cards/${card_id}/idLabels?value=${label_id}" >/dev/null
   echo "Added label '$label_name' to card"
 }
 
@@ -178,7 +203,7 @@ cmd_comment() {
   [[ -n "$card_id" ]] || die "Usage: trello-api.sh comment <card-id> <text>"
   [[ -n "$text" ]] || die "Usage: trello-api.sh comment <card-id> <text>"
 
-  curl -sf -X POST "${BASE_URL}/cards/${card_id}/actions/comments?$(auth_params)" \
+  trello_request POST "/cards/${card_id}/actions/comments" \
     -H "Content-Type: application/json" \
     -d "$(jq -n --arg text "$text" '{text: $text}')" \
     | jq '{id, type: .type, text: .data.text}'
@@ -187,7 +212,8 @@ cmd_comment() {
 cmd_comments() {
   local card_id="$1"
   [[ -n "$card_id" ]] || die "Usage: trello-api.sh comments <card-id>"
-  curl -sf "${BASE_URL}/cards/${card_id}/actions?$(auth_params)&filter=commentCard&fields=data,memberCreator" \
+  trello_request GET "/cards/${card_id}/actions" \
+    --get --data-urlencode "filter=commentCard" --data-urlencode "fields=data,memberCreator" \
     | jq '[.[] | {author: .memberCreator.fullName, text: .data.text}]'
 }
 
@@ -216,28 +242,33 @@ Environment variables:
 USAGE
 }
 
-# --- main ---
-command="${1:-help}"
-shift || true
+main() {
+  local command="${1:-help}"
+  shift || true
 
-case "$command" in
-  help|--help|-h) cmd_help; exit 0 ;;
-esac
+  case "$command" in
+    help|--help|-h) cmd_help; return 0 ;;
+  esac
 
-check_auth
+  check_auth
 
-case "$command" in
-  boards)        cmd_boards ;;
-  lists)         cmd_lists ;;
-  cards)         cmd_cards "${1:-}" ;;
-  cards-summary) cmd_cards_summary "${1:-}" ;;
-  card)          cmd_card "${1:-}" ;;
-  move)          cmd_move "${1:-}" "${2:-}" ;;
-  create)        cmd_create "${1:-}" "${2:-}" "${3:-}" ;;
-  add-label)     cmd_add_label "${1:-}" "${2:-}" "${3:-}" ;;
-  comment)       cmd_comment "${1:-}" "${2:-}" ;;
-  comments)      cmd_comments "${1:-}" ;;
-  labels)        cmd_labels ;;
-  list-id)       resolve_list_id "${1:-}" ;;
-  *)             die "Unknown command: $command. Run with 'help' for usage." ;;
-esac
+  case "$command" in
+    boards)        cmd_boards ;;
+    lists)         cmd_lists ;;
+    cards)         cmd_cards "${1:-}" ;;
+    cards-summary) cmd_cards_summary "${1:-}" ;;
+    card)          cmd_card "${1:-}" ;;
+    move)          cmd_move "${1:-}" "${2:-}" ;;
+    create)        cmd_create "${1:-}" "${2:-}" "${3:-}" ;;
+    add-label)     cmd_add_label "${1:-}" "${2:-}" "${3:-}" ;;
+    comment)       cmd_comment "${1:-}" "${2:-}" ;;
+    comments)      cmd_comments "${1:-}" ;;
+    labels)        cmd_labels ;;
+    list-id)       resolve_list_id "${1:-}" ;;
+    *)             die "Unknown command: $command. Run with 'help' for usage." ;;
+  esac
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  main "$@"
+fi

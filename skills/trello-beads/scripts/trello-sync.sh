@@ -5,7 +5,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 TRELLO_API="$SCRIPT_DIR/trello-api.sh"
-BASE_URL="https://api.trello.com/1"
+# shellcheck source=trello-api.sh
+source "$TRELLO_API"
 
 DONE_LIST="${TRELLO_LIST_DONE:-Done}"
 
@@ -13,20 +14,13 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 
 # Get the list ID for Done column
 get_done_list_id() {
-  "$TRELLO_API" list-id "$DONE_LIST"
+  resolve_list_id "$DONE_LIST"
 }
 
 # Extract trello card ID from external ref (trello-<card-id>)
 extract_card_id() {
   local ref="$1"
   echo "${ref#trello-}"
-}
-
-# Get the list a card is currently in
-get_card_list() {
-  local card_id="$1"
-  curl -sf "https://api.trello.com/1/cards/${card_id}?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=idList" \
-    | jq -r '.idList'
 }
 
 cmd_sync() {
@@ -37,8 +31,8 @@ cmd_sync() {
 
   # Batch-fetch all card IDs already in Done (including archived) — single API call
   local done_card_ids
-  done_card_ids=$(curl -sf "${BASE_URL}/lists/${done_list_id}/cards?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&filter=all&fields=id" \
-    | jq -r '.[].id')
+  done_card_ids=$(trello_request GET "/lists/${done_list_id}/cards" \
+    --get --data-urlencode "filter=all" --data-urlencode "fields=id" | jq -r '.[].id')
 
   # Get closed beads with trello label
   local closed_beads
@@ -90,7 +84,8 @@ cmd_sync() {
 
     # Card is NOT in Done — fetch its state to check if archived
     local card_info
-    card_info=$(curl -sf "${BASE_URL}/cards/${card_id}?key=${TRELLO_API_KEY}&token=${TRELLO_TOKEN}&fields=closed,idList,name" 2>/dev/null || true)
+    card_info=$(trello_request GET "/cards/${card_id}" \
+      --get --data-urlencode "fields=closed,idList,name" 2>/dev/null || true)
 
     if [[ -z "$card_info" ]]; then
       echo "FAILED: Could not fetch card for $bead_title (card: $card_id)"

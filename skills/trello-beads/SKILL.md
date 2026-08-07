@@ -173,6 +173,12 @@ The script:
 
 This avoids per-card API calls for cards already in Done and prevents accidentally unarchiving cards that were archived in other columns.
 
+## Security
+
+The scripts send the API key and token in Trello's documented OAuth `Authorization` header. The shared request helper feeds that header to curl through standard input so credentials do not appear in request URLs, process arguments, or command output.
+
+When the client supports it, the official Trello MCP server (`https://mcp.trello.com/v1`) provides a stronger credential boundary through OAuth 2.0, revocable permissions, and workspace-scoped access. The shell scripts remain the portable integration for deterministic Beads creation and synchronization.
+
 ## Notes
 
 - Always confirm before moving/modifying Trello cards
