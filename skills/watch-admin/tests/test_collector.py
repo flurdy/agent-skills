@@ -135,6 +135,193 @@ class CollectorTest(unittest.TestCase):
         with self.assertRaisesRegex(collector.CollectorError, "HH:MM"):
             collector.resolve_deadline("17", now)
 
+    def route_fixture(self, events):
+        root = self.workspace(0)
+        repositories = []
+        for name, (relative, role) in sorted(collector.APPROVED_UAT_REPOSITORIES.items()):
+            (root / relative).mkdir(parents=True)
+            repositories.append({"name": name, "path": relative, "role": role})
+        (root / "workspace.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "name": collector.APPROVED_UAT_WORKSPACE,
+                    "repositories": repositories,
+                    "infrastructure": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        session = root / "session.jsonl"
+        session.write_text("\n".join(json.dumps(event) for event in events), encoding="utf-8")
+        agent_dir = root / "agent"
+        agent_dir.mkdir()
+        (agent_dir / "model-tier-router.json").write_text(
+            json.dumps(
+                {
+                    "enabled": True,
+                    "tiers": {
+                        "standard": {
+                            "rank": 20,
+                            "thinking": "high",
+                            "selection": "weighted-random",
+                            "candidates": [{"model": "openai-codex/gpt-5.6-terra", "weight": 1}],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return root, session, agent_dir
+
+    @staticmethod
+    def stable_route_events():
+        return [
+            {"type": "session", "id": "session-1"},
+            {"type": "model_change", "provider": "openai-codex", "modelId": "gpt-5.6-terra"},
+            {"type": "thinking_level_change", "thinkingLevel": "medium"},
+            {"type": "message", "message": {"role": "user"}},
+            {"type": "message", "message": {"role": "assistant"}},
+        ]
+
+    def validate_route(self, root, session, agent_dir, *, model="gpt-5.6-terra", approved_path=None):
+        collector.validate_route_stability(
+            session,
+            "session-1",
+            "openai-codex",
+            model,
+            "medium",
+            agent_dir,
+            root,
+            True,
+            root,
+            approved_path or root,
+        )
+
+    def test_route_stability_accepts_fresh_unchanged_standard_route(self):
+        root, session, agent_dir = self.route_fixture(self.stable_route_events())
+        self.validate_route(root, session, agent_dir)
+
+    def test_production_route_stability_rejects_fabricated_blc_path(self):
+        root, session, agent_dir = self.route_fixture(self.stable_route_events())
+        with self.assertRaisesRegex(collector.CollectorError, "approved BLC UAT path"):
+            collector.validate_route_stability(
+                session,
+                "session-1",
+                "openai-codex",
+                "gpt-5.6-terra",
+                "medium",
+                agent_dir,
+                root,
+                True,
+                root,
+            )
+
+    def test_route_stability_rejects_symlink_alias_of_approved_path(self):
+        root, session, agent_dir = self.route_fixture(self.stable_route_events())
+        alias = root / "alias"
+        alias.symlink_to(root, target_is_directory=True)
+
+        with self.assertRaisesRegex(collector.CollectorError, "approved BLC UAT path"):
+            collector.validate_route_stability(
+                session,
+                "session-1",
+                "openai-codex",
+                "gpt-5.6-terra",
+                "medium",
+                agent_dir,
+                root,
+                True,
+                root,
+                root,
+                alias,
+            )
+
+    def test_route_stability_rejects_project_router_override(self):
+        root, session, agent_dir = self.route_fixture(self.stable_route_events())
+        (root / ".pi").mkdir()
+        (root / ".pi" / "model-tier-router.json").write_text('{"enabled": false}', encoding="utf-8")
+
+        with self.assertRaisesRegex(collector.CollectorError, "project model-tier overrides"):
+            self.validate_route(root, session, agent_dir)
+
+    def test_route_stability_rejects_non_blc_workspace_or_malformed_standard_tier(self):
+        root, session, agent_dir = self.route_fixture(self.stable_route_events())
+        manifest = json.loads((root / "workspace.json").read_text(encoding="utf-8"))
+        manifest["name"] = "not-blc"
+        (root / "workspace.json").write_text(json.dumps(manifest), encoding="utf-8")
+        with self.assertRaisesRegex(collector.CollectorError, "approved BLC"):
+            self.validate_route(root, session, agent_dir)
+
+        for field, value in (("path", "wrong/path"), ("role", "primary")):
+            with self.subTest(field=field):
+                root, session, agent_dir = self.route_fixture(self.stable_route_events())
+                manifest = json.loads((root / "workspace.json").read_text(encoding="utf-8"))
+                manifest["repositories"][0][field] = value
+                (root / "workspace.json").write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(collector.CollectorError, "approved BLC"):
+                    self.validate_route(root, session, agent_dir)
+
+        root, session, agent_dir = self.route_fixture(self.stable_route_events())
+        (agent_dir / "model-tier-router.json").write_text(
+            json.dumps(
+                {
+                    "enabled": True,
+                    "tiers": {
+                        "standard": {
+                            "thinking": "high",
+                            "selection": "weighted-random",
+                            "candidates": [{"model": "openai-codex/gpt-5.6-terra", "weight": 1}],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(collector.CollectorError, "invalid rank"):
+            self.validate_route(root, session, agent_dir)
+
+    def test_route_stability_rejects_changed_nonstandard_or_resumed_session(self):
+        scenarios = [
+            [
+                {"type": "session", "id": "session-1"},
+                {"type": "model_change", "provider": "openai-codex", "modelId": "gpt-5.6-sol"},
+                {"type": "model_change", "provider": "openai-codex", "modelId": "gpt-5.6-terra"},
+                {"type": "thinking_level_change", "thinkingLevel": "medium"},
+                {"type": "message", "message": {"role": "user"}},
+                {"type": "message", "message": {"role": "assistant"}},
+            ],
+            [
+                {"type": "session", "id": "session-1"},
+                {"type": "model_change", "provider": "openai-codex", "modelId": "gpt-5.6-sol"},
+                {"type": "thinking_level_change", "thinkingLevel": "medium"},
+                {"type": "message", "message": {"role": "user"}},
+                {"type": "message", "message": {"role": "assistant"}},
+            ],
+            [
+                *CollectorTest.stable_route_events(),
+                {"type": "message", "message": {"role": "user"}},
+            ],
+            [
+                {"type": "session", "id": "session-1"},
+                {"type": "model_change", "provider": "openai-codex", "modelId": "gpt-5.6-terra"},
+                {"type": "thinking_level_change", "thinkingLevel": "high"},
+                {"type": "thinking_level_change", "thinkingLevel": "medium"},
+                {"type": "message", "message": {"role": "user"}},
+                {"type": "message", "message": {"role": "assistant"}},
+            ],
+        ]
+        for events in scenarios:
+            with self.subTest(events=events):
+                root, session, agent_dir = self.route_fixture(events)
+                with self.assertRaisesRegex(collector.CollectorError, "route|fresh"):
+                    self.validate_route(root, session, agent_dir, model=events[1]["modelId"])
+
+    def test_route_stability_requires_pi_session_and_uat_evidence(self):
+        with self.assertRaisesRegex(collector.CollectorError, "UAT authorization"):
+            root = self.workspace()
+            collector.validate_route_stability(None, None, None, None, None, None, root, False, None)
+
     def test_command_output_cap_rejects_malformed_dependency_output(self):
         completed = subprocess.CompletedProcess(["bd"], 0, stdout="x" * (collector.COMMAND_OUTPUT_BYTES + 1), stderr="")
         with mock.patch.object(subprocess, "run", return_value=completed):

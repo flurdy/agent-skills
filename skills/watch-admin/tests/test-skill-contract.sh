@@ -13,21 +13,29 @@ assert_contains() {
     grep -Fq -- "$1" "$SKILL" || fail "expected '$1' in $SKILL"
 }
 
+assert_not_contains() {
+    if grep -Fq -- "$1" "$SKILL"; then
+        fail "did not expect '$1' in $SKILL"
+    fi
+}
+
 [[ -f "$SKILL" ]] || fail 'missing watch-admin skill'
 
 for invariant in \
     'name: watch-admin' \
     'status: no-go' \
-    'Rollout gate — no-go' \
-    'Do not start this watcher.' \
-    '54,771 uncached input' \
-    'before tick 1' \
-    'Report this measured no-go and stop' \
-    'Beads, and Pi configuration captures were identical.' \
-    'calling a helper, Jira, or `watch_loop`' \
+    'UAT candidate gate' \
+    'remains no-go for ordinary use' \
+    'WATCH_ADMIN_UAT=1' \
+    'WATCH_ADMIN_UAT_WORKSPACE' \
+    '/home/ivar/Code/blc/workspace' \
+    'fresh dedicated Pi session' \
+    '/skill:watch-admin' \
+    '--require-stable-route' \
+    'route changed' \
     'Pi-only' \
-    '/watch-admin --ticks N' \
-    '/watch-admin --until HH:MM' \
+    '/skill:watch-admin --ticks N' \
+    '/skill:watch-admin --until HH:MM' \
     'at most 10 ticks' \
     '1 through 96' \
     'There is no unbounded mode' \
@@ -46,7 +54,10 @@ for invariant in \
     'missedCompletionPolicy: retry' \
     'maxTicks:' \
     'stopAt:' \
-    'Load and follow the skill named `watch-admin` now in tick mode.' \
+    'Do not load or read a skill, invoke another skill, or change the provider, model, or thinking level during this tick.' \
+    '/rest/api/3/search/jql' \
+    '{issues: issues[*].{id: id, key: key, self: self, fields: fields}, nextPageToken: nextPageToken}' \
+    'mixed or null assignees' \
     'complete`, `partial`, or `error`' \
     'An absent not-due source must be omitted' \
     '--due-sources' \
@@ -54,7 +65,8 @@ for invariant in \
     'nextProbeAt' \
     'assignee = currentUser() AND statusCategory != Done ORDER BY key ASC' \
     'status,priority,assignee,customfield_10020,duedate' \
-    'maxResults `100`' \
+    'maxResults: "100"' \
+    'outputFormat: json' \
     'no activity event' \
     'Quiet tick — no material workspace or assigned Jira changes.' \
     'below 512 UTF-8 bytes' \
@@ -87,7 +99,46 @@ for invariant in \
     assert_contains "$invariant"
 done
 
-frontmatter=$(head -n 12 "$SKILL")
+assert_not_contains 'Load and follow the skill named `watch-admin` now in tick mode.'
+
+tick_prompt=$(awk '
+    /^## Tick prompt$/ { found = 1; next }
+    found && /^```text$/ { inside = 1; next }
+    inside && /^```$/ { exit }
+    inside { print }
+' "$SKILL")
+for invariant in \
+    'Do not load or read a skill' \
+    'invoke another skill' \
+    'change the provider, model, or thinking level' \
+    'mcp__jira__jira_get' \
+    'JIRA_TOOL_ARGS_JSON=' \
+    'watch_loop complete'; do
+    grep -Fq -- "$invariant" <<<"$tick_prompt" || fail "tick prompt missing '$invariant'"
+done
+
+jira_args_line=$(grep -E '^JIRA_TOOL_ARGS_JSON=' <<<"$tick_prompt")
+[[ $(grep -Ec '^JIRA_TOOL_ARGS_JSON=' <<<"$tick_prompt") -eq 1 ]] || fail 'tick prompt must contain one Jira argument object'
+python3 - "$jira_args_line" <<'PY' || fail 'tick prompt Jira argument object is not exact JSON'
+import json
+import sys
+
+actual = json.loads(sys.argv[1].split("=", 1)[1])
+expected = {
+    "path": "/rest/api/3/search/jql",
+    "queryParams": {
+        "jql": "assignee = currentUser() AND statusCategory != Done ORDER BY key ASC",
+        "fields": "status,priority,assignee,customfield_10020,duedate",
+        "maxResults": "100",
+    },
+    "jq": "{issues: issues[*].{id: id, key: key, self: self, fields: fields}, nextPageToken: nextPageToken}",
+    "outputFormat": "json",
+}
+if actual != expected:
+    raise SystemExit(f"unexpected Jira arguments: {actual!r}")
+PY
+
+frontmatter=$(head -n 13 "$SKILL")
 for helper in collect.py jira_adapter.py reducer.py; do
     grep -Fq -- "Bash(~/.agents/skills/watch-admin/scripts/$helper:*)" <<<"$frontmatter" \
         || fail "missing narrow helper allowance for $helper"

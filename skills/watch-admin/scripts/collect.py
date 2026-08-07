@@ -3,6 +3,7 @@ import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -19,6 +20,21 @@ STRING_BYTES = 256
 DIAGNOSTIC_BYTES = 240
 COMMAND_TIMEOUT_SECONDS = 20
 MAX_REPOSITORIES = 10
+SESSION_BYTES = 4 * 1024 * 1024
+REQUIRED_REASONING = "medium"
+APPROVED_UAT_PATH = Path("/home/ivar/Code/blc/workspace")
+APPROVED_UAT_WORKSPACE = "blc-2"
+APPROVED_UAT_REPOSITORIES = {
+    "auth0": ("repos/auth0", "service"),
+    "blc-2": ("repos/blc-2", "primary"),
+    "blc-au": ("repos/blc-au", "service"),
+    "blc-old": ("repos/blc-old", "service"),
+    "dds-old": ("repos/dds-old", "service"),
+    "docs": ("repos/docs", "service"),
+    "members-service": ("repos/members-service", "service"),
+    "reverse-proxy": ("repos/reverse-proxy", "service"),
+}
+THINKING_LEVELS = {"off", "minimal", "low", "medium", "high", "xhigh", "max"}
 
 
 class CollectorError(RuntimeError):
@@ -81,6 +97,140 @@ def _timestamp(value: str | None = None) -> str:
         if parsed.tzinfo is None:
             raise CollectorError("observed-at must include a timezone")
     return parsed.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _router_config(path: Path, label: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise CollectorError(f"{label} model-tier configuration is unavailable") from error
+    if not isinstance(payload, dict):
+        raise CollectorError(f"{label} model-tier configuration must be an object")
+    return payload
+
+
+def _configured_candidates(tier: Any) -> set[str]:
+    if not isinstance(tier, dict):
+        raise CollectorError("standard model-tier configuration is unavailable")
+    rank = tier.get("rank")
+    if isinstance(rank, bool) or not isinstance(rank, (int, float)):
+        raise CollectorError("standard model tier has an invalid rank")
+    if tier.get("thinking") not in THINKING_LEVELS:
+        raise CollectorError("standard model tier has an invalid thinking level")
+    selection = tier.get("selection", "first-available")
+    if selection not in {"first-available", "weighted-random"}:
+        raise CollectorError("standard model tier has an invalid selection policy")
+    configured = tier.get("candidates")
+    if not isinstance(configured, list):
+        raise CollectorError("standard model-tier configuration is unavailable")
+    candidates = set()
+    for candidate in configured:
+        if not isinstance(candidate, dict):
+            raise CollectorError("standard model tier has an invalid candidate")
+        model = candidate.get("model")
+        if not isinstance(model, str) or model.startswith("/") or model.endswith("/") or "/" not in model:
+            raise CollectorError("standard model tier has an invalid candidate model")
+        if "enabled" in candidate and not isinstance(candidate["enabled"], bool):
+            raise CollectorError("standard model tier has an invalid candidate state")
+        if "metered" in candidate and not isinstance(candidate["metered"], bool):
+            raise CollectorError("standard model tier has an invalid candidate metering policy")
+        if selection == "weighted-random":
+            weight = candidate.get("weight")
+            if isinstance(weight, bool) or not isinstance(weight, int) or not 1 <= weight <= 100:
+                raise CollectorError("standard model tier has an invalid candidate weight")
+        if candidate.get("enabled") is not False:
+            candidates.add(model)
+    if not candidates:
+        raise CollectorError("standard model tier has no enabled candidates")
+    return candidates
+
+
+def _standard_models(agent_dir: Path, workspace: Path) -> set[str]:
+    global_config = _router_config(agent_dir / "model-tier-router.json", "global")
+    enabled = global_config.get("enabled")
+    tier = (global_config.get("tiers") or {}).get("standard")
+    project_path = workspace / ".pi" / "model-tier-router.json"
+    if project_path.is_file():
+        raise CollectorError("project model-tier overrides are unsupported for the BLC UAT")
+    if enabled is not True:
+        raise CollectorError("model-tier routing must be enabled")
+    return _configured_candidates(tier)
+
+
+def _validate_uat_workspace(workspace: Path) -> None:
+    try:
+        payload = json.loads((workspace / "workspace.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise CollectorError("approved BLC UAT workspace identity is unavailable") from error
+    if not isinstance(payload, dict):
+        raise CollectorError("approved BLC UAT workspace identity is unavailable")
+    repositories = payload.get("repositories")
+    topology = {
+        entry.get("name"): (entry.get("path"), entry.get("role"))
+        for entry in repositories or []
+        if isinstance(entry, dict) and isinstance(entry.get("name"), str)
+    }
+    if payload.get("name") != APPROVED_UAT_WORKSPACE or topology != APPROVED_UAT_REPOSITORIES:
+        raise CollectorError("watch-admin is authorized only for the approved BLC UAT workspace")
+
+
+def validate_route_stability(
+    session_file: Path | None,
+    session_id: str | None,
+    provider: str | None,
+    model: str | None,
+    reasoning: str | None,
+    agent_dir: Path | None,
+    workspace: Path,
+    uat_authorized: bool,
+    uat_workspace: Path | None,
+    approved_uat_path: Path = APPROVED_UAT_PATH,
+    launch_path: Path | None = None,
+) -> None:
+    if not uat_authorized or uat_workspace is None or uat_workspace.absolute() != workspace.absolute():
+        raise CollectorError("watch-admin UAT authorization is unavailable")
+    if workspace.absolute() != approved_uat_path.absolute() or (launch_path or workspace).absolute() != approved_uat_path.absolute():
+        raise CollectorError("watch-admin is authorized only at the approved BLC UAT path")
+    _validate_uat_workspace(workspace)
+    if session_file is None or not session_id or not provider or not model or not reasoning or agent_dir is None:
+        raise CollectorError("Pi route telemetry is unavailable")
+    try:
+        if session_file.stat().st_size > SESSION_BYTES:
+            raise CollectorError("Pi session exceeds the route preflight byte limit")
+        lines = session_file.read_text(encoding="utf-8").splitlines()
+    except OSError as error:
+        raise CollectorError("Pi route telemetry is unavailable") from error
+    try:
+        entries = [json.loads(line) for line in lines if line]
+    except json.JSONDecodeError as error:
+        raise CollectorError("Pi route telemetry is malformed") from error
+    if not entries or entries[0].get("type") != "session" or entries[0].get("id") != session_id:
+        raise CollectorError("Pi session identity does not match route telemetry")
+    roles = [
+        entry.get("message", {}).get("role")
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("type") == "message" and isinstance(entry.get("message"), dict)
+    ]
+    if roles != ["user", "assistant"]:
+        raise CollectorError("watch-admin requires a fresh dedicated Pi session")
+    models = [
+        (entry.get("provider"), entry.get("modelId"))
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("type") == "model_change"
+    ]
+    thinking_levels = [
+        entry.get("thinkingLevel")
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("type") == "thinking_level_change"
+    ]
+    if not models or not thinking_levels:
+        raise CollectorError("Pi route telemetry is incomplete")
+    if any(candidate != (provider, model) for candidate in models) or any(
+        candidate != reasoning for candidate in thinking_levels
+    ):
+        raise CollectorError("Pi route changed; start a fresh dedicated session on the standard route")
+    if f"{provider}/{model}" not in _standard_models(agent_dir, workspace) or reasoning != REQUIRED_REASONING:
+        raise CollectorError("Pi route is not the configured watch-admin standard route")
 
 
 def resolve_deadline(value: str, now: datetime | None = None) -> str:
@@ -423,9 +573,11 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--clock", action="store_true")
     parser.add_argument("--until")
+    parser.add_argument("--require-stable-route", action="store_true")
     args = parser.parse_args()
     sources = tuple(part for part in args.sources.split(",") if part)
     root = Path(args.workspace).absolute()
+    launch_path = Path(os.environ.get("PWD", str(root))).absolute() if args.workspace == "." else root
     try:
         local_now = datetime.now().astimezone()
         observed_at = local_now.isoformat(timespec="seconds")
@@ -435,6 +587,23 @@ def main() -> int:
             repositories = load_workspace(root)
             check_dependencies(sources)
             if args.check:
+                if args.require_stable_route:
+                    session_value = os.environ.get("PI_SESSION_FILE")
+                    agent_dir_value = os.environ.get("PI_CODING_AGENT_DIR")
+                    validate_route_stability(
+                        Path(session_value) if session_value else None,
+                        os.environ.get("PI_SESSION_ID"),
+                        os.environ.get("PI_PROVIDER"),
+                        os.environ.get("PI_MODEL"),
+                        os.environ.get("PI_REASONING_LEVEL"),
+                        Path(agent_dir_value) if agent_dir_value else Path.home() / ".pi" / "agent",
+                        root,
+                        os.environ.get("WATCH_ADMIN_UAT") == "1",
+                        Path(os.environ["WATCH_ADMIN_UAT_WORKSPACE"])
+                        if os.environ.get("WATCH_ADMIN_UAT_WORKSPACE")
+                        else None,
+                        launch_path=launch_path,
+                    )
                 run_command(["project-workspace", "doctor", "--workspace", str(root)], cwd=root)
                 payload = {
                     "status": "ok",
@@ -442,6 +611,7 @@ def main() -> int:
                     "repositories": len(repositories) - 1,
                     "sources": list(sources),
                     "observedAt": observed_at,
+                    "routeStable": args.require_stable_route,
                 }
                 if args.until:
                     payload["stopAt"] = resolve_deadline(args.until, local_now)

@@ -134,6 +134,9 @@ def adapt(payload: Any, observed_at: str) -> dict[str, Any]:
                 raise AdapterError(f"duplicate Jira issue: {record['id']}")
             records_by_id[record["id"]] = record
         records = [records_by_id[key] for key in sorted(records_by_id)]
+        assignees = {record["assignee"] for record in records}
+        if None in assignees or len(assignees) > 1:
+            raise AdapterError("assigned Jira response contains inconsistent assignees")
         total_value = payload.get("total", len(records))
         if isinstance(total_value, bool) or not isinstance(total_value, int) or total_value < len(records):
             raise AdapterError("Jira total is invalid")

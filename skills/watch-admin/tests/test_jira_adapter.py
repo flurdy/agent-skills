@@ -74,6 +74,23 @@ class JiraAdapterTest(unittest.TestCase):
                 self.assertEqual([], envelope["records"])
                 self.assertLessEqual(len(envelope["error"].encode()), adapter.DIAGNOSTIC_BYTES)
 
+    def test_mixed_or_null_assignees_fail_the_jira_source(self):
+        payloads = [
+            {"issues": [issue("GE-1"), issue("GE-2", assignee={"accountId": "someone-else"})]},
+            {"issues": [issue("GE-1", assignee=None)]},
+        ]
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                envelope = adapter.adapt(payload, NOW)
+                self.assertEqual("error", envelope["status"])
+                self.assertEqual([], envelope["records"])
+                self.assertIn("assignee", envelope["error"])
+
+    def test_empty_assigned_portfolio_is_complete(self):
+        envelope = adapter.adapt({"issues": []}, NOW)
+        self.assertEqual("complete", envelope["status"])
+        self.assertEqual([], envelope["records"])
+
     def test_error_payload_is_source_error_without_raw_body(self):
         envelope = adapter.adapt({"error": "PRIVATE\nstack trace"}, NOW)
         self.assertEqual("error", envelope["status"])

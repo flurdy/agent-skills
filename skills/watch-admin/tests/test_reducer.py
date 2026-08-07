@@ -121,6 +121,22 @@ class ReducerTest(unittest.TestCase):
         self.assertEqual("left_assigned_non_done_set", event["kind"])
         self.assertIsNone(event["after"])
 
+    def test_jira_assignee_error_retains_last_good_state_and_recovers(self):
+        state = self.baseline()
+        jira_before = copy.deepcopy(state["sources"]["jira"]["records"])
+        failed = observed("jira", status="error", records=[], error="inconsistent assignees")
+
+        state, failure = reducer.tick(state, snapshot(failed), LATER)
+        self.assertEqual(jira_before, state["sources"]["jira"]["records"])
+
+        recovered = observed("jira", observed_at="2026-08-05T09:10:00Z")
+        state, recovery = reducer.tick(state, snapshot(recovered), "2026-08-05T09:10:00Z")
+
+        self.assertEqual(jira_before, state["sources"]["jira"]["records"])
+        self.assertEqual(["source_failed"], [event["kind"] for event in failure["events"]])
+        self.assertEqual(["source_recovered"], [event["kind"] for event in recovery["events"]])
+        self.assertNotIn("left_assigned_non_done_set", [event["kind"] for event in failure["events"]])
+
     def test_error_isolated_first_and_third_alert_degradation_and_recovery(self):
         state = self.baseline()
         failed = observed("git", status="error", records=[], error="timeout\nPRIVATE")
