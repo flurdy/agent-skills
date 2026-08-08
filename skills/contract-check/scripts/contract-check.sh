@@ -159,6 +159,14 @@ intended_edges() {
     ./scripts/pact-pairs intended | awk -F'\t' '{print $1 "->" $2}'
 }
 
+# An unusable collector is reported as an error, never as zero gaps.
+sync_collector_failed() {
+    echo "NO_DATA  scripts/pact-pairs $1 failed; sync coverage cannot be determined"
+    echo "         Sync gaps are UNKNOWN — do not read this as all-clear"
+    echo ""
+    echo "SUMMARY  ok=0 not_built=0 not_synced=0 total=0 status=error"
+}
+
 check_sync_gaps() {
     echo "## Sync Coverage (consumer test → built pact → provider)"
     echo ""
@@ -167,8 +175,25 @@ check_sync_gaps() {
     # each intended edge is traced through its lifecycle test → built → synced.
     local -A built synced_edges
     local c p
-    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && built["$c->$p"]=1; done < <(./scripts/pact-pairs built)
-    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && synced_edges["$c->$p"]=1; done < <(./scripts/pact-pairs synced)
+    # Capture each collector's output and exit status before parsing. set -e does
+    # not see a failure inside a process substitution, so a missing or dying
+    # pact-pairs would otherwise fall through to an all-clear total=0 summary.
+    local built_raw synced_raw intended_raw
+    if ! built_raw="$(./scripts/pact-pairs built)"; then
+        sync_collector_failed built
+        return
+    fi
+    if ! synced_raw="$(./scripts/pact-pairs synced)"; then
+        sync_collector_failed synced
+        return
+    fi
+    if ! intended_raw="$(intended_edges | sort -u)"; then
+        sync_collector_failed intended
+        return
+    fi
+
+    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && built["$c->$p"]=1; done <<<"$built_raw"
+    while IFS=$'\t' read -r c p _; do [[ -n "$c" ]] && synced_edges["$c->$p"]=1; done <<<"$synced_raw"
 
     local ok=0 not_built=0 not_synced=0 total=0 key
     while IFS= read -r key; do
@@ -184,7 +209,7 @@ check_sync_gaps() {
             echo "OK          ${key/->/ -> }"
             ok=$((ok + 1))
         fi
-    done < <(intended_edges | sort -u)
+    done <<<"$intended_raw"
 
     echo ""
     echo "SUMMARY  ok=$ok not_built=$not_built not_synced=$not_synced total=$total"
