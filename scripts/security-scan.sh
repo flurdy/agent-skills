@@ -40,8 +40,10 @@ check_credentials_in_argv() {
 # trace-ascii or dump-header writes the auth header to disk.
 check_curl_config_isolation() {
   while IFS= read -r -d '' file; do
-    grep -q 'Token\|Authorization' "$file" 2>/dev/null || continue
-    grep -q 'curl' "$file" 2>/dev/null || continue
+    # Needs a real curl invocation carrying auth, not a 'command -v curl' probe
+    # or a public unauthenticated fetch.
+    grep -qE '(header|-H)[^\n]*(Token|Authorization)' "$file" 2>/dev/null || continue
+    grep -qE '^[[:space:]]*[^#]*[|]?[[:space:]]*curl[[:space:]]+-' "$file" 2>/dev/null || continue
     grep -q -- '--disable' "$file" 2>/dev/null && continue
     report LOW curl-honours-user-config "$file"
   done < <(production_shell)

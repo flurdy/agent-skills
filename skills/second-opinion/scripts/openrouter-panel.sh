@@ -402,7 +402,9 @@ call_model() {
     printf 'data-binary = "@%s"\noutput = "%s"\nurl = "%s"\n' \
       "$request_file" "$response_file" "$API_URL"
   } > "$curl_config"
-  curl --config "$curl_config" || curl_status=$?
+  # --disable stops a user ~/.curlrc from adding trace-ascii or dump-header,
+  # which would write the bearer token to disk.
+  curl --disable --config "$curl_config" || curl_status=$?
 
   local response_bytes
   response_bytes="$(wc -c < "$response_file" | tr -d '[:space:]')"

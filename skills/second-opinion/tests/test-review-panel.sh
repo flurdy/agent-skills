@@ -98,8 +98,10 @@ chmod +x "$TMP_DIR/bin/sleep"
 cat > "$TMP_DIR/bin/curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
 set -euo pipefail
-[[ $# -eq 2 && "$1" == "--config" ]] || exit 2
-config_file="$2"
+# --disable must lead so a user ~/.curlrc cannot trace the bearer token to disk.
+# curl only honours it as the first argument.
+[[ $# -eq 3 && "$1" == "--disable" && "$2" == "--config" ]] || exit 2
+config_file="$3"
 printf '%s\n' "$config_file" >> "$CURL_LOG"
 request_file="$(awk -F '"' '/^data-binary = "@/{print $2}' "$config_file")"
 request_file="${request_file#@}"

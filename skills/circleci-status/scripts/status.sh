@@ -65,11 +65,22 @@ if [[ -z "${CIRCLECI_TOKEN:-}" ]]; then
   exit 0
 fi
 
-api=(curl -fsS -H "Circle-Token: ${CIRCLECI_TOKEN}")
+# Token goes to curl on stdin, never in argv where ps would expose it.
+# --disable stops a user ~/.curlrc from tracing the header to disk.
+if [[ "$CIRCLECI_TOKEN" == *['"\\'$'\n\r']* ]]; then
+  echo 'BAD_TOKEN'
+  exit 0
+fi
+
+circleci_api() {
+  printf 'header = "Circle-Token: %s"\n' "$CIRCLECI_TOKEN" \
+    | curl --disable --config - --silent --show-error --fail --max-time 30 "$@"
+}
+
 project_slug="gh/$owner/$name"
 encoded_branch="${branch// /%20}"
 
-pipelines_json="$("${api[@]}" "https://circleci.com/api/v2/project/$project_slug/pipeline?branch=$encoded_branch" 2>/dev/null || true)"
+pipelines_json="$(circleci_api "https://circleci.com/api/v2/project/$project_slug/pipeline?branch=$encoded_branch" 2>/dev/null || true)"
 if [[ -z "$pipelines_json" || "$(jq -r '.message? // empty' <<<"$pipelines_json")" == "Project not found" ]]; then
   echo '{"error":"circleci-pipelines-unavailable"}'
   exit 0
@@ -81,7 +92,7 @@ if [[ -z "$pipeline_id" ]]; then
   exit 0
 fi
 
-workflows_json="$("${api[@]}" "https://circleci.com/api/v2/pipeline/$pipeline_id/workflow" 2>/dev/null || echo '{"items":[]}')"
+workflows_json="$(circleci_api "https://circleci.com/api/v2/pipeline/$pipeline_id/workflow" 2>/dev/null || echo '{"items":[]}')"
 
 jq -n \
   --arg project "$project_slug" \

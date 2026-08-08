@@ -123,11 +123,16 @@ def timeout_seconds() -> int:
     return min(60, max(1, configured))
 
 
-def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def run(
+    command: list[str],
+    cwd: Path | None = None,
+    stdin_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
     try:
         return subprocess.run(
             command,
             cwd=cwd,
+            input=stdin_text,
             text=True,
             capture_output=True,
             check=False,
@@ -235,11 +240,19 @@ def parse_json(result: subprocess.CompletedProcess[str]):
         raise ValueError from error
 
 
+def usable_token(token: str | None) -> str | None:
+    # The token is interpolated into a curl config directive, so a quote,
+    # backslash or newline in it would alter the directive rather than fail.
+    if not token or any(character in token for character in '"\\\n\r'):
+        return None
+    return token
+
+
 def circleci_token(root: Path, settings: dict[str, str]) -> str | None:
     environment_name = settings.get("token_env", "CIRCLECI_TOKEN")
     token = os.environ.get(environment_name)
     if token:
-        return token
+        return usable_token(token)
 
     env_file = root / ".env.circleci"
     if env_file.is_file():
@@ -248,14 +261,14 @@ def circleci_token(root: Path, settings: dict[str, str]) -> str | None:
             if match:
                 value = unquote(match.group(1))
                 if value:
-                    return value
+                    return usable_token(value)
 
     account = settings.get("token_account") or os.environ.get("SECRET_API_KEY_PROJECT")
     secret_command = command_name("RELEASE_CI_SECRET_API_KEY", "secret-api-key")
     if account and command_available(secret_command):
         result = run([secret_command, "lookup", "circleci", account])
         if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+            return usable_token(result.stdout.strip())
     return None
 
 
@@ -298,17 +311,21 @@ def circleci_page_items(
             else base_url
         )
         try:
+            # Token goes to curl on stdin, never in argv where ps would expose it.
+            # --disable stops a user ~/.curlrc from tracing the header to disk.
             response = parse_json(
                 run(
                     [
                         command,
+                        "--disable",
+                        "--config",
+                        "-",
                         "-fsS",
                         "--max-time",
                         str(timeout_seconds()),
-                        "-H",
-                        f"Circle-Token: {token}",
                         page_url,
-                    ]
+                    ],
+                    stdin_text=f'header = "Circle-Token: {token}"\n',
                 )
             )
         except TimeoutError:
