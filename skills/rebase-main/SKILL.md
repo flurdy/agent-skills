@@ -106,14 +106,41 @@ If tests fail, **stop and report to the user** before pushing. Do not force-push
 ```bash
 # Check if branch has upstream
 git rev-parse --abbrev-ref @{upstream} 2>/dev/null
-
-# If it does, force push with lease for safety
-git push --force-with-lease
 ```
+
+No upstream means nothing to force-push. Render `Force push: not applicable` and skip to
+step 8.
+
+Otherwise gather the evidence the user needs to answer, and show it:
+
+```bash
+git log --oneline @{upstream}..HEAD   # commits that will replace the remote branch
+git log --oneline HEAD..@{upstream}   # remote commits that will be discarded
+```
+
+A force-push rewrites published history. Anyone who has fetched this branch — a
+colleague, or a stacked child branch — has their work orphaned by it. Use
+`AskUserQuestion` to request explicit permission **immediately before** the push, showing
+the branch, its upstream, both commit lists above, and the exact command.
+
+- **Force-push (Recommended)** — on this answer, make the standalone
+  `git push --force-with-lease` invocation as the next tool call. Do not hide it in a
+  script or command chain.
+- **Not now** — leave the rebase local and say so plainly in step 8.
+- **Stop** — perform no remote action.
+
+A successful rebase, passing tests, the branch already having an upstream, or the user
+having invoked this skill are **not** permission to push. Only the answer to this question
+is. Never use bare `--force`.
+
+If the push is rejected because the branch moved, stop and report. Do not retry, do not
+re-fetch and re-push, and do not escalate to `--force` — a moved branch means someone
+else's work is at stake, which is exactly what `--force-with-lease` exists to catch.
 
 ### 8. Report Result
 
 Tell the user:
 - How many commits were rebased
-- Whether force push was needed
+- Whether force push was needed, and if it was declined or not applicable, that the
+  rebase is local only and the remote branch still holds the old history
 - Any conflicts that were resolved

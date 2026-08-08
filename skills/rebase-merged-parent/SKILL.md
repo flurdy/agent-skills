@@ -125,11 +125,39 @@ If tests fail, **stop and report to the user** before pushing. Do not force-push
 
 ### 9. Force Push
 
+Gather the evidence the user needs to answer, and show it:
+
 ```bash
-git push --force-with-lease
+git log --oneline @{upstream}..HEAD   # commits that will replace the remote branch
+git log --oneline HEAD..@{upstream}   # remote commits that will be discarded
 ```
 
+A force-push rewrites published history. Anyone who has fetched this branch, or has a
+branch stacked on it, is orphaned by the rewrite. Use `AskUserQuestion` to request explicit
+permission **immediately before** the push, showing the branch, its upstream, both commit
+lists above, and the exact command.
+
+- **Force-push (Recommended)** — on this answer, make the standalone
+  `git push --force-with-lease` invocation as the next tool call. Do not hide it in a
+  script or command chain.
+- **Not now** — leave the rebase local and say so plainly in step 11.
+- **Stop** — perform no remote action.
+
+A successful rebase, passing tests, the parent having been merged, or the user having
+invoked this skill are **not** permission to push. Only the answer to this question is.
+Never use bare `--force`.
+
+If the push is rejected because the branch moved, stop and report. Do not retry and do not
+escalate to `--force`.
+
 ### 10. Update PR Base to Main
+
+Retargeting a PR's base is a **separate remote mutation** and needs its own gate — the
+force-push answer does not cover it. It is visible to reviewers, detaches in-flight review
+comments, and changes the diff they were reviewing.
+
+Use `AskUserQuestion` showing the PR number, its current base, `main` as the proposed base,
+and the command. Only on explicit approval:
 
 ```bash
 ~/.agents/skills/rebase-merged-parent/scripts/gh-pr-edit-base.sh main
@@ -141,10 +169,13 @@ If the script is unavailable, fall back to:
 gh pr edit --base main
 ```
 
+If the base is already `main`, render `PR base: unchanged` and ask nothing.
+
 ### 11. Report Result
 
 Inform the user:
 - Rebased onto main (parent was merged)
-- Updated PR to target main
 - X commits remain after rebase
-- Force pushed to origin
+- Whether the force push happened. If it was declined, say the rebase is local only and
+  the remote branch still holds the old history — never report a push that did not run
+- Whether the PR was retargeted to main, or left on its old base
