@@ -24,19 +24,40 @@ extract_card_id() {
 }
 
 cmd_sync() {
-  local dry_run="${1:-}"
+  (($# <= 1)) || die "Usage: trello-sync.sh sync [--dry-run|--apply]"
+  local option="${1:-}"
+  local mode
+  case "$option" in
+    ""|--dry-run) mode="plan" ;;
+    --apply) mode="apply" ;;
+    *) die "Unknown sync option: $option. Use --apply only after reviewing the plan." ;;
+  esac
+
   local done_list_id
   done_list_id=$(get_done_list_id)
   [[ -n "$done_list_id" ]] || die "Could not find '$DONE_LIST' list on board"
 
   # Batch-fetch all card IDs already in Done (including archived) — single API call
+  local done_cards
+  done_cards=$(trello_request GET "/lists/${done_list_id}/cards" \
+    --get --data-urlencode "filter=all" --data-urlencode "fields=id")
+  if ! jq -e '
+    type == "array" and
+    all(.[]; type == "object" and (.id | type == "string" and length > 0))
+  ' <<<"$done_cards" >/dev/null; then
+    echo "FAILED: Trello returned an invalid Done-list card payload" >&2
+    return 1
+  fi
+
   local done_card_ids
-  done_card_ids=$(trello_request GET "/lists/${done_list_id}/cards" \
-    --get --data-urlencode "filter=all" --data-urlencode "fields=id" | jq -r '.[].id')
+  done_card_ids=$(jq -r '.[].id' <<<"$done_cards")
 
   # Get closed beads with trello label
   local closed_beads
-  closed_beads=$(bd list --status=closed --label=trello 2>/dev/null || true)
+  if ! closed_beads=$(bd list --status=closed --label=trello); then
+    echo "FAILED: Could not list closed Trello-linked Beads" >&2
+    return 1
+  fi
 
   if [[ -z "$closed_beads" ]]; then
     echo "No closed beads with trello label found."
@@ -62,12 +83,18 @@ cmd_sync() {
 
     # Get external ref from bead
     local bead_info
-    bead_info=$(bd show "$bead_id" 2>/dev/null || true)
+    if ! bead_info=$(bd show "$bead_id"); then
+      echo "FAILED: Could not read Bead $bead_id" >&2
+      failed=$((failed + 1))
+      continue
+    fi
 
     local ext_ref
     ext_ref=$(echo "$bead_info" | grep -oP 'External: \Ktrello-\S+' || true)
 
     if [[ -z "$ext_ref" ]]; then
+      echo "FAILED: Missing Trello external reference for Bead $bead_id" >&2
+      failed=$((failed + 1))
       continue
     fi
 
@@ -93,6 +120,17 @@ cmd_sync() {
       continue
     fi
 
+    if ! jq -e '
+      type == "object" and
+      (.closed | type == "boolean") and
+      (.idList | type == "string" and length > 0) and
+      (.name | type == "string" and length > 0)
+    ' <<<"$card_info" >/dev/null; then
+      echo "FAILED: Invalid card state for $bead_title (card: $card_id)" >&2
+      failed=$((failed + 1))
+      continue
+    fi
+
     local is_archived
     is_archived=$(echo "$card_info" | jq -r '.closed')
 
@@ -104,22 +142,27 @@ cmd_sync() {
       continue
     fi
 
-    if [[ "$dry_run" == "--dry-run" ]]; then
+    if [[ "$mode" == "plan" ]]; then
       echo "WOULD MOVE: $bead_title → $DONE_LIST (card: $card_id)"
       synced=$((synced + 1))
+    elif "$TRELLO_API" move "$card_id" "$DONE_LIST" --apply >/dev/null; then
+      echo "MOVED: $bead_title → $DONE_LIST"
+      synced=$((synced + 1))
     else
-      if "$TRELLO_API" move "$card_id" "$DONE_LIST" >/dev/null 2>&1; then
-        echo "MOVED: $bead_title → $DONE_LIST"
-        synced=$((synced + 1))
-      else
-        echo "FAILED: Could not move card for $bead_title (card: $card_id)"
-        failed=$((failed + 1))
-      fi
+      echo "FAILED: Could not move card for $bead_title (card: $card_id)"
+      failed=$((failed + 1))
     fi
   done <<< "$bead_ids"
 
   echo ""
-  echo "Sync complete: $synced moved, $skipped already done, $archived archived elsewhere, $failed failed"
+  if [[ "$mode" == "plan" ]]; then
+    echo "Sync plan: $synced would move, $skipped already done, $archived archived elsewhere, $failed unreadable"
+    echo "No changes made. Obtain confirmation, then rerun with sync --apply."
+  else
+    echo "Sync complete: $synced moved, $skipped already done, $archived archived elsewhere, $failed failed"
+  fi
+
+  ((failed == 0))
 }
 
 cmd_help() {
@@ -127,15 +170,17 @@ cmd_help() {
 Usage: trello-sync.sh <command>
 
 Commands:
-  sync [--dry-run]    Move Trello cards to Done for closed beads
+  sync [--dry-run]    Preview cards that would move to Done (default)
+  sync --apply        Move cards after the preview is confirmed
   help                Show this help
 
 Environment variables:
   TRELLO_LIST_DONE    Done column name (default: "Done")
 
 Examples:
-  trello-sync.sh sync              # Move cards for closed beads to Done
-  trello-sync.sh sync --dry-run    # Preview what would be moved
+  trello-sync.sh sync              # Preview what would be moved
+  trello-sync.sh sync --dry-run    # Explicit preview alias
+  trello-sync.sh sync --apply      # Apply after confirmation
 USAGE
 }
 
@@ -149,6 +194,6 @@ esac
 
 # Auth check is handled by trello-api.sh calls
 case "$command" in
-  sync)    cmd_sync "${1:-}" ;;
+  sync)    cmd_sync "$@" ;;
   *)       die "Unknown command: $command. Run with 'help' for usage." ;;
 esac

@@ -50,13 +50,16 @@ pull_card() {
   local label_colors="$5"
   local source_list="$6"
   local move_after="${7:-}"
+  local mode="$8"
 
-  local bead_type bead_priority bead_desc
-
+  local bead_type bead_priority bead_desc dest
   bead_type=$(map_type "$label_colors" "$source_list")
   bead_priority=$(map_priority "$label_colors")
+  dest="${move_after:-$BACKLOG_LIST}"
+  if [[ -z "$move_after" && "$bead_type" == "bug" ]]; then
+    dest="$BUGS_LIST"
+  fi
 
-  # Build description with Trello reference
   bead_desc="From Trello: ${card_url}"
   if [[ -n "$card_desc" ]]; then
     bead_desc="${bead_desc}
@@ -64,9 +67,22 @@ pull_card() {
 ${card_desc}"
   fi
 
-  # Append card comments if any
   local comments_json
-  comments_json=$("$TRELLO_API" comments "$card_id" 2>/dev/null || echo "[]")
+  if ! comments_json=$("$TRELLO_API" comments "$card_id"); then
+    echo "FAILED TO READ COMMENTS: $card_name (card: $card_id)" >&2
+    return 1
+  fi
+  if ! jq -e '
+    type == "array" and
+    all(.[];
+      type == "object" and
+      (.author | type == "string") and
+      (.text | type == "string")
+    )
+  ' <<<"$comments_json" >/dev/null; then
+    echo "FAILED TO READ COMMENTS: Trello returned an invalid comment payload for $card_name (card: $card_id)" >&2
+    return 1
+  fi
   local comment_count
   comment_count=$(echo "$comments_json" | jq 'length')
   if [[ "$comment_count" -gt 0 ]]; then
@@ -83,43 +99,73 @@ ${card_desc}"
     done < <(echo "$comments_json" | jq -c '.[]')
   fi
 
-  # Check for existing bead with same title and trello label
-  if bd list --status=open --label=trello 2>/dev/null | grep -qF "$card_name"; then
-    echo "SKIP: Bead already exists for: $card_name"
-    echo "  Card remains in $TRIAGE_LIST — move manually or use:"
-    echo "    ./scripts/trello-api move $card_id Shredder"
-    echo "    ./scripts/trello-api move $card_id $BACKLOG_LIST"
+  local open_beads
+  if ! open_beads=$(bd list --status=open --label=trello); then
+    echo "FAILED DUPLICATE CHECK: $card_name" >&2
     return 1
   fi
+  if grep -qF "$card_name" <<<"$open_beads"; then
+    echo "SKIP: Bead already exists for: $card_name"
+    echo "  Card remains in $TRIAGE_LIST — after confirmation, use:"
+    echo "    ./scripts/trello-api move $card_id Shredder --apply"
+    echo "    ./scripts/trello-api move $card_id $BACKLOG_LIST --apply"
+    return 0
+  fi
 
-  # Create the bead
+  if [[ "$mode" == "plan" ]]; then
+    echo "WOULD CREATE BEAD: $card_name (type=$bead_type, priority=P$bead_priority, external-ref=trello-$card_id)"
+    echo "WOULD ADD LABEL: '$BEAD_LABEL' to card $card_id"
+    echo "WOULD COMMENT: Bead created: <new-bead-id>"
+    echo "WOULD MOVE: $card_id → $dest"
+    return 0
+  fi
+
   local result
-  result=$(bd create \
+  if ! result=$(bd create \
     --title="$card_name" \
     --type="$bead_type" \
     --priority="$bead_priority" \
     --description="$bead_desc" \
     --external-ref "trello-${card_id}" \
-    --labels "trello" 2>&1)
-
+    --labels "trello" 2>&1); then
+    echo "FAILED TO CREATE BEAD: $card_name" >&2
+    echo "$result" >&2
+    return 1
+  fi
   echo "$result"
 
-  # Extract bead ID from creation output (first {prefix}-{suffix} token,
-  # whatever prefix this repo's beads db uses)
-  local bead_id
+  local bead_id incomplete=0
   bead_id=$(echo "$result" | grep -oP '[a-z0-9][a-z0-9-]*-\w+' | head -1 || true)
 
-  # Add 'bead' label, comment with bead ID, then move card
-  "$TRELLO_API" add-label "$card_id" "$BEAD_LABEL" "sky" 2>/dev/null || true
-  if [[ -n "$bead_id" ]]; then
-    "$TRELLO_API" comment "$card_id" "Bead created: $bead_id" >/dev/null 2>&1 || true
+  if "$TRELLO_API" add-label "$card_id" "$BEAD_LABEL" "sky" --apply >/dev/null; then
+    echo "  Added label: $BEAD_LABEL"
+  else
+    echo "FAILED TO ADD LABEL: '$BEAD_LABEL' (card: $card_id)" >&2
+    incomplete=1
   fi
-  # Route card based on type: bugs→Bugs, rest→Backlog
-  local dest="${move_after:-$BACKLOG_LIST}"
-  if [[ -z "$move_after" && "$bead_type" == "bug" ]]; then
-    dest="$BUGS_LIST"
+
+  if [[ -z "$bead_id" ]]; then
+    echo "FAILED TO COMMENT: Could not identify the created Bead ID (card: $card_id)" >&2
+    incomplete=1
+  elif "$TRELLO_API" comment "$card_id" "Bead created: $bead_id" --apply >/dev/null; then
+    echo "  Added comment for Bead: $bead_id"
+  else
+    echo "FAILED TO COMMENT: Bead created: $bead_id (card: $card_id)" >&2
+    incomplete=1
   fi
-  "$TRELLO_API" move "$card_id" "$dest" >/dev/null 2>&1
+
+  if "$TRELLO_API" move "$card_id" "$dest" --apply >/dev/null; then
+    echo "  Moved card to: $dest"
+  else
+    echo "FAILED TO MOVE: $card_id → $dest" >&2
+    incomplete=1
+  fi
+
+  if ((incomplete)); then
+    echo "PARTIAL: Bead created but Trello updates were incomplete: $card_name" >&2
+    return 1
+  fi
+
   echo "  Labelled '$BEAD_LABEL', commented, and moved to: $dest"
 }
 
@@ -131,42 +177,77 @@ cmd_list() {
 }
 
 cmd_pull() {
-  local card_filter="${1:-}"
-  local move_after="${2:-}"
+  local mode="$1"
+  local card_filter="${2:-}"
+  local move_after="${3:-}"
   local list_name="$TRIAGE_LIST"
 
-  # Get cards as JSON
   local cards
   cards=$("$TRELLO_API" cards "$list_name")
 
+  if ! jq -e '
+    type == "array" and
+    all(.[];
+      type == "object" and
+      (.id | type == "string" and length > 0) and
+      (.name | type == "string" and length > 0) and
+      (.shortUrl | type == "string" and length > 0) and
+      ((.desc // "") | type == "string") and
+      (.labels | type == "array" and all(.[];
+        type == "object" and
+        ((.color | type) as $color_type | $color_type == "string" or $color_type == "null")
+      ))
+    )
+  ' <<<"$cards" >/dev/null; then
+    echo "FAILED TO READ CARDS: Trello returned an invalid card payload" >&2
+    return 1
+  fi
+
   local count
   count=$(echo "$cards" | jq 'length')
-
   if [[ "$count" -eq 0 ]]; then
     echo "No cards in '$list_name' to pull."
     return 0
   fi
 
-  echo "Pulling $count card(s) from '$list_name'..."
+  if [[ "$mode" == "plan" ]]; then
+    echo "Planning $count card(s) from '$list_name'..."
+  else
+    echo "Applying $count card(s) from '$list_name'..."
+  fi
   echo ""
 
-  echo "$cards" | jq -c '.[]' | while read -r card; do
+  local matched=0 failed=0
+  while IFS= read -r card; do
     local id name desc url label_colors
-
     id=$(echo "$card" | jq -r '.id')
     name=$(echo "$card" | jq -r '.name')
     desc=$(echo "$card" | jq -r '.desc // ""')
     url=$(echo "$card" | jq -r '.shortUrl')
-    label_colors=$(echo "$card" | jq -r '[.labels[].color] | join(",")')
+    label_colors=$(echo "$card" | jq -r '[(.labels // [])[].color // ""] | join(",")')
 
-    # If a specific card ID was given, skip others
     if [[ -n "$card_filter" && "$id" != "$card_filter" ]]; then
       continue
     fi
+    matched=$((matched + 1))
 
-    pull_card "$id" "$name" "$desc" "$url" "$label_colors" "$list_name" "$move_after" || true
+    if ! pull_card "$id" "$name" "$desc" "$url" "$label_colors" \
+      "$list_name" "$move_after" "$mode"; then
+      failed=$((failed + 1))
+    fi
     echo ""
-  done
+  done < <(echo "$cards" | jq -c '.[]')
+
+  if [[ -n "$card_filter" && "$matched" -eq 0 ]]; then
+    die "Card not found in '$list_name': $card_filter"
+  fi
+  if ((failed)); then
+    echo "Pull incomplete: $failed card(s) failed" >&2
+    return 1
+  fi
+  if [[ "$mode" == "plan" ]]; then
+    echo "No changes made. Obtain confirmation, then rerun with the apply command."
+  fi
 }
 
 cmd_help() {
@@ -174,14 +255,12 @@ cmd_help() {
 Usage: trello-pull.sh <command> [args...]
 
 Commands:
-  list [list-name]           Show cards in triage list (default: $TRELLO_LIST_TRIAGE)
-  pull [card-id] [move-to]   Pull triage cards into beads
-                              - Creates bead, adds 'bead' label to card, moves to Backlog
-                              - Skipped cards stay in Triage with move suggestions
-                              card-id: optional, pull only this card
-                              move-to: optional, override destination (default: Backlog)
-  pull-all [move-to]         Pull all triage cards (shorthand)
-  help                       Show this help
+  list [list-name]            Show cards in triage list (default: $TRELLO_LIST_TRIAGE)
+  pull|plan [card-id] [move-to]  Preview Bead creation and Trello mutations
+  apply [card-id] [move-to]   Apply a previously reviewed pull plan
+  pull-all|plan-all [move-to] Preview all triage cards
+  apply-all [move-to]         Apply a previously reviewed all-card plan
+  help                        Show this help
 
 Environment variables:
   TRELLO_LIST_TRIAGE   Triage column name (default: "Triage")
@@ -191,20 +270,43 @@ Environment variables:
 
 Examples:
   trello-pull.sh list                          # Show triage cards
-  trello-pull.sh pull                          # Pull all → label + move to Backlog
-  trello-pull.sh pull "" "Icebox"              # Pull all → label + move to Icebox
-  trello-pull.sh pull 69b8b8d7...             # Pull one card
+  trello-pull.sh pull                          # Preview all cards
+  trello-pull.sh pull 69b8b8d7...             # Preview one card
+  trello-pull.sh apply 69b8b8d7...            # Apply after confirmation
+  trello-pull.sh plan-all Icebox               # Preview all → Icebox
+  trello-pull.sh apply-all Icebox              # Apply all after confirmation
 USAGE
 }
 
-# --- main ---
 command="${1:-help}"
 shift || true
 
 case "$command" in
-  list)      cmd_list "${1:-}" ;;
-  pull)      cmd_pull "${1:-}" "${2:-}" ;;
-  pull-all)  cmd_pull "" "${1:-}" ;;
-  help|--help|-h) cmd_help ;;
-  *)         die "Unknown command: $command. Run with 'help' for usage." ;;
+  list)
+    (($# <= 1)) || die "Usage: trello-pull.sh list [list-name]"
+    cmd_list "${1:-}"
+    ;;
+  pull|plan)
+    (($# <= 2)) || die "Usage: trello-pull.sh $command [card-id] [move-to]"
+    cmd_pull plan "${1:-}" "${2:-}"
+    ;;
+  apply)
+    (($# <= 2)) || die "Usage: trello-pull.sh apply [card-id] [move-to]"
+    cmd_pull apply "${1:-}" "${2:-}"
+    ;;
+  pull-all|plan-all)
+    (($# <= 1)) || die "Usage: trello-pull.sh $command [move-to]"
+    cmd_pull plan "" "${1:-}"
+    ;;
+  apply-all)
+    (($# <= 1)) || die "Usage: trello-pull.sh apply-all [move-to]"
+    cmd_pull apply "" "${1:-}"
+    ;;
+  help|--help|-h)
+    (($# == 0)) || die "Usage: trello-pull.sh help"
+    cmd_help
+    ;;
+  *)
+    die "Unknown command: $command. Run with 'help' for usage."
+    ;;
 esac

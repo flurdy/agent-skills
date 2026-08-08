@@ -44,12 +44,38 @@ require_board() {
   [[ -n "${TRELLO_BOARD_ID:-}" ]] || die "TRELLO_BOARD_ID not set"
 }
 
+validate_apply_mode() {
+  case "${1:-}" in
+    ""|--apply) ;;
+    *) die "Unknown mutation option: $1. Use --apply only after reviewing the plan." ;;
+  esac
+}
+
 # Resolve a list name to its ID on the current board
 resolve_list_id() {
   local name="$1"
   require_board
-  trello_request GET "/boards/${TRELLO_BOARD_ID}/lists" --get --data-urlencode "fields=name" \
-    | jq -r --arg name "$name" '.[] | select(.name == $name) | .id'
+
+  local lists list_id
+  lists=$(trello_request GET "/boards/${TRELLO_BOARD_ID}/lists" \
+    --get --data-urlencode "fields=name")
+  if ! jq -e '
+    type == "array" and
+    all(.[];
+      type == "object" and
+      (.name | type == "string") and
+      (.id | type == "string" and length > 0)
+    )
+  ' <<<"$lists" >/dev/null; then
+    die "Trello returned an invalid list lookup payload"
+  fi
+  if ! list_id=$(jq -er --arg name "$name" '
+    map(select(.name == $name)) |
+    if length == 1 then .[0].id else empty end
+  ' <<<"$lists"); then
+    die "Expected exactly one Trello list named: $name"
+  fi
+  echo "$list_id"
 }
 
 cmd_boards() {
@@ -111,10 +137,18 @@ cmd_card() {
 }
 
 cmd_move() {
+  (($# >= 2 && $# <= 3)) || die "Usage: trello-api.sh move <card-id> <list-name> [--apply]"
   local card_id="$1"
   local target_list_name="$2"
-  [[ -n "$card_id" ]] || die "Usage: trello-api.sh move <card-id> <list-name>"
-  [[ -n "$target_list_name" ]] || die "Usage: trello-api.sh move <card-id> <list-name>"
+  local mode="${3:-}"
+  [[ -n "$card_id" && -n "$target_list_name" ]] \
+    || die "Usage: trello-api.sh move <card-id> <list-name> [--apply]"
+  validate_apply_mode "$mode"
+
+  if [[ "$mode" != "--apply" ]]; then
+    echo "WOULD MOVE: $card_id → $target_list_name"
+    return 0
+  fi
 
   require_board
   local list_id
@@ -129,11 +163,27 @@ cmd_move() {
 }
 
 cmd_create() {
+  (($# >= 2 && $# <= 4)) \
+    || die "Usage: trello-api.sh create <list-name> <title> [description] [--apply]"
   local list_name="$1"
   local title="$2"
-  local desc="${3:-}"
-  [[ -n "$list_name" ]] || die "Usage: trello-api.sh create <list-name> <title> [description]"
-  [[ -n "$title" ]] || die "Usage: trello-api.sh create <list-name> <title> [description]"
+  local desc=""
+  local mode=""
+  [[ -n "$list_name" && -n "$title" ]] \
+    || die "Usage: trello-api.sh create <list-name> <title> [description] [--apply]"
+
+  if (($# == 3)); then
+    if [[ "$3" == --* ]]; then mode="$3"; else desc="$3"; fi
+  elif (($# == 4)); then
+    desc="$3"
+    mode="$4"
+  fi
+  validate_apply_mode "$mode"
+
+  if [[ "$mode" != "--apply" ]]; then
+    echo "WOULD CREATE: $title in $list_name"
+    return 0
+  fi
 
   require_board
   local list_id
@@ -163,31 +213,67 @@ ensure_label() {
   local label_color="${2:-}"
   require_board
 
-  # Check if label already exists
-  local label_id
-  label_id=$(trello_request GET "/boards/${TRELLO_BOARD_ID}/labels" \
-    | jq -r --arg name "$label_name" '.[] | select(.name == $name) | .id' | head -1)
+  local labels match_count label_id
+  labels=$(trello_request GET "/boards/${TRELLO_BOARD_ID}/labels")
+  if ! jq -e '
+    type == "array" and
+    all(.[];
+      type == "object" and
+      (.name | type == "string") and
+      (.id | type == "string" and length > 0)
+    )
+  ' <<<"$labels" >/dev/null; then
+    die "Trello returned an invalid label lookup payload"
+  fi
 
-  if [[ -n "$label_id" ]]; then
-    echo "$label_id"
+  match_count=$(jq --arg name "$label_name" '[.[] | select(.name == $name)] | length' <<<"$labels")
+  if ((match_count > 1)); then
+    die "Expected at most one Trello label named: $label_name"
+  fi
+  if ((match_count == 1)); then
+    jq -r --arg name "$label_name" '.[] | select(.name == $name) | .id' <<<"$labels"
     return
   fi
 
-  # Create the label
-  local payload
+  local payload created_label
   payload=$(jq -n --arg name "$label_name" --arg color "$label_color" '{name: $name, color: $color}')
-  trello_request POST "/boards/${TRELLO_BOARD_ID}/labels" \
+  created_label=$(trello_request POST "/boards/${TRELLO_BOARD_ID}/labels" \
     -H "Content-Type: application/json" \
-    -d "$payload" \
-    | jq -r '.id'
+    -d "$payload")
+  if ! label_id=$(jq -er '
+    if type == "object" and (.id | type == "string" and length > 0)
+    then .id
+    else empty
+    end
+  ' <<<"$created_label"); then
+    die "Trello returned an invalid created-label payload"
+  fi
+  echo "$label_id"
 }
 
 cmd_add_label() {
+  (($# >= 2 && $# <= 4)) \
+    || die "Usage: trello-api.sh add-label <card-id> <label-name> [color] [--apply]"
   local card_id="$1"
   local label_name="$2"
-  local label_color="${3:-}"
-  [[ -n "$card_id" ]] || die "Usage: trello-api.sh add-label <card-id> <label-name> [color]"
-  [[ -n "$label_name" ]] || die "Usage: trello-api.sh add-label <card-id> <label-name> [color]"
+  local label_color=""
+  local mode=""
+  [[ -n "$card_id" && -n "$label_name" ]] \
+    || die "Usage: trello-api.sh add-label <card-id> <label-name> [color] [--apply]"
+
+  if (($# == 3)); then
+    if [[ "$3" == --* ]]; then mode="$3"; else label_color="$3"; fi
+  elif (($# == 4)); then
+    label_color="$3"
+    mode="$4"
+  fi
+  validate_apply_mode "$mode"
+
+  if [[ "$mode" != "--apply" ]]; then
+    echo "WOULD ENSURE LABEL: '$label_name' (color: ${label_color:-none})"
+    echo "WOULD ADD LABEL: '$label_name' to card $card_id"
+    return 0
+  fi
 
   local label_id
   label_id=$(ensure_label "$label_name" "$label_color")
@@ -198,10 +284,17 @@ cmd_add_label() {
 }
 
 cmd_comment() {
+  (($# >= 2 && $# <= 3)) || die "Usage: trello-api.sh comment <card-id> <text> [--apply]"
   local card_id="$1"
   local text="$2"
-  [[ -n "$card_id" ]] || die "Usage: trello-api.sh comment <card-id> <text>"
-  [[ -n "$text" ]] || die "Usage: trello-api.sh comment <card-id> <text>"
+  local mode="${3:-}"
+  [[ -n "$card_id" && -n "$text" ]] || die "Usage: trello-api.sh comment <card-id> <text> [--apply]"
+  validate_apply_mode "$mode"
+
+  if [[ "$mode" != "--apply" ]]; then
+    echo "WOULD COMMENT on card $card_id: $text"
+    return 0
+  fi
 
   trello_request POST "/cards/${card_id}/actions/comments" \
     -H "Content-Type: application/json" \
@@ -227,10 +320,10 @@ Commands:
   cards [list-name]           Cards as JSON (all or in a specific list)
   cards-summary [list-name]   Cards as one-line summary table
   card <card-id>              Show a single card detail
-  move <card-id> <list-name>  Move a card to a different list
-  create <list> <title> [desc] Create a new card in a list
-  add-label <card-id> <name> [color]  Add a label to a card (creates if needed)
-  comment <card-id> <text>    Add a comment to a card
+  move <card-id> <list-name> [--apply]  Plan or apply a card move
+  create <list> <title> [desc] [--apply]  Plan or apply card creation
+  add-label <card-id> <name> [color] [--apply]  Plan or apply a label
+  comment <card-id> <text> [--apply]  Plan or apply a comment
   comments <card-id>          List all comments on a card
   labels                      List labels on the board
   list-id <list-name>         Resolve a list name to its ID
@@ -239,6 +332,8 @@ Environment variables:
   TRELLO_API_KEY   (required) Your Trello API key
   TRELLO_TOKEN     (required) Your Trello auth token
   TRELLO_BOARD_ID  (required for most commands) Board ID
+
+Mutations render a plan by default. Rerun with --apply only after confirmation.
 USAGE
 }
 
@@ -258,10 +353,10 @@ main() {
     cards)         cmd_cards "${1:-}" ;;
     cards-summary) cmd_cards_summary "${1:-}" ;;
     card)          cmd_card "${1:-}" ;;
-    move)          cmd_move "${1:-}" "${2:-}" ;;
-    create)        cmd_create "${1:-}" "${2:-}" "${3:-}" ;;
-    add-label)     cmd_add_label "${1:-}" "${2:-}" "${3:-}" ;;
-    comment)       cmd_comment "${1:-}" "${2:-}" ;;
+    move)          cmd_move "$@" ;;
+    create)        cmd_create "$@" ;;
+    add-label)     cmd_add_label "$@" ;;
+    comment)       cmd_comment "$@" ;;
     comments)      cmd_comments "${1:-}" ;;
     labels)        cmd_labels ;;
     list-id)       resolve_list_id "${1:-}" ;;

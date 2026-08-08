@@ -83,10 +83,12 @@ direnv allow
 /trello-beads                          # Show board overview
 /trello-beads setup                    # Set up symlinks and config for a project
 /trello-beads triage                   # List cards in the triage column
-/trello-beads pull                     # Pull all triage cards into beads
-/trello-beads pull <card-id>           # Pull a specific card into a bead
+/trello-beads pull                     # Preview all triage cards → Beads/Trello changes
+/trello-beads pull <card-id>           # Preview a specific card
+/trello-beads apply [card-id]          # Apply a reviewed pull plan after confirmation
 /trello-beads cards <list-name>        # List cards in any column
-/trello-beads sync                     # Update Trello cards from closed beads
+/trello-beads sync                     # Preview closed-Bead card moves
+/trello-beads sync --apply             # Apply a reviewed sync plan after confirmation
 ```
 
 ## Commands
@@ -117,18 +119,24 @@ Show the cards with their titles, labels, and Trello URLs.
 
 ### Pull — Create Beads from Trello Cards
 
-Use the pull script directly:
+First generate a complete read-only plan, present it to the user, and obtain explicit confirmation. Only then run the matching apply command:
 
 ```bash
-# Pull all triage cards into beads
+# Preview all triage cards
 ./scripts/trello-pull pull
 
-# Pull a specific card
+# Preview a specific card
 ./scripts/trello-pull pull <card-id>
 
-# Pull all and move processed cards to Backlog
-./scripts/trello-pull pull-all Backlog
+# After explicit confirmation, apply that same plan
+./scripts/trello-pull apply <card-id>
+
+# Preview/apply all cards with a custom destination
+./scripts/trello-pull plan-all Backlog
+./scripts/trello-pull apply-all Backlog
 ```
+
+`pull`, `plan`, `pull-all`, and `plan-all` never create Beads or mutate Trello. `apply` and `apply-all` are the only pull commands that do.
 
 The script handles:
 - Mapping Trello labels to bead type/priority
@@ -156,12 +164,15 @@ Cards from the Bugs column are always type=bug regardless of labels.
 
 ### Sync — Update Trello from Closed Beads
 
-Use the sync script:
+Generate and present a sync plan, then require explicit confirmation before applying it:
 
 ```bash
-./scripts/trello-sync sync              # Move cards for closed beads to Done
-./scripts/trello-sync sync --dry-run    # Preview what would be moved
+./scripts/trello-sync sync              # Preview what would move
+./scripts/trello-sync sync --dry-run    # Explicit preview alias
+./scripts/trello-sync sync --apply      # Apply after confirmation
 ```
+
+`sync` and `sync --dry-run` never mutate Trello. Unknown options fail without making requests or moves.
 
 The script:
 1. Batch-fetches all card IDs in Done (including archived) in a single API call
@@ -169,7 +180,7 @@ The script:
 3. For each bead with a `trello-<card-id>` external ref:
    - **Already in Done** (active or archived): skipped silently (no API call)
    - **Archived in another list**: skipped with a warning (won't unarchive)
-   - **Active in another list**: moved to Done (or previewed with `--dry-run`)
+   - **Active in another list**: included in the plan, then moved to Done only with `--apply`
 
 This avoids per-card API calls for cards already in Done and prevents accidentally unarchiving cards that were archived in other columns.
 
@@ -181,6 +192,7 @@ When the client supports it, the official Trello MCP server (`https://mcp.trello
 
 ## Notes
 
-- Always confirm before moving/modifying Trello cards
+- Always present the complete plan and obtain explicit confirmation before any `--apply`, `apply`, or `apply-all` command.
+- Direct `trello-api` mutations (`move`, `create`, `add-label`, `comment`) are plan-only by default and require trailing `--apply`.
 - Scripts require `curl` and `jq`
 - Rate limits: 300 requests per 10 seconds per API key

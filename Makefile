@@ -100,6 +100,7 @@ test-second-opinion:
 
 test-trello-beads:
 	@skills/trello-beads/tests/test_trello_requests.sh
+	@skills/trello-beads/tests/test_trello_workflows.sh
 
 test-project-brief:
 	@skills/project-brief/tests/test-collect.sh
