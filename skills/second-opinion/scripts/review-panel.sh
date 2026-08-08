@@ -641,6 +641,10 @@ run_local_route() {
     set +m
   fi
   local command_pid=$!
+  # Register the group so an interrupt of the parent can reap it.
+  if [[ -n "${SIGNAL_TARGETS_FILE:-}" ]]; then
+    printf '%s\n' "$signal_target" >> "$SIGNAL_TARGETS_FILE"
+  fi
   (
     timer_pid=""
     cleanup_timer() {
@@ -706,6 +710,30 @@ run_local_route() {
   write_local_result "$route_json" "$status" "$response_file" "$error_file" "$exit_code" "$result_file"
 }
 
+# Local routes run in their own process groups (setsid), so they survive a signal
+# sent to this script's group. Without this, interrupting a panel leaves the agent
+# CLIs running to their own timeout, billing tokens for a cancelled run.
+terminate_local_routes() {
+  local file="${SIGNAL_TARGETS_FILE:-}" target
+  [[ -n "$file" && -f "$file" ]] || return 0
+  while IFS= read -r target; do
+    [[ -n "$target" ]] || continue
+    kill -TERM -- "$target" >/dev/null 2>&1 || true
+  done < "$file"
+  sleep 1
+  while IFS= read -r target; do
+    [[ -n "$target" ]] || continue
+    kill -KILL -- "$target" >/dev/null 2>&1 || true
+  done < "$file"
+}
+
+interrupt_local_panel() {
+  local code="$1"
+  terminate_local_routes
+  rm -rf "$WORK_DIR"
+  exit "$code"
+}
+
 run_local() {
   parse_run_args false "$@"
   local timeout_seconds
@@ -719,7 +747,11 @@ run_local() {
 
   WORK_DIR="$(mktemp -d)"
   chmod 700 "$WORK_DIR"
+  SIGNAL_TARGETS_FILE="$WORK_DIR/signal-targets"
+  : > "$SIGNAL_TARGETS_FILE"
   trap 'rm -rf "$WORK_DIR"' EXIT
+  trap 'interrupt_local_panel 130' INT
+  trap 'interrupt_local_panel 143' TERM
   umask 077
   local prompt_snapshot="$WORK_DIR/prompt"
   snapshot_prompt "$prompt_snapshot"
