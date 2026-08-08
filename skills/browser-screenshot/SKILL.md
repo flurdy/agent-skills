@@ -63,7 +63,7 @@ scripts/screenshot <url> <viewport>
 
 If the symlink doesn't exist yet, create it first (see Setup above).
 
-Screenshots are saved to `/tmp/claude-screenshots/screenshot-<viewport>.png` by default (e.g. `screenshot-desktop.png`, `screenshot-mobile.png`). Each run overwrites the previous screenshot for that viewport.
+Screenshots are saved to a fresh private directory (mode 0700) created per run, unless you pass an explicit output path as the third argument. The script prints the full path it wrote — read it from the output rather than assuming a location. Screenshots may capture authenticated pages, which is why the directory is not a predictable shared one.
 
 4. **Read the screenshot** using the available image-reading tool to view the captured image. This is the critical step because the model can inspect the captured UI directly.
 
