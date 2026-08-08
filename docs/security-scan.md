@@ -47,14 +47,14 @@ in the 2026-08-08 baseline scan.
 
 | Check | Detects |
 |---|---|
-| `credentials-in-argv` | Secrets in `curl -H` argv, readable via `ps` |
+| `credentials-in-argv` | Secrets in `curl -H` argv (same-UID readable; cross-user depends on `/proc` policy) |
 | `curl-honours-user-config` | Auth-bearing `curl` without `--disable` (a `~/.curlrc` with `trace-ascii` writes the header to disk) |
 | `git-format-injection` | Untrusted text interpolated into `git log --format`; `%` placeholders in branch names expand into the parsed stream |
 | `worktree-field-split` | `git worktree list --porcelain` parsed by `$2`, truncating paths containing spaces |
 | `fixed-temp-path` | Predictable `/tmp` paths another local user can pre-claim |
 | `shell-execution-sink` | `eval`, `bash -c "$VAR"`, `curl \| sh` |
 | `python-execution-sink` | `shell=True`, `os.system`, `eval`/`exec`, `pickle.loads`, unsafe `yaml.load` |
-| `unattended-auto-approval` | Agent spawned with `--approve` plus a shell tool |
+| `unattended-shell-agent` | Agent CLI spawned non-interactively with a shell tool enabled |
 | `missing-injection-guard` | *(advisory)* Skill ingests remote text without untrusted-data framing |
 | `readonly-claim-vs-grant` | *(advisory)* Skill claims read-only while holding a wildcard grant permitting the forbidden action |
 

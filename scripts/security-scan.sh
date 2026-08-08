@@ -26,7 +26,8 @@ production_python() {
 }
 
 # 1. Credentials in process arguments. curl -H with an auth-bearing variable
-# puts the secret in argv, readable via ps by any local user.
+# puts the secret in argv. Readable by same-UID processes as a matter of course;
+# cross-user visibility depends on /proc mount options and host policy.
 check_credentials_in_argv() {
   while IFS= read -r -d '' file; do
     while IFS=: read -r line _; do
@@ -97,12 +98,15 @@ check_python_execution_sinks() {
   done < <(production_python)
 }
 
-# 8. Unattended agent invocation with auto-approval and a shell tool.
-check_unattended_auto_approval() {
+# 8. Agent CLI spawned non-interactively with a shell tool enabled. Pi has no
+# sandbox and no tool-permission prompt, so an unattended run executes whatever
+# the model emits. Note --approve grants project trust, not tool auto-approval.
+check_unattended_shell_agent() {
   while IFS= read -r -d '' file; do
-    grep -q -- '"--approve"' "$file" 2>/dev/null || continue
-    grep -qE '"(read|bash)[^"]*bash|bash[^"]*"' "$file" 2>/dev/null || continue
-    report MEDIUM unattended-auto-approval "$file"
+    grep -qE '"(pi|claude|codex|gemini)"' "$file" 2>/dev/null || continue
+    grep -qE '"--tools"|"--print"|"--no-session"' "$file" 2>/dev/null || continue
+    grep -qE '"[^"]*\bbash\b[^"]*"' "$file" 2>/dev/null || continue
+    report MEDIUM unattended-shell-agent "$file"
   done < <(production_python)
 }
 
@@ -144,7 +148,7 @@ check_worktree_field_split
 check_fixed_temp_paths
 check_shell_execution_sinks
 check_python_execution_sinks
-check_unattended_auto_approval
+check_unattended_shell_agent
 check_injection_guards
 check_readonly_claim_vs_grant
 
