@@ -1,7 +1,7 @@
 ---
 name: landscape
 description: Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
-allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get, mcp__jira__jira_post"
+allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
