@@ -272,10 +272,14 @@ emit_workspace_activity() {
             [[ -n "$wt" ]] || continue
             wt_branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
             wt_base=$(basename "$wt")
+            # The git format stays constant. Branch and directory names may contain
+            # % placeholders, which git would expand into the parsed stream.
             if log_output=$(git -C "$wt" log --since="$SINCE" --until="$GIT_UNTIL" --author="$author" \
-                --format="${name}|${wt_base}|${wt_branch}|%h|%s|%ar" --no-merges 2>/dev/null); then
+                --format="%h|%s|%ar" --no-merges 2>/dev/null); then
                 if [[ -n "$log_output" ]]; then
-                    commit_lines[$i]="${commit_lines[$i]:-}${log_output}"$'\n'
+                    while IFS= read -r commit_line || [[ -n "$commit_line" ]]; do
+                        commit_lines[$i]="${commit_lines[$i]:-}${name}|${wt_base}|${wt_branch}|${commit_line}"$'\n'
+                    done <<<"$log_output"
                 fi
             else
                 commit_status[$i]="ERROR"
@@ -399,8 +403,13 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}' | while IFS= read -r WT; do
             WT_BRANCH=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null)
             WT_BASE=$(basename "$WT")
+            # The git format stays constant. Branch and directory names may contain
+            # % placeholders, which git would expand into the parsed stream.
             git -C "$WT" log --since="$SINCE" --until="$GIT_UNTIL" --author="$AUTHOR" \
-                --format="${WT_BASE}|${WT_BRANCH}|%h|%s|%ar" --no-merges 2>/dev/null
+                --format="%h|%s|%ar" --no-merges 2>/dev/null \
+                | while IFS= read -r COMMIT_LINE || [ -n "$COMMIT_LINE" ]; do
+                    printf '%s|%s|%s\n' "$WT_BASE" "$WT_BRANCH" "$COMMIT_LINE"
+                done
         done
     fi
 fi
