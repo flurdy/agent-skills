@@ -104,7 +104,10 @@ cmd_sync() {
     bead_title=$(echo "$bead_info" | head -1 | sed 's/^[^·]*· //' | sed 's/   .*//')
 
     # Fast check: is this card already in Done? (no API call needed)
-    if echo "$done_card_ids" | grep -qF "$card_id"; then
+    # -x for whole-line equality and -- so a card_id starting with a dash is not
+    # read as an option; a substring match would treat a malformed short external
+    # ref as equal to any ID containing it.
+    if printf '%s\n' "$done_card_ids" | grep -qxF -- "$card_id"; then
       skipped=$((skipped + 1))
       continue
     fi

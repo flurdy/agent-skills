@@ -161,7 +161,11 @@ cat >"$TMP/bin/bd" <<'FAKE_BD'
 set -euo pipefail
 case "$1" in
   list)
-    printf '%s\n' 'skills-test · Card one   [closed]'
+    if [[ "$*" == *'--json'* ]]; then
+      printf '%s\n' '[]'
+    else
+      printf '%s\n' 'skills-test · Card one   [closed]'
+    fi
     ;;
   show)
     cat <<'BEAD'

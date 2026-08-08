@@ -100,11 +100,22 @@ ${card_desc}"
   fi
 
   local open_beads
-  if ! open_beads=$(bd list --status=open --label=trello); then
+  # Exact title equality, not a substring grep: a card titled "e" matched almost
+  # any listing and silently skipped every pull. --limit 0 because a duplicate
+  # check that only sees the first page is not a duplicate check.
+  if ! open_beads=$(bd list --status=open --label=trello --limit 0 --json); then
     echo "FAILED DUPLICATE CHECK: $card_name" >&2
     return 1
   fi
-  if grep -qF "$card_name" <<<"$open_beads"; then
+  local match_status=0
+  jq -e --arg title "$card_name" 'any(.[]; .title == $title)' \
+    <<<"$open_beads" >/dev/null || match_status=$?
+  # jq -e: 0 = duplicate found, 1 = no match, anything else = jq failed.
+  if [[ "$match_status" -gt 1 ]]; then
+    echo "FAILED DUPLICATE CHECK: $card_name" >&2
+    return 1
+  fi
+  if [[ "$match_status" -eq 0 ]]; then
     echo "SKIP: Bead already exists for: $card_name"
     echo "  Card remains in $TRIAGE_LIST — after confirmation, use:"
     echo "    ./scripts/trello-api move $card_id Shredder --apply"

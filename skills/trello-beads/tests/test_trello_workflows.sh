@@ -116,7 +116,10 @@ set -euo pipefail
 case "$1" in
   list)
     [[ "${FAKE_BD_LIST_FAIL:-0}" != 1 ]] || exit 9
-    if [[ "$*" == *'--status=closed'* ]]; then
+    if [[ "$*" == *'--json'* ]]; then
+      # The duplicate check reads open trello-labelled beads as JSON.
+      printf '%s\n' "${FAKE_BD_LIST_JSON:-[]}"
+    elif [[ "$*" == *'--status=closed'* ]]; then
       printf '%s\n' 'skills-test · Card one   [closed]'
     fi
     ;;
@@ -156,6 +159,26 @@ grep -Fq 'WOULD COMMENT: Bead created: <new-bead-id>' "$plan_out" || fail 'pull 
 grep -Fq 'WOULD MOVE: card-1 → Backlog' "$plan_out" || fail 'pull plan omitted card move'
 assert_no_mutations 'pull plan performed a mutation'
 
+# The duplicate check matches titles exactly. A substring grep skipped every
+# pull once any open bead's title merely contained the card title.
+: >"$LOG"
+FAKE_BD_LIST_JSON='[{"title":"Card one and then some"}]' \
+  "$PULL" pull card-1 >"$plan_out"
+grep -Fq 'WOULD CREATE BEAD: Card one' "$plan_out" \
+  || fail 'a substring title match was treated as a duplicate'
+
+: >"$LOG"
+FAKE_BD_LIST_JSON='[{"title":"Card one"}]' "$PULL" pull card-1 >"$plan_out"
+grep -Fq 'SKIP: Bead already exists for: Card one' "$plan_out" \
+  || fail 'an exact duplicate title was not skipped'
+
+: >"$LOG"
+if FAKE_BD_LIST_JSON='not json' "$PULL" pull card-1 >"$plan_out" 2>"$apply_err"; then
+  fail 'an unreadable duplicate-check response was treated as no duplicate'
+fi
+grep -Fq 'FAILED DUPLICATE CHECK' "$apply_err" || fail 'duplicate-check failure was not reported'
+
+: >"$LOG"
 operations_before=$(operation_count)
 if "$PULL" apply card-1 Backlog unexpected >"$apply_out" 2>"$apply_err"; then
   fail 'malformed pull apply arguments were accepted'
