@@ -1,0 +1,44 @@
+# Python lint for the repository's helper scripts and test suites.
+#
+# The rule set is deliberately narrow. A scanner's defaults are not this
+# repository's policy, and every exclusion below was chosen after reading what
+# the rule actually flagged here — see the reasons inline.
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+# F  — real defects: undefined names, unused imports and variables.
+# B  — bugbear: mutable defaults, loop-variable capture, and similar footguns.
+# S  — flake8-bandit, reduced to the rules that are not already false positives
+#      against this codebase (see the ignore list).
+select = ["F", "B", "S"]
+
+ignore = [
+  # Line length is not enforced in this repository; enabling it produced ~790
+  # findings and no defects.
+  "E501",
+  # Every subprocess call here already uses the safe argument-list form. This
+  # rule flags exactly that correct pattern, so it reports only false positives.
+  "S603",
+  # Tools are invoked by name (git, gh, bd) on purpose, so the user's PATH and
+  # shims are honoured. Absolute paths would break the wrappers this repo ships.
+  "S607",
+]
+
+[lint.per-file-ignores]
+# Test suites assert, build fixture paths under a temp root, and stub
+# credentials with obvious sentinels. All three are correct in a test.
+"**/tests/*" = ["S101", "S105", "S106", "S108"]
+# S108: safe_temp_parent enumerates candidate temp roots and validates each one
+# before use; the literal paths are the candidates, not a fixed temp file.
+# S110: a best-effort selector close during process cleanup, where a failure is
+# genuinely nothing to act on and must not mask the original error.
+"skills/artifact-hygiene/scripts/artifact_hygiene.py" = ["S108", "S110"]
+# Type-narrowing assertions immediately after Popen(..., stdout=PIPE,
+# stderr=PIPE), where the attributes cannot be None. Not input validation.
+"skills/pr-status/scripts/gh-pr-checkout.py" = ["S101"]
+"skills/review-pr/scripts/gh-pr-snapshot.py" = ["S101"]
+# The OpenRouter origin is a hardcoded https constant and redirects are blocked,
+# so the URL cannot be steered to another scheme or host.
+"skills/token-dashboard/scripts/token_dashboard.py" = ["S310"]

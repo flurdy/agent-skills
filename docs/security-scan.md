@@ -3,8 +3,15 @@
 How to re-run the repository's security scan and how to read its output.
 
 ```bash
-make security-scan
+make security-scan   # this scan alone
+make check           # the full gate: shell lint, Python lint, catalog, scan, tests
 ```
+
+The scan **exits non-zero on any `HIGH` finding** and is part of `make check`.
+`MEDIUM` and below are reported but do not fail the build: the repository carries
+one accepted `MEDIUM` (the pilot runner's unattended shell agent, reasoned about in
+[skill-effectiveness-pilot.md](skill-effectiveness-pilot.md)), and `ADVISORY` rows
+are candidate lists rather than defects. Triage those by reading, not by CI.
 
 ## Scope
 
@@ -86,10 +93,9 @@ doing a full baseline rather than a regression check.
 
 ## Known gaps
 
-- No CI. Nothing runs `clean-code`, `validate-skills`, the `test-*` targets, or
-  this scan automatically; every gate is opt-in and manual.
-- No Python static analysis. `make clean-code` covers shell only (`bash -n`,
-  `shellcheck`). There is no ruff/bandit target.
 - `scripts/validate-skills.py` enforces no safety property — it does not
-  inspect what `allowed-tools` actually grants.
+  inspect what `allowed-tools` actually grants. The scan's `readonly-claim-vs-grant`
+  check is the advisory stand-in.
 - The scan is static. It reads source; it does not observe runtime behaviour.
+- Only `HIGH` fails the build, so a new `MEDIUM` lands silently until someone
+  reads the output.

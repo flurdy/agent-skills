@@ -22,9 +22,12 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-ready-to-release test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help check test lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-ready-to-release test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
+	@echo "make check   (clean-code, lint-python, validate-skills, security-scan, test)"
+	@echo "make test    (every test-* suite)"
+	@echo "make lint-python"
 	@echo "make clean-code"
 	@echo "make security-scan"
 	@echo "make validate-skills"
@@ -81,6 +84,24 @@ clean-code:
 	@command -v shellcheck >/dev/null 2>&1 || { echo "ERROR: shellcheck is required" >&2; exit 127; }
 	@find . -type f -name '*.sh' -not -path './.git/*' -exec bash -n {} \;
 	@find . -type f -name '*.sh' -not -path './.git/*' -exec shellcheck --severity=warning {} +
+
+# Every test-* suite. test-pr-feedback-actions and the individual watch-* suites
+# are omitted because test-pr-feedback and test-watch-protocols already run them.
+TEST_TARGETS := test-validate-skills test-assemble test-artifact-hygiene \
+  test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
+  test-architect test-plan-to-backlog test-beads test-next test-handoffs \
+  test-pi-spend test-review-pr test-review-requests test-pr-feedback \
+  test-ready-to-release test-release-ci test-release-order test-release-status \
+  test-today test-yesterday test-wrap-up test-watch-protocols
+
+test: $(TEST_TARGETS)
+
+# The gate a change should pass before review.
+check: clean-code lint-python validate-skills security-scan test
+
+lint-python:
+	@command -v ruff >/dev/null 2>&1 || { echo "ERROR: ruff is required (pip install ruff)" >&2; exit 127; }
+	@ruff check .
 
 security-scan:
 	@./scripts/security-scan.sh

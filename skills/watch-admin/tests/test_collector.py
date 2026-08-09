@@ -44,7 +44,7 @@ class CollectorTest(unittest.TestCase):
             collector.load_workspace(oversized)
 
     def test_git_inventory_projection_is_stable_and_material(self):
-        root = self.workspace()
+        self.workspace()
         text = "\n".join(
             [
                 "=== GIT INVENTORY ===",

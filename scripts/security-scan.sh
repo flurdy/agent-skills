@@ -8,11 +8,14 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 findings=0
+high_findings=0
 
 report() {
   local severity="$1" check="$2" detail="$3"
   printf '%s\t%s\t%s\n' "$severity" "$check" "$detail"
   findings=$((findings + 1))
+  [ "$severity" = HIGH ] && high_findings=$((high_findings + 1))
+  return 0
 }
 
 # Production scripts only. Test harnesses use deliberate sentinels and fixed
@@ -154,5 +157,13 @@ check_unattended_shell_agent
 check_injection_guards
 check_readonly_claim_vs_grant
 
-printf '\n%s finding(s).\n' "$findings"
+printf '\n%s finding(s), %s HIGH.\n' "$findings" "$high_findings"
 printf 'Judgment-based dimensions require the manual pass in docs/security-scan.md.\n'
+
+# Only HIGH fails the build. MEDIUM and below are reported for triage: the repo
+# carries one accepted MEDIUM (the pilot runner, see docs/skill-effectiveness-pilot.md)
+# and ADVISORY entries are candidate lists, not defects.
+if [ "$high_findings" -gt 0 ]; then
+  printf 'FAIL: %s HIGH finding(s).\n' "$high_findings" >&2
+  exit 1
+fi

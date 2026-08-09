@@ -78,10 +78,20 @@ string. Without `allowed-tools`, users may be prompted for every tool call.
 
 ## Validation and tests
 
-Run the checks relevant to the change:
+`make check` is the full gate and is what CI runs. It takes a couple of minutes:
+
+```bash
+make check                 # clean-code, lint-python, validate-skills, security-scan, test
+```
+
+`lint-python` needs `ruff` (`pip install ruff`); `clean-code` needs `shellcheck`.
+
+While iterating, run only what the change touches:
 
 ```bash
 make validate-skills       # metadata, catalog parity, and local references
+make security-scan         # security classes; fails the build on any HIGH
+make test                  # every test-* suite
 make test-validate-skills  # validator fixture suite
 make test-assemble         # installer behavior
 make test-second-opinion   # second-opinion helper suites

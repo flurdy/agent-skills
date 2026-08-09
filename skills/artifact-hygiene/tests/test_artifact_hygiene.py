@@ -59,6 +59,18 @@ class RepositoryFixture:
         )
 
 
+def make_capture(real_popen, spawned):
+    """Bind the collector explicitly so the closure cannot capture a rebound
+    loop variable from an enclosing subTest loop."""
+
+    def capture_process(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        spawned.append(process)
+        return process
+
+    return capture_process
+
+
 def load_helper_module():
     spec = importlib.util.spec_from_file_location("artifact_hygiene_test_target", SCRIPT)
     if spec is None or spec.loader is None:
@@ -371,10 +383,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             with self.subTest(failure=failure):
                 spawned: list[subprocess.Popen[bytes]] = []
 
-                def capture_process(*args, **kwargs):
-                    process = real_popen(*args, **kwargs)
-                    spawned.append(process)
-                    return process
+                capture_process = make_capture(real_popen, spawned)
 
                 setup_patch = (
                     mock.patch.object(
@@ -468,10 +477,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             with self.subTest(failure=failure):
                 spawned: list[subprocess.Popen[bytes]] = []
 
-                def capture_process(*args, **kwargs):
-                    process = real_popen(*args, **kwargs)
-                    spawned.append(process)
-                    return process
+                capture_process = make_capture(real_popen, spawned)
 
                 selector_patch = (
                     mock.patch.object(
