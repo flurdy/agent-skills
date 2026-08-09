@@ -284,7 +284,7 @@ emit_workspace_activity() {
             else
                 commit_status[$i]="ERROR"
             fi
-        done < <(printf '%s\n' "$worktrees" | awk '/^worktree /{print $2}')
+        done < <(printf '%s\n' "$worktrees" | awk '/^worktree /{print substr($0,10)}')
     done
 
     echo "---COMMIT-STATUS---"
@@ -400,7 +400,7 @@ echo "---COMMITS---"
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     AUTHOR=$(git config user.email 2>/dev/null)
     if [ -n "$AUTHOR" ]; then
-        git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}' | while IFS= read -r WT; do
+        git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print substr($0,10)}' | while IFS= read -r WT; do
             WT_BRANCH=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null)
             WT_BASE=$(basename "$WT")
             # The git format stays constant. Branch and directory names may contain

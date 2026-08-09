@@ -232,6 +232,23 @@ assert_section_contains BEADS-CREATED-TODAY 'solo-today'
 grep -Fq -- '--created-after=2026-08-03T03:59:59Z --created-before=2026-08-04T04:00:00Z' "$BD_CALLS" || fail 'default Beads created query did not use the exact local window'
 grep -Fq -- '--closed-after=2026-08-03T03:59:59Z --closed-before=2026-08-04T04:00:00Z' "$BD_CALLS" || fail 'default Beads closed query did not use the exact local window'
 
+# A worktree path containing a space must not be truncated at the first field:
+# the commits in it would silently vanish from the wrap-up.
+make_repo "$TMP/spaced" "spaced base commit"
+mkdir -p "$TMP/spaced/.beads"
+git -C "$TMP/spaced" worktree add -q -b spaced-branch "$TMP/spaced work tree"
+git -C "$TMP/spaced work tree" config user.name Tester
+git -C "$TMP/spaced work tree" config user.email tester@example.com
+printf 'x\n' >"$TMP/spaced work tree/file.txt"
+git -C "$TMP/spaced work tree" add file.txt
+git -C "$TMP/spaced work tree" commit -qm "commit inside spaced worktree"
+(
+  cd "$TMP/spaced"
+  PATH="$TMP/bin:$PATH" "$SCRIPT" >"$TMP/output"
+)
+assert_section_contains COMMITS 'commit inside spaced worktree'
+assert_section_contains COMMITS 'spaced work tree|spaced-branch'
+
 mkdir "$TMP/no-git"
 (
   cd "$TMP/no-git"

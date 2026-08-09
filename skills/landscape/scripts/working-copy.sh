@@ -30,7 +30,7 @@ git stash list --format='%gs' 2>/dev/null | grep -c "on ${BRANCH}:" || echo 0
 echo "---OTHER-WORKTREES-UNSAFE---"
 # Emit only other worktrees (not the current one) that have uncommitted changes
 # or unpushed commits. Format: path|branch|dirty_count|ahead_count
-git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2}' | while IFS= read -r WT; do
+git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print substr($0,10)}' | while IFS= read -r WT; do
     [ "$WT" = "$CURRENT_WT" ] && continue
     DIRTY=$(git -C "$WT" status --porcelain 2>/dev/null | wc -l)
     AHEAD=$(git -C "$WT" rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
