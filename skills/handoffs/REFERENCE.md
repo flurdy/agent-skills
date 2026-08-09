@@ -53,6 +53,11 @@ Delimited sections:
 - `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
 - `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 22 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (24 total), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
 
+Field values never contain the `|` delimiter or a newline: `list.sh` replaces both
+with a space when it builds a record. Handoff text is author-controlled, and these
+records are read by position, so an unescaped delimiter would shift every later
+field and change what a row appears to say. Parsers can rely on the field count.
+
 **`---HANDOFFS---` line — 22 pipe-delimited fields, in order:**
 
 ```

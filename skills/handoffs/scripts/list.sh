@@ -21,6 +21,22 @@
 #                     section byte-identical, so existing callers are unaffected.
 set -uo pipefail
 
+# Records are pipe-delimited and REFERENCE.md has the model read them by field
+# position, so a literal `|` in free text (a path, branch, slug or header field)
+# would shift every later field and change what the picker believes a row says.
+# Join through here: the delimiter and record separator are replaced with spaces
+# so field positions always survive, at the cost of altering rare display text.
+emit_record() {
+    local out="" field
+    for field in "$@"; do
+        field=${field//|/ }
+        field=${field//$'\n'/ }
+        field=${field//$'\r'/ }
+        out="${out}|${field}"
+    done
+    printf '%s\n' "${out#|}"
+}
+
 HANDOFFS_DIR="${HOME}/.claude/handoffs"
 
 RECENT_DAYS=""
@@ -190,7 +206,7 @@ resolve_repo_info() {
     repo_display=$(basename "$repo_root")
     repo_display="${repo_display%.git}"
 
-    echo "${repo_id}|${repo_display}"
+    emit_record "${repo_id}" "${repo_display}"
 }
 
 # Current repo info — `NONE|NONE` when invoked outside a git repo.
@@ -1068,7 +1084,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}|${R_NEEDSAGEREVIEW[$i]}"
+        emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}"
         i=$((i+1))
     done
 fi
@@ -1076,7 +1092,7 @@ fi
 # Newest current-repo handoff (the "last session"), or empty line if none.
 echo "---CURRENT-REPO-LATEST---"
 if [ -n "$LATEST_DATE" ]; then
-    echo "${LATEST_SLUG}|${LATEST_BRANCH}|${LATEST_DATE}"
+    emit_record "${LATEST_SLUG}" "${LATEST_BRANCH}" "${LATEST_DATE}"
 fi
 
 # Recent active current-repo handoffs (newest first) — the live threads behind
@@ -1114,7 +1130,7 @@ echo "---OTHER-REPOS---"
 # deliberate — five skills parse it, and silently shrinking it would change their
 # output. Callers that render the WORKSPACE-MEMBER sections should subtract these.
 for i in "${!OTHER_KEYS[@]}"; do
-    echo "${OTHER_COUNTS[$i]}|${OTHER_DISPLAYS[$i]}|${OTHER_KEYS[$i]}"
+    emit_record "${OTHER_COUNTS[$i]}" "${OTHER_DISPLAYS[$i]}" "${OTHER_KEYS[$i]}"
 done | sort -t'|' -k1,1nr -k2,2 | awk -F'|' '{print $3"|"$1"|"$2}'
 
 # --- Workspace members ---------------------------------------------------------
@@ -1130,7 +1146,7 @@ while [ "$mi" -lt "${#WS_KEYS[@]}" ]; do
         [ "${R_REPO[$i]}" = "${WS_KEYS[$mi]}" ] && c=$((c+1))
         i=$((i+1))
     done
-    echo "${WS_KEYS[$mi]}|${WS_DISPLAYS[$mi]}|${WS_PATHS[$mi]}|${c}"
+    emit_record "${WS_KEYS[$mi]}" "${WS_DISPLAYS[$mi]}" "${WS_PATHS[$mi]}" "${c}"
     mi=$((mi+1))
 done
 
@@ -1144,7 +1160,7 @@ if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
         if wi=$(ws_index_for_key "${R_REPO[$i]}"); then
-            echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_SLUG[$i]}|${R_CWD[$i]}|${R_BRANCH[$i]}|${R_REPO[$i]}|${R_EXISTS[$i]}|${R_SUPBY[$i]}|${R_SUPREASON[$i]}|${R_STATE[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}|${R_ARCHCLASS[$i]}|${R_TIME[$i]}|${R_BEADS[$i]}|${R_JIRA[$i]}|${R_BEADSDONE[$i]}|${R_DELIV[$i]}|${R_BEADSPROGRESS[$i]}|${R_NEEDSREVIEW[$i]}|${R_NEEDSAGEREVIEW[$i]}|${WS_DISPLAYS[$wi]}|${WS_PATHS[$wi]}"
+            emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}" "${WS_DISPLAYS[$wi]}" "${WS_PATHS[$wi]}"
         fi
         i=$((i+1))
     done
@@ -1169,7 +1185,7 @@ if [ -n "$MATCH_FILTER" ]; then
             if [ -n "$MATCH_BEAD" ] && field_has_token "${R_BEADS[$i]}" "$MATCH_BEAD"; then matched=1; fi
             if [ -n "$MATCH_TICKET" ] && field_has_token "${R_JIRA[$i]}" "$MATCH_TICKET"; then matched=1; fi
             if [ "$matched" -eq 1 ]; then
-                echo "${R_FILE[$i]}|${R_DATE[$i]}|${R_TIME[$i]}|${R_SLUG[$i]}|${R_BRANCH[$i]}|${R_EXISTS[$i]}|${R_PRSTATE[$i]}|${R_PRNUM[$i]}|${R_PRURL[$i]}"
+                emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_TIME[$i]}" "${R_SLUG[$i]}" "${R_BRANCH[$i]}" "${R_EXISTS[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}"
             fi
         fi
         i=$((i+1))
