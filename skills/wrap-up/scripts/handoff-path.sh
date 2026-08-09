@@ -21,12 +21,38 @@ if [ -z "$date" ] || [ -z "$slug" ]; then
     exit 2
 fi
 
+# Both arguments are model-generated, and the printed path is written to
+# verbatim. Enforce the documented shapes so a slug cannot traverse out of the
+# handoffs directory or carry shell metacharacters into the picker.
+case "$date" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+    *) echo "handoff-path.sh: date must be YYYY-MM-DD, got: $date" >&2; exit 2 ;;
+esac
+
+# Matched with case, not grep: grep -E anchors per line, so a multi-line slug
+# whose first line is valid would pass. case globs match the whole string.
+case "$slug" in
+    *[!a-z0-9-]* | -* | *- | *--* )
+        echo "handoff-path.sh: slug must be kebab-case ([a-z0-9] and single hyphens), got: $slug" >&2
+        exit 2
+        ;;
+esac
+
 dir="$HOME/.claude/handoffs"
 mkdir -p "$dir"
 
+emit_contained() {
+    local candidate="$1"
+    if [ "$(dirname "$candidate")" != "$dir" ]; then
+        echo "handoff-path.sh: refusing path outside handoffs dir: $candidate" >&2
+        exit 2
+    fi
+    echo "$candidate"
+}
+
 base="$dir/${date}-${slug}.md"
 if [ ! -e "$base" ]; then
-    echo "$base"
+    emit_contained "$base"
     exit 0
 fi
 
@@ -35,4 +61,4 @@ n=2
 while [ -e "$dir/${date}-${slug}-${n}.md" ]; do
     n=$((n + 1))
 done
-echo "$dir/${date}-${slug}-${n}.md"
+emit_contained "$dir/${date}-${slug}-${n}.md"

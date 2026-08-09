@@ -173,6 +173,7 @@ test-yesterday:
 
 test-wrap-up:
 	@bash skills/wrap-up/tests/test-activity.sh
+	@bash skills/wrap-up/tests/test-handoff-path.sh
 	@bash skills/wrap-up/tests/test-skill-contract.sh
 
 test-watch-admin:
