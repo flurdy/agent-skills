@@ -10,11 +10,35 @@ change and does not adopt Bigpowers' fixed score threshold.
 - **Skills:** `implement-solution` and `diagnose-bug`. Earlier recorded runs retain the former `simplify-solution` name.
 - **Scenarios:** one calibration and one held-out scenario for each skill.
 - **Matrix:** three repetitions for every scenario in baseline and with-skill conditions
-  (24 isolated agent sessions total).
+  (24 agent sessions total).
 - **Control:** baseline uses `--no-skills`; treatment uses the same options and prompt,
   plus exactly one explicit `--skill` path.
-- **Isolation:** each cell runs in a newly copied fixture with no session, context files,
-  or extensions. The runner removes that workspace after recording its output.
+- **Cell setup:** each cell starts from a newly copied fixture as its working directory,
+  with no session, context files, or extensions. The runner removes that workspace after
+  recording its output.
+
+### What the runner does and does not confine
+
+The per-cell working directory gives **reproducibility, not containment**. Each cell runs
+`pi` with `bash` enabled and no sandbox, so a command the model emits executes as the
+invoking user with that user's full filesystem and credential access — the copied
+workspace is where the agent starts, not a boundary it is held inside. Pi documents this
+directly: project trust "is not a sandbox and it does not restrict what the model can ask
+tools to do", and Pi ships no built-in sandbox or tool-permission prompt.
+
+Two consequences worth stating plainly:
+
+- `--approve` in the runner's command grants **project trust** — it loads project-local
+  settings for the run. It is not tool auto-approval, because Pi has no tool prompt to
+  bypass in the first place.
+- The 24 cells run unattended. Anyone extending this beyond the pinned in-repo scenarios —
+  new fixtures, prompts from elsewhere, an untrusted repository — should run the whole
+  `pi` process inside a container or VM, which is Pi's own guidance for unattended
+  automation.
+
+`bash` stays in `--tools` deliberately: the diagnosis scenarios may run a reproduction,
+and the tool set is part of the pinned matrix that earlier recorded runs are comparable
+against. Changing it changes what is being measured.
 - **Grading:** deterministic output checks are frozen in
   [`tests/fixtures/skill-pilot/scenarios.json`](../tests/fixtures/skill-pilot/scenarios.json).
   A non-zero Pi exit or empty output is `invalid`, never a pass.

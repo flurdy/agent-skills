@@ -119,5 +119,32 @@ class RunSkillPilotTest(unittest.TestCase):
             self.assertEqual(result, json.loads(target.read_text(encoding="utf-8")))
 
 
+class FixtureContainmentTest(unittest.TestCase):
+    """Fixtures are copied into a cell workspace and become context for an
+    unattended, unsandboxed agent session, so a scenario file must not be able to
+    name a tree outside the scenario directory."""
+
+    def test_fixture_inside_the_scenario_directory_resolves(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            (base / "case").mkdir()
+
+            self.assertEqual(RUNNER.resolve_fixture(base, "case"), (base / "case").resolve())
+
+    def test_relative_escape_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaises(SystemExit):
+                RUNNER.resolve_fixture(Path(temporary), "../../../etc")
+
+    def test_absolute_path_is_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            with self.assertRaises(SystemExit):
+                RUNNER.resolve_fixture(Path(temporary), "/etc")
+
+    def test_shipped_scenarios_all_resolve(self) -> None:
+        for scenario in RUNNER.load_scenarios():
+            self.assertTrue(scenario.fixture.is_dir(), f"missing fixture for {scenario.identifier}")
+
+
 if __name__ == "__main__":
     unittest.main()

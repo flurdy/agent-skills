@@ -38,6 +38,20 @@ class Scenario:
     any_of: tuple[tuple[str, ...], ...]
 
 
+def resolve_fixture(root: Path, reference: str) -> Path:
+    """Resolve a scenario fixture, refusing anything outside the scenario directory.
+
+    Fixtures are copied into the cell workspace and become context for an unattended,
+    unsandboxed agent session, so a scenario file must not be able to name an
+    arbitrary tree via an absolute path or '..'.
+    """
+    base = root.resolve()
+    fixture = (base / reference).resolve()
+    if fixture != base and base not in fixture.parents:
+        raise SystemExit(f"ERROR: fixture escapes the scenario directory: {reference}")
+    return fixture
+
+
 def load_scenarios(path: Path = SCENARIO_PATH) -> list[Scenario]:
     data = json.loads(path.read_text(encoding="utf-8"))
     scenarios = []
@@ -48,7 +62,7 @@ def load_scenarios(path: Path = SCENARIO_PATH) -> list[Scenario]:
                 identifier=item["id"],
                 skill=item["skill"],
                 split=item["split"],
-                fixture=path.parent / item["fixture"],
+                fixture=resolve_fixture(path.parent, item["fixture"]),
                 prompt=item["prompt"],
                 all_of=tuple(grader["all_of"]),
                 any_of=tuple(tuple(group) for group in grader["any_of"]),
