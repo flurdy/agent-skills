@@ -54,8 +54,19 @@ Env:
 EOF
 }
 
+# A profile is executed as shell, not parsed as the properties file the docs
+# show, so it can run arbitrary commands and set any variable — including the
+# ones that decide where links are written and what `clean` removes. That is
+# acceptable for a file in the user's own private repository, but the name must
+# stay a plain identifier so --profile cannot reach outside PROFILES_DIR.
 load_profile() {
   local profile="$1"
+  case "$profile" in
+    "" | *[!A-Za-z0-9._-]* | .* )
+      err "Profile name must be a plain identifier ([A-Za-z0-9._-], not starting with '.'): $profile"
+      ;;
+  esac
+
   local file="$PROFILES_DIR/$profile.env"
   [[ -f "$file" ]] || err "Profile not found: $file"
   set -a

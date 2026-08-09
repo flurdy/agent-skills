@@ -109,6 +109,13 @@ Then apply it with:
 make apply PROFILE=my-machine-profile
 ```
 
+A profile is **sourced by the shell**, not parsed as a properties file, so it can
+use expansions like `$HOME` — and equally can run commands and set any variable the
+assembler reads, including the destination directories. Treat one as a script you
+own, not as inert config: keep profiles in your own private repository and do not
+apply a profile you did not write. `PROFILE` must be a plain identifier, so it
+cannot name a file outside the profiles directory.
+
 ## Configuration variables
 
 Set these as environment variables or accept the defaults:
