@@ -123,7 +123,9 @@ check_injection_guards() {
     [ -f "$skill" ] || continue
     # Trigger on the ingest verbs themselves, not on prose mentioning a PR.
     grep -qE 'mcp__jira__|mcp__confluence__|WebFetch|gh pr (view|diff)|gh api|gh-pr-|trello-(api|pull)' "$skill" || continue
-    grep -qi 'untrusted' "$skill" && continue
+    # Either the prose guard, or the external-text fence convention that marks
+    # imported text structurally (see skills/trello-beads/SKILL.md).
+    grep -qiE 'untrusted|external-text' "$skill" && continue
     name="$(dirname "$skill")"
     report ADVISORY missing-injection-guard "${name#skills/}"
   done

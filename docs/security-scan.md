@@ -62,7 +62,7 @@ in the 2026-08-08 baseline scan.
 | `shell-execution-sink` | `eval`, `bash -c "$VAR"`, `curl \| sh` |
 | `python-execution-sink` | `shell=True`, `os.system`, `eval`/`exec`, `pickle.loads`, unsafe `yaml.load` |
 | `unattended-shell-agent` | Agent CLI spawned non-interactively with a shell tool enabled |
-| `missing-injection-guard` | *(advisory)* Skill ingests remote text without untrusted-data framing |
+| `missing-injection-guard` | *(advisory)* Skill ingests remote text with neither untrusted-data framing nor the `external-text` fence |
 | `readonly-claim-vs-grant` | *(advisory)* Skill claims read-only while holding a wildcard grant permitting the forbidden action |
 
 ## Manual pass
@@ -83,7 +83,11 @@ doing a full baseline rather than a regression check.
    data. Four skills carry the guard — `diagnose-bug`, `outstanding-work`,
    `project-brief`, `watch-admin` — and their wording is the reference.
 4. **Content laundering.** Text imported from an external tracker into a bead
-   loses its untrusted provenance; downstream skills then read it as internal.
+   loses its provenance and downstream skills read it as internal prose. The
+   importers fence it — `<!-- external-text:trello -->` in trello-pull.sh, the
+   same convention as prose in `/triage` for Jira — and `/backlog-groom`,
+   `/triage` and `/next` treat a fenced region as quoted material. Check any new
+   importer does the same; the fence is a legibility boundary, not a sandbox.
 5. **Third-party egress.** Does the skill send repository contents to an
    external service, and is consent keyed to *data disclosure* rather than to
    billing?
