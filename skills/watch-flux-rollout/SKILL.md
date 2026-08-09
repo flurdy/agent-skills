@@ -5,7 +5,7 @@ description: >
   the commit, then the k8s Deployment's image tag moves off its pre-push baseline and pods go
   ready — then run a read-only smoke test scoped to the change. Goal-terminating loop — stops
   when the rollout lands and the smoke completes, or when it fails.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git:*),Bash(gh:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium

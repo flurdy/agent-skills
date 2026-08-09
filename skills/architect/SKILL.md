@@ -1,7 +1,7 @@
 ---
 name: architect
 description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed decisions, reviewable slices, acceptance evidence, and conditional human review ownership without editing code.
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
+allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd status:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
 version: "1.9.0"

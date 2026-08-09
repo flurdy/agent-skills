@@ -1,7 +1,7 @@
 ---
 name: triage
 description: "Create bead(s) from a raw user prompt or Jira ticket, or refine an existing bead in place when given its ID. Investigates relevance, checks for duplicates, may split complex requests, and delegates approved structured plans to plan-to-backlog."
-allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Grep,Glob,Task,AskUserQuestion"
+allowed-tools: "Read,Bash(bd close:*),Bash(bd create:*),Bash(bd dep:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/next/scripts/next-select:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium

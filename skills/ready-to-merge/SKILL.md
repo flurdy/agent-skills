@@ -1,7 +1,7 @@
 ---
 name: ready-to-merge
 description: Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it. Composes /pr-status, /contract-check, and /review-pr rather than reimplementing them.
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -275,6 +275,8 @@ Don't auto-perform these — they're explicit user follow-ups, often touching ot
 
 - **Never merge without explicit go-ahead.** `AskUserQuestion` answer must be "Yes" — anything else (silence, "Wait", a clarifying comment) means do not merge.
 - **Never `--admin` merge.** Branch protections exist for a reason. If a check is failing, surface it, don't bypass it.
+  This one is not enforceable by the tool grant: any `gh` permission broad enough to merge is broad enough to pass
+  `--admin`. Closing it properly needs a merge wrapper script that rejects the flag, not a narrower `allowed-tools`.
 - **Never `--no-verify`.** Same reason.
 - **Don't auto-run `/review-pr` or `tracking-auditor`.** They're expensive. Recommend them when their value is high (large diff, scope concerns).
 - **Quiet success.** Only render risks that fired; only render sections with content. Padding the readout with "✅ no issues" lines defeats the terseness.

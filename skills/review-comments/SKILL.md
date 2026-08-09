@@ -1,7 +1,7 @@
 ---
 name: review-comments
 description: Address PR review feedback through explicit item selection, independent validation, focused local fixes, verification, and a local commit. Never publishes remote actions; use reply-comments for separately confirmed push, reply, and resolution gates.
-allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),mcp__jira__*,AskUserQuestion"
+allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git branch --show-current),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high

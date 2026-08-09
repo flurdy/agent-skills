@@ -3,7 +3,7 @@ name: next
 description: >
   Pick the next bead to work on. Globally ranks ready tasks across validated
   workspace Beads stores while preserving local single-store behavior.
-allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
+allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model-tier: economy
 model: haiku
 effort: medium

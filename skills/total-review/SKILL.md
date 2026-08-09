@@ -1,7 +1,7 @@
 ---
 name: total-review
 description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, code-review, pedantic-review, /review, /security-review, and tiered /second-opinion in increasing cost order. Halts on Must-Fix tier findings (failing tests, security, blocking-severity bugs), emits beads for the rest, iterates the heavy phases up to twice. Local cousin of /ultrareview."
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd create:*),Bash(bd list:*),Bash(bd show:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
 model-tier: premium
 effort: xhigh
 version: "0.4.0"

@@ -1,7 +1,7 @@
 ---
 name: verify-task
 description: "Verify that a task's implementation meets its requirements and has adequate test coverage (happy path, sad path, edge cases). Use before /complete-task."
-allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(git:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Bash(bd list:*),Bash(bd show:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(git:*),Grep,Glob,AskUserQuestion"
 model-tier: premium
 effort: xhigh
 version: "1.0.0"

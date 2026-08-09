@@ -1,7 +1,7 @@
 ---
 name: complete-task
 description: "Complete an in-progress task by running clean-code, staging, and committing. In trunk repos it also closes the bead; in PR repos it leaves the bead open and offers /create-pr. Use after /verify-task."
-allowed-tools: "Read,Bash(bd:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
+allowed-tools: "Read,Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium

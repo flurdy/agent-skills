@@ -4,7 +4,7 @@ description: >
   After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a
   smoke test scoped to the change (browser for UI, GET for read-only API) against staging.
   Goal-terminating loop — stops when the deploy lands and the smoke completes, or when it fails.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-rollout/scripts/default-head-sha.sh:*),Bash(gh:*),Bash(git:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-rollout/scripts/default-head-sha.sh:*),Bash(gh api:*),Bash(gh pr view:*),Bash(gh run view:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium
