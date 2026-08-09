@@ -22,7 +22,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help check test lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-ready-to-release test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help check test lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make check   (clean-code, lint-python, validate-skills, security-scan, test)"
@@ -40,6 +40,7 @@ help:
 	@echo "make test-skill-pilot"
 	@echo "make test-architect"
 	@echo "make test-plan-to-backlog"
+	@echo "make test-thoughtbox"
 	@echo "make test-beads"
 	@echo "make test-next"
 	@echo "make test-handoffs"
@@ -90,7 +91,7 @@ clean-code:
 TEST_TARGETS := test-validate-skills test-assemble test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
   test-architect test-plan-to-backlog test-beads test-next test-handoffs \
-  test-pi-spend test-review-pr test-review-requests test-pr-feedback \
+  test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-ready-to-release test-release-ci test-release-order test-release-status \
   test-today test-yesterday test-wrap-up test-watch-protocols
 
@@ -141,6 +142,10 @@ test-plan-to-backlog:
 	@skills/plan-to-backlog/tests/test-helpers.sh
 	@skills/plan-to-backlog/tests/test-skill-contract.sh
 	@python3 -m unittest discover -s skills/plan-to-backlog/tests -p 'test_decision_fixtures.py'
+
+test-thoughtbox:
+	@bash skills/thoughtbox/tests/test-skill-contract.sh
+	@python3 -m unittest discover -s skills/thoughtbox/tests -p 'test_*.py'
 
 test-beads:
 	@bash skills/beads/tests/test-skill-contract.sh
