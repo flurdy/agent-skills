@@ -910,6 +910,7 @@ R_INACTIVE=()       # completion/stale/supersede signal, independent of archive 
 CUR_STALE=0
 CUR_AGE_REVIEW=0
 WS_STALE=0
+WS_AGE_REVIEW=0
 
 # Default every row to "unclassified" up front so the classification passes can
 # assign by index. Rows in neither the current repo nor a workspace member keep
@@ -1004,18 +1005,23 @@ classify_row() {
         needsreview="Y"
     fi
     # Age is only a reason to ask, never evidence of completion. Flag old
-    # current-repo rows when every stronger signal is absent: unknown branch
-    # liveness, no usable PR signal, no resolvable beads, and otherwise unclassified.
-    # An unavailable PR lookup still qualifies when the handoff records no PR;
-    # this is assisted review, not evidence-backed auto-archiving.
-    if [ "$scope" = "cur" ] && [ "$CHECK_BRANCHES" -eq 1 ] \
+    # current-repo and workspace-member rows when every stronger signal is
+    # absent: unknown branch liveness, no usable PR signal, no resolvable beads,
+    # and otherwise unclassified. A successful empty PR lookup is usable proof
+    # that no PR belongs to this repo even when the handoff links cross-repo PRs;
+    # an unavailable lookup qualifies only when the handoff records no PR.
+    if [ "$CHECK_BRANCHES" -eq 1 ] \
         && [ -z "$archclass" ] && [ -z "$inactive" ] && [ -z "$needsreview" ] \
-        && [ "$state" = "unknown" ] && [ -z "$recordedpr" ] \
-        && { [ "$ps" = "none" ] || [ "$ps" = "unknown" ]; } \
+        && [ "$state" = "unknown" ] \
+        && { [ "$ps" = "none" ] || { [ "$ps" = "unknown" ] && [ -z "$recordedpr" ]; }; } \
         && [ -z "$beadsprogress" ] && [ -n "${R_DATE[$i]}" ] \
         && [[ "${R_DATE[$i]}" < "$AGE_REVIEW_CUTOFF" ]]; then
         needsagereview="Y"
-        CUR_AGE_REVIEW=$((CUR_AGE_REVIEW+1))
+        if [ "$scope" = "cur" ]; then
+            CUR_AGE_REVIEW=$((CUR_AGE_REVIEW+1))
+        else
+            WS_AGE_REVIEW=$((WS_AGE_REVIEW+1))
+        fi
     fi
 
     R_STATE[i]="$state"
@@ -1164,6 +1170,7 @@ echo "unresolved=${UNRESOLVED_COUNT}"
 echo "workspace_members=${#WS_KEYS[@]}"
 echo "workspace_member_handoffs=${WS_HANDOFF_COUNT}"
 echo "workspace_member_stale=${WS_STALE}"
+echo "workspace_member_age_review=${WS_AGE_REVIEW}"
 echo "workspace_classified=${WS_CLASSIFIED}"
 
 echo "---OTHER-REPOS---"

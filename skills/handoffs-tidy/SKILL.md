@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: low
-version: "0.6.0"
+version: "0.7.0"
 author: "flurdy"
 ---
 
@@ -73,8 +73,9 @@ Degrades cleanly offline (REFERENCE §Run / the failure modes below).
 
 Parse the `---HANDOFFS---` lines and the `---SUMMARY---` counts. For each current-repo row, derive its
 **Status** (REFERENCE §Status) and **archive-class** (`safe` / `keep` / empty — REFERENCE §Fields).
-Also note rows with `needs-review=Y` (step 5b) and `needs-age-review=Y` (step 5c) — both are
-assisted judgement groups, never automatic archive candidates.
+Also note current-repo rows with `needs-review=Y` (step 5b) and `needs-age-review=Y` (step 5c),
+plus workspace-member rows with `needs-age-review=Y` (step 5e). These are assisted judgement groups,
+never automatic archive candidates.
 
 ### 3. Resolve Jira-Done (optional)
 
@@ -86,10 +87,9 @@ if you want to stay network-light; PR/bead/branch/supersede classification still
 ### 4. Present the candidates
 
 If `current_repo_superseded == 0` **and** `current_repo_stale == 0` **and** §Jira-Done promoted no
-older row to `safe` **and** no row has `needs-review=Y` **and** no row has `needs-age-review=Y` **and** no
-member row is
-archivable (step 5d's gate), report
-nothing and stop at step 6 — the picker is already tidy:
+older row to `safe` **and** no current-repo row has `needs-review=Y` or `needs-age-review=Y` **and** no
+member row is archivable (step 5d's gate) or has `needs-age-review=Y` (step 5e), report nothing and
+stop at step 6 — the picker is already tidy:
 
 ```markdown
 _No archivable handoffs — remaining rows are live, unknown, or still inside the recent grace window._
@@ -103,7 +103,8 @@ _No archivable handoffs — remaining rows are live, unknown, or still inside th
 
 If there are auto-classified candidates, render them as a table, grouped by regret (REFERENCE
 §Archive-flow defines the groups). When only an assisted flag is present, skip straight to step 5b
-for `needs-review` or step 5c for `needs-age-review`.
+for current-repo `needs-review`, step 5c for current-repo `needs-age-review`, or step 5e for member
+`needs-age-review`.
 
 ```markdown
 ## 🗂️ Archive candidates ({count})
@@ -160,7 +161,7 @@ already classified against their own repo when `--check-branches` was passed.
 
 Key points from that section, so they aren't missed:
 
-- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`; recent non-superseded member rows have an empty class and are not offered.
+- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`; recent non-superseded member rows have an empty class and are not offered here.
 - **Only `safe` rows are offered from here.** `keep`-class member rows (PR closed unmerged, branch
   gone with no merge evidence) are higher-regret — name them and point at `cd {path} && /handoffs-tidy`
   rather than offering them.
@@ -171,9 +172,16 @@ Key points from that section, so they aren't missed:
 
 Skip the step entirely when the gate doesn't pass.
 
+### 5e. 🕰️ Old workspace-member handoffs worth a look
+
+If any workspace-member row has `needs-age-review=Y`, run the separate assisted prompt exactly as
+**REFERENCE §Age-review-members** specifies. These old unknown rows are not `safe` member candidates:
+leave every option unselected, offer per-row choices grouped by member repo, and archive only explicit
+selections. Skip entirely when `workspace_member_age_review == 0`.
+
 ### 6. Done
 
-If nothing was archivable or reviewable (steps 4–5d), or the user selected none, say so plainly and stop. This command
+If nothing was archivable or reviewable (steps 4–5e), or the user selected none, say so plainly and stop. This command
 never executes the saved work or deletes files. Uncertain handoffs are archived only through the
 separate assisted confirmation; no selection means no mutation.
 
@@ -184,8 +192,9 @@ separate assisted confirmation; no selection means no mutation.
 - **No `~/.claude/handoffs/` directory**: nothing to tidy; say so and stop.
 - **Not in a git repo**: liveness needs a repo to classify against — say so and stop. (`cd` into the
   repo and re-run.)
-- **Multi-repo workspace**: member repos are covered by step 5d, but only their `safe` rows. Anything
-  needing judgement (`keep`-class, trunk-review) still requires `cd`ing into that member and re-running.
+- **Multi-repo workspace**: member repos are covered by step 5d for `safe` rows and step 5e for old
+  signal-less rows. `keep`-class and partial-bead trunk-review rows still require `cd`ing into that
+  member and re-running.
 - **Offline / remote unreachable**: `branch-state` degrades to local-only (`merged` still detected
   against the local default tip; no false `gone`). The Done/Stale groups just shrink. Don't retry.
 - **`gh` missing, unauthenticated, or timed out**: `pr-state` reports `unknown` and classification

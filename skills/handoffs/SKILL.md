@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.21.0"
+version: "0.22.0"
 author: "flurdy"
 ---
 
@@ -26,7 +26,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 1. List handoffs across all repos, with per-repo counts.
 2. **Fully detail** handoffs in the current repo as a pickable table, flagging which are superseded by a newer handoff, done (PR merged, all beads closed, or Jira ticket Done), or stale (branch gone / PR closed).
 3. **Summarise** handoffs in other repos (count per repo, not full listing).
-4. Optionally archive confirmed superseded, done, stale, or assisted-review handoffs to keep the picker focused, including safe workspace-member rows through separate per-repo confirmation.
+4. Optionally archive confirmed superseded, done, stale, or assisted-review handoffs to keep the picker focused, including safe and old signal-less workspace-member rows through separate confirmation flows.
 5. Prompt you to pick one — only handoffs for the current repo and workspace members are pickable.
 6. On pick, render the resume block inline and surface the `cd` if the recorded worktree differs from pwd.
 
@@ -35,7 +35,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
 - It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
 - It **cannot pick handoffs from unrelated repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in an unrelated repo, `cd` there and run `/handoffs` again. **Exception:** repos in the same multi-repo workspace are listed and pickable (§2b/§4b), because from a workspace root they'd otherwise be invisible; picking one requires an explicit `cd` before any repo-scoped command runs.
-- It **never deletes** handoff files. The opt-in archive steps (§3b–§3e) only *move* explicitly confirmed candidates into `~/.claude/handoffs/archive/` — they stay on disk and greppable.
+- It **never deletes** handoff files. The opt-in archive steps (§3b–§3f) only *move* explicitly confirmed candidates into `~/.claude/handoffs/archive/` — they stay on disk and greppable.
 
 ## Instructions
 
@@ -49,7 +49,7 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 
 Forward `--stale-days N` when the user supplied it; otherwise let the script match the age-review
 floor to its recent window (3 days, or 4 on Tuesday). Shorter values are clamped to that window. The
-flag only controls the assisted §3d group and never marks a row stale.
+flag only controls the assisted §3d and §3f groups and never marks a row stale.
 
 `--check-branches` adds branch-liveness + PR classification for current-repo and workspace-member handoffs. The full flag
 semantics, the 22-field `---HANDOFFS---` line format, and every field's meaning (supersede,
@@ -63,7 +63,7 @@ The sections you parse here: `---CURRENT-REPO---` / `---CURRENT-REPO-DISPLAY---`
 `---CURRENT-REPO-KIND---` (identity + label + `repo`/`dir`/`NONE` — outside a git repo the directory
 itself is the identity, so handoffs written from it still match), `---HANDOFFS---` (one row per handoff, newest first), `---SUMMARY---`
 (the counts, incl. `current_repo_total`, `current_repo_superseded`, `current_repo_stale`,
-`current_repo_age_review`, `unresolved`), and `---OTHER-REPOS---` (`{repo-key}|{count}|{display}`, count desc). The
+`current_repo_age_review`, `workspace_member_age_review`, `unresolved`), and `---OTHER-REPOS---` (`{repo-key}|{count}|{display}`, count desc). The
 `---CURRENT-REPO-LATEST---` / `---CURRENT-REPO-LIVE---` sections are for `/landscape`; this skill
 renders the full table instead and can ignore them.
 
@@ -143,10 +143,11 @@ Render from `---WORKSPACE-MEMBER-HANDOFFS---` (24 fields: the usual 22 plus
 Then subtract these repos from §3's other-repos table so the same handoffs aren't counted twice —
 a member repo listed here must not also appear as an "other repo".
 
-Member rows are listed and pickable here. Archive only their `safe` rows through the separate §3e
-per-member confirmation flow (REFERENCE §Archive-flow-members); `keep` rows still need inspection
-from the member repo. When members hold archivable rows, say so once under this table:
-`_{N} member handoff(s) look finished — separate confirmation follows._`
+Member rows are listed and pickable here. Archive their `safe` rows through the separate §3e
+per-member confirmation flow (REFERENCE §Archive-flow-members), and offer old signal-less rows
+unchecked through §3f (REFERENCE §Age-review-members); `keep` rows still need inspection from the
+member repo. When members hold archivable or reviewable rows, say so once under this table:
+`_{N} member handoff(s) look finished or old enough to review — separate confirmation follows._`
 
 ### 3. Render the other-repos summary
 
@@ -228,6 +229,13 @@ Skip entirely when no row is flagged.
 After the current-repo flows, run **REFERENCE §Archive-flow-members**. It is a separate explicit
 confirmation per member repo: offer only `safe` rows, never sweep `keep` rows, and archive every
 confirmed selection in one `archive.sh` call. Drop archived member rows from the table and picker.
+
+### 3f. 🕰️ Old workspace-member handoffs worth a look (opt-in)
+
+After the evidence-backed member flow, run **REFERENCE §Age-review-members** when
+`workspace_member_age_review > 0`. Offer each old signal-less member row unchecked, grouped by member
+repo, and archive only explicit selections. These rows retain an empty `archive-class` and must never
+be included in §3e's bulk-safe choice. Drop archived member rows from the table and picker.
 
 ### 4. Pick a handoff (current repo and displayed workspace members)
 
@@ -459,7 +467,7 @@ Each step is independent — a failure in one should not block the others.
 
 - Handoffs are written by `/wrap-up`. If a session ends without `/wrap-up`, there is nothing here to recover. That's intentional — the index lists `/wrap-up` next to `/handoffs` for a reason.
 - File naming convention: `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
-- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after the recent grace window (superseded rows are the sole immediate exception); §3d separately offers older signal-less rows for explicit judgement, and §3e offers only eligible `safe` workspace-member rows through per-repo confirmation. No flow touches live/open-PR work automatically or sweeps anything by itself.
+- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after the recent grace window (superseded rows are the sole immediate exception); §3d separately offers older signal-less current-repo rows for explicit judgement, §3e offers eligible `safe` workspace-member rows, and §3f offers old signal-less member rows unchecked. No flow touches live/open-PR work automatically or sweeps anything by itself.
 - **"Done" detection** has three independent sources, each ground truth in its own domain: a **merged PR** (matched by branch *or* by a number recorded in the body — the latter rescues trunk-parked handoffs that recorded `main`), **all referenced beads closed** (local `bd`, works even on trunk repos with no PR), and a **Jira ticket in the Done category** (§1a, skill-resolved). Any one is enough; together they cover the cases — trunk-based completion, post-merge wrap-ups on `main`, ticket-only closure — that the old branch/PR-only check reported as `🟢 live`.
 - Supersede classification comes from `list.sh`, shared with `/handoffs-tidy`; wrap-up does not
   perform an at-save archive sweep. Reasons: `branch` > `slug` > `collision`; ticket/cwd overlap is excluded.

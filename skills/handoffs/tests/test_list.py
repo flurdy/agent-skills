@@ -302,7 +302,9 @@ class ArchiveRetentionTests(unittest.TestCase):
             }
 
             self.assertEqual(rows[recent][13], "")
+            self.assertEqual(rows[recent][21], "")
             self.assertEqual(rows[old][13], "safe")
+            self.assertEqual(rows[old][21], "")
             self.assertEqual(rows[superseded][7], newer)
             self.assertEqual(rows[superseded][13], "safe")
 
@@ -381,6 +383,26 @@ class AgeReviewClassificationTests(unittest.TestCase):
             self.assertEqual(fields[21], "Y")
             self.assertIn("current_repo_age_review=1", section(output, "SUMMARY"))
             self.assertIn("current_repo_stale=0", section(output, "SUMMARY"))
+
+    def test_old_workspace_member_handoff_needs_assisted_age_review(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            member = fixture.add_workspace_member()
+            filename = fixture.add_handoff(40, "old-member-unclassified", repo=member)
+
+            output = fixture.run("--stale-days", "30")
+            rows = {
+                fields[0]: fields
+                for fields in (
+                    line.split("|")
+                    for line in section(output, "WORKSPACE-MEMBER-HANDOFFS")
+                )
+            }
+
+            self.assertEqual(rows[filename][13], "")
+            self.assertEqual(rows[filename][21], "Y")
+            self.assertIn("current_repo_age_review=0", section(output, "SUMMARY"))
+            self.assertIn("workspace_member_age_review=1", section(output, "SUMMARY"))
 
     def test_short_age_floor_cannot_expose_a_recent_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -494,7 +516,7 @@ class AgeReviewClassificationTests(unittest.TestCase):
             self.assertEqual(fields[10], "unknown")
             self.assertEqual(fields[21], "")
 
-    def test_successful_empty_pr_lookup_does_not_override_a_recorded_pr(self) -> None:
+    def test_successful_empty_pr_lookup_leaves_a_recorded_pr_reviewable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fixture = HandoffListFixture(Path(tmp))
             fixture.add_handoff(40, "recorded-pr", prs="#123")
@@ -502,7 +524,7 @@ class AgeReviewClassificationTests(unittest.TestCase):
             fields = section(fixture.run("--stale-days", "30"), "HANDOFFS")[0].split("|")
 
             self.assertEqual(fields[10], "none")
-            self.assertEqual(fields[21], "")
+            self.assertEqual(fields[21], "Y")
 
     def test_ticketed_old_handoff_remains_available_for_jira_done_resolution(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -540,6 +562,9 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("never auto-archived", reference)
         self.assertIn("Used by `/handoffs` and `/handoffs-tidy`", reference)
         self.assertIn("§Archive-flow-members", handoffs)
+        self.assertIn("## §Age-review-members", reference)
+        self.assertIn("REFERENCE §Age-review-members", handoffs)
+        self.assertIn("REFERENCE §Age-review-members", tidy)
         self.assertIn("offer only `safe` rows", handoffs)
         self.assertIn("per-member confirmation", handoffs)
         self.assertIn("one question per member repo", reference)

@@ -11,11 +11,11 @@ single source for how to render and act on them, so the two skills can never dri
 All archive flows below require explicit filename selections. Suggestions are not preselected
 consent. Use 2–4 options per structured question; for a single candidate offer Archive / Keep.
 For more than four candidates, use bounded batches or a plain-text filename selection with an exact
-confirmation. An abandoned prompt selects nothing. This also applies to §Trunk-review and §Age-review:
+confirmation. An abandoned prompt selects nothing. This also applies to §Trunk-review, §Age-review, and §Age-review-members:
 those assisted groups may have unknown/live display status and empty archive-class. They are explicit
 exceptions to the automatic-candidate restrictions in §Archive-flow, not permission to archive by age.
 
-Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review.
+Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review, §Age-review-members.
 
 ---
 
@@ -25,7 +25,7 @@ Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph
 ~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
 ```
 
-`--stale-days` sets the positive-integer age floor for §Age-review. By default it matches the recent
+`--stale-days` sets the positive-integer age floor for §Age-review and §Age-review-members. By default it matches the recent
 window (3 days, or 4 on Tuesday), so signal-less rows become reviewable only after the same grace
 period that protects completed rows. An explicit value can extend that floor; shorter values are
 clamped to the recent window so assisted review cannot bypass retention. It never changes
@@ -63,7 +63,7 @@ Delimited sections:
   does not prove the requested task shipped; a failed lookup is not an empty match.
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
 - `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent active current-repo handoff; completed, stale, and superseded rows are excluded. (Consumed by `/landscape`; ignore here.)
-- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_classified=N`.
+- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_member_age_review=N`, `workspace_classified=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
 - `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
 - `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 22 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (24 total), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
@@ -130,7 +130,7 @@ row wrongly shows `🟢 live`, but the merged PR's number is still in the body).
   - **Why Deliverable matters:** in trunk repos all work commits to `master`, so wrap-up records every handoff with `branch: master` → `branch-state=unknown` (the default-branch guard) and no PR. The bead is then the only "done" signal — but the `**Beads:**` list mixes own work with recurring "in-progress elsewhere" context beads and parent epics that never close, so an all-`**Beads:**`-closed rule can never fire. Keying off `**Deliverable:**` (own work only) fixes that. Safety: over-including a bead in Deliverable only ever *under*-detects (a never-closing bead keeps the row live); **omitting** an own-work bead is the only way to false-positive, so wrap-up errs toward including.
 - `{beads-progress}` — `{closed}/{total}` over the closure-check set (Deliverable if present, else Beads), or empty when there are no resolvable beads. Lets a caller distinguish *partial* closure (something shipped, something open) from all-open (nothing done) and all-closed (done).
 - `{needs-review}` — `Y` for a current-repo row outside the recent window that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are already `safe`; all-open rows are genuinely live.
-- `{needs-age-review}` — `Y` for an old current-repo row that has no usable completion or liveness signal and warrants §Age-review: `--check-branches` was used, the row is older than `---STALE-DAYS---`, `branch-state=unknown`, it has no usable PR signal (`pr-state=none`, or `unknown` with no recorded PR number), and it has no resolvable beads (`beads-progress` empty). Age is not evidence of doneness, so this flag never changes `archive-class` or stale counts. Rows with an open/merged/closed PR, a known-live branch, or an unknown lookup plus a recorded PR number are not flagged.
+- `{needs-age-review}` — `Y` for an old current-repo or workspace-member row that has no usable completion or liveness signal and warrants §Age-review or §Age-review-members: `--check-branches` was used, the row is older than `---STALE-DAYS---`, `branch-state=unknown`, it has no usable PR signal (`pr-state=none`, including a handoff whose recorded links belong to another repo; or `unknown` with no recorded PR number), and it has no resolvable beads (`beads-progress` empty). Age is not evidence of doneness, so this flag never changes `archive-class` or stale counts. Rows with an open/merged/closed PR, a known-live branch, or an unknown lookup plus a recorded PR number are not flagged.
 
 ### Archive-class (`archive-class`) — current-repo and workspace-member rows
 
@@ -148,8 +148,8 @@ under a merged PR (the finished-work signal when there's no live branch/PR — t
 **below** an open PR. Jira-Done is *not* in this list — the script can't query Jira; the skill folds
 it in at §Jira-Done. `current_repo_stale` counts the `keep`/`safe` rows that are **not** superseded;
 superseded rows are counted by `current_repo_superseded`. Rows that can't be auto-classified may set
-`needs-review` (§Trunk-review) or `needs-age-review` (§Age-review) instead — neither is counted in
-`current_repo_stale`.
+`needs-review` (§Trunk-review) or `needs-age-review` (§Age-review / §Age-review-members) instead — neither is counted in
+`current_repo_stale` or `workspace_member_stale`.
 
 ---
 
@@ -177,9 +177,10 @@ Because members are classified, member rows in `---HANDOFFS---` now also carry r
 than the blanket `unknown` older revisions emitted. No existing consumer reads them (all filter to
 `repo-key == CURRENT-REPO`), so this is additive information, not a contract change.
 
-**Stale accounting is kept separate.** Member rows feed `workspace_member_stale`, never
-`current_repo_stale` — so §Archive-flow's candidate set stays strictly current-repo and a member
-handoff can never be swept up by an archive prompt aimed at the repo you're standing in.
+**Review accounting is kept separate.** Member rows feed `workspace_member_stale` and
+`workspace_member_age_review`, never the corresponding current-repo counters — so §Archive-flow and
+§Age-review stay strictly current-repo. Member rows are handled only by their explicit workspace-member
+flows (§Archive-flow-members and §Age-review-members).
 
 **Picking is `cd`-gated.** Member rows are pickable, but a caller MUST surface the member path as a
 required `cd` before acting on the resume block. The wrong-repo guard is honoured by making the
@@ -356,7 +357,8 @@ filenames and is repo-agnostic — it only ever moves files within `~/.claude/ha
 ✅ Archived {N} handoff(s) from {repo-list} to `~/.claude/handoffs/archive/`.
 ```
 
-Never offer a member row that is `🟢 live`, `🟠 PR open`, or `unknown`.
+Never offer a member row that is `🟢 live`, `🟠 PR open`, or `unknown` in this evidence-backed flow.
+Old unknown rows may be offered separately, unchecked, by §Age-review-members.
 
 ---
 
@@ -435,3 +437,42 @@ Only filenames the user explicitly selects go to `archive.sh`. These rows retain
 `archive-class`, are never auto-selected, and are never auto-archived. Skipping must be trivial and
 silent. `/handoffs` and `/handoffs-tidy` must both consume this shared flag and follow this section,
 so their classification and safeguards stay identical.
+
+---
+
+## §Age-review-members — assisted review for old workspace-member rows
+
+Workspace-member rows can have the same missing-signal state as current-repo rows. Hiding them at the
+workspace root forces the user to discover and enter each member repo before they can tidy old context.
+`list.sh` therefore sets `needs-age-review=Y` for member rows using the same classifier as §Age-review
+and counts them in `workspace_member_age_review`.
+
+Run this after §Archive-flow-members when `workspace_member_age_review > 0`. This remains distinct
+from the evidence-backed member archive flow: every row has an empty `archive-class`, age is not a
+done signal, and no option is preselected.
+
+```markdown
+## 🕰️ Old workspace-member handoffs worth a look ({count})
+
+These member handoffs are older than {stale-days} days, have unknown branch liveness, no usable PR
+signal, and no resolvable beads. Age is only a reason to ask; skip anything still waiting on work.
+
+| Repo | Date | Slug | Jira | Evidence |
+|------|------|------|------|----------|
+```
+
+- **Repo**: `{member-display}`.
+- **Jira**: `{jira-field}`, or `—`.
+- **Evidence**: `no usable PR signal · no resolvable beads · >{stale-days}d`.
+
+Prompt per member repo with `AskUserQuestion` using `multiSelect`, batching at most four rows per
+question. Label each option `{date} {slug}` and describe it as `>{stale-days}d · Jira:
+{jira-field-or-dash}`. Leave every option unselected:
+
+> Archive any old handoffs for `{repo}` that you no longer need? Age is not a done signal; leave
+> parked or uncertain threads untouched.
+
+Collect explicit selections across member repos and archive them in one `archive.sh` call. Parse and
+report `---ARCHIVED---` / `---SKIPPED---` exactly as §Archive-flow-members does, then drop archived
+rows from any later table or picker. Skipping is silent. Never move these rows into `archive-class`,
+never include them in the safe-member bulk choice, and never auto-archive them.
