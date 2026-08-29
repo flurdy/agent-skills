@@ -30,6 +30,12 @@ LOCAL_SKILL_PATH = re.compile(
 MARKDOWN_LINK_START = re.compile(r"!?\[[^\]]*\]\(")
 REFERENCE_LINK = re.compile(r"^\s{0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)")
 TOP_LEVEL_FIELD = re.compile(r"^([A-Za-z0-9_-]+):(?:\s*(.*))?$")
+# File-sync leftovers (Dropbox, Nextcloud, Syncthing) that land beside real
+# files after a restore: `original1.SKILL.md`, `x (conflicted copy 2026-01-23).md`,
+# `.sync-conflict-…`, `~$x`. They ship as skill payload if left in place.
+SYNC_ARTIFACT = re.compile(
+    r"^original\d+\.|conflicted copy|\.sync-conflict-|^~\$|^\.~lock\."
+)
 
 
 def scalar(value: str) -> str:
@@ -355,6 +361,10 @@ def validate(root: Path) -> list[str]:
     markdown_files = sorted(skills_root.glob("**/*.md"))
     for markdown in markdown_files:
         errors.extend(validate_markdown_links(markdown, root))
+
+    for path in sorted(skills_root.rglob("*")):
+        if SYNC_ARTIFACT.search(path.name):
+            errors.append(f"{path}: file-sync artifact; restore the real file from git and delete this")
 
     return errors
 

@@ -90,6 +90,13 @@ class ValidateSkillsTest(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("missing required frontmatter field 'author'", result.stderr)
 
+    def test_file_sync_artifacts_fail(self) -> None:
+        skill = self.root / "skills" / "alpha"
+        (skill / "original1.SKILL.md").write_text(VALID_SKILL, encoding="utf-8")
+        (skill / "scripts" / "check (rivelino's conflicted copy 2026-08-27).sh").write_text("", encoding="utf-8")
+        self.assert_error_contains("original1.SKILL.md: file-sync artifact")
+        self.assert_error_contains("conflicted copy 2026-08-27).sh: file-sync artifact")
+
     def test_missing_required_metadata_fails(self) -> None:
         path = self.root / "skills" / "alpha" / "SKILL.md"
         path.write_text(VALID_SKILL.replace("author: tester\n", ""), encoding="utf-8")
