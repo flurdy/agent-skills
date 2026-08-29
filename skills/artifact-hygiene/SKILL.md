@@ -4,7 +4,7 @@ description: Run a local-only, read-only advisory audit of publishable working-t
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
 effort: high
-version: "0.2.0"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -37,8 +37,19 @@ AI attribution trailers or boilerplate, and scanner-suppression controls without
 
 The `custom-detectors` coverage source proves every built-in non-secret detector still matches its
 private canary. Missing detector coverage produces a partial result, never a clean result. Personal-name
-detection is advisory and conservative: it matches capitalized multi-word names while excluding common AI
-product names, so review findings before acting on them.
+detection is advisory and contextual: it detects direct requests to contact a named person or handle, not
+capitalized technical phrases. Expected `Co-authored-by:` and `Signed-off-by:` trailers are excluded from
+personal-data findings. Bead references and personal-data matches in dependency lockfiles are ignored.
+
+A clone may allow Bead references only with local, unshared configuration:
+
+```bash
+git config --local artifactHygiene.allowBeadReferences true
+# or ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES=1 artifact_hygiene.py --pretty
+```
+
+The selected override is reported in `target.policy`; a checked-in configuration file cannot disable a
+detector.
 
 GitHub pull requests, Jira, comments, attachments, linked pages, other repositories, full-history
 remediation, policy authoring, and enforcement are out of scope.

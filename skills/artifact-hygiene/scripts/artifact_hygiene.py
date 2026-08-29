@@ -41,6 +41,28 @@ RULE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 SAFE_REF = re.compile(r"^refs/[A-Za-z0-9._/-]+$")
 SAFE_REMOTE_PART = re.compile(r"^[A-Za-z0-9._-]+$")
 SUPPRESSION_FILES = {".gitleaks.toml", ".gitleaksignore"}
+DEPENDENCY_LOCKFILES = {
+    "Cargo.lock",
+    "Gemfile.lock",
+    "Pipfile.lock",
+    "bun.lock",
+    "bun.lockb",
+    "composer.lock",
+    "deno.lock",
+    "go.sum",
+    "npm-shrinkwrap.json",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "pnpm-lock.yml",
+    "poetry.lock",
+    "uv.lock",
+    "yarn.lock",
+}
+EXPECTED_IDENTITY_TRAILER = re.compile(
+    rb"(?i)^[ \t]*(?:author|committer|co-authored-by|signed-off-by|"
+    rb"reviewed-by|tested-by)[ \t]*:"
+)
+TRUE_VALUES = {"1", "true", "yes", "on"}
 
 
 @dataclass(frozen=True)
@@ -95,11 +117,13 @@ CUSTOM_DETECTORS = (
         detector="pii.name",
         severity="high",
         pattern=re.compile(
-            rb"(?<![A-Za-z])(?!(?:Claude[ \t]+Code|GitHub[ \t]+Copilot)\b)"
-            rb"(?:[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?[ \t]+){1,2}"
+            rb"(?i:\b(?:ask|contact|email|message|ping|call|tell|"
+            rb"check[ \t]+with|follow[ \t]+up[ \t]+with|talk[ \t]+to)[ \t]+)"
+            rb"(?:@[A-Za-z0-9_][A-Za-z0-9_.-]{1,63}|"
             rb"[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?"
+            rb"(?:[ \t]+[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?)?)"
         ),
-        canary=b"Canary" + b" Person",
+        canary=b"ask " + b"Canary Person",
     ),
     CustomDetector(
         category="ai-attribution",
@@ -896,6 +920,28 @@ def scanner_capability_probe(
     return result.returncode == 1 and bool(findings)
 
 
+def detector_policy(
+    runner: BoundedRunner, repository: Path
+) -> tuple[frozenset[str], str]:
+    environment_allows = (
+        os.environ.get("ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES", "").lower()
+        in TRUE_VALUES
+    )
+    configured = git(
+        runner,
+        repository,
+        "config",
+        "--local",
+        "--get",
+        "artifactHygiene.allowBeadReferences",
+        allowed_returncodes=(0, 1),
+    )
+    config_allows = decode_text(configured.stdout).lower() in TRUE_VALUES
+    if environment_allows or config_allows:
+        return frozenset({"bead-reference"}), "defaults+allow-bead-references"
+    return frozenset(), "defaults"
+
+
 def custom_detector_capability_probe(deadline: float) -> bool:
     if {detector.detector for detector in CUSTOM_DETECTORS} != CUSTOM_DETECTOR_IDS:
         return False
@@ -921,13 +967,30 @@ def detect_non_secret(
     coverage: Coverage,
     commit: str | None = None,
     field_name: str | None = None,
+    allowed_categories: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
     def append_matches(detector: CustomDetector) -> bool:
+        if detector.category in allowed_categories:
+            return True
+        if (
+            PurePosixPath(path).name in DEPENDENCY_LOCKFILES
+            and detector.category in {"bead-reference", "personal-data"}
+        ):
+            return True
         line = 1
         cursor = 0
         for match in detector.pattern.finditer(data):
+            line_start = data.rfind(b"\n", 0, match.start()) + 1
+            line_end = data.find(b"\n", match.end())
+            if line_end < 0:
+                line_end = len(data)
+            if (
+                detector.category == "personal-data"
+                and EXPECTED_IDENTITY_TRAILER.match(data[line_start:line_end])
+            ):
+                continue
             if monotonic() >= deadline:
                 coverage.limited("custom-detector-timeout")
                 return False
@@ -1161,6 +1224,7 @@ def scan_history_records(
     environment: dict[str, str],
     coverage: Coverage,
     collector: FindingCollector,
+    allowed_categories: frozenset[str],
 ) -> None:
     total_bytes = 0
     path_records = 0
@@ -1183,6 +1247,7 @@ def scan_history_records(
                 coverage=coverage,
                 commit=commit,
                 field_name="message",
+                allowed_categories=allowed_categories,
             ),
             coverage,
         ):
@@ -1241,6 +1306,7 @@ def scan_history_records(
                     deadline=deadline,
                     coverage=coverage,
                     commit=commit,
+                    allowed_categories=allowed_categories,
                 ),
                 coverage,
             ):
@@ -1291,6 +1357,7 @@ def scan(
 ) -> tuple[dict[str, Any], int]:
     runner = BoundedRunner(deadline)
     identity = repository_identity(runner, repository)
+    allowed_categories, policy = detector_policy(runner, repository)
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
@@ -1305,6 +1372,7 @@ def scan(
                 path=candidate.path,
                 deadline=deadline,
                 coverage=working,
+                allowed_categories=allowed_categories,
             ),
             working,
         ):
@@ -1420,6 +1488,7 @@ def scan(
                         scanner_environment,
                         history,
                         collector,
+                        allowed_categories,
                     )
 
     try:
@@ -1451,10 +1520,10 @@ def scan(
         "target": {
             "repository": identity,
             "head": head,
-            "policy": "defaults",
+            "policy": policy,
         },
         "provenance": {
-            "helperVersion": "0.2.0-poc",
+            "helperVersion": "0.3.0-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1480,7 +1549,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.2.0-poc",
+            "helperVersion": "0.3.0-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [

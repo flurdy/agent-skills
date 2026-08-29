@@ -770,7 +770,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         data = (
             f"bead: {bead}\n"
             f"email: {email}\n"
-            f"{name}\n"
+            f"ask {name}\n"
             f"{ai_attribution}\n"
         ).encode()
 
@@ -813,6 +813,99 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             },
         )
 
+    def test_dependency_lockfiles_skip_bead_and_maintainer_pii_noise(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("working-tree")
+        package = "source" + "-map"
+        email = "maintainer" + "@example.invalid"
+        name = "Package" + " Maintainer"
+
+        findings = helper.detect_non_secret(
+            f'"name": "{package}", "email": "{email}", "author": "{name}"\n'.encode(),
+            source="working-tree",
+            path="package-lock.json",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual(findings, [])
+        self.assertEqual(coverage.status, "complete")
+
+    def test_personal_data_requires_context_and_ignores_human_trailers(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        mention = "@" + "robyi"
+        direct_email = "private" + "@example.invalid"
+        trailer_email = "author" + "@example.invalid"
+        data = (
+            "Technical Design Document\n"
+            "Need to ask Philip before release\n"
+            f"Please check with {mention}\n"
+            f"Email {direct_email}\n"
+            f"Author: Human Person <{trailer_email}>\n"
+            f"Co-authored-by: Human Person <{trailer_email}>\n"
+            f"Signed-off-by: Human Person <{trailer_email}>\n"
+        ).encode()
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="[commit-message]",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+            field_name="message",
+        )
+
+        pii = [item for item in findings if item["category"] == "personal-data"]
+        self.assertEqual(
+            [(item["detector"], item["location"]["line"]) for item in pii],
+            [("pii.email", 4), ("pii.name", 2), ("pii.name", 3)],
+        )
+        serialized = json.dumps(pii, sort_keys=True)
+        for value in ("Philip", mention, direct_email, trailer_email, "Human Person"):
+            self.assertNotIn(value, serialized)
+
+    def test_local_bead_override_is_private_and_visible_in_policy(self) -> None:
+        bead = "skills" + "-9yx"
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("switch", "-c", "feature")
+        self.repository.write("publishable.txt", f"bead: {bead}\n")
+        self.repository.commit_all("feature")
+        self.repository.run(
+            "config", "--local", "artifactHygiene.allowBeadReferences", "true"
+        )
+
+        completed = self.run_audit()
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["target"]["policy"], "defaults+allow-bead-references")
+        self.assertNotIn(
+            "bead-reference",
+            {item["category"] for item in payload["findings"]},
+        )
+        self.assertNotIn(bead, completed.stdout)
+
+    def test_environment_can_enable_local_bead_override(self) -> None:
+        bead = "skills" + "-9yx"
+        self.repository.write("tracked.txt", f"bead: {bead}\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+
+        completed = self.run_audit(
+            extra_environment={"ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES": "1"}
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["target"]["policy"], "defaults+allow-bead-references")
+        self.assertNotIn(
+            "bead-reference",
+            {item["category"] for item in payload["findings"]},
+        )
+
     def test_custom_detectors_scan_unpublished_messages_and_added_lines(self) -> None:
         bead = "skills" + "-9yx"
         email = "canary" + "@example.invalid"
@@ -825,7 +918,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("publishable.txt", f"bead: {bead}\nemail: {email}\n")
         message_path = self.repository.root.parent / "commit-message.txt"
         message_path.write_text(
-            f"owner: {name}\n{ai_attribution}\n",
+            f"Need to ask {name}\n{ai_attribution}\n",
             encoding="utf-8",
         )
         self.repository.run("add", "publishable.txt")

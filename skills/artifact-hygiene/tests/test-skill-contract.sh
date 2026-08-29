@@ -25,7 +25,10 @@ for required in \
   'email addresses' \
   'personal names' \
   'AI attribution' \
-  'custom-detectors'; do
+  'custom-detectors' \
+  'artifactHygiene.allowBeadReferences' \
+  'ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES' \
+  'dependency lockfiles'; do
   grep -Fq "$required" "$skill_file" || {
     echo "SKILL.md missing contract text: $required" >&2
     exit 1
