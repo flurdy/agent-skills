@@ -127,14 +127,14 @@ print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
         timestamp = dt.datetime.combine(dt.date.today(), dt.time.fromisoformat(time)).timestamp()
         os.utime(self.handoffs / filename, (timestamp, timestamp))
 
-    def run(self, *args: str) -> str:
+    def run(self, *args: str, cwd: Path | None = None) -> str:
         env = os.environ.copy()
         env["HOME"] = str(self.home)
         env["PATH"] = f"{self.bin}:{env['PATH']}"
         env["HANDOFFS_TODAY"] = self.today.isoformat()
         result = subprocess.run(
             [str(SCRIPT), "--check-branches", *args],
-            cwd=self.repo,
+            cwd=cwd or self.repo,
             env=env,
             text=True,
             capture_output=True,
@@ -547,6 +547,55 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("A recent row is also", reference)
         self.assertIn("Supersede remains immediately `safe`", reference)
         self.assertIn("inside the recent grace window", tidy)
+
+
+class DirectoryIdentityTests(unittest.TestCase):
+    """Outside any git repo the directory itself is the identity, so handoffs
+    written from a non-git workspace root are pickable from that directory."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.fixture = HandoffListFixture(self.root)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def test_non_repo_directory_matches_its_own_handoffs(self) -> None:
+        plain = self.root / "workspace"
+        plain.mkdir()
+        mine = self.fixture.add_handoff(0, "workspace-thread", repo=plain)
+        theirs = self.fixture.add_handoff(1, "repo-thread")
+        output = self.fixture.run(cwd=plain)
+
+        self.assertEqual(section(output, "CURRENT-REPO"), [f"dir:{plain.resolve()}"])
+        self.assertEqual(section(output, "CURRENT-REPO-DISPLAY"), ["workspace"])
+        self.assertEqual(section(output, "CURRENT-REPO-KIND"), ["dir"])
+        rows = {line.split("|")[0]: line.split("|") for line in section(output, "HANDOFFS")}
+        self.assertEqual(rows[mine][5], f"dir:{plain.resolve()}")
+        self.assertEqual(rows[mine][9], "unknown")
+        self.assertNotEqual(rows[theirs][5], f"dir:{plain.resolve()}")
+        summary = dict(line.split("=", 1) for line in section(output, "SUMMARY"))
+        self.assertEqual(summary["current_repo_total"], "1")
+        self.assertEqual(summary["unresolved"], "0")
+        self.assertIn("repo", [line.split("|")[2] for line in section(output, "OTHER-REPOS")])
+
+    def test_non_repo_handoff_is_another_directory_from_inside_a_repo(self) -> None:
+        plain = self.root / "workspace"
+        plain.mkdir()
+        self.fixture.add_handoff(0, "workspace-thread", repo=plain)
+        output = self.fixture.run()
+
+        self.assertEqual(section(output, "CURRENT-REPO-KIND"), ["repo"])
+        self.assertIn("workspace", [line.split("|")[2] for line in section(output, "OTHER-REPOS")])
+
+    def test_pruned_non_repo_path_stays_unresolved(self) -> None:
+        gone = self.root / "gone"
+        self.fixture.add_handoff(0, "gone-thread", repo=gone)
+        output = self.fixture.run()
+
+        rows = section(output, "HANDOFFS")
+        self.assertEqual(rows[0].split("|")[5], "UNRESOLVED")
 
 
 class RecordEncodingTests(unittest.TestCase):

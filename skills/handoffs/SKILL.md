@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.19.1"
+version: "0.20.0"
 author: "flurdy"
 ---
 
@@ -59,8 +59,9 @@ are specified once in
 **`~/.agents/skills/handoffs/REFERENCE.md`** — `Read` it. Both `/handoffs` and `/handoffs-tidy` read
 off the same definitions, including §Age-review, so the two never drift on classification.
 
-The sections you parse here: `---CURRENT-REPO---` / `---CURRENT-REPO-DISPLAY---` (identity + label,
-or `NONE` outside a repo), `---HANDOFFS---` (one row per handoff, newest first), `---SUMMARY---`
+The sections you parse here: `---CURRENT-REPO---` / `---CURRENT-REPO-DISPLAY---` /
+`---CURRENT-REPO-KIND---` (identity + label + `repo`/`dir`/`NONE` — outside a git repo the directory
+itself is the identity, so handoffs written from it still match), `---HANDOFFS---` (one row per handoff, newest first), `---SUMMARY---`
 (the counts, incl. `current_repo_total`, `current_repo_superseded`, `current_repo_stale`,
 `current_repo_age_review`, `unresolved`), and `---OTHER-REPOS---` (`{repo-key}|{count}|{display}`, count desc). The
 `---CURRENT-REPO-LATEST---` / `---CURRENT-REPO-LIVE---` sections are for `/landscape`; this skill
@@ -102,8 +103,13 @@ If `current_repo_total > 0`:
 If `current_repo_total == 0` and `CURRENT-REPO != NONE`:
 `_No handoffs for this repo ({CURRENT-REPO-DISPLAY})._`
 
+If `CURRENT-REPO-KIND == dir`, add one line under the table (or in place of it when
+`current_repo_total == 0`):
+`_Not in a git repo — matched by directory (`{CURRENT-REPO-DISPLAY}`); branch/PR liveness and archive candidates are unavailable here._`
+Rows then carry `branch-state=unknown` — render them `🟢 live` (or superseded) per REFERENCE §Status; never call them stale.
+
 If `CURRENT-REPO == NONE`:
-`_Not in a git repo — handoffs cannot be matched to a current repo. Showing global counts only._`
+`_Current directory could not be identified — handoffs cannot be matched. Showing global counts only._`
 
 **Render this section exactly once, in this position.** Do not repeat the "No handoffs for this repo" sentence later (e.g. after §3's other-repos table) — once is enough. If `current_repo_total == 0` but other repos exist, the next section's table provides the rest of the context.
 
@@ -164,7 +170,7 @@ If `unresolved > 0`, surface them. When `unresolved ≤ 5`, list each one by fil
 `unresolved ≤ 5`:
 
 ```markdown
-_⚠️ {unresolved} handoff(s) could not be matched to any repo (recorded path is invalid or its parent tree is gone):_
+_⚠️ {unresolved} handoff(s) could not be matched to any repo or directory (recorded path is invalid or gone):_
 - `~/.claude/handoffs/{filename}`
 - `~/.claude/handoffs/{filename}`
 ```
@@ -174,7 +180,7 @@ Pull the filenames straight from the `---HANDOFFS---` section where `repo-key=UN
 `unresolved > 5`:
 
 ```markdown
-_⚠️ {unresolved} handoff(s) could not be matched to any repo (recorded path is invalid or its parent tree is gone). Run `grep -L "Repo root:" ~/.claude/handoffs/*.md` to find them._
+_⚠️ {unresolved} handoff(s) could not be matched to any repo or directory (recorded path is invalid or gone). Run `grep -L "Repo root:" ~/.claude/handoffs/*.md` to find them._
 ```
 
 **Do not add a global pruned-count footnote.** The Worktree column in the current-repo table already makes pruning visible per-row. Add a one-time pickability hint immediately under the current-repo table (when `current_repo_pruned > 0`):

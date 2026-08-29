@@ -40,8 +40,9 @@ and **supersede** — are computed on every call regardless of `--check-branches
 
 Delimited sections:
 
-- `---CURRENT-REPO---` — current repo identity (origin URL preferred, falling back to realpath of git-common-dir), or `NONE` if not in a repo.
-- `---CURRENT-REPO-DISPLAY---` — short label for the current repo (basename of the repo root), or `NONE`.
+- `---CURRENT-REPO---` — current identity: the enclosing repo (origin URL preferred, falling back to realpath of git-common-dir); outside any repo, the directory itself as `dir:{realpath}`; `NONE` only if even that fails.
+- `---CURRENT-REPO-DISPLAY---` — short label (basename of the repo root, or of the directory), or `NONE`.
+- `---CURRENT-REPO-KIND---` — `repo`, `dir` (not in a git repo; matching is by exact directory, no branch/PR liveness or workspace members), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
 - `---STALE-DAYS---` — configured age floor for assisted age review (the recent-window size by default).
 - `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
@@ -74,7 +75,8 @@ field and change what a row appears to say. Parsers can rely on the field count.
 - Identity prefers `remote.origin.url` so independent clones of the same upstream collapse to one row; falls back to realpath of git-common-dir for local-only repos.
 - `.claude`-symlink unification: if a repo root's `.claude` is a symlink whose target lives inside another git repo, that other repo's identity wins (one hop, no cycles).
 - Pruned worktrees still resolve — the walk-up climbs out of the deleted directory to a still-existing parent.
-- `repo-key` is `UNRESOLVED` only when neither the `Repo root:` field nor the cwd walk-up finds a repo.
+- **Directory fallback:** when no repo is found above the recorded cwd but the directory still exists, the handoff keys to `dir:{realpath}` (display = basename). This is what makes handoffs written from a non-git workspace root pickable when `/handoffs` runs from that same directory. Exact match only — no walk-up, so a pruned non-repo path never keys to a surviving parent.
+- `repo-key` is `UNRESOLVED` only when the `Repo root:` field, the cwd walk-up, and the directory fallback all fail (path invalid or gone).
 - `exists=Y` means the recorded cwd still exists on disk; `exists=N` means it was pruned (still pickable — resume in your current checkout or a fresh worktree).
 
 ### Supersede (`superseded-by`, `supersede-reason`)

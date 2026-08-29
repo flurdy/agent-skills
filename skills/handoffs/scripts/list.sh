@@ -209,8 +209,31 @@ resolve_repo_info() {
     emit_record "${repo_id}" "${repo_display}"
 }
 
-# Current repo info — `NONE|NONE` when invoked outside a git repo.
+# Plain-directory identity for paths outside any git repo (a workspace root
+# such as ~/Code/flurdy). Keyed `dir:{realpath}` so it can never collide with a
+# repo key; only an existing directory qualifies — a pruned path stays
+# UNRESOLVED rather than silently keying to whatever parent survives.
+resolve_dir_info() {
+    local dir="$1" real
+    [[ "$dir" == /* ]] || return 1
+    [ -d "$dir" ] || return 1
+    real=$(realpath "$dir" 2>/dev/null) || return 1
+    [ -n "$real" ] || return 1
+    emit_record "dir:${real}" "$(basename "$real")"
+}
+
+# Current identity: the enclosing repo, else the directory itself (`dir:` key),
+# else `NONE|NONE`. CURRENT_IS_REPO gates everything that needs git.
+CURRENT_IS_REPO=0
+CURRENT_KIND="NONE"
 CURRENT_INFO=$(resolve_repo_info . 2>/dev/null || true)
+if [ -n "$CURRENT_INFO" ]; then
+    CURRENT_IS_REPO=1
+    CURRENT_KIND="repo"
+else
+    CURRENT_INFO=$(resolve_dir_info "$PWD" 2>/dev/null || true)
+    [ -n "$CURRENT_INFO" ] && CURRENT_KIND="dir"
+fi
 if [ -n "$CURRENT_INFO" ]; then
     CURRENT_REPO_KEY="${CURRENT_INFO%%|*}"
     CURRENT_REPO_DISPLAY="${CURRENT_INFO##*|}"
@@ -266,7 +289,7 @@ compute_default_branch_name() {
 # caller, including wrap-up's no-flag invocation — needs it too: two handoffs
 # co-resident on the trunk are NOT the same thread (see is_trunk_branch).
 DEFAULT_BRANCH_NAME=""
-if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+if [ "$CURRENT_IS_REPO" -eq 1 ]; then
     DEFAULT_BRANCH_NAME=$(compute_default_branch_name)
 fi
 
@@ -330,8 +353,14 @@ is_trunk_branch() {
 # row reports pr-state `unknown` and the local heuristic stands.
 PR_LINES=""
 PR_OK=0
-if [ "$CHECK_BRANCHES" -eq 1 ] && [ "$CURRENT_REPO_KEY" != "NONE" ]; then
-    setup_liveness "."
+# Outside a repo there is nothing to check branches against: drop the flag so
+# directory-matched rows classify as `unknown` rather than probing pwd with git.
+if [ "$CHECK_BRANCHES" -eq 1 ]; then
+    if [ "$CURRENT_IS_REPO" -eq 1 ]; then
+        setup_liveness "."
+    else
+        CHECK_BRANCHES=0
+    fi
 fi
 
 # Look up the PR state for a handoff from the cached `gh` listing. A PR matches
@@ -408,7 +437,7 @@ setup_beads "."
 WS_KEYS=()
 WS_DISPLAYS=()
 WS_PATHS=()
-if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+if [ "$CURRENT_IS_REPO" -eq 1 ]; then
     MR_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../wrap-up/scripts" 2>/dev/null && pwd)/multirepo.sh"
     if [ -x "$MR_SCRIPT" ]; then
         ws_root=""
@@ -521,6 +550,9 @@ echo "$CURRENT_REPO_KEY"
 
 echo "---CURRENT-REPO-DISPLAY---"
 echo "$CURRENT_REPO_DISPLAY"
+
+echo "---CURRENT-REPO-KIND---"
+echo "$CURRENT_KIND"
 
 echo "---RECENT-WINDOW-DAYS---"
 echo "$RECENT_DAYS"
@@ -665,6 +697,16 @@ if [ -d "$HANDOFFS_DIR" ]; then
         fi
         if [ "$REPO_KEY" = "UNRESOLVED" ] && [ -n "$CWD" ]; then
             INFO=$(resolve_repo_info "$CWD" 2>/dev/null || true)
+            if [ -n "$INFO" ]; then
+                REPO_KEY="${INFO%%|*}"
+                REPO_DISPLAY="${INFO##*|}"
+            fi
+        fi
+        # No repo anywhere above it: a still-existing plain directory (e.g. a
+        # non-git workspace root) is its own identity, so handoffs written from
+        # there are pickable when /handoffs runs from that same directory.
+        if [ "$REPO_KEY" = "UNRESOLVED" ] && [ -n "$CWD" ]; then
+            INFO=$(resolve_dir_info "$CWD" 2>/dev/null || true)
             if [ -n "$INFO" ]; then
                 REPO_KEY="${INFO%%|*}"
                 REPO_DISPLAY="${INFO##*|}"
