@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 
@@ -81,7 +81,8 @@ is not resolved. This re-fetch is mandatory even when the previous skill ran mom
 
 ### 4. Compose Endpoint-correct Replies
 
-Show the proposed response policy before any confirmation:
+Show the proposed response policy before any confirmation. House style for every reply: terse —
+one-liners are fine; friendly when a human is on the other end; never nits, names, or bead IDs.
 
 - **Human request/question:** short, polite, evidence-based reply.
 - **AI/bot finding:** terse factual reply only when it adds useful closure; independently validated

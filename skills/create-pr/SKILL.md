@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(git:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -77,6 +77,10 @@ Infer the scope from changed files (e.g., `offers-cms`, `web`, `api`).
 ### 5. Generate PR Body
 
 Analyze the actual code changes (use `git diff main...HEAD`) to write a meaningful description.
+
+House style: say what changed in general terms, easy to digest. Keep the why brief or absent
+(Jira/Trello owns it) and details minimal (the commits and diff own them). No test narrative, no
+future-task lists, no names, no bead IDs.
 
 Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
 
