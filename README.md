@@ -21,7 +21,7 @@ the workflows here:
 - **Agents** — Claude-style sub-agent definitions stored in `agents/` and installed
   into `~/.claude/agents/`.
 - **Prompt templates** — shared Pi and Claude Code slash commands stored in
-  `prompts/`; Pi links are managed automatically and Claude Code setup remains manual.
+  `prompts/`, installed into `~/.agents/prompts/` with Pi and Claude Code aliases.
 
 Browse the [skills catalog](skills/README.md) for the complete list.
 
@@ -31,7 +31,7 @@ Browse the [skills catalog](skills/README.md) for the complete list.
 git clone https://github.com/flurdy/agent-skills.git
 cd agent-skills
 make dry-run   # preview managed symlink changes
-make apply     # install skills, Claude aliases/agents, and Pi prompts
+make apply     # install skills, agents, prompts, and client aliases
 make doctor    # verify the installation
 ```
 
@@ -42,12 +42,12 @@ roots, so unrelated user-owned skills, agents, and prompts remain untouched.
 
 | Client | Skills | Agents | Prompt templates |
 |---|---|---|---|
-| Pi | Discovers `~/.agents/skills/` | Not managed by this repository | Managed links in `~/.pi/agent/prompts/` |
+| Pi | Discovers `~/.agents/skills/` | Not managed by this repository | Managed aliases in `~/.pi/agent/prompts/` |
 | Codex | Discovers `~/.agents/skills/` | Uses Codex-native agent support | Not installed; custom prompts are deprecated |
-| Claude Code | Managed aliases in `~/.claude/skills/` | Managed links in `~/.claude/agents/` | Manual configuration |
+| Claude Code | Managed aliases in `~/.claude/skills/` | Managed links in `~/.claude/agents/` | Managed aliases in `~/.claude/commands/` |
 
 `make apply-codex` remains as a compatibility alias for applying the shared skill
-root and Claude compatibility aliases, without Claude-style agents or Pi prompts.
+root and Claude compatibility aliases, without Claude-style agents or prompts.
 
 ## How it works
 
@@ -90,9 +90,9 @@ Claude Code and Codex use their own runtime configuration and capabilities.
 
 Browse the [prompt catalog](prompts/README.md) for the available slash commands.
 Templates use `$ARGUMENTS`, which Pi and Claude Code both expand. `make apply`
-installs managed Pi links for every top-level template; run `/reload` in Pi
-afterward. Follow the
-[prompt-template setup](docs/installation.md#prompt-templates) for Claude Code.
+installs every top-level template for both clients; run `/reload` in Pi
+afterward. See the [prompt-template setup](docs/installation.md#prompt-templates)
+for destinations and migration notes.
 The commands provide instructions only; none performs Git operations itself.
 
 ## Optional private overlays

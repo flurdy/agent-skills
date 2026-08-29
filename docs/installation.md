@@ -19,7 +19,8 @@ The default destinations are:
 - Canonical skills: `~/.agents/skills`
 - Claude skill aliases: `~/.claude/skills`
 - Claude agents: `~/.claude/agents`
-- Pi prompt templates: `~/.pi/agent/prompts`
+- Prompt templates: `~/.agents/prompts` (canonical), with per-prompt aliases in
+  `~/.pi/agent/prompts` and `~/.claude/commands`
 
 Pi and Codex discover `~/.agents/skills` natively. `make apply-codex` is a
 compatibility alias that applies the shared skill root and Claude compatibility
@@ -30,33 +31,26 @@ aliases with `SKIP_AGENTS=1` and `SKIP_PROMPTS=1`.
 Top-level Markdown files in `prompts/` become slash commands named after their
 filename. They use `$ARGUMENTS` for optional input.
 
-### Pi
+`make apply` mirrors the skills layout: one managed symlink per template in the
+canonical `~/.agents/prompts` root (`PROMPTS_DIR`), then per-prompt aliases into
+each client that reads slash commands from a directory:
 
-`make apply` creates one managed symlink in `~/.pi/agent/prompts` for every
-top-level template. New templates are picked up on the next apply. Existing
-unmanaged prompts are preserved, and collisions fail before any changes are made.
-Restart Pi or run `/reload` after applying.
+| Client | Destination | Variable |
+|---|---|---|
+| Pi | `~/.pi/agent/prompts/<name>.md` | `PI_PROMPTS_DIR` |
+| Claude Code | `~/.claude/commands/<name>.md` | `CLAUDE_COMMANDS_DIR` |
+
+New templates are picked up on the next apply. Existing unmanaged prompts are
+preserved, and collisions fail before any changes are made. Links that still
+point straight at this repository's `prompts/` (the earlier layout) are
+recognised as managed and migrated to aliases. Restart Pi or run `/reload`
+after applying; Claude Code picks up new commands on its next session.
 
 If Pi's `prompts` settings array already loads this repository's `prompts/`
 directory, remove that entry before applying to avoid duplicate command names.
 
-### Claude Code
-
-Symlink templates into Claude Code's user command directory:
-
-```bash
-mkdir -p ~/.claude/commands
-ln -sfn "$PWD/prompts/about.md" ~/.claude/commands/about.md
-ln -sfn "$PWD/prompts/ask-claude.md" ~/.claude/commands/ask-claude.md
-ln -sfn "$PWD/prompts/ask-fable.md" ~/.claude/commands/ask-fable.md
-ln -sfn "$PWD/prompts/ask-premium.md" ~/.claude/commands/ask-premium.md
-ln -sfn "$PWD/prompts/ask-sol.md" ~/.claude/commands/ask-sol.md
-ln -sfn "$PWD/prompts/squash-msg.md" ~/.claude/commands/squash-msg.md
-ln -sfn "$PWD/prompts/trim-comments.md" ~/.claude/commands/trim-comments.md
-```
-
-Claude Code prompt setup remains manual and local. Codex custom-prompt
-installation is deferred because that feature is deprecated.
+Codex custom-prompt installation is skipped (`SKIP_PROMPTS=1` in
+`make apply-codex`) because that feature is deprecated.
 
 ## Private overlays
 

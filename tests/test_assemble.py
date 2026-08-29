@@ -18,7 +18,9 @@ MANAGED_ENV = (
     "CLAUDE_SKILLS_DIR",
     "LEGACY_CODEX_SKILLS_DIR",
     "AGENTS_DIR",
+    "PROMPTS_DIR",
     "PI_PROMPTS_DIR",
+    "CLAUDE_COMMANDS_DIR",
     "SKIP_AGENTS",
     "SKIP_PROMPTS",
     "LAYERS_ORDER",
@@ -60,8 +62,16 @@ class AssembleTest(unittest.TestCase):
         return self.home / ".claude" / "agents"
 
     @property
+    def prompts(self) -> Path:
+        return self.home / ".agents" / "prompts"
+
+    @property
     def pi_prompts(self) -> Path:
         return self.home / ".pi" / "agent" / "prompts"
+
+    @property
+    def claude_commands(self) -> Path:
+        return self.home / ".claude" / "commands"
 
     def skill(self, root: Path, name: str, marker: str) -> Path:
         path = root / name
@@ -146,7 +156,9 @@ class AssembleTest(unittest.TestCase):
         self.assert_link(self.canonical / "alpha", self.shared / "skills" / "alpha")
         self.assert_link(self.claude / "alpha", self.canonical / "alpha")
         self.assert_link(self.agents / "reviewer.md", self.shared / "agents" / "reviewer.md")
-        self.assert_link(self.pi_prompts / "about.md", self.shared / "prompts" / "about.md")
+        self.assert_link(self.prompts / "about.md", self.shared / "prompts" / "about.md")
+        self.assert_link(self.pi_prompts / "about.md", self.prompts / "about.md")
+        self.assert_link(self.claude_commands / "about.md", self.prompts / "about.md")
         self.assertTrue((self.canonical / "personal").is_dir())
         self.assertTrue((self.claude / "claude-only").is_dir())
         self.assertTrue((self.codex / ".system").is_dir())
@@ -211,6 +223,19 @@ class AssembleTest(unittest.TestCase):
         self.assertFalse((self.canonical / "alpha").is_symlink())
         self.assertFalse((self.agents / "reviewer.md").is_symlink())
         self.assertFalse((self.pi_prompts / "about.md").is_symlink())
+        self.assertFalse((self.claude_commands / "about.md").is_symlink())
+        self.assertFalse((self.prompts / "about.md").is_symlink())
+
+    def test_legacy_direct_pi_prompt_links_migrate_to_canonical_aliases(self) -> None:
+        self.pi_prompts.mkdir(parents=True)
+        legacy = self.pi_prompts / "about.md"
+        legacy.symlink_to(self.shared / "prompts" / "about.md")
+
+        self.run_assembler("apply")
+        self.run_assembler("doctor")
+
+        self.assert_link(legacy, self.prompts / "about.md")
+        self.assert_link(self.prompts / "about.md", self.shared / "prompts" / "about.md")
 
     def test_apply_is_idempotent_and_clean_preserves_unmanaged_entries(self) -> None:
         self.canonical.mkdir(parents=True)
@@ -312,7 +337,9 @@ class AssembleTest(unittest.TestCase):
         self.assert_link(self.canonical / "alpha", self.shared / "skills" / "alpha")
         self.assert_link(self.claude / "alpha", self.canonical / "alpha")
         self.assertFalse(self.agents.exists())
+        self.assertFalse(self.prompts.exists())
         self.assertFalse(self.pi_prompts.exists())
+        self.assertFalse(self.claude_commands.exists())
 
     def test_clean_dry_run_is_read_only_and_clean_migrates_legacy_link(self) -> None:
         self.run_assembler("apply")
@@ -336,6 +363,7 @@ class AssembleTest(unittest.TestCase):
         self.assertIn("DRY: mkdir -p", result.stdout)
         self.assertIn(str(self.canonical), result.stdout)
         self.assertIn(str(self.pi_prompts), result.stdout)
+        self.assertIn(str(self.claude_commands), result.stdout)
         self.assertFalse((self.home / ".agents").exists())
         self.assertFalse((self.home / ".claude").exists())
         self.assertFalse((self.home / ".pi").exists())
@@ -393,6 +421,16 @@ class AssembleTest(unittest.TestCase):
         self.run_assembler("apply")
         (self.claude / "alpha").unlink()
         (self.claude / "alpha").symlink_to(self.shared / "skills" / "alpha")
+
+        result = self.run_assembler("doctor", check=False)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Incorrect link target", result.stdout)
+
+    def test_doctor_rejects_incorrect_prompt_alias_target(self) -> None:
+        self.run_assembler("apply")
+        (self.claude_commands / "about.md").unlink()
+        (self.claude_commands / "about.md").symlink_to(self.shared / "prompts" / "about.md")
 
         result = self.run_assembler("doctor", check=False)
 

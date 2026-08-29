@@ -1,6 +1,6 @@
 # Prompt templates
 
-Shared slash-command templates for Pi and Claude Code:
+Shared slash-command templates for Pi and Claude Code, installed by `make apply`:
 
 - [`/about <id-or-name>`](about.md) — orient on an issue, pull request, branch, worktree, Git ref, or stash
 - [`/ask-claude <question>`](ask-claude.md) — ask Claude for a repository-grounded second opinion
