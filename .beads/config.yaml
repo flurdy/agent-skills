@@ -14,7 +14,7 @@
 
 # Dedicated private Git-backed Dolt remote for cross-machine bootstrap and sync.
 sync:
-  remote: git+ssh://git@github.com/flurdy/agent-skills-beads.git
+    remote: "git+ssh://git@github.com/flurdy/agent-skills-beads.git"
 
 # Enable JSON output by default
 # json: false
