@@ -29,7 +29,7 @@ The proof of concept scans:
   reachable from `HEAD` rather than treating the current local branch as published.
 
 It uses an audit-owned Gitleaks configuration and empty ignore file, scrubs scanner configuration from
-the environment, ignores inline `gitleaks:allow` controls, and never passes a baseline. Repository
+the environment, ignores inline scanner allow-comments, and never passes a baseline. Repository
 scanner configuration cannot suppress the audit. Before any clean result, a private runtime canary
 must prove that the selected scanner and audit configuration can detect the pinned secret shape. The
 helper also reports known session-share links and scanner-suppression controls without exposing

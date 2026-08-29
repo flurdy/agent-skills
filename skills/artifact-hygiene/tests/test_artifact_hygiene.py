@@ -18,6 +18,9 @@ from unittest import mock
 
 SKILL_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = SKILL_ROOT / "scripts" / "artifact_hygiene.py"
+# Assembled at runtime so this file does not itself match the detectors it exercises.
+ALLOW_CONTROL = "gitleaks" + ":allow"
+SHARE_LINK = "https://chatgpt.com/" + "share/"
 
 
 class RepositoryFixture:
@@ -239,7 +242,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             "BACKSLASH_HISTORY_SESSION_SENTINEL",
         ]
         self.repository.write(".gitignore", "ignored.txt\n.artifacts/ignored.txt\n")
-        self.repository.write("inherited.txt", sentinels[0] + " # gitleaks:allow\n")
+        self.repository.write("inherited.txt", sentinels[0] + f" # {ALLOW_CONTROL}\n")
         self.repository.write("tracked.txt", "clean\n")
         self.repository.write("index-only.txt", "clean\n")
         self.repository.write(".artifacts/tracked.txt", sentinels[9] + "\n")
@@ -256,7 +259,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("history.txt", "HISTORY_FINDING_MARKER\n")
         self.repository.write(
             r"history\path.txt",
-            "https://chatgpt.com/share/" + sentinels[14] + "\n",
+            SHARE_LINK + sentinels[14] + "\n",
         )
         self.repository.commit_all("history")
         (self.repository.root / r"history\path.txt").unlink()
@@ -277,7 +280,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write(r"index\path.txt", "clean after staging\n")
         self.repository.write(
             "session.txt",
-            "https://chatgpt.com/share/" + sentinels[6] + "\n",
+            SHARE_LINK + sentinels[6] + "\n",
         )
         return sentinels
 
@@ -659,7 +662,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("base.txt", "clean\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        dense = (f"gitleaks:allow {sentinel}\n" * 5_000)
+        dense = (f"{ALLOW_CONTROL} {sentinel}\n" * 5_000)
         for index in range(3):
             self.repository.write(f"dense-{index}.txt", dense)
 
@@ -727,8 +730,8 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         helper = load_helper_module()
         coverage = helper.Coverage("working-tree")
         data = (
-            b"https://chatgpt.com/share/FIRST\n"
-            b"https://chatgpt.com/share/SECOND\n"
+            f"{SHARE_LINK}FIRST\n".encode()
+            + f"{SHARE_LINK}SECOND\n".encode()
         )
         with mock.patch.object(helper, "monotonic", side_effect=[0.0, 0.0, 2.0]):
             findings = helper.detect_non_secret(
@@ -752,7 +755,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write(
             "lines.txt",
             "first\n"
-            f"https://chatgpt.com/share/{sentinel}\n"
+            f"{SHARE_LINK}{sentinel}\n"
             "third\n"
             "gitleaks:\n allow\n",
         )
@@ -824,7 +827,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def test_missing_remote_base_scans_all_messages_and_patches(self) -> None:
         history_key = "".join(("AKIA", "ABCDEFGHIJKLMNOP"))
         message_key = "".join(("AKIA", "QRSTUVWXYZABCDEF"))
-        session_url = "https://chatgpt.com/share/" + "HISTORY_SESSION_SENTINEL"
+        session_url = SHARE_LINK + "HISTORY_SESSION_SENTINEL"
         self.repository.write("base.txt", "clean\n")
         self.repository.commit_all("base")
         self.repository.write(
@@ -888,14 +891,14 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         )
         self.repository.write(
             "inherited.txt",
-            f"aws_access_key_id = {access_key} # gitleaks:allow\n",
+            f"aws_access_key_id = {access_key} # {ALLOW_CONTROL}\n",
         )
         self.repository.commit_all("base")
         self.repository.mark_base()
         self.repository.run("switch", "-c", "feature")
         self.repository.write(
             "feature.txt",
-            f"aws_access_key_id = {branch_key} # gitleaks:allow\n",
+            f"aws_access_key_id = {branch_key} # {ALLOW_CONTROL}\n",
         )
         self.repository.commit_all("feature")
 
