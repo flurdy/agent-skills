@@ -23,6 +23,7 @@
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes. |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
 | implement-solution | Premium workflow for non-trivial, implementation-ready coding where material local trade-offs justify repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment |
+| jira-comment | Draft and post a terse house-style comment on a Jira ticket after confirmation |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
 | model-update-check | Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
