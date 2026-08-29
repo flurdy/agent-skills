@@ -4,7 +4,7 @@ description: Run a local-only, read-only advisory audit of publishable working-t
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
 effort: high
-version: "0.1.0"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -32,8 +32,13 @@ It uses an audit-owned Gitleaks configuration and empty ignore file, scrubs scan
 the environment, ignores inline scanner allow-comments, and never passes a baseline. Repository
 scanner configuration cannot suppress the audit. Before any clean result, a private runtime canary
 must prove that the selected scanner and audit configuration can detect the pinned secret shape. The
-helper also reports known session-share links and scanner-suppression controls without exposing
-matched values.
+helper also reports known session-share links, Bead references, email addresses, name-like personal data (personal names),
+AI attribution trailers or boilerplate, and scanner-suppression controls without exposing matched values.
+
+The `custom-detectors` coverage source proves every built-in non-secret detector still matches its
+private canary. Missing detector coverage produces a partial result, never a clean result. Personal-name
+detection is advisory and conservative: it matches capitalized multi-word names while excluding common AI
+product names, so review findings before acting on them.
 
 GitHub pull requests, Jira, comments, attachments, linked pages, other repositories, full-history
 remediation, policy authoring, and enforcement are out of scope.

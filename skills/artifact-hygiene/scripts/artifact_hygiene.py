@@ -40,12 +40,91 @@ OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 RULE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 SAFE_REF = re.compile(r"^refs/[A-Za-z0-9._/-]+$")
 SAFE_REMOTE_PART = re.compile(r"^[A-Za-z0-9._-]+$")
-SESSION_LINK = re.compile(
-    rb"https?://(?:chatgpt\.com/share|claude\.ai/share)/[^\s<>\"']+",
-    re.IGNORECASE,
-)
-INLINE_GITLEAKS_ALLOW = re.compile(rb"gitleaks\s*:\s*allow", re.IGNORECASE)
 SUPPRESSION_FILES = {".gitleaks.toml", ".gitleaksignore"}
+
+
+@dataclass(frozen=True)
+class CustomDetector:
+    category: str
+    detector: str
+    severity: str
+    pattern: re.Pattern[bytes]
+    canary: bytes
+
+
+CUSTOM_DETECTORS = (
+    CustomDetector(
+        category="session-link",
+        detector="session.share-link",
+        severity="high",
+        pattern=re.compile(
+            rb"https?://(?:chatgpt\.com/share|claude\.ai/share)/[^\s<>\"']+",
+            re.IGNORECASE,
+        ),
+        canary=b"https://chatgpt.com/" + b"share/canary",
+    ),
+    CustomDetector(
+        category="suppression-attempt",
+        detector="scanner.inline-allow",
+        severity="info",
+        pattern=re.compile(rb"gitleaks\s*:\s*allow", re.IGNORECASE),
+        canary=b"gitleaks:allow",
+    ),
+    CustomDetector(
+        category="bead-reference",
+        detector="beads.reference",
+        severity="high",
+        pattern=re.compile(
+            rb"(?<![A-Za-z0-9-])[a-z][a-z0-9]*-[a-z0-9]{3}(?![A-Za-z0-9-])"
+        ),
+        canary=b"skills" + b"-9yx",
+    ),
+    CustomDetector(
+        category="personal-data",
+        detector="pii.email",
+        severity="high",
+        pattern=re.compile(
+            rb"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@"
+            rb"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
+            rb"(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+"
+        ),
+        canary=b"canary" + b"@example.invalid",
+    ),
+    CustomDetector(
+        category="personal-data",
+        detector="pii.name",
+        severity="high",
+        pattern=re.compile(
+            rb"(?<![A-Za-z])(?!(?:Claude[ \t]+Code|GitHub[ \t]+Copilot)\b)"
+            rb"(?:[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?[ \t]+){1,2}"
+            rb"[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?"
+        ),
+        canary=b"Canary" + b" Person",
+    ),
+    CustomDetector(
+        category="ai-attribution",
+        detector="ai.attribution",
+        severity="medium",
+        pattern=re.compile(
+            rb"(?im)^[ \t]*(?:co-authored-by[ \t]*:[ \t]*"
+            rb"(?:claude(?:[ \t]+code)?|codex|openai|anthropic|"
+            rb"github[ \t]+copilot|chatgpt|gemini)\b|"
+            rb"generated[ \t]+(?:with|by)[ \t]+(?:claude(?:[ \t]+code)?|"
+            rb"codex|openai|anthropic|github[ \t]+copilot|chatgpt|gemini)\b)"
+        ),
+        canary=b"Generated with " + b"Claude Code",
+    ),
+)
+CUSTOM_DETECTOR_IDS = frozenset(
+    {
+        "session.share-link",
+        "scanner.inline-allow",
+        "beads.reference",
+        "pii.email",
+        "pii.name",
+        "ai.attribution",
+    }
+)
 
 
 class AuditError(RuntimeError):
@@ -410,11 +489,17 @@ def finding(
         "secret": "[REDACTED:SECRET]",
         "session-link": "[REDACTED:SESSION-LINK]",
         "suppression-attempt": "[REDACTED:SUPPRESSION-CONTROL]",
+        "bead-reference": "[REDACTED:BEAD-REFERENCE]",
+        "personal-data": "[REDACTED:PERSONAL-DATA]",
+        "ai-attribution": "[REDACTED:AI-ATTRIBUTION]",
     }
     remediation = {
         "secret": "Remove or rotate the credential before publication, then rerun the audit.",
         "session-link": "Remove the private session link or replace it with approved public context.",
         "suppression-attempt": "Review the scanner control; repository controls cannot suppress this audit.",
+        "bead-reference": "Remove the private tracker reference before publication.",
+        "personal-data": "Remove or replace the personal data before publication.",
+        "ai-attribution": "Remove the AI attribution boilerplate before publication.",
     }
     decision = "review" if category == "suppression-attempt" else "deny"
     return {
@@ -811,6 +896,22 @@ def scanner_capability_probe(
     return result.returncode == 1 and bool(findings)
 
 
+def custom_detector_capability_probe(deadline: float) -> bool:
+    if {detector.detector for detector in CUSTOM_DETECTORS} != CUSTOM_DETECTOR_IDS:
+        return False
+    for detector in CUSTOM_DETECTORS:
+        if monotonic() >= deadline or detector.pattern.search(detector.canary) is None:
+            return False
+    return True
+
+
+def custom_detector_coverage(deadline: float) -> Coverage:
+    coverage = Coverage("custom-detectors", records=len(CUSTOM_DETECTORS))
+    if not custom_detector_capability_probe(deadline):
+        coverage.partial("custom-detector-unavailable")
+    return coverage
+
+
 def detect_non_secret(
     data: bytes,
     *,
@@ -823,16 +924,10 @@ def detect_non_secret(
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
 
-    def append_matches(
-        pattern: re.Pattern[bytes],
-        *,
-        category: str,
-        detector: str,
-        severity: str,
-    ) -> bool:
+    def append_matches(detector: CustomDetector) -> bool:
         line = 1
         cursor = 0
-        for match in pattern.finditer(data):
+        for match in detector.pattern.finditer(data):
             if monotonic() >= deadline:
                 coverage.limited("custom-detector-timeout")
                 return False
@@ -843,9 +938,9 @@ def detect_non_secret(
             cursor = match.start()
             results.append(
                 finding(
-                    category=category,
-                    detector=detector,
-                    severity=severity,
+                    category=detector.category,
+                    detector=detector.detector,
+                    severity=detector.severity,
                     confidence="high",
                     source=source,
                     path=path,
@@ -862,13 +957,9 @@ def detect_non_secret(
     if monotonic() >= deadline:
         coverage.limited("custom-detector-timeout")
         return results
-    if not append_matches(
-        SESSION_LINK,
-        category="session-link",
-        detector="session.share-link",
-        severity="high",
-    ):
-        return results
+    for detector in CUSTOM_DETECTORS:
+        if not append_matches(detector):
+            return results
     if PurePosixPath(path).name in SUPPRESSION_FILES:
         if len(results) >= MAX_CUSTOM_FINDINGS_PER_RECORD:
             coverage.limited("custom-finding-limit")
@@ -885,12 +976,6 @@ def detect_non_secret(
                 field_name=field_name,
             )
         )
-    append_matches(
-        INLINE_GITLEAKS_ALLOW,
-        category="suppression-attempt",
-        detector="scanner.inline-allow",
-        severity="info",
-    )
     return results
 
 
@@ -1058,11 +1143,11 @@ def commit_patch(
 
 
 def added_patch_content(patch: bytes) -> bytes:
-    """Drop removed lines: their content was exposed by the commit that added it."""
+    """Return only content introduced by the patch, without diff metadata."""
     return b"".join(
-        line
+        line[1:]
         for line in patch.splitlines(keepends=True)
-        if not line.startswith(b"-") or line.startswith(b"---")
+        if line.startswith(b"+") and not line.startswith(b"+++")
     )
 
 
@@ -1209,6 +1294,7 @@ def scan(
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
+    custom_detectors = custom_detector_coverage(deadline)
     candidates = collect_candidates(runner, repository, working)
     collector = FindingCollector()
     for candidate in candidates:
@@ -1353,7 +1439,7 @@ def scan(
             item["detector"],
         ),
     )
-    coverages = [working, history]
+    coverages = [working, history, custom_detectors]
     complete = all(item.status == "complete" for item in coverages)
     status = "complete" if complete else "partial"
     verdict = ("findings" if ordered_findings else "clean") if complete else "partial"
@@ -1368,7 +1454,7 @@ def scan(
             "policy": "defaults",
         },
         "provenance": {
-            "helperVersion": "0.1.0-poc",
+            "helperVersion": "0.2.0-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1394,7 +1480,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.1.0-poc",
+            "helperVersion": "0.2.0-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [

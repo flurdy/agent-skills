@@ -309,6 +309,8 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         coverage = {entry["source"]: entry for entry in payload["coverage"]}
         self.assertEqual(coverage["working-tree"]["status"], "complete")
         self.assertEqual(coverage["branch-history"]["status"], "complete")
+        self.assertEqual(coverage["custom-detectors"]["status"], "complete")
+        self.assertEqual(coverage["custom-detectors"]["records"], 6)
 
         paths = {
             finding["location"]["path"]
@@ -726,6 +728,141 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                     self.assertIn("report-output-limit", entry["limits"])
                     self.assertIn("report-output-limit", entry["errors"])
 
+    def test_added_patch_content_excludes_diff_metadata_context_and_removals(self) -> None:
+        helper = load_helper_module()
+        patch = (
+            b"diff --git a/publishable.txt b/publishable.txt\n"
+            b"index abc..def 100644\n"
+            b"--- a/publishable.txt\n"
+            b"+++ b/publishable.txt\n"
+            b"@@ -1,2 +1,2 @@\n"
+            b" context\n"
+            b"-removed@example.invalid\n"
+            b"+added@example.invalid\n"
+        )
+
+        self.assertEqual(helper.added_patch_content(patch), b"added@example.invalid\n")
+
+    def test_clean_repository_reports_complete_clean_coverage(self) -> None:
+        self.repository.write("tracked.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+
+        completed = self.run_audit()
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "complete")
+        self.assertEqual(payload["verdict"], "clean")
+        self.assertEqual(payload["findings"], [])
+        self.assertEqual(
+            {entry["status"] for entry in payload["coverage"]},
+            {"complete"},
+        )
+
+    def test_custom_detectors_report_redacted_bead_pii_and_ai_findings(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("working-tree")
+        bead = "skills" + "-9yx"
+        email = "canary" + "@example.invalid"
+        name = "Canary" + " Person"
+        ai_attribution = "Generated with " + "Claude Code"
+        data = (
+            f"bead: {bead}\n"
+            f"email: {email}\n"
+            f"{name}\n"
+            f"{ai_attribution}\n"
+        ).encode()
+
+        findings = helper.detect_non_secret(
+            data,
+            source="working-tree",
+            path="publishable.txt",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual(coverage.status, "complete")
+        self.assertEqual(
+            {(item["category"], item["detector"]) for item in findings},
+            {
+                ("bead-reference", "beads.reference"),
+                ("personal-data", "pii.email"),
+                ("personal-data", "pii.name"),
+                ("ai-attribution", "ai.attribution"),
+            },
+        )
+        self.assertEqual(
+            {item["detector"]: item["location"]["line"] for item in findings},
+            {
+                "beads.reference": 1,
+                "pii.email": 2,
+                "pii.name": 3,
+                "ai.attribution": 4,
+            },
+        )
+        serialized = json.dumps(findings, sort_keys=True)
+        for value in (bead, email, name, ai_attribution):
+            self.assertNotIn(value, serialized)
+        self.assertEqual(
+            {item["evidence"]["token"] for item in findings},
+            {
+                "[REDACTED:BEAD-REFERENCE]",
+                "[REDACTED:PERSONAL-DATA]",
+                "[REDACTED:AI-ATTRIBUTION]",
+            },
+        )
+
+    def test_custom_detectors_scan_unpublished_messages_and_added_lines(self) -> None:
+        bead = "skills" + "-9yx"
+        email = "canary" + "@example.invalid"
+        name = "Canary" + " Person"
+        ai_attribution = "Generated with " + "Claude Code"
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("switch", "-c", "feature")
+        self.repository.write("publishable.txt", f"bead: {bead}\nemail: {email}\n")
+        message_path = self.repository.root.parent / "commit-message.txt"
+        message_path.write_text(
+            f"owner: {name}\n{ai_attribution}\n",
+            encoding="utf-8",
+        )
+        self.repository.run("add", "publishable.txt")
+        self.repository.run("commit", "-F", str(message_path))
+
+        completed = self.run_audit()
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        history_findings = [
+            item
+            for item in payload["findings"]
+            if item["location"]["source"] == "branch-history"
+        ]
+        self.assertTrue(
+            {
+                ("bead-reference", "publishable.txt"),
+                ("personal-data", "publishable.txt"),
+                ("personal-data", "[commit-message]"),
+                ("ai-attribution", "[commit-message]"),
+            }.issubset(
+                {(item["category"], item["location"]["path"]) for item in history_findings}
+            )
+        )
+        for value in (bead, email, name, ai_attribution):
+            self.assertNotIn(value, completed.stdout)
+
+    def test_missing_custom_detector_makes_coverage_partial(self) -> None:
+        helper = load_helper_module()
+
+        with mock.patch.object(helper, "CUSTOM_DETECTORS", helper.CUSTOM_DETECTORS[:-1]):
+            coverage = helper.custom_detector_coverage(helper.monotonic() + 5)
+
+        self.assertEqual(coverage.source, "custom-detectors")
+        self.assertEqual(coverage.status, "partial")
+        self.assertIn("custom-detector-unavailable", coverage.errors)
+
     def test_custom_detector_honors_deadline_during_matching(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("working-tree")
@@ -784,8 +921,13 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
         self.assertEqual(payload["verdict"], "partial")
+        scanner_coverage = [
+            entry
+            for entry in payload["coverage"]
+            if entry["source"] in {"working-tree", "branch-history"}
+        ]
         self.assertTrue(
-            all("scanner-unavailable" in entry["errors"] for entry in payload["coverage"])
+            all("scanner-unavailable" in entry["errors"] for entry in scanner_coverage)
         )
 
     def test_missing_scanner_is_partial_not_clean(self) -> None:
@@ -800,12 +942,14 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
         self.assertEqual(payload["verdict"], "partial")
-        self.assertEqual(
-            {entry["status"] for entry in payload["coverage"]},
-            {"partial"},
-        )
+        scanner_coverage = [
+            entry
+            for entry in payload["coverage"]
+            if entry["source"] in {"working-tree", "branch-history"}
+        ]
+        self.assertEqual({entry["status"] for entry in scanner_coverage}, {"partial"})
         self.assertTrue(
-            all("scanner-unavailable" in entry["errors"] for entry in payload["coverage"])
+            all("scanner-unavailable" in entry["errors"] for entry in scanner_coverage)
         )
 
     def test_history_scanner_failure_is_partial_and_never_leaks_child_error(self) -> None:

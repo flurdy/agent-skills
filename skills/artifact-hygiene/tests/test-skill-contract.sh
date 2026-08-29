@@ -20,7 +20,12 @@ for required in \
   'never mutates' \
   'raw candidate content' \
   'GitHub pull requests' \
-  'Jira'; do
+  'Jira' \
+  'Bead references' \
+  'email addresses' \
+  'personal names' \
+  'AI attribution' \
+  'custom-detectors'; do
   grep -Fq "$required" "$skill_file" || {
     echo "SKILL.md missing contract text: $required" >&2
     exit 1
@@ -36,6 +41,10 @@ done
 
 grep -Fq 'scanner_capability_probe' "$script" || {
   echo "helper must gate complete coverage on a scanner capability probe" >&2
+  exit 1
+}
+grep -Fq 'custom_detector_capability_probe' "$script" || {
+  echo "helper must report incomplete custom detector coverage" >&2
   exit 1
 }
 if grep -Fq 'ARTIFACT_HYGIENE_TEST' "$script"; then
