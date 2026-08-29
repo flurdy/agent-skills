@@ -864,13 +864,14 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                 for item in history_findings
             )
         )
-        self.assertTrue(
-            any(
-                item["category"] == "session-link"
-                and item["location"]["path"] == "history-only.txt"
-                for item in history_findings
-            )
-        )
+        session_findings = [
+            item
+            for item in history_findings
+            if item["category"] == "session-link"
+            and item["location"]["path"] == "history-only.txt"
+        ]
+        # Reported once, for the commit that added it; the removal patch is not re-reported.
+        self.assertEqual(len(session_findings), 1, session_findings)
         self.assertNotIn(history_key, completed.stdout)
         self.assertNotIn(message_key, completed.stdout)
         self.assertNotIn(session_url, completed.stdout)

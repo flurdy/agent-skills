@@ -1057,6 +1057,15 @@ def commit_patch(
     ).stdout
 
 
+def added_patch_content(patch: bytes) -> bytes:
+    """Drop removed lines: their content was exposed by the commit that added it."""
+    return b"".join(
+        line
+        for line in patch.splitlines(keepends=True)
+        if not line.startswith(b"-") or line.startswith(b"---")
+    )
+
+
 def scan_history_records(
     runner: BoundedRunner,
     repository: Path,
@@ -1131,7 +1140,7 @@ def scan_history_records(
                 coverage.partial("record-limit")
                 break
             try:
-                patch = commit_patch(runner, repository, commit, path)
+                patch = added_patch_content(commit_patch(runner, repository, commit, path))
             except AuditError:
                 coverage.partial("history-read-failed")
                 break
