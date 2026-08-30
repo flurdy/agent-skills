@@ -4,7 +4,7 @@ description: Run a local-only, read-only advisory audit of publishable working-t
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
 effort: high
-version: "0.3.0"
+version: "0.3.1"
 author: "flurdy"
 ---
 
@@ -39,7 +39,9 @@ The `custom-detectors` coverage source proves every built-in non-secret detector
 private canary. Missing detector coverage produces a partial result, never a clean result. Personal-name
 detection is advisory and contextual: it detects direct requests to contact a named person or handle, not
 capitalized technical phrases. Expected `Co-authored-by:` and `Signed-off-by:` trailers are excluded from
-personal-data findings. Bead references and personal-data matches in dependency lockfiles are ignored.
+personal-data findings. Bead-reference, personal-data, and AI-attribution detectors scan unpublished history only—commit
+messages and added patch lines—rather than re-reporting content already published on the base branch. Bead references and
+personal-data matches in dependency lockfiles are ignored, as are email addresses under reserved example domains.
 
 A clone may allow Bead references only with local, unshared configuration:
 

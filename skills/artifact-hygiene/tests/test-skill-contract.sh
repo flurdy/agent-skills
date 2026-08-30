@@ -28,7 +28,9 @@ for required in \
   'custom-detectors' \
   'artifactHygiene.allowBeadReferences' \
   'ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES' \
-  'dependency lockfiles'; do
+  'dependency lockfiles' \
+  'reserved example domains' \
+  'unpublished history only'; do
   grep -Fq "$required" "$skill_file" || {
     echo "SKILL.md missing contract text: $required" >&2
     exit 1

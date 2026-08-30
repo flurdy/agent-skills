@@ -63,6 +63,14 @@ EXPECTED_IDENTITY_TRAILER = re.compile(
     rb"reviewed-by|tested-by)[ \t]*:"
 )
 TRUE_VALUES = {"1", "true", "yes", "on"}
+HISTORY_ONLY_CATEGORIES = {"ai-attribution", "bead-reference", "personal-data"}
+PLACEHOLDER_EMAIL_DOMAINS = {
+    b"example.com",
+    b"example.net",
+    b"example.org",
+    b"localhost",
+}
+PLACEHOLDER_EMAIL_SUFFIXES = (b".example", b".invalid", b".localhost", b".test")
 
 
 @dataclass(frozen=True)
@@ -974,6 +982,8 @@ def detect_non_secret(
     def append_matches(detector: CustomDetector) -> bool:
         if detector.category in allowed_categories:
             return True
+        if detector.category in HISTORY_ONLY_CATEGORIES and source != "branch-history":
+            return True
         if (
             PurePosixPath(path).name in DEPENDENCY_LOCKFILES
             and detector.category in {"bead-reference", "personal-data"}
@@ -991,6 +1001,12 @@ def detect_non_secret(
                 and EXPECTED_IDENTITY_TRAILER.match(data[line_start:line_end])
             ):
                 continue
+            if detector.detector == "pii.email":
+                domain = match.group(0).lower().rsplit(b"@", 1)[-1]
+                if domain in PLACEHOLDER_EMAIL_DOMAINS or domain.endswith(
+                    PLACEHOLDER_EMAIL_SUFFIXES
+                ):
+                    continue
             if monotonic() >= deadline:
                 coverage.limited("custom-detector-timeout")
                 return False
@@ -1523,7 +1539,7 @@ def scan(
             "policy": policy,
         },
         "provenance": {
-            "helperVersion": "0.3.0-poc",
+            "helperVersion": "0.3.1-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1549,7 +1565,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.3.0-poc",
+            "helperVersion": "0.3.1-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [
