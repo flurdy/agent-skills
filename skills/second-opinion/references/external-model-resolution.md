@@ -18,6 +18,11 @@ Resolution order:
    retain their CLI-native defaults.
 4. `--model smart` retains the CLI-native default.
 
+Explicit `--effort <level>` is supported only for a direct Claude route. It accepts `low`,
+`medium`, `high`, `xhigh`, or `max` and is passed through as Claude Code's native `--effort` value.
+When omitted, effort remains `native-default`. Direct Codex and Gemini routes reject `--effort`;
+their existing native controls remain unchanged.
+
 Report provenance from the control actually applied. A literal caller-supplied model is `override`,
 the implicit direct-Claude `opus` selection is `skill-default`, and an omitted control is
 `native-default`. Do not infer or report Codex reasoning effort unless an explicit native

@@ -34,7 +34,8 @@ different from the one that produced the work:
 You can choose a direct route explicitly with `--agent claude`, `--agent codex`, or
 `--agent gemini`. Direct Claude routes default to `opus`; Codex and Gemini retain their installed
 CLI's model defaults. An explicit `--model <id>` overrides this; use `--model smart` to retain the
-Claude CLI-native default.
+Claude CLI-native default. Direct Claude routes accept `--effort low|medium|high|xhigh|max`; omitted
+effort retains the Claude CLI-native setting. Codex and Gemini do not accept this direct flag.
 
 Examples:
 
@@ -43,6 +44,7 @@ Examples:
 /second-opinion validate-plan "Move the cache invalidation to the write path..."
 /second-opinion triage-bug "Checkout intermittently returns 500 after a retry"
 /second-opinion ask "What edge cases are missing from this migration?" --agent claude
+/second-opinion ask "Challenge this architecture plan" --agent claude --model fable --effort xhigh
 ```
 
 ## Panels: quorum and consensus

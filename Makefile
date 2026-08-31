@@ -126,6 +126,7 @@ test-artifact-hygiene:
 	@python3 -m unittest discover -s skills/artifact-hygiene/tests -p 'test_artifact_hygiene.py'
 
 test-second-opinion:
+	@skills/second-opinion/tests/test-skill-contract.sh
 	@skills/second-opinion/tests/test-review-panel.sh
 	@skills/second-opinion/tests/test-openrouter-panel.sh
 

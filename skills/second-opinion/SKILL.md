@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.1.0"
+version: "3.2.0"
 author: "flurdy"
 ---
 
@@ -28,6 +28,7 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 # One independent route
 /second-opinion ask "..." --agent peer       # explicit/default independent peer
 /second-opinion ask "..." --agent claude
+/second-opinion ask "..." --agent claude --effort xhigh
 /second-opinion ask "..." --agent codex
 /second-opinion ask "..." --agent gemini
 /second-opinion ask "..." --agent codex --model <id>
@@ -82,7 +83,9 @@ For a direct single agent only:
 - `--model smart` → retain the CLI-native default;
 - `--model fast` → use a verified CLI-native fast alias, otherwise retain and report the native
   default;
-- `--model <id>` → pass the literal ID through.
+- `--model <id>` → pass the literal ID through;
+- `--effort <level>` → for Claude only, pass the literal supported level (`low`, `medium`, `high`,
+  `xhigh`, or `max`) through; for Codex/Gemini, reject it and use their existing native controls.
 
 For panels, generic `--model` is invalid. Use repeated `--route-model ID=VALUE` and
 `--route-effort ID=VALUE`. OpenRouter identities cannot be overridden. Unsupported effort is rejected,
@@ -97,7 +100,7 @@ Extract:
 - agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, or `consensus`;
 - panel: a local profile name;
 - timeout: 1–30 minutes, default 10;
-- direct model or repeated route-specific model/effort overrides.
+- direct model and optional effort, or repeated route-specific model/effort overrides.
 
 Defaults and validation:
 
@@ -106,6 +109,7 @@ Defaults and validation:
 - `consensus` with no panel → `extreme`;
 - reject unsupported agent names;
 - reject `--panel`, `--route-model`, or `--route-effort` for a direct single agent;
+- accept direct `--effort low|medium|high|xhigh|max` only for the Claude route; reject it for Codex/Gemini;
 - reject generic `--model` for `quorum` or `consensus`.
 
 If no mode is supplied, ask what to review. `consensus` must always be explicitly named; never infer
@@ -157,11 +161,13 @@ without allowing writes.
 ### Claude
 
 ```bash
-claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" --model {resolved_model}
+claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" --model {resolved_model} --effort {resolved_effort}
 ```
 
 Without `--model`, resolve `{resolved_model}` to `opus`; `--model smart` instead omits the flag and
-retains the Claude CLI-native default. Pass every other resolved model as `--model <id>`.
+retains the Claude CLI-native default. Pass every other resolved model as `--model <id>`. When
+`--effort` is supplied, pass it through to Claude Code; when omitted, preserve the CLI-native
+setting and report `native-default`.
 
 ### Codex
 
