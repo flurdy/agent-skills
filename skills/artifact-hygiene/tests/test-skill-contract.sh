@@ -28,6 +28,8 @@ for required in \
   'custom-detectors' \
   'artifactHygiene.allowBeadReferences' \
   'ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES' \
+  'artifactHygiene.allowSecretFingerprints' \
+  '`suppressed`' \
   'dependency lockfiles' \
   'reserved example domains' \
   'unpublished history only'; do

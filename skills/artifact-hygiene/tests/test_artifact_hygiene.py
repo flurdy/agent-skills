@@ -142,7 +142,7 @@ print(json.dumps([{
     "EndLine": 1,
     "File": "history.txt" if command == "git" else "-",
     "Commit": "a" * 40 if command == "git" else "",
-    "Secret": raw,
+    "Secret": "REDACTED" if mode == "redacted-output" else raw,
     "Match": raw,
     "Message": raw,
     "Author": raw,
@@ -367,6 +367,8 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             self.assertFalse(ignore_path.is_relative_to(self.repository.root))
             self.assertFalse(ignore_path.exists())
             self.assertIn("--ignore-gitleaks-allow", arguments)
+            self.assertIn("--redact=0", arguments)
+            self.assertNotIn("--redact=100", arguments)
             self.assertNotIn("--baseline-path", arguments)
             self.assertEqual(invocation["configEnv"], {})
             self.assertIsNone(invocation["gitExternalDiff"])
@@ -948,6 +950,162 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             duplicate_owner,
         ):
             self.assertNotIn(email, serialized)
+
+    def test_local_secret_fingerprint_allowlist_is_content_bound(self) -> None:
+        self.repository.write("tracked.txt", "FINDING_MARKER original\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+
+        initial = self.run_audit()
+
+        self.assertEqual(initial.returncode, 0, initial.stdout)
+        initial_payload = json.loads(initial.stdout)
+        secret_findings = [
+            item
+            for item in initial_payload["findings"]
+            if item["category"] == "secret"
+        ]
+        self.assertEqual(len(secret_findings), 1)
+        allow_id = secret_findings[0]["allowId"]
+        self.assertRegex(allow_id, r"^ah1:[0-9a-f]{32}$")
+
+        self.repository.run(
+            "config",
+            "--local",
+            "--add",
+            "artifactHygiene.allowSecretFingerprints",
+            allow_id,
+        )
+        allowed = self.run_audit()
+
+        self.assertEqual(allowed.returncode, 0, allowed.stdout)
+        allowed_payload = json.loads(allowed.stdout)
+        self.assertEqual(allowed_payload["verdict"], "clean")
+        self.assertEqual(allowed_payload["findings"], [])
+        self.assertEqual(len(allowed_payload["suppressed"]), 1)
+        self.assertEqual(allowed_payload["suppressed"][0]["allowId"], allow_id)
+        self.assertEqual(allowed_payload["summary"]["suppressed"], 1)
+        self.assertEqual(
+            allowed_payload["target"]["policy"],
+            "defaults+allow-secret-fingerprints",
+        )
+
+        self.repository.write("tracked.txt", "FINDING_MARKER replacement\n")
+        replacement = self.run_audit()
+
+        self.assertEqual(replacement.returncode, 0, replacement.stdout)
+        replacement_payload = json.loads(replacement.stdout)
+        replacement_findings = [
+            item
+            for item in replacement_payload["findings"]
+            if item["category"] == "secret"
+        ]
+        self.assertEqual(len(replacement_findings), 1)
+        self.assertNotEqual(replacement_findings[0]["allowId"], allow_id)
+        self.assertTrue(
+            any(
+                item.get("allowId") == allow_id
+                for item in replacement_payload["suppressed"]
+            )
+        )
+
+    def test_allowed_worktree_key_does_not_hide_staged_replacement(self) -> None:
+        original = "FINDING_MARKER original\n"
+        replacement = "FINDING_MARKER replacement\n"
+        self.repository.write("tracked.txt", original)
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        initial = json.loads(self.run_audit().stdout)
+        allow_id = next(
+            item["allowId"]
+            for item in initial["findings"]
+            if item["category"] == "secret"
+        )
+        self.repository.run(
+            "config",
+            "--local",
+            "--add",
+            "artifactHygiene.allowSecretFingerprints",
+            allow_id,
+        )
+        self.repository.write("tracked.txt", replacement)
+        self.repository.run("add", "tracked.txt")
+        self.repository.write("tracked.txt", original)
+
+        completed = self.run_audit()
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        active_secret_ids = {
+            item["allowId"]
+            for item in payload["findings"]
+            if item["category"] == "secret"
+        }
+        self.assertEqual(len(active_secret_ids), 1)
+        self.assertNotIn(allow_id, active_secret_ids)
+        self.assertTrue(
+            any(item.get("allowId") == allow_id for item in payload["suppressed"])
+        )
+
+    def test_secret_fingerprint_allowlist_ignores_nonlocal_sources_and_invalid_ids(
+        self,
+    ) -> None:
+        self.repository.write("tracked.txt", "FINDING_MARKER original\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        initial = json.loads(self.run_audit().stdout)
+        allow_id = next(
+            item["allowId"]
+            for item in initial["findings"]
+            if item["category"] == "secret"
+        )
+        included_config = self.repository.write(
+            "artifact-hygiene.inc",
+            f"[artifactHygiene]\nallowSecretFingerprints = {allow_id}\n",
+        )
+        self.repository.run("add", "artifact-hygiene.inc")
+        self.repository.run("config", "--local", "--add", "include.path", str(included_config))
+        self.repository.run(
+            "config",
+            "--local",
+            "--add",
+            "artifactHygiene.allowSecretFingerprints",
+            "occ:not-a-secret-fingerprint",
+        )
+
+        completed = self.run_audit(
+            extra_environment={
+                "ARTIFACT_HYGIENE_ALLOW_SECRET_FINGERPRINTS": allow_id
+            }
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stdout)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["target"]["policy"], "defaults")
+        self.assertEqual(payload["suppressed"], [])
+        self.assertTrue(any(item["category"] == "secret" for item in payload["findings"]))
+
+    def test_scanner_without_raw_secret_makes_coverage_partial(self) -> None:
+        self.repository.write("tracked.txt", "FINDING_MARKER original\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+
+        completed = self.run_audit(fake_mode="redacted-output")
+
+        self.assertEqual(completed.returncode, 2, completed.stdout)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["suppressed"], [])
+        scanner_coverage = [
+            item
+            for item in payload["coverage"]
+            if item["source"] in {"working-tree", "branch-history"}
+        ]
+        self.assertTrue(scanner_coverage)
+        self.assertTrue(
+            all("scanner-unavailable" in item["errors"] for item in scanner_coverage)
+        )
 
     def test_local_bead_override_is_private_and_visible_in_policy(self) -> None:
         bead = "skills" + "-9yx"

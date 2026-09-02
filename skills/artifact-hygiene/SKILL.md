@@ -4,7 +4,7 @@ description: Run a local-only, read-only advisory audit of publishable working-t
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
 effort: high
-version: "0.3.2"
+version: "0.3.3"
 author: "flurdy"
 ---
 
@@ -55,6 +55,18 @@ git config --local artifactHygiene.allowBeadReferences true
 The selected override is reported in `target.policy`; a checked-in configuration file cannot disable a
 detector.
 
+A clone may allow one exact public-by-design client key using the redacted finding's `allowId`:
+
+```bash
+git config --local --add artifactHygiene.allowSecretFingerprints ah1:<fingerprint>
+```
+
+The fingerprint is bound to the scanner rule and exact matched value, not its path or line, so replacing
+the key produces a new finding. Matching findings remain visible under `suppressed` and in the summary.
+Only valid IDs from clone-local Git configuration are honored; repository files, environment variables,
+global Git configuration, paths, and scanner rule names cannot grant this allowance. The helper hashes
+the scanner match in private process memory and never emits the raw value.
+
 GitHub pull requests, Jira, comments, attachments, linked pages, other repositories, full-history
 remediation, policy authoring, and enforcement are out of scope.
 
@@ -91,7 +103,9 @@ Render coverage before findings:
 2. List each source and its `complete`, `partial`, or `failed` status plus safe error codes.
 3. Group findings by severity and category, using only the normalized location, evidence token, and
    remediation supplied by the helper.
-4. If status is partial or failed, name the unavailable coverage and stop short of publication
+4. Report any `suppressed` count and state that clone-local fingerprint allowances were applied; use
+   only normalized fields and never attempt to recover the matched value.
+5. If status is partial or failed, name the unavailable coverage and stop short of publication
    assurance.
 
 Never recover raw evidence by reading a reported file, commit, scanner output, temporary file, or

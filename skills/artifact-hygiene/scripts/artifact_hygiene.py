@@ -38,6 +38,7 @@ MAX_CUSTOM_FINDINGS_PER_RECORD = 1_000
 
 OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 RULE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+SECRET_ALLOW_ID = re.compile(r"^ah1:[0-9a-f]{32}$")
 SAFE_REF = re.compile(r"^refs/[A-Za-z0-9._/-]+$")
 SAFE_REMOTE_PART = re.compile(r"^[A-Za-z0-9._-]+$")
 SUPPRESSION_FILES = {".gitleaks.toml", ".gitleaksignore"}
@@ -214,7 +215,9 @@ class Coverage:
 
 @dataclass
 class FindingCollector:
+    allowed_secret_fingerprints: frozenset[str] = frozenset()
     items: list[dict[str, Any]] = field(default_factory=list)
+    suppressed: list[dict[str, Any]] = field(default_factory=list)
     occurrence_ids: set[str] = field(default_factory=set)
 
     def add(self, additions: list[dict[str, Any]], coverage: Coverage) -> bool:
@@ -222,10 +225,18 @@ class FindingCollector:
             occurrence_id_value = item["occurrenceId"]
             if occurrence_id_value in self.occurrence_ids:
                 continue
-            if len(self.items) >= MAX_FINDINGS:
+            if len(self.items) + len(self.suppressed) >= MAX_FINDINGS:
                 coverage.limited("finding-limit")
                 return False
-            self.items.append(item)
+            if item.get("allowId") in self.allowed_secret_fingerprints:
+                item["policy"] = {
+                    **item["policy"],
+                    "decision": "allow",
+                    "override": "local-secret-fingerprint",
+                }
+                self.suppressed.append(item)
+            else:
+                self.items.append(item)
             self.occurrence_ids.add(occurrence_id_value)
         return True
 
@@ -497,13 +508,29 @@ def occurrence_id(
     line: int | None,
     commit: str | None,
     detector: str,
+    content_id: str | None = None,
 ) -> str:
+    identity: list[Any] = [category, source, path, line, commit, detector]
+    if content_id is not None:
+        identity.append(content_id)
     material = json.dumps(
-        [category, source, path, line, commit, detector],
+        identity,
         separators=(",", ":"),
         ensure_ascii=True,
     )
     return "occ:" + hashlib.sha256(material.encode("ascii")).hexdigest()[:24]
+
+
+def secret_allow_id(rule: str, secret: Any) -> str | None:
+    if not isinstance(secret, str) or not secret or secret == "REDACTED":  # noqa: S105
+        return None
+    material = (
+        b"artifact-hygiene/allow-secret/v1\0"
+        + rule.encode("ascii")
+        + b"\0"
+        + secret.encode("utf-8")
+    )
+    return "ah1:" + hashlib.sha256(material).hexdigest()[:32]
 
 
 def finding(
@@ -517,6 +544,7 @@ def finding(
     line: int | None = None,
     commit: str | None = None,
     field_name: str | None = None,
+    allow_id: str | None = None,
 ) -> dict[str, Any]:
     evidence_tokens = {
         "secret": "[REDACTED:SECRET]",
@@ -535,9 +563,9 @@ def finding(
         "ai-attribution": "Remove the AI attribution boilerplate before publication.",
     }
     decision = "review" if category == "suppression-attempt" else "deny"
-    return {
+    result = {
         "occurrenceId": occurrence_id(
-            category, source, path, line, commit, detector
+            category, source, path, line, commit, detector, allow_id
         ),
         "familyId": "family:"
         + hashlib.sha256(
@@ -558,6 +586,9 @@ def finding(
         "policy": {"rule": detector, "decision": decision, "override": None},
         "remediation": remediation[category],
     }
+    if allow_id is not None:
+        result["allowId"] = allow_id
+    return result
 
 
 def resolve_repository(runner: BoundedRunner, target: Path) -> tuple[Path, str | None]:
@@ -830,7 +861,7 @@ def scanner_arguments(
         "--gitleaks-ignore-path",
         str(ignore_path),
         "--ignore-gitleaks-allow",
-        "--redact=100",
+        "--redact=0",
         "--report-format",
         "json",
         "--report-path",
@@ -894,6 +925,7 @@ def parse_scanner_findings(
                 line=normalized_line(record.get("StartLine")),
                 commit=commit,
                 field_name=field_name,
+                allow_id=secret_allow_id(rule, record.get("Secret")),
             )
         )
     return results
@@ -926,12 +958,16 @@ def scanner_capability_probe(
         )
     except AuditError:
         return False
-    return result.returncode == 1 and bool(findings)
+    return (
+        result.returncode == 1
+        and bool(findings)
+        and all(item.get("allowId") for item in findings)
+    )
 
 
 def detector_policy(
     runner: BoundedRunner, repository: Path
-) -> tuple[frozenset[str], str]:
+) -> tuple[frozenset[str], frozenset[str], str]:
     environment_allows = (
         os.environ.get("ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES", "").lower()
         in TRUE_VALUES
@@ -941,14 +977,39 @@ def detector_policy(
         repository,
         "config",
         "--local",
+        "--no-includes",
         "--get",
         "artifactHygiene.allowBeadReferences",
         allowed_returncodes=(0, 1),
     )
     config_allows = decode_text(configured.stdout).lower() in TRUE_VALUES
-    if environment_allows or config_allows:
-        return frozenset({"bead-reference"}), "defaults+allow-bead-references"
-    return frozenset(), "defaults"
+    configured_fingerprints = git(
+        runner,
+        repository,
+        "config",
+        "--local",
+        "--no-includes",
+        "--get-all",
+        "artifactHygiene.allowSecretFingerprints",
+        allowed_returncodes=(0, 1),
+    )
+    allowed_secret_fingerprints = frozenset(
+        value
+        for line in decode_text(configured_fingerprints.stdout).splitlines()
+        for value in (part.strip() for part in line.split(","))
+        if SECRET_ALLOW_ID.fullmatch(value)
+    )
+    allowed_categories = (
+        frozenset({"bead-reference"})
+        if environment_allows or config_allows
+        else frozenset()
+    )
+    policy = "defaults"
+    if allowed_categories:
+        policy += "+allow-bead-references"
+    if allowed_secret_fingerprints:
+        policy += "+allow-secret-fingerprints"
+    return allowed_categories, allowed_secret_fingerprints, policy
 
 
 def custom_detector_capability_probe(deadline: float) -> bool:
@@ -1409,11 +1470,13 @@ def scan_history_records(
     coverage.bytes = total_bytes
 
 
-def summarize_findings(findings: list[dict[str, Any]]) -> dict[str, int]:
+def summarize_findings(
+    findings: list[dict[str, Any]], suppressed_count: int = 0
+) -> dict[str, int]:
     summary = {level: 0 for level in ("critical", "high", "medium", "low", "info")}
     for item in findings:
         summary[item["severity"]] += 1
-    summary["suppressed"] = 0
+    summary["suppressed"] = suppressed_count
     return summary
 
 
@@ -1425,13 +1488,15 @@ def scan(
 ) -> tuple[dict[str, Any], int]:
     runner = BoundedRunner(deadline)
     identity = repository_identity(runner, repository)
-    allowed_categories, policy = detector_policy(runner, repository)
+    allowed_categories, allowed_secret_fingerprints, policy = detector_policy(
+        runner, repository
+    )
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
     custom_detectors = custom_detector_coverage(deadline)
     candidates = collect_candidates(runner, repository, working)
-    collector = FindingCollector()
+    collector = FindingCollector(allowed_secret_fingerprints)
     for candidate in candidates:
         if not collector.add(
             detect_non_secret(
@@ -1591,7 +1656,7 @@ def scan(
             "policy": policy,
         },
         "provenance": {
-            "helperVersion": "0.3.2-poc",
+            "helperVersion": "0.3.3-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1603,8 +1668,18 @@ def scan(
         },
         "coverage": [item.as_dict() for item in coverages],
         "findings": ordered_findings,
-        "suppressed": [],
-        "summary": summarize_findings(ordered_findings),
+        "suppressed": sorted(
+            collector.suppressed,
+            key=lambda item: (
+                item["location"]["source"],
+                item["location"]["path"],
+                item["location"]["line"] or 0,
+                item["detector"],
+            ),
+        ),
+        "summary": summarize_findings(
+            ordered_findings, suppressed_count=len(collector.suppressed)
+        ),
     }
     return payload, 0 if complete else 2
 
@@ -1617,7 +1692,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.3.2-poc",
+            "helperVersion": "0.3.3-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [
@@ -1673,7 +1748,9 @@ def render_payload(
     while low <= high:
         count = (low + high) // 2
         payload["findings"] = original_findings[:count]
-        payload["summary"] = summarize_findings(payload["findings"])
+        payload["summary"] = summarize_findings(
+            payload["findings"], len(payload["suppressed"])
+        )
         candidate = serialize_payload(payload, pretty)
         if len(candidate.encode("utf-8")) + 1 <= MAX_REPORT_OUTPUT_BYTES:
             best_count = count
@@ -1685,7 +1762,9 @@ def render_payload(
         failed = serialize_payload(failed_payload("report-output-limit"), pretty)
         return failed, 3
     payload["findings"] = original_findings[:best_count]
-    payload["summary"] = summarize_findings(payload["findings"])
+    payload["summary"] = summarize_findings(
+        payload["findings"], len(payload["suppressed"])
+    )
     return serialize_payload(payload, pretty), 2
 
 
