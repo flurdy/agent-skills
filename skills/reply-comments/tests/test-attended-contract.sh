@@ -23,7 +23,7 @@ line_of() {
 [[ -f "$SKILL" ]] || fail "missing reply-comments skill"
 
 for invariant in \
-    'version: "1.2.0"' \
+    'version: "1.2.1"' \
     '`owner/repo#number`' \
     'stable `identity`' \
     '`updateKey`' \
