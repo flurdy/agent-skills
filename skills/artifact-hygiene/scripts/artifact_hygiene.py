@@ -62,6 +62,7 @@ EXPECTED_IDENTITY_TRAILER = re.compile(
     rb"(?i)^[ \t]*(?:author|committer|co-authored-by|signed-off-by|"
     rb"reviewed-by|tested-by)[ \t]*:"
 )
+BEADS_ATTRIBUTION_FIELDS = frozenset({"owner", "created_by", "assignee"})
 TRUE_VALUES = {"1", "true", "yes", "on"}
 HISTORY_ONLY_CATEGORIES = {"ai-attribution", "bead-reference", "personal-data"}
 PLACEHOLDER_EMAIL_DOMAINS = {
@@ -966,6 +967,50 @@ def custom_detector_coverage(deadline: float) -> Coverage:
     return coverage
 
 
+def reject_json_constant(value: str) -> Any:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
+def strict_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    record: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in record:
+            raise ValueError(f"duplicate JSON key: {key}")
+        record[key] = value
+    return record
+
+
+def beads_attribution_email_spans(data: bytes) -> frozenset[tuple[int, int]]:
+    spans: set[tuple[int, int]] = set()
+    offset = 0
+    for raw_line in data.splitlines(keepends=True):
+        line = raw_line.rstrip(b"\r\n")
+        try:
+            record = json.loads(
+                line,
+                object_pairs_hook=strict_json_object,
+                parse_constant=reject_json_constant,
+            )
+        except (ValueError, UnicodeDecodeError):
+            offset += len(raw_line)
+            continue
+        if not isinstance(record, dict):
+            offset += len(raw_line)
+            continue
+        for attribution_field in BEADS_ATTRIBUTION_FIELDS:
+            value = record.get(attribution_field)
+            if not isinstance(value, str):
+                continue
+            value_bytes = value.encode()
+            literal = b'"' + value_bytes + b'"'
+            if line.count(literal) != 1:
+                continue
+            value_start = line.index(literal) + 1
+            spans.add((offset + value_start, offset + value_start + len(value_bytes)))
+        offset += len(raw_line)
+    return frozenset(spans)
+
+
 def detect_non_secret(
     data: bytes,
     *,
@@ -978,6 +1023,11 @@ def detect_non_secret(
     allowed_categories: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    beads_email_spans = (
+        beads_attribution_email_spans(data)
+        if path == ".beads/issues.jsonl"
+        else frozenset()
+    )
 
     def append_matches(detector: CustomDetector) -> bool:
         if detector.category in allowed_categories:
@@ -1002,6 +1052,8 @@ def detect_non_secret(
             ):
                 continue
             if detector.detector == "pii.email":
+                if match.span() in beads_email_spans:
+                    continue
                 domain = match.group(0).lower().rsplit(b"@", 1)[-1]
                 if domain in PLACEHOLDER_EMAIL_DOMAINS or domain.endswith(
                     PLACEHOLDER_EMAIL_SUFFIXES
@@ -1539,7 +1591,7 @@ def scan(
             "policy": policy,
         },
         "provenance": {
-            "helperVersion": "0.3.1-poc",
+            "helperVersion": "0.3.2-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1565,7 +1617,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.3.1-poc",
+            "helperVersion": "0.3.2-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [

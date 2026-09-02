@@ -898,6 +898,57 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         ):
             self.assertNotIn(value, serialized)
 
+    def test_bead_jsonl_attribution_fields_do_not_report_email_addresses(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        contact = "contact" + "@acme.dev"
+        nested_owner = "nested-owner" + "@acme.dev"
+        case_variant = "case-variant" + "@acme.dev"
+        malformed_owner = "malformed-owner" + "@acme.dev"
+        duplicate_owner = "duplicate-owner" + "@acme.dev"
+        data = json.dumps(
+            {
+                "owner": "owner" + "@acme.dev",
+                "created_by": "creator" + "@acme.dev",
+                "assignee": "assignee" + "@acme.dev",
+                "email": contact,
+                "metadata": {"owner": nested_owner},
+                "Owner": case_variant,
+            }
+        ).encode() + (
+            f'\n{{"owner":"{malformed_owner}","invalid":NaN}}'
+            f'\n{{"owner":"first-owner@acme.dev","owner":"{duplicate_owner}"}}'
+        ).encode()
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path=".beads/issues.jsonl",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual(
+            [(item["detector"], item["location"]["line"]) for item in findings],
+            [
+                ("pii.email", 1),
+                ("pii.email", 1),
+                ("pii.email", 1),
+                ("pii.email", 2),
+                ("pii.email", 3),
+                ("pii.email", 3),
+            ],
+        )
+        serialized = json.dumps(findings, sort_keys=True)
+        for email in (
+            contact,
+            nested_owner,
+            case_variant,
+            malformed_owner,
+            duplicate_owner,
+        ):
+            self.assertNotIn(email, serialized)
+
     def test_local_bead_override_is_private_and_visible_in_policy(self) -> None:
         bead = "skills" + "-9yx"
         self.repository.write("base.txt", "clean\n")

@@ -4,7 +4,7 @@ description: Run a local-only, read-only advisory audit of publishable working-t
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
 effort: high
-version: "0.3.1"
+version: "0.3.2"
 author: "flurdy"
 ---
 
@@ -42,6 +42,8 @@ capitalized technical phrases. Expected `Co-authored-by:` and `Signed-off-by:` t
 personal-data findings. Bead-reference, personal-data, and AI-attribution detectors scan unpublished history only—commit
 messages and added patch lines—rather than re-reporting content already published on the base branch. Bead references and
 personal-data matches in dependency lockfiles are ignored, as are email addresses under reserved example domains.
+Email addresses in the `owner`, `created_by`, and `assignee` fields of Beads `.beads/issues.jsonl`
+records are treated as structural attribution; unrelated fields remain reportable.
 
 A clone may allow Bead references only with local, unshared configuration:
 
