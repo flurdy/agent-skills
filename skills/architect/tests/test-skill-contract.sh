@@ -29,6 +29,9 @@ tier_line=$(line_of '### Planning tier')
 
 for invariant in \
     'Detailed plans are working input, not current architecture documentation.' \
+    'validated `workspace.json` project-context index' \
+    'do not require, create, repair, regenerate, or audit it' \
+    'recommend `project-workspace doctor`' \
     'Do not create Markdown solely to preserve planning reasoning.' \
     'Exactly one blocked human review owner' \
     'An existing matching review is the sole owner' \

@@ -4,7 +4,7 @@ description: Architecture and implementation planning gate for complex or high-b
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd status:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
-version: "1.9.0"
+version: "1.9.1"
 author: "flurdy"
 ---
 
@@ -146,6 +146,11 @@ Gather only the context needed to plan:
    - `git status --short`
    - `git branch --show-current`
    - `git ls-files | head -200` or targeted `find`/`rg` for the relevant area
+   - When repository context establishes a validated `workspace.json` project-context index, consume
+     its topology, repository paths, and context links when useful. Treat it as optional and
+     do not require, create, repair, regenerate, or audit it. If missing or suspect context blocks
+     responsible planning, state the limitation and recommend `project-workspace doctor`; do not turn
+     Architect into the workspace diagnostic or repair owner.
 3. **Existing patterns**
    - Search for similar features, APIs, migrations, tests, contracts, or components.
    - Read representative files. Prefer a few high-signal files over broad scanning.
