@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pi-spend/scripts/pi_spend.py:*)"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -19,9 +19,11 @@ the machine's local timezone.
 
 ```text
 /pi-spend                       # all four periods, every provider and model
-/pi-spend --metered-only        # hide models the router marks as subscription
+/pi-spend --metered-only        # show only responses classified as metered
 /pi-spend --period today        # single period; repeatable
-/pi-spend --json                # normalized schema v1 JSON
+/pi-spend --json                # normalized schema v2 JSON
+/pi-spend --billing-policy PATH # use another effective-dated local policy
+/pi-spend --router-config PATH   # explicit legacy current-policy projection
 ```
 
 Resolve `scripts/pi_spend.py` relative to this `SKILL.md` and run it with the user's arguments:
@@ -46,8 +48,9 @@ After the verbatim block, add two to four bullets, at most 120 words:
   cache-read volume from fresh input;
 - state the metered total separately from the subscription total, and never add them into one
   "spend" figure;
-- call out the `unknown` billing class when present, since it means the router policy has no entry
-  for that model rather than that the model is free; and
+- call out the `unknown` billing class when present, since it means no valid interval covers that
+  exact provider/model response rather than that the model is free;
+- call out `legacy-current-router-policy` as a current-policy projection that may relabel history; and
 - mention responses that recorded no cost only when the collector reports some.
 
 Never describe the output as an invoice, an account balance, or remaining credits.
@@ -57,11 +60,57 @@ Never describe the output as an invoice, an account balance, or remaining credit
 - Pi sessions: `~/.pi/agent/sessions/**/*.jsonl`. Assistant messages carry `provider`, `model`,
   `usage`, and a per-response `usage.cost` breakdown. Responses are deduplicated by `responseId`, so
   nested subagent run transcripts are counted once.
-- Billing class: `~/.pi/agent/model-tier-router.json` `modelPolicies[*].metered`. Models absent from
-  that config report as `unknown`; the collector does not guess from the provider name.
+- Billing class: `~/.pi/agent/pi-spend-billing-policy.json`, using exact provider/model entries and
+  the interval covering each response timestamp. Missing or invalid coverage reports as `unknown`;
+  the collector does not guess from provider or model names.
 
 Pi is the only local harness that records cost. Claude Code transcripts contain no cost field and
 Codex rollouts record cumulative token counts only, which is why this skill is Pi-scoped.
+
+## Billing policy
+
+The local policy uses schema version 1. `effectiveUntil` is exclusive; `null` leaves the interval
+open. Timestamps must be timezone-aware UTC (`Z` or `+00:00`). Intervals for one exact model may be
+contiguous but must not overlap.
+
+```json
+{
+  "schemaVersion": 1,
+  "models": {
+    "provider/model-id": [
+      {
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveUntil": "2026-07-01T00:00:00Z",
+        "billing": "metered"
+      },
+      {
+        "effectiveFrom": "2026-07-01T00:00:00Z",
+        "effectiveUntil": null,
+        "billing": "subscription"
+      }
+    ]
+  }
+}
+```
+
+Add a new interval when billing changes; do not rewrite the earlier interval. Renamed models get a
+separate exact key. There are no aliases or automatic historical backfills. Back up this unshared
+file with the retained Pi sessions it classifies.
+
+Missing files, malformed policy JSON, duplicate keys, non-UTC timestamps, invalid ranges, overlaps,
+and uncovered response dates fail closed to `unknown` with bounded diagnostics. An invalid model
+entry does not disable valid, non-overlapping entries for other models.
+
+`--router-config PATH` preserves the old `modelPolicies[*].metered` interpretation only when invoked
+explicitly. Its rows and report metadata are labelled `legacy-current-router-policy` because current
+router policy is projected across all history and can relabel older responses. Bare model-name
+fallback is not supported.
+
+## JSON schema
+
+Schema v2 adds top-level `billingPolicy` source/status/diagnostics, classification counters under
+`stats`, and `billingSource` on each row. A single provider/model may produce multiple rows in one
+period when its billing interval changes. `costAuthority` remains `pi-catalog-estimate`.
 
 ## Limitations
 
@@ -71,10 +120,12 @@ Codex rollouts record cumulative token counts only, which is why this skill is P
   charged; keep it out of any metered total.
 - Coverage is bounded by retained session files. History starts at the oldest surviving transcript,
   so `all` may be shorter than it appears and older periods are not recoverable.
+- The unshared billing policy is trusted local configuration, not a tamper-proof history. Explicitly
+  rewriting an old interval can still change reports.
 - Metered models may bill through different pools, for example direct Anthropic versus OpenRouter.
   Reconcile each provider against its own dashboard before treating a figure as owed.
 - Responses missing a cost block are excluded from the estimate and reported as a count rather than
-  counted as zero.
+  counted as zero. Undated and future-dated responses are also excluded and counted separately.
 
 ## See also
 
