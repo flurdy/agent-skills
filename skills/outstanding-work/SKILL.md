@@ -4,8 +4,8 @@ description: Ticket-scoped, read-only status dashboard that shows blockers, unme
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(*/outstanding-work/scripts/collect.sh:*),Bash(date:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git merge-base:*),Bash(git ls-files:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh search prs:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(make lint:*),Bash(npm test:*),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run typecheck:*),mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.1.0"
+effort: high
+version: "0.1.1"
 author: "flurdy"
 ---
 

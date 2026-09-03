@@ -9,8 +9,8 @@ description: >
 allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*),Bash(./scripts/release-ci:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "1.12.0"
+effort: high
+version: "1.12.1"
 author: "flurdy"
 ---
 

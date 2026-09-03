@@ -4,8 +4,8 @@ description: "Create bead(s) from a raw user prompt or Jira ticket, or refine an
 allowed-tools: "Read,Bash(bd close:*),Bash(bd create:*),Bash(bd dep:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/next/scripts/next-select:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "1.3.0"
+effort: high
+version: "1.3.1"
 author: "flurdy"
 ---
 

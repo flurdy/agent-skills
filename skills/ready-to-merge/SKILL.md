@@ -4,8 +4,8 @@ description: Pre-merge gate — verify a PR is green, approved, in sync, and fre
 allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.1.0"
+effort: high
+version: "0.1.1"
 author: "flurdy"
 ---
 

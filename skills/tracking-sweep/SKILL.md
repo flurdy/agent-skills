@@ -4,8 +4,8 @@ description: Portfolio-wide drift sweep across Jira, beads, and GitHub PRs. Cros
 allowed-tools: "Bash(git rev-parse:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.1.0"
+effort: high
+version: "0.1.1"
 author: "flurdy"
 ---
 

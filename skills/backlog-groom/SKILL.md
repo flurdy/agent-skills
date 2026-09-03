@@ -4,8 +4,8 @@ description: "Per-bead quality audit over the open backlog — flags empty/thin 
 allowed-tools: "Read, Grep, Glob, Task, AskUserQuestion, Bash(bd status:*), Bash(bd list:*), Bash(bd show:*), Bash(bd lint:*), Bash(bd stale:*), Bash(bd find-duplicates:*), Bash(bd children:*), Bash(bd epic:*), Bash(bd label:*), Bash(bd priority:*), Bash(bd update:*), Bash(bd note:*), Bash(bd close:*), Bash(bd supersede:*), Bash(bd dep:*), Bash(bd memories:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.1.0"
+effort: high
+version: "0.1.1"
 author: "flurdy"
 ---
 
