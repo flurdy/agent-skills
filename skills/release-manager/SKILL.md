@@ -1,11 +1,9 @@
 ---
 name: release-manager
 description: >
-  Interactive release gatekeeper for letterbox — runs one tick of the release dashboard,
-  then prompts to push / defer / cancel each ready service, auto-files a bead on CI failure,
-  enforces deploy order, watches rollouts, syncs k8s config and schedules the restarts that
-  applied config needs, and nudges feature toggles. Drive it on a loop with
-  /watch-release. Advisory: it only pushes after you explicitly choose "push".
+  Interactive letterbox release gatekeeper — runs one tick, prompts to push/defer/cancel
+  ready services, auto-files beads on CI failure, enforces deploy order,
+  watches rollouts and restarts. Only pushes on explicit choice; loop with /watch-release.
 allowed-tools: "Read,Write,Skill,AskUserQuestion,Bash(./scripts/release-digest:*),Bash(make feature-toggles-disabled:*),Bash(make git-push:*),Bash(make k8s-sync:*),Bash(kubectl rollout restart:*),Bash(./scripts/mgit log:*),Bash(./scripts/release-order:*),Bash(./scripts/release-ci:*),Bash(./scripts/contract-check:*),Bash(bd create:*),Bash(bd list:*)"
 model-tier: standard
 model: sonnet

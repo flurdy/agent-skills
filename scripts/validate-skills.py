@@ -21,6 +21,9 @@ REQUIRED_FIELDS = (
 ALLOWED_MODEL_TIERS = ("economy", "standard", "premium")
 ALLOWED_EFFORTS = ("low", "medium", "high", "xhigh")
 ALLOWED_CLAUDE_MODELS = ("haiku", "sonnet", "opus")
+# Descriptions load into every session's skill listing across all clients;
+# keep the per-session token cost bounded.
+MAX_DESCRIPTION_LENGTH = 250
 ARCHIVED_STATUSES = {"archived", "deprecated", "disabled"}
 PLACEHOLDER_LINK_PARTS = ("{", "}", "…", "<", ">", "${")
 LOCAL_SKILL_PATH = re.compile(
@@ -300,6 +303,13 @@ def validate(root: Path) -> list[str]:
             )
         if name and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
             errors.append(f"{skill_file}: skill name '{name}' is not lowercase kebab-case")
+
+        description = fields.get("description", "")
+        if len(description) > MAX_DESCRIPTION_LENGTH:
+            errors.append(
+                f"{skill_file}: description is {len(description)} chars; maximum is "
+                f"{MAX_DESCRIPTION_LENGTH}"
+            )
 
         model_tier = fields.get("model-tier", "")
         if model_tier and model_tier not in ALLOWED_MODEL_TIERS:

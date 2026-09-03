@@ -1,6 +1,6 @@
 ---
 name: name-session
-description: Derive a conventional session name from the branch ticket, active bead, open PR, and current work — then print the correct paste-ready rename command for the active client. Use when a session's auto-name is generic and you want it legible in the session list.
+description: Derive a conventional session name from the branch ticket, active bead, open PR, and current work, then print the paste-ready rename command for the active client. Use when a session's auto-name is generic.
 allowed-tools: "Bash(git rev-parse:*), Bash(git branch:*), Bash(bd list:*), Bash(gh pr view:*)"
 model-tier: standard
 model: sonnet

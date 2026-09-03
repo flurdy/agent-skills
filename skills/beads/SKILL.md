@@ -1,10 +1,9 @@
 ---
 name: beads
 description: >
-  Shared Beads workflow and durable-tracking baseline. Use whenever an agent uses `bd`,
-  manages durable tasks, blockers, dependencies, follow-ups, or shared handoff memory,
-  resolves durable work ownership, or decides between an ephemeral execution checklist and durable tracking.
-  Covers store ownership, local authority, focused-skill routing, and remote Dolt safety without duplicating command procedures.
+  Shared Beads workflow baseline. Use whenever an agent uses `bd`,
+  manages durable tasks, blockers, or handoffs, resolves work ownership, or decides between an
+  ephemeral checklist and durable tracking. Covers store authority and remote Dolt safety.
 allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),AskUserQuestion"
 model-tier: economy
 model: haiku

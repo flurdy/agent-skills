@@ -27,9 +27,9 @@ assert_not_contains() {
 
 assert_contains "$SKILL" 'name: beads'
 assert_contains "$SKILL" 'whenever an agent uses `bd`'
-assert_contains "$SKILL" 'resolves durable work ownership'
-assert_contains "$SKILL" 'ephemeral execution checklist and durable tracking'
-assert_contains "$SKILL" 'blockers, dependencies, follow-ups, or shared handoff memory'
+assert_contains "$SKILL" 'resolves work ownership'
+assert_contains "$SKILL" 'ephemeral checklist and durable tracking'
+assert_contains "$SKILL" 'manages durable tasks, blockers, or handoffs'
 
 assert_contains "$SKILL" 'Repository-local instructions remain authoritative'
 assert_contains "$SKILL" '<!-- BEGIN BEADS INTEGRATION -->'

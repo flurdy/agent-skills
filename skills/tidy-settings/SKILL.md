@@ -1,6 +1,6 @@
 ---
 name: tidy-settings
-description: Sort, dedupe, and audit Claude settings.json / settings.local.json files at user and project level. Flags risky permissions, broken references, glob-subsumed entries, syntax errors, and cross-file duplicates that could be promoted up the hierarchy. Mechanical fixes auto-apply, judgment calls are presented as a triage list.
+description: Sort, dedupe, and audit Claude settings.json / settings.local.json at user/project level. Flags risky permissions, broken references, glob-subsumed entries, and cross-file duplicates. Mechanical fixes auto-apply; judgment calls become triage items.
 allowed-tools: "Read, Edit, Write, Bash(~/.agents/skills/tidy-settings/scripts/resolve-files.sh:*), Bash(python3:*), Bash(test:*), Bash(ls:*), Bash(git:*), Bash(readlink:*), Bash(realpath:*), AskUserQuestion"
 model-tier: standard
 model: sonnet

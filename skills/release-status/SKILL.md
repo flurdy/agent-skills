@@ -1,9 +1,9 @@
 ---
 name: release-status
 description: >
-  Read-only release dashboard showing the release states a project can prove: unpushed work,
-  normalized CI, deployment progress, deploy-order blockers, and optional feature-toggle gates.
-  Passive: never prompts, pushes, or mutates state. Use for a quick release snapshot.
+  Read-only release dashboard — unpushed work, normalized CI, deployment progress,
+  deploy-order blockers, and optional feature-toggle gates. Never prompts, pushes, or
+  mutates state; use for a quick release snapshot.
 allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*)"
 model-tier: standard
 model: sonnet

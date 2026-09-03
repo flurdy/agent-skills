@@ -1,6 +1,6 @@
 ---
 name: thoughtbox
-description: Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to /triage in the configured Beads store, and render a separately confirmed scoped resolution command without executing either workflow. Use when reviewing or resolving captured Thoughtbox ideas.
+description: Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to /triage in the configured Beads store, and render a separately confirmed scoped resolution command — without executing either workflow.
 allowed-tools: "Bash(python3:*) AskUserQuestion"
 model-tier: standard
 model: sonnet

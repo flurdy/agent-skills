@@ -1,6 +1,6 @@
 ---
 name: implement-solution
-description: Premium workflow for non-trivial, bounded implementation work with clear requirements. Use dynamically when material local trade-offs justify repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment; skip mechanical edits, unresolved diagnosis, and architecture decisions.
+description: Premium workflow for non-trivial, bounded implementation with clear requirements — repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment. Skip for mechanical edits, unresolved diagnosis, or architecture decisions.
 allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),AskUserQuestion"
 model-tier: premium
 model: opus

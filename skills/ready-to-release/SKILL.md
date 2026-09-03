@@ -1,9 +1,9 @@
 ---
 name: ready-to-release
 description: >
-  Deep release-readiness gate for one service using normalized Git, CI, contract, ordering,
-  toggle, and deployment evidence. Emits a capability-aware gate table and one verdict without
-  prompting or mutating state. Use before deciding whether a service is safe to ship.
+  Deep release-readiness gate for one service using normalized Git, CI, contract,
+  ordering, toggle, and deployment evidence. Emits a capability-aware gate table and
+  one verdict; no prompting or state changes.
 allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*)"
 model-tier: standard
 model: sonnet

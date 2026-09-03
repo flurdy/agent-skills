@@ -1,10 +1,9 @@
 ---
 name: watch-flux-rollout
 description: >
-  After a push or merge, watch a CircleCI + FluxCD deploy until it lands — CircleCI green for
-  the commit, then the k8s Deployment's image tag moves off its pre-push baseline and pods go
-  ready — then run a read-only smoke test scoped to the change. Goal-terminating loop — stops
-  when the rollout lands and the smoke completes, or when it fails.
+  After a push or merge, watch a CircleCI + FluxCD deploy until it lands — CI green,
+  then the k8s Deployment image tag moves and pods go ready — then run a read-only
+  smoke test scoped to the change. Goal-terminating loop; stops on landing or failure.
 allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet

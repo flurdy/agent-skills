@@ -75,6 +75,32 @@ class ValidateSkillsTest(unittest.TestCase):
             f"expected {expected!r} in errors:\n" + "\n".join(errors),
         )
 
+    def test_overlong_description_fails(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        long_description = "x" * (VALIDATOR.MAX_DESCRIPTION_LENGTH + 1)
+        path.write_text(
+            VALID_SKILL.replace(
+                "description: A valid fixture skill.",
+                f"description: {long_description}",
+            ),
+            encoding="utf-8",
+        )
+        self.assert_error_contains(
+            f"description is {len(long_description)} chars; maximum is "
+            f"{VALIDATOR.MAX_DESCRIPTION_LENGTH}"
+        )
+
+    def test_max_length_description_passes(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        path.write_text(
+            VALID_SKILL.replace(
+                "description: A valid fixture skill.",
+                f"description: {'x' * VALIDATOR.MAX_DESCRIPTION_LENGTH}",
+            ),
+            encoding="utf-8",
+        )
+        self.assertEqual([], self.errors())
+
     def test_valid_catalog_passes(self) -> None:
         self.assertEqual([], self.errors())
 
