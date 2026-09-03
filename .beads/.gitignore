@@ -52,8 +52,10 @@ dolt-server.activity
 # Corrupt backup directories (created by bd doctor --fix recovery)
 *.corrupt.backup/
 
-# Backup data (auto-exported JSONL, local-only)
+# Backup data and machine-local backup registration
 backup/
+dolt-backup.json
+dolt-backup-state.json
 
 # Per-project environment file (Dolt connection config, GH#2520)
 .env
