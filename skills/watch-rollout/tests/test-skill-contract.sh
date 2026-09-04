@@ -2,8 +2,10 @@
 set -euo pipefail
 
 TEST_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
-SKILL_DIR=$(dirname -- "$TEST_DIR")
-SKILL="$SKILL_DIR/SKILL.md"
+ROOT_DIR=$(CDPATH='' cd -- "$TEST_DIR/../../.." && pwd -P)
+DISPATCHER="$ROOT_DIR/skills/watch-rollout/SKILL.md"
+ACTIONS="$ROOT_DIR/skills/watch-actions-rollout/SKILL.md"
+FLUX="$ROOT_DIR/skills/watch-flux-rollout/SKILL.md"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -11,62 +13,42 @@ fail() {
 }
 
 assert_contains() {
-    local expected=$1
-    grep -Fq -- "$expected" "$SKILL" || fail "expected '$expected' in $SKILL"
+    local file=$1
+    local expected=$2
+    grep -Fq -- "$expected" "$file" || fail "expected '$expected' in $file"
 }
 
 assert_not_contains() {
-    local unexpected=$1
-    if grep -Fq -- "$unexpected" "$SKILL"; then
-        fail "did not expect '$unexpected' in $SKILL"
+    local file=$1
+    local unexpected=$2
+    if grep -Fq -- "$unexpected" "$file"; then
+        fail "did not expect '$unexpected' in $file"
     fi
 }
 
-line_of() {
-    local heading=$1
-    grep -nF -- "$heading" "$SKILL" | head -1 | cut -d: -f1
-}
-
-[[ -f "$SKILL" ]] || fail "missing watch-rollout skill"
+[[ -f "$DISPATCHER" ]] || fail "missing watch-rollout dispatcher"
+[[ -f "$ACTIONS" ]] || fail "missing watch-actions-rollout implementation"
+[[ -f "$FLUX" ]] || fail "missing watch-flux-rollout implementation"
 
 for invariant in \
-    '### Pi protocol v1' \
-    '`watch_loop` is available' \
-    'protocolVersion: 1' \
-    'action: status' \
-    'action: start' \
-    '`armed`, `running`, or `paused`' \
-    '/watch-status' \
-    '/watch-stop' \
-    '/watch-resume' \
-    'action: complete' \
-    'action: stop' \
-    'mode: fixed' \
-    'initialDelaySeconds: 60' \
-    'intervalSeconds: 240' \
-    'missedCompletionPolicy: retry' \
-    'maxTicks: 30' \
-    'outcome: continue' \
-    'outcome: stop' \
-    'in_progress, waiting, queued, or not yet started' \
-    'Load and follow the skill named `watch-rollout` now.' \
-    'run-jobs.sh {run_id}' \
-    '### Claude Code fallback' \
-    '/loop Watch GitHub Actions run {run_id}' \
-    'If neither `watch_loop` nor `/loop` is available' \
-    'Never re-trigger, cancel, re-run, or approve a workflow; never deploy.'; do
-    assert_contains "$invariant"
+    'name: watch-rollout' \
+    'AskUserQuestion' \
+    'Skill(watch-actions-rollout)' \
+    'Skill(watch-flux-rollout)' \
+    '/watch-rollout actions' \
+    '/watch-rollout github' \
+    '/watch-rollout flux' \
+    '| `actions`, `github`, `github-actions` | `watch-actions-rollout` |' \
+    '| `flux`, `circleci-flux` | `watch-flux-rollout` |' \
+    'Always ask when no explicit stack selector is supplied.' \
+    'Forward all remaining arguments unchanged.' \
+    'Invoke the mapped skill immediately without prompting.'; do
+    assert_contains "$DISPATCHER" "$invariant"
 done
 
-smoke_line=$(line_of '### Phase 3 — Derive the smoke test (derive + confirm)')
-pi_line=$(line_of '### Pi protocol v1')
-claude_line=$(line_of '### Claude Code fallback')
-[[ -n "$smoke_line" && -n "$pi_line" && -n "$claude_line" ]] || \
-    fail "smoke confirmation, Pi, and Claude sections must exist"
-((smoke_line < pi_line && pi_line < claude_line)) || \
-    fail "smoke confirmation must precede the Pi and Claude scheduling branches"
+assert_not_contains "$DISPATCHER" 'watch_loop'
+assert_not_contains "$DISPATCHER" 'Bash('
+assert_contains "$ACTIONS" 'name: watch-actions-rollout'
+assert_contains "$FLUX" 'name: watch-flux-rollout'
 
-assert_not_contains '/skill:watch-rollout'
-assert_not_contains 'allowIndefinite: true'
-
-printf '%s\n' 'watch-rollout protocol contract tests passed'
+printf '%s\n' 'watch-rollout dispatcher contract tests passed'

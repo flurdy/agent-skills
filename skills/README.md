@@ -58,13 +58,14 @@
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
+| watch-actions-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a confirmed read-only smoke test scoped to the change. Goal-terminating; staging by default, production read-only opt-in |
 | watch-admin | No-go except for the isolated BLC UAT candidate; requires a fresh stable standard route and keeps injected ticks self-contained |
-| watch-flux-rollout | After a push, watch a CircleCI + FluxCD deploy until it lands — CircleCI green for the commit, then the k8s Deployment's image tag moves off its pre-push baseline and pods go ready — then run a read-only smoke test. Goal-terminating; kubectl/CircleCI sister of /watch-rollout |
+| watch-flux-rollout | After a push, watch CircleCI and FluxCD until the exact commit is built, the Kubernetes image changes, and pods are ready, then run a confirmed read-only smoke test. Goal-terminating |
 | watch-pr-feedback | Watch open PRs for normalized feedback, independently validate each new or edited actionable item once, and render a bounded decision queue. Read-only by default; attended mode pauses only for acknowledgment |
 | watch-prs | Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence (fast ~3m when CI is in flight, backing off 10→30m when settled) until end of day, with transition-driven suggested next actions. Unattended; pass `\d+m` for a fixed interval |
 | watch-release | Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence (fast ~3m when a push is mid-rollout or CI is running, backing off 10→30m when settled) until end of day. Pass `\d+m` for a fixed interval instead |
 | watch-review-requests | Watch direct inbound GitHub review requests, run one bounded repository-qualified review at a time, and pause for private, draft-only, deferred, or separately confirmed external dispositions |
-| watch-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a smoke test scoped to the change (browser for UI, GET for read-only API) against staging. Goal-terminating; staging by default, prod read-only opt-in. Generic GitHub-Actions cousin of /watch-release |
+| watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees, incl. worktree-only settings drift), and a paste-ready resume block for the next session |
 | yesterday | Read-only previous-workday stand-up recap across objective commits, PRs, Jira touches, and Beads activity; selects Friday when run on Monday |
 

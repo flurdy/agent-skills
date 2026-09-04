@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ref="${1:-}"
+target_sha="${2:-}"
 
 load_circleci_token() {
   [[ -z "${CIRCLECI_TOKEN:-}" ]] || return 0
@@ -31,12 +32,13 @@ owner="${repo%%/*}"
 name="${repo#*/}"
 branch="${ref:-$(git branch --show-current 2>/dev/null || true)}"
 sha="$(git rev-parse --verify HEAD 2>/dev/null || true)"
-lookup_ref="${ref:-${sha:-HEAD}}"
+lookup_ref="${target_sha:-${ref:-${sha:-HEAD}}}"
 
 printf '%s\n' '---STATUS---' 'OK'
 printf '%s\n' '---REPO---' "$repo"
 printf '%s\n' '---BRANCH---' "${branch:-}"
 printf '%s\n' '---SHA---' "${sha:-}"
+printf '%s\n' '---TARGET-SHA---' "${target_sha:-}"
 printf '%s\n' '---LOOKUP-REF---' "$lookup_ref"
 
 printf '%s\n' '---GITHUB-STATUS---'
@@ -86,7 +88,12 @@ if [[ -z "$pipelines_json" || "$(jq -r '.message? // empty' <<<"$pipelines_json"
   exit 0
 fi
 
-pipeline_id="$(jq -r '.items[0].id // empty' <<<"$pipelines_json")"
+if [[ -n "$target_sha" ]]; then
+  selected_pipeline="$(jq --arg target "$target_sha" 'first(.items[]? | select(.vcs.revision == $target)) // null' <<<"$pipelines_json")"
+else
+  selected_pipeline="$(jq '.items[0] // null' <<<"$pipelines_json")"
+fi
+pipeline_id="$(jq -r '.id // empty' <<<"$selected_pipeline")"
 if [[ -z "$pipeline_id" ]]; then
   echo '{"pipeline":null,"workflows":[]}'
   exit 0
@@ -96,8 +103,7 @@ workflows_json="$(circleci_api "https://circleci.com/api/v2/pipeline/$pipeline_i
 
 jq -n \
   --arg project "$project_slug" \
-  --arg pipeline "$pipeline_id" \
   --arg branch "$branch" \
-  --argjson pipelines "$pipelines_json" \
+  --argjson pipeline "$selected_pipeline" \
   --argjson workflows "$workflows_json" \
-  '{project: $project, branch: $branch, pipeline: ($pipelines.items[0] // null), workflows: ($workflows.items // [])}'
+  '{project: $project, branch: $branch, pipeline: $pipeline, workflows: ($workflows.items // [])}'

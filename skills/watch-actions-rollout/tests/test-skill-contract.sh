@@ -27,7 +27,7 @@ line_of() {
     grep -nF -- "$heading" "$SKILL" | head -1 | cut -d: -f1
 }
 
-[[ -f "$SKILL" ]] || fail "missing watch-flux-rollout skill"
+[[ -f "$SKILL" ]] || fail "missing watch-actions-rollout skill"
 
 for invariant in \
     '### Pi protocol v1' \
@@ -45,28 +45,29 @@ for invariant in \
     'initialDelaySeconds: 60' \
     'intervalSeconds: 240' \
     'missedCompletionPolicy: retry' \
-    'maxTicks: 20' \
+    'maxTicks: 30' \
     'outcome: continue' \
     'outcome: stop' \
-    'Load and follow the skill named `watch-flux-rollout` now.' \
-    'rollout-status.sh {deployment} {namespace}' \
-    'status.sh {branch} {sha}' \
-    '`pipeline.vcs.revision` equals the target sha' \
-    'Grep' \
-    'Glob' \
-    'Bash(~/.agents/skills/circleci-status/scripts/status.sh:*)' \
-    'Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*)' \
-    'Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*)' \
+    'in_progress, waiting, queued, or not yet started' \
+    'Load and follow the skill named `watch-actions-rollout` now.' \
+    'run-jobs.sh {run_id}' \
+    'Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*)' \
+    'Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*)' \
+    'Bash(gh api:*)' \
+    'Bash(gh pr view:*)' \
+    'Bash(gh run list:*)' \
+    'Bash(gh run view:*)' \
     'Bash(git fetch:*)' \
     'Bash(git rev-parse:*)' \
     'Bash(curl:*)' \
     'mcp__claude-in-chrome__*' \
     'mcp__playwright__*' \
+    'gh run view {run_id} --json databaseId,name,workflowName,headSha,status,conclusion,event' \
+    'Record `headSha` as `{sha}`' \
     '### Claude Code fallback' \
-    '/loop Watch the CircleCI+Flux rollout of {sha}' \
+    '/loop Watch GitHub Actions run {run_id}' \
     'If neither `watch_loop` nor `/loop` is available' \
-    'Never `flux reconcile`, `kubectl rollout restart`, `kubectl apply`, or' \
-    're-trigger CI to hurry a rollout along.'; do
+    'Never re-trigger, cancel, re-run, or approve a workflow; never deploy.'; do
     assert_contains "$invariant"
 done
 
@@ -78,7 +79,7 @@ claude_line=$(line_of '### Claude Code fallback')
 ((smoke_line < pi_line && pi_line < claude_line)) || \
     fail "smoke confirmation must precede the Pi and Claude scheduling branches"
 
-assert_not_contains '/skill:watch-flux-rollout'
+assert_not_contains '/skill:watch-actions-rollout'
 assert_not_contains 'allowIndefinite: true'
 
-printf '%s\n' 'watch-flux-rollout protocol contract tests passed'
+printf '%s\n' 'watch-actions-rollout protocol contract tests passed'

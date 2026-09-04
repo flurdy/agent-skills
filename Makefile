@@ -230,7 +230,9 @@ test-watch-review-requests:
 	@bash skills/watch-review-requests/tests/test-skill-contract.sh
 
 test-watch-rollouts:
+	@bash skills/circleci-status/tests/test-status.sh
 	@bash skills/watch-rollout/tests/test-skill-contract.sh
+	@bash skills/watch-actions-rollout/tests/test-skill-contract.sh
 	@bash skills/watch-flux-rollout/tests/test-skill-contract.sh
 
 test-watch-protocols: test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts

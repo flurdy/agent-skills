@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/circleci-status/scripts/status.sh:*), Bash
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 
@@ -45,6 +45,13 @@ For no argument, or an argument other than `logs`, run:
 
 ```bash
 ~/.agents/skills/circleci-status/scripts/status.sh {optional-branch-or-ref}
+```
+
+Rollout watchers may pass a second exact revision argument. In that mode the helper selects only the
+matching branch pipeline and uses the same revision for GitHub status/check fallbacks:
+
+```bash
+~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}
 ```
 
 Render:

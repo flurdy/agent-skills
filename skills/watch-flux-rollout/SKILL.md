@@ -4,18 +4,18 @@ description: >
   After a push or merge, watch a CircleCI + FluxCD deploy until it lands — CI green,
   then the k8s Deployment image tag moves and pods go ready — then run a read-only
   smoke test scoped to the change. Goal-terminating loop; stops on landing or failure.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Grep,Glob,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
 # Watch Flux Rollout
 
 Watch a CircleCI + FluxCD deploy of one commit until it's live, then smoke-test the change —
-the kubectl/CircleCI sister of `/watch-rollout` (which watches GitHub-Actions CD). Built for
+the kubectl/CircleCI sister of `/watch-actions-rollout` (which watches GitHub Actions CD). Built for
 single-repo services deployed the Flux image-automation way: CircleCI builds and pushes an
 image tagged `<base>.<CIRCLE_BUILD_NUM>`, a Flux ImagePolicy bumps the Deployment, the cluster
 rolls it out.
@@ -37,7 +37,7 @@ pre-push baseline — never an exact-tag match.
 
 ### Phase 0 — Load config (optional)
 
-Read `.claude/rollout.yaml` at the repo root if present — same file `/watch-rollout` uses,
+Read `.claude/rollout.yaml` at the repo root if present — same file `/watch-actions-rollout` uses,
 different keys (they don't clash). Recognised keys (all optional):
 
 ```yaml
@@ -83,11 +83,11 @@ straight to the smoke instead of watching.
 The CI leg reuses the `circleci-status` skill's script (symlinked alongside this one):
 
 ```bash
-~/.agents/skills/circleci-status/scripts/status.sh {branch}
+~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}
 ```
 
-Parse the `---CIRCLECI-STATUS---` JSON: the watch tracks the pipeline whose
-`pipeline.vcs.revision` equals the target sha — not just the branch's latest pipeline. If the
+Parse the `---CIRCLECI-STATUS---` JSON. The helper selects the pipeline whose
+`pipeline.vcs.revision` equals the target sha — never just the branch's latest pipeline. If the
 output is `NO_TOKEN`, degrade to the `---GITHUB-STATUS---` / `---GITHUB-CHECK-RUNS---`
 sections from the same script (CircleCI reports state to GitHub) and note the reduced detail.
 
@@ -124,7 +124,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 2. Make this prompt self-contained with the resolved values before passing it to `action: start`:
 
    ```text
-   Load and follow the skill named `watch-flux-rollout` now. This is one continuation tick, not new watcher setup. Watch the CircleCI+Flux rollout of {sha} on {branch}, deployment {deployment} in {namespace}, fromTag "{fromTag}", with confirmed smoke {smoke spec with URL, or "disabled (--no-smoke)"}. Stage 1: run ~/.agents/skills/circleci-status/scripts/status.sh {branch}; parse ---CIRCLECI-STATUS--- and select only a pipeline whose vcs.revision is {sha}. If none exists yet or its workflows are running, render that status and call the matching `watch_loop` action: complete with outcome: continue. If a workflow for that revision failed, report it and complete with outcome: stop. Stage 2, only after CI succeeds: run ~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}. Deployed means tag moved off "{fromTag}" and ready equals desired. If not deployed, render tag and readiness, then complete with outcome: continue; but if CI has been green over 30 minutes and the tag is still "{fromTag}", report a Flux stall and complete with outcome: stop. Once deployed, either report success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. If the same read-only CI or kubectl poll fails on two consecutive ticks, report it and stop. Never reconcile Flux, restart or apply Kubernetes resources, re-trigger CI, or issue a mutating smoke request.
+   Load and follow the skill named `watch-flux-rollout` now. This is one continuation tick, not new watcher setup. Watch the CircleCI+Flux rollout of {sha} on {branch}, deployment {deployment} in {namespace}, fromTag "{fromTag}", with confirmed smoke {smoke spec with URL, or "disabled (--no-smoke)"}. Stage 1: run ~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}; parse ---CIRCLECI-STATUS--- and require pipeline.vcs.revision to equal {sha}. If none exists yet or its workflows are running, render that status and call the matching `watch_loop` action: complete with outcome: continue. If a workflow for that revision failed, report it and complete with outcome: stop. Stage 2, only after CI succeeds: run ~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}. Deployed means tag moved off "{fromTag}" and ready equals desired. If not deployed, render tag and readiness, then complete with outcome: continue; but if CI has been green over 30 minutes and the tag is still "{fromTag}", report a Flux stall and complete with outcome: stop. Once deployed, either report success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. If the same read-only CI or kubectl poll fails on two consecutive ticks, report it and stop. Never reconcile Flux, restart or apply Kubernetes resources, re-trigger CI, or issue a mutating smoke request.
    ```
 
 3. State that the watcher starts after about one minute, polls every four minutes, and is capped at
@@ -154,7 +154,7 @@ in a self-contained dynamic-loop prompt:
 
 ```
 /loop Watch the CircleCI+Flux rollout of {sha} on {branch} ({deployment} in {namespace}).
-Stage 1 — CI: run ~/.agents/skills/circleci-status/scripts/status.sh {branch}; parse
+Stage 1 — CI: run ~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}; parse
 ---CIRCLECI-STATUS---. If no pipeline with vcs.revision {sha} yet, or its workflows are
 still running → reschedule ~240s. If a workflow for {sha} failed → report it and stop.
 Stage 2 — rollout (only once CI is green for {sha}): run
@@ -219,5 +219,5 @@ offer to write the resolved `namespace`, `deployment`, `url`, and `smoke` to
 - CronJob-backed services (no Deployment, no ready replicas) aren't covered; letterbox's
   `deploy-status.sh` has the aggregation pattern (`cron` / `cron:rollout` markers) to extract
   if the need arises.
-- For GitHub-Actions-deployed repos use `/watch-rollout`; for letterbox's multirepo
+- For GitHub-Actions-deployed repos use `/watch-actions-rollout`; for letterbox's multirepo
   release flow use `/watch-release` / `/release-status`.
