@@ -1,7 +1,7 @@
 ---
 name: complete-task
 description: "Complete an in-progress task by running clean-code, staging, and committing. In trunk repos it also closes the bead; in PR repos it leaves the bead open and offers /create-pr. Use after /verify-task."
-allowed-tools: "Read,Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
+allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -34,18 +34,35 @@ Run `/verify-task` before this skill to confirm requirements are met and test co
 
 ### 1. Identify the Task
 
-Determine which bead is being completed:
+Determine which bead is being completed, then prove which store owns it before reading or
+closing anything. Never infer the owning store from the bead ID or the current directory: at a
+workspace root the cwd store is the workspace store, not the repository that owns the work.
 
 ```bash
-# If bead ID provided, use it directly
-bd show <bead-id>
-
-# Otherwise, find the in-progress bead
+# Otherwise, find candidate in-progress beads in the active store
 bd list --status=in_progress
+
+# Resolve the chosen bead to its owning store (read-only)
+~/.agents/skills/next/scripts/next-select resolve <bead-id>
 ```
 
 If multiple beads are in progress, ask the user which one to complete.
 If no beads are in progress, ask the user what to do.
+
+Act on the resolver `status`:
+
+| status | action |
+|---|---|
+| `resolved` | take `directory`; every later `bd` call in this skill uses `bd -C <directory>` |
+| `ambiguous` | show `matches[].selector`, ask which `<repo>:<id>` is meant; close nothing |
+| `unavailable` | report `failures`; commit as normal but leave the bead untouched and say why |
+| `not-found` | ask the user for the right ID; never guess another store or create a bead |
+
+Then read it in its owning store:
+
+```bash
+bd -C <directory> show <bead-id>
+```
 
 ### 2. Run Clean Code
 
@@ -119,7 +136,7 @@ Never close a bead if the commit failed or changes are still uncommitted.
 **Trunk mode** — close the bead now (the commit is the whole deliverable):
 
 ```bash
-bd close <bead-id> --reason="<brief summary of what was done>"
+bd -C <directory> close <bead-id> --reason="<brief summary of what was done>"
 ```
 
 **PR mode** — do **not** close the bead here. By convention the bead is closed one step later, at the `/create-pr` stage (and reopened if review demands major changes); closing at commit time would be premature, before the PR even exists. Instead, tell the user a PR workflow was detected (on branch `{current_branch}`) and the bead is being left `in_progress`, then offer the next step with `AskUserQuestion`:

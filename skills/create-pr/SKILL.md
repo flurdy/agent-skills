@@ -1,7 +1,7 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -124,18 +124,31 @@ Skip this whole step silently if `bd` is unavailable or the repo has no beads da
 
    Match by the Jira key from §2 appearing in the bead title/description, or an obvious 1:1 correspondence to the branch.
 
-2. If exactly one bead matches, close it, referencing the PR:
+2. If multiple beads plausibly match, ask the user which (if any) to close with `AskUserQuestion`. If none match, skip silently — don't invent one.
+
+3. Resolve the chosen bead to its owning store before closing. Never infer the store from the ID or the cwd; at a workspace root the cwd store is the workspace store, not the repository the PR belongs to.
 
    ```bash
-   bd close <bead-id> --reason="PR #<number> created: <pr-title>"
+   ~/.agents/skills/next/scripts/next-select resolve <bead-id>
    ```
 
-3. If multiple beads plausibly match, ask the user which (if any) to close with `AskUserQuestion`. If none match, skip silently — don't invent one.
+   | status | action |
+   |---|---|
+   | `resolved` | take `directory`; close and reopen with `bd -C <directory>` |
+   | `ambiguous` | show `matches[].selector`, ask which `<repo>:<id>` is meant; close nothing |
+   | `unavailable` | report `failures`; the PR stands, the bead stays `in_progress`, say why |
+   | `not-found` | skip the close and say so; never guess another store |
 
-4. Tell the user the bead was closed and how to reopen it if review requires major changes:
+4. Close it in that store, referencing the PR:
 
    ```bash
-   bd update <bead-id> --status=in_progress
+   bd -C <directory> close <bead-id> --reason="PR #<number> created: <pr-title>"
+   ```
+
+5. Tell the user the bead was closed and how to reopen it if review requires major changes:
+
+   ```bash
+   bd -C <directory> update <bead-id> --status=in_progress
    ```
 
 Note: `/ready-to-merge` already closes a bead only "if still in_progress" post-merge, so closing here is compatible — by merge time it's normally already closed and that step no-ops.
