@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Resolve a /next selection to its owning Beads store and act only there."""
+"""Resolve a /next selection to its owning Beads store and act only there.
+
+`stores` lists the usable stores read-only so consumers can route new work."""
 
 from __future__ import annotations
 
@@ -109,6 +111,23 @@ def resolution(workspace: bool, source: Any, issue_id: str) -> dict[str, Any]:
         "repository_path": source.relative_path,
         "directory": str(source.directory.resolve()),
     }
+
+
+def store_listing(collector: Any) -> dict[str, Any]:
+    workspace, sources = usable_sources(collector)
+    stores = []
+    for source in sources:
+        error = collector.store_error(source)
+        stores.append(
+            {
+                "repository": source.name,
+                "repository_path": source.relative_path,
+                "directory": str(source.directory.resolve()),
+                "usable": error is None,
+                "error": error,
+            }
+        )
+    return {"workspace": workspace, "stores": stores}
 
 
 def ranked_candidates(options: list[str]) -> list[dict[str, Any]]:
@@ -408,17 +427,26 @@ def run_start(directory: Path, issue_id: str) -> int:
 
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("resolve", "handoff", "start"))
-    parser.add_argument("selector")
+    parser.add_argument("command", choices=("stores", "resolve", "handoff", "start"))
+    parser.add_argument("selector", nargs="?", default="")
     parser.add_argument("--avoid-busy", action="store_true")
     parser.add_argument("--type", default="")
     parser.add_argument("--expect-id", default="")
     parser.add_argument("--check-branches", action="store_true")
-    return parser.parse_args(argv)
+    arguments = parser.parse_args(argv)
+    if arguments.command == "stores" and arguments.selector:
+        parser.error("stores takes no selector")
+    if arguments.command != "stores" and not arguments.selector:
+        parser.error(f"{arguments.command} requires a selector")
+    return arguments
 
 
 def main(argv: list[str]) -> int:
     arguments = parse_arguments(argv)
+    if arguments.command == "stores":
+        json.dump(store_listing(load_collector()), sys.stdout, separators=(",", ":"))
+        sys.stdout.write("\n")
+        return 0
     options = []
     if arguments.avoid_busy:
         options.append("--avoid-busy")

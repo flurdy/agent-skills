@@ -239,6 +239,21 @@ Resolution prints JSON and never writes:
 - `{"status":"stale", ...}` (exit 6) means the index no longer points at `--expect-id`.
   Re-render the table and ask again; nothing was written.
 
+### Store listing for new work
+
+Existing beads are routed by `resolve`. New durable work has no ID yet, so consumers decide
+ownership by outcome (see the `beads` skill) and need to know which stores exist:
+
+```bash
+~/.agents/skills/next/scripts/next-select stores
+```
+
+Read-only; prints `{"workspace": bool, "stores": [...]}`. Each store carries `repository`,
+`repository_path`, an absolute `directory`, `usable`, and `error`. In local mode the single
+entry is `local`. At a validated workspace root the first entry is `workspace` followed by
+every registered repository; an unusable store is listed with its `error` so a consumer can
+fail closed instead of guessing. Create in the chosen store with `bd -C <directory>`.
+
 ## Listing Mode (default and `list`)
 
 `/next` with no auto-pick argument — and the explicit `/next list` — must **show the table**, not a prose summary of it. The `next-bd` output arrives inside a Bash tool result that the UI collapses to a few lines, so do not rely on the user seeing it there.

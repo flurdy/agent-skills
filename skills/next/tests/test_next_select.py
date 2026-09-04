@@ -401,6 +401,57 @@ class NextSelectTest(WorkspaceFixture):
         self.assertEqual(json.loads(missing.stdout)["status"], "not-found")
         self.assertEqual(self.update_calls(), [])
 
+    def test_stores_lists_every_registered_store_with_usability(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 3, "task", "2026-01-04T00:00:00Z")]},
+            repositories={
+                "repo-a": {"ready": [issue("a-1", 2, "task", "2026-01-02T00:00:00Z")]},
+                "repo-b": {},
+            },
+        )
+        shutil.rmtree(self.base / "sources" / "repo-b" / ".beads")
+
+        result = self.run_select(workspace, "stores")
+
+        self.assertEqual(result.returncode, 0)
+        listing = json.loads(result.stdout)
+        self.assertEqual(listing["workspace"], True)
+        self.assertEqual(
+            [(store["repository"], store["repository_path"], store["usable"]) for store in listing["stores"]],
+            [
+                ("workspace", ".", True),
+                ("repo-a", "repos/repo-a", True),
+                ("repo-b", "repos/repo-b", False),
+            ],
+        )
+        self.assertEqual(listing["stores"][2]["error"], "missing .beads store")
+        self.assertEqual(
+            Path(listing["stores"][1]["directory"]),
+            (self.base / "sources" / "repo-a").resolve(),
+        )
+        self.assertEqual(self.recorded_calls(), [])
+
+    def test_stores_in_local_mode_reports_only_the_current_store(self) -> None:
+        local = self.base / "local"
+        self.create_store(local)
+
+        listing = json.loads(self.run_select(local, "stores").stdout)
+
+        self.assertEqual(listing["workspace"], False)
+        self.assertEqual(
+            [(store["repository"], store["usable"]) for store in listing["stores"]],
+            [("local", True)],
+        )
+        self.assertEqual(Path(listing["stores"][0]["directory"]), local.resolve())
+
+    def test_selector_is_required_except_for_stores(self) -> None:
+        local = self.base / "local"
+        self.create_store(local)
+
+        self.assertEqual(self.run_select(local, "resolve").returncode, 2)
+        self.assertEqual(self.run_select(local, "stores", "extra").returncode, 2)
+        self.assertEqual(self.recorded_calls(), [])
+
     def test_local_mode_routes_to_the_current_store(self) -> None:
         local = self.base / "local"
         self.create_store(
