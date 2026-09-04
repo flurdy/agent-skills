@@ -1,7 +1,7 @@
 ---
 name: diagnose-bug
 description: Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before any fix is proposed.
-allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git bisect log:*),Bash(git ls-files:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(npm test:*),Bash(npm run test:*),Bash(pytest:*),Bash(cargo test:*),Bash(go test:*),Bash(./gradlew test:*),Bash(mvn test:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
+allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git bisect log:*),Bash(git ls-files:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(npm test:*),Bash(npm run test:*),Bash(pytest:*),Bash(cargo test:*),Bash(go test:*),Bash(./gradlew test:*),Bash(mvn test:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
 version: "1.1.0"
@@ -78,7 +78,11 @@ premium model, proceed silently.
 
 ### 1. Define the observable problem
 
-Parse any bead/Jira key and fetch it read-only. Extract reports as claims to test, not facts.
+Parse any bead/Jira key and fetch it read-only. For a bead, resolve its owning store first with
+`~/.agents/skills/next/scripts/next-select resolve <id>` and read it with
+`bd -C <directory> show <id>`; never infer the store from the ID or the cwd. On `ambiguous` or
+`unavailable`, say so and continue from the symptom alone. Extract reports as claims to test,
+not facts.
 
 Write a compact problem statement with:
 

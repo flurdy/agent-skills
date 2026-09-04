@@ -1,7 +1,7 @@
 ---
 name: tracking-sweep
 description: Portfolio-wide drift sweep across Jira, beads, and GitHub PRs — flags status drift, orphan work, parent-moved beads, and stale items. Read-only; use for a "where is everything" reconciliation, unlike /landscape's passive snapshot.
-allowed-tools: "Bash(git rev-parse:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
+allowed-tools: "Bash(git rev-parse:*), Bash(~/.agents/skills/next/scripts/next-select:*), Bash(bd list:*), Bash(bd show:*), Bash(bd memories:*), Bash(bd ready:*), Bash(bd stale:*), Bash(bd orphans:*), Bash(date:*), Bash(grep:*), Bash(awk:*), Bash(sort:*), Bash(uniq:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/tracking-sweep/scripts/gh-pr-per-ticket.sh:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: high
@@ -61,16 +61,29 @@ fields: summary,status,assignee
 
 ### 2. Fetch beads
 
+Decide which stores are in scope before reading. Never infer it from the cwd: at a validated
+workspace root the cwd store is only the workspace store, and "portfolio-wide" means every
+registered repository too.
+
 ```bash
-bd list --status=in_progress
-bd list --status=open
-bd memories                                    # for parking notes
+~/.agents/skills/next/scripts/next-select stores
+```
+
+Read-only. In local mode (`workspace: false`) the single `local` store is the portfolio. At a
+workspace root iterate every entry with `usable: true` and prefix each bead in the report with
+its `repository`; list stores with `usable: false` under Failure modes with their `error` rather
+than silently narrowing the sweep. For each in-scope `directory`:
+
+```bash
+bd -C <directory> list --status=in_progress
+bd -C <directory> list --status=open
+bd -C <directory> memories                     # for parking notes
 ```
 
 In `quick` mode skip:
 ```bash
-bd stale                                        # >14d no activity
-bd orphans                                      # broken dependencies
+bd -C <directory> stale                         # >14d no activity
+bd -C <directory> orphans                       # broken dependencies
 ```
 
 ### 3. Fetch PRs (hybrid — org-wide + per-ticket)
@@ -248,6 +261,7 @@ If there's no drift at all:
 ## Operating rules
 
 - **Read-only.** Never call `mcp__jira__jira_post`, `bd close`, `bd update`, or `gh pr edit`. The skill recommends; the user acts.
+- **Store-qualified.** Every `bd` read names its store with `-C <directory>`; a recommendation that names a bead names its repository too, so the user acts in the right store.
 - **Don't restate matches.** A ticket whose status matches its beads/PRs is uninteresting. Skip it.
 - **Don't speculate beyond the data.** "Marked In Progress but no work" is fine. "User abandoned this" is not.
 - **Honour parking.** Always check `bd memories` for parking notes before flagging status drift on a ticket. If parked, list under "Honoured parking" instead of "Drift."

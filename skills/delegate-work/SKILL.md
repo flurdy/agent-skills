@@ -1,7 +1,7 @@
 ---
 name: delegate-work
 description: Coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or separable workstreams materially improve latency, context, or confidence. Decline trivial, tightly coupled, or serial work.
-allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 model-tier: premium
 effort: high
 version: "2.1.0"
@@ -105,7 +105,10 @@ Read repository rules, established patterns, and current status/diff. Use tracki
 only for durable context:
 
 - Use Beads only when `bd` is available, active Beads context exists, and a relevant
-  bead or epic is present.
+  bead or epic is present. Resolve that bead's owning store first with
+  `~/.agents/skills/next/scripts/next-select resolve <id>` and read it with
+  `bd -C <directory> show <id>`; never infer the store from the ID or the cwd. On
+  `ambiguous` or `unavailable`, report and treat the bead as unavailable context.
 - Otherwise use the established Jira, Trello, or other tracker. If none exists, report
   durable milestone suggestions generically.
 - Never create one item per child, recon pass, review, retry, or handoff.
