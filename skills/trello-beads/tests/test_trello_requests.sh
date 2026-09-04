@@ -159,6 +159,9 @@ chmod 0755 "$TMP/bin/jq"
 cat >"$TMP/bin/bd" <<'FAKE_BD'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == -C ]]; then
+  shift 2
+fi
 case "$1" in
   list)
     if [[ "$*" == *'--json'* ]]; then
@@ -224,6 +227,9 @@ fi
 "$API" add-label card-1 bead sky --apply >>"$stdout" 2>>"$stderr"
 "$API" comment card-1 'New comment' --apply >>"$stdout" 2>>"$stderr"
 "$API" move card-1 Done --apply >>"$stdout" 2>>"$stderr"
+mkdir -p "$TMP/project/.beads"
+git -C "$TMP/project" init -q
+cd "$TMP/project"
 "$SYNC" sync --dry-run >>"$stdout" 2>>"$stderr"
 
 for malformed_lookup in \

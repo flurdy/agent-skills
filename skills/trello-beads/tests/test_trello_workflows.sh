@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$TMP/bin" "$TMP/scripts"
 cp "$SOURCE_SCRIPTS/trello-pull.sh" "$TMP/scripts/trello-pull.sh"
 cp "$SOURCE_SCRIPTS/trello-sync.sh" "$TMP/scripts/trello-sync.sh"
+cp "$SOURCE_SCRIPTS/owning-store.sh" "$TMP/scripts/owning-store.sh"
 chmod 0755 "$TMP/scripts/trello-pull.sh" "$TMP/scripts/trello-sync.sh"
 LOG="$TMP/operations.log"
 export FAKE_OPERATIONS_LOG="$LOG"
@@ -114,6 +115,10 @@ chmod 0755 "$TMP/scripts/trello-api.sh"
 cat >"$TMP/bin/bd" <<'FAKE_BD'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == -C ]]; then
+  printf '%s\n' "BD_STORE $2" >>"$FAKE_OPERATIONS_LOG"
+  shift 2
+fi
 case "$1" in
   list)
     [[ "${FAKE_BD_LIST_FAIL:-0}" != 1 ]] || exit 9
@@ -160,8 +165,31 @@ apply_err="$TMP/pull-apply.err"
 sync_out="$TMP/sync.out"
 sync_err="$TMP/sync.err"
 
+# The store that owns the board's beads is the repository holding the board
+# configuration. Anything else fails before a single request or bd call.
+mkdir -p "$TMP/nogit" "$TMP/plain" "$TMP/project"
+git -C "$TMP/plain" init -q
+git -C "$TMP/project" init -q
+mkdir -p "$TMP/project/.beads"
+: >"$LOG"
+if (cd "$TMP/nogit" && "$PULL" pull card-1 >"$plan_out" 2>"$apply_err"); then
+  fail 'pull outside a Git repository did not fail closed'
+fi
+grep -Fq 'Not inside a Git repository' "$apply_err" || fail 'missing repository was not reported'
+if (cd "$TMP/plain" && "$PULL" pull card-1 >"$plan_out" 2>"$apply_err"); then
+  fail 'pull in a repository without a store did not fail closed'
+fi
+grep -Fq 'No Beads store at' "$apply_err" || fail 'missing store was not reported'
+if (cd "$TMP/plain" && "$SYNC" sync >"$sync_out" 2>"$sync_err"); then
+  fail 'sync in a repository without a store did not fail closed'
+fi
+[[ ! -s "$LOG" ]] || fail 'a rejected store still produced requests or bd calls'
+cd "$TMP/project"
+
 : >"$LOG"
 "$PULL" pull card-1 >"$plan_out"
+grep -Fq "BD_STORE $TMP/project" "$LOG" || fail 'pull did not qualify bd with the owning store'
+grep -Fq 'WOULD CREATE BEAD: Card one' "$plan_out" || fail 'pull plan omitted bead creation'
 grep -Fq 'WOULD CREATE BEAD: Card one' "$plan_out" || fail 'pull plan omitted bead creation'
 grep -Fq "WOULD ADD LABEL: 'bead'" "$plan_out" || fail 'pull plan omitted card label'
 grep -Fq 'WOULD COMMENT: Bead created: <new-bead-id>' "$plan_out" || fail 'pull plan omitted card comment'

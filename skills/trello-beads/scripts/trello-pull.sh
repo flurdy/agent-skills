@@ -13,6 +13,8 @@ BACKLOG_LIST="${TRELLO_LIST_BACKLOG:-Backlog}"
 BEAD_LABEL="${TRELLO_BEAD_LABEL:-bead}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
+# shellcheck source=owning-store.sh
+source "$SCRIPT_DIR/owning-store.sh"
 
 # Card and comment bodies are written by anyone with board access, and once they
 # are inside a bead description nothing downstream can tell they came from
@@ -125,7 +127,7 @@ $(fence_external "$external_text")"
   # Exact title equality, not a substring grep: a card titled "e" matched almost
   # any listing and silently skipped every pull. --limit 0 because a duplicate
   # check that only sees the first page is not a duplicate check.
-  if ! open_beads=$(bd list --status=open --label=trello --limit 0 --json); then
+  if ! open_beads=$(bd_store list --status=open --label=trello --limit 0 --json); then
     echo "FAILED DUPLICATE CHECK: $card_name" >&2
     return 1
   fi
@@ -154,7 +156,7 @@ $(fence_external "$external_text")"
   fi
 
   local result
-  if ! result=$(bd create \
+  if ! result=$(bd_store create \
     --title="$card_name" \
     --type="$bead_type" \
     --priority="$bead_priority" \
@@ -321,18 +323,22 @@ case "$command" in
     ;;
   pull|plan)
     (($# <= 2)) || die "Usage: trello-pull.sh $command [card-id] [move-to]"
+    require_owning_store
     cmd_pull plan "${1:-}" "${2:-}"
     ;;
   apply)
     (($# <= 2)) || die "Usage: trello-pull.sh apply [card-id] [move-to]"
+    require_owning_store
     cmd_pull apply "${1:-}" "${2:-}"
     ;;
   pull-all|plan-all)
     (($# <= 1)) || die "Usage: trello-pull.sh $command [move-to]"
+    require_owning_store
     cmd_pull plan "" "${1:-}"
     ;;
   apply-all)
     (($# <= 1)) || die "Usage: trello-pull.sh apply-all [move-to]"
+    require_owning_store
     cmd_pull apply "" "${1:-}"
     ;;
   help|--help|-h)

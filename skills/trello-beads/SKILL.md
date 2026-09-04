@@ -23,6 +23,11 @@ Interact with Trello boards and integrate with Beads project management.
   - `TRELLO_LIST_BUGS` — bug column name (default: "Bugs")
   - `TRELLO_LIST_DONE` — done column name (default: "Done")
 - Scripts symlinked into project `scripts/` directory (see Setup below)
+- Run from inside the repository that holds the board configuration. Its own `.beads`
+  store owns every bead the board produces: the scripts prove that store from the Git
+  toplevel and run every `bd` call as `bd -C <that repository>`. Outside a repository,
+  or in one without a store, they fail closed before any Trello request or `bd` call
+  rather than letting `bd` walk up to a parent or workspace store.
 
 ## Setup
 

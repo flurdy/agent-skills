@@ -11,6 +11,8 @@ source "$TRELLO_API"
 DONE_LIST="${TRELLO_LIST_DONE:-Done}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
+# shellcheck source=owning-store.sh
+source "$SCRIPT_DIR/owning-store.sh"
 
 # Get the list ID for Done column
 get_done_list_id() {
@@ -33,6 +35,7 @@ cmd_sync() {
     *) die "Unknown sync option: $option. Use --apply only after reviewing the plan." ;;
   esac
 
+  require_owning_store
   local done_list_id
   done_list_id=$(get_done_list_id)
   [[ -n "$done_list_id" ]] || die "Could not find '$DONE_LIST' list on board"
@@ -54,7 +57,7 @@ cmd_sync() {
 
   # Get closed beads with trello label
   local closed_beads
-  if ! closed_beads=$(bd list --status=closed --label=trello); then
+  if ! closed_beads=$(bd_store list --status=closed --label=trello); then
     echo "FAILED: Could not list closed Trello-linked Beads" >&2
     return 1
   fi
@@ -83,7 +86,7 @@ cmd_sync() {
 
     # Get external ref from bead
     local bead_info
-    if ! bead_info=$(bd show "$bead_id"); then
+    if ! bead_info=$(bd_store show "$bead_id"); then
       echo "FAILED: Could not read Bead $bead_id" >&2
       failed=$((failed + 1))
       continue
