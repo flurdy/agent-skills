@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd c
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 

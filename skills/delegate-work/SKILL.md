@@ -4,7 +4,7 @@ description: Coordinate bounded delegation for non-trivial work when independent
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git rev-parse:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd status:*),Bash(bd list:*),Bash(bd show:*),Task,Skill(architect),Skill(verify-task),Skill(total-review),Skill(triage),Skill(second-opinion),Skill(pi-subagents),AskUserQuestion"
 model-tier: premium
 effort: high
-version: "2.1.0"
+version: "2.1.1"
 author: "flurdy"
 ---
 

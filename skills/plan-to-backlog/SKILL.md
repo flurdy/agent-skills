@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 

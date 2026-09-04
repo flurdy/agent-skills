@@ -5,7 +5,7 @@ allowed-tools: "Bash(git rev-parse:*), Bash(~/.agents/skills/next/scripts/next-s
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.1.1"
+version: "0.1.2"
 author: "flurdy"
 ---
 

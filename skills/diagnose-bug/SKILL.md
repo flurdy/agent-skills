@@ -4,7 +4,7 @@ description: Evidence-led, read-only bug diagnosis using minimal reproduction, b
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git bisect log:*),Bash(git ls-files:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(npm test:*),Bash(npm run test:*),Bash(pytest:*),Bash(cargo test:*),Bash(go test:*),Bash(./gradlew test:*),Bash(mvn test:*),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
 model-tier: premium
 effort: xhigh
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 

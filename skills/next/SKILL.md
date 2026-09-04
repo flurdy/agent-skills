@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd up
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.7.0"
+version: "1.8.0"
 author: "flurdy"
 ---
 

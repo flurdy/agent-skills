@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(bd create:*),Bash(bd list:*),Bash(bd show:*),Bas
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
