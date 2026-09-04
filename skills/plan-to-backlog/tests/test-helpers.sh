@@ -26,6 +26,9 @@ cat >"$TMP/bin/bd" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >>"$BD_LOG"
+if [[ $1 == -C ]]; then
+    shift 2
+fi
 if [[ $1 == create && $* == *'Fail child'* ]]; then
     printf '%s\n' 'injected create failure' >&2
     exit 17
@@ -202,5 +205,30 @@ set -e
 [[ $status -eq 17 ]] || fail "bd failure should propagate exit 17, got $status"
 [[ $(wc -l <"$BD_LOG") -eq $((before + 1)) ]] || fail 'failed action invoked unexpected extra commands'
 assert_contains "$TMP/failure.err" 'injected create failure'
+
+store="$TMP/owning-store"
+mkdir -p "$store/.beads"
+"$WRITE_HELPER" --directory "$store" "$proposal" "$proposal" update-type agents-existing >"$TMP/routed.out"
+assert_contains "$BD_LOG" "-C $store update agents-existing --type epic --json"
+"$WRITE_HELPER" --directory "$store" "$proposal" "$proposal" create "${create_args[@]}" >"$TMP/routed-create.out"
+assert_contains "$BD_LOG" "-C $store create --title Create durable outcome"
+
+before=$(wc -l <"$BD_LOG")
+set +e
+"$WRITE_HELPER" --directory "$TMP/nowhere" "$proposal" "$proposal" update-type agents-existing >"$TMP/nodir.out" 2>"$TMP/nodir.err"
+status=$?
+set -e
+[[ $status -eq 2 ]] || fail "missing store directory should exit 2, got $status"
+[[ $(wc -l <"$BD_LOG") -eq $before ]] || fail 'missing store directory invoked bd'
+assert_contains "$TMP/nodir.err" 'owning store directory not found'
+
+mkdir -p "$TMP/no-beads"
+set +e
+"$WRITE_HELPER" --directory "$TMP/no-beads" "$proposal" "$proposal" update-type agents-existing >"$TMP/nobeads.out" 2>"$TMP/nobeads.err"
+status=$?
+set -e
+[[ $status -eq 2 ]] || fail "store without .beads should exit 2, got $status"
+[[ $(wc -l <"$BD_LOG") -eq $before ]] || fail 'store without .beads invoked bd'
+assert_contains "$TMP/nobeads.err" 'no usable .beads store'
 
 printf '%s\n' 'plan-to-backlog helper tests passed'

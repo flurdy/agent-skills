@@ -1,7 +1,7 @@
 ---
 name: plan-to-backlog
 description: "Materialize an approved cited plan into proportionate Beads tracking when the user asks for durable ownership. Recommends no item, one item, or a bounded epic; checks owners and duplicates; previews every write; applies only after exact confirmation."
-allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(bd status:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd children:*),Bash(~/.agents/skills/plan-to-backlog/scripts/utc-now.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/confirmed-bd.sh:*),mcp__jira__*,mcp__confluence__*"
+allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd status:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd children:*),Bash(~/.agents/skills/plan-to-backlog/scripts/utc-now.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/confirmed-bd.sh:*),mcp__jira__*,mcp__confluence__*"
 model-tier: standard
 model: sonnet
 effort: high
@@ -95,7 +95,9 @@ newline (`utf8-lf-final-newline-v1`). Record the selected normalization with the
 
 ### Bead source
 
-1. Run `bd show <id> --json --include-comments`.
+1. Resolve the owning store first with `~/.agents/skills/next/scripts/next-select resolve <id>`;
+   never infer it from the ID or the current directory. On `ambiguous` or `unavailable`, ask or
+   report and stop. Then run `bd -C <directory> show <id> --json --include-comments`.
 2. Identify the exact description, design, notes, comments, or specification text being
    consumed.
 3. Stream that exact logical text to the hashing helper's `--canonical-text` mode through
@@ -138,11 +140,25 @@ to `needs-clarification`; apply is unavailable.
 
 ## 2. Gather Beads context read-only
 
+Choose the owning store before any read. New items have no ID yet, so ownership follows
+outcome (see the `beads` skill): cross-project work belongs in the validated workspace root
+store; work wholly owned by one repository belongs in that repository's store. List the
+candidates read-only:
+
+```text
+~/.agents/skills/next/scripts/next-select stores
+```
+
+In local mode (`workspace: false`) the single `local` entry owns the work. At a workspace root
+pick the store whose outcome matches and record its `directory`; a store listed with
+`usable: false` blocks apply for items it would own — report the `error`, do not fall back to
+the workspace store. Every later `bd` read and every helper call uses that directory.
+
 Run:
 
 ```text
-bd status
-bd list --status=open
+bd -C <directory> status
+bd -C <directory> list --status=open
 ```
 
 If no active Beads database is available, render a tracker-neutral breakdown when useful,
@@ -329,8 +345,9 @@ Any material drift stops apply and renders a new read-only proposal for fresh
 confirmation.
 
 Run every mutation through
-`~/.agents/skills/plan-to-backlog/scripts/confirmed-bd.sh`, passing the rebuilt proposal
-fingerprint and the confirmed fingerprint separately. Never invoke mutating `bd` commands
+`~/.agents/skills/plan-to-backlog/scripts/confirmed-bd.sh --directory <directory>`, passing
+the owning store chosen in step 2 plus the rebuilt proposal fingerprint and the confirmed
+fingerprint separately. The helper refuses a directory without a usable `.beads` store. Never invoke mutating `bd` commands
 directly. The helper rejects mismatched fingerprints, unsupported actions/flags, missing
 source citation metadata, and commands outside the bounded create/update-parent/
 update-type/add-blocker surface.
@@ -428,5 +445,6 @@ Next: <single safe action>
 - Do not create tracker items for tests, commits, agents, reviews, retries, or handoffs.
 - Do not use raw `bd close`, `bd delete`, `bd supersede`, or `bd promote` commands.
 - Do not bypass the confirmed-action helper for Beads mutations.
+- Do not write to a store other than the one resolved or chosen in step 2.
 - Do not persist source or proposal text outside its cited source.
 - Do not claim transactionality; Beads writes may partially succeed.

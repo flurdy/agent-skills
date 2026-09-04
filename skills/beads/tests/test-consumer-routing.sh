@@ -38,4 +38,17 @@ for skill in complete-task create-pr; do
     code_lines "$file" | grep -Eq '^\s*bd -C <directory> close ' || fail "$skill: close must use bd -C <directory>"
 done
 
+# Skills that create new work: store listing used and every create/dep in code qualified.
+for skill in triage plan-to-backlog; do
+    file="$ROOT_DIR/skills/$skill/SKILL.md"
+    frontmatter "$file" | grep -Fq -- "Bash($RESOLVER:*)" || fail "$skill: resolver not in allowed-tools"
+    assert_contains "$file" "$RESOLVER stores"
+    assert_contains "$file" 'usable: false'
+    if code_lines "$file" | grep -Eq '^\s*bd (close|update|create|dep|list|search) '; then
+        fail "$skill: unqualified bd call in code; use bd -C <directory>"
+    fi
+done
+assert_contains "$ROOT_DIR/skills/triage/SKILL.md" "$RESOLVER resolve <selector>"
+assert_contains "$ROOT_DIR/skills/plan-to-backlog/SKILL.md" "$RESOLVER resolve <id>"
+
 printf '%s\n' 'beads consumer routing tests passed'

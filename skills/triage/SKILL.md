@@ -55,17 +55,22 @@ instead of creating tracking from an unstable plan.
    - Check if the feature/fix location is obvious
    - Identify any related existing code
 
-2. **Check for Duplicates**
-   - Run `bd list --status=open` to see existing work
+2. **Choose the Owning Store**
+   - New work has no ID, so ownership follows outcome: cross-project → workspace root
+     store; wholly owned by one repository → that repository's store
+   - List candidates with `next-select stores`; never infer the store from the cwd
+
+3. **Check for Duplicates**
+   - Run `bd -C <directory> list --status=open` to see existing work
    - Search bead titles and descriptions for similar items
    - Flag potential duplicates or related beads
 
-3. **Analyze Complexity**
+4. **Analyze Complexity**
    - Determine if single bead or multiple beads needed
    - Identify natural task boundaries
    - Consider dependencies between potential beads
 
-4. **Create Beads**
+5. **Create Beads**
    - Create focused, actionable beads
    - Set appropriate type (task/bug/feature)
    - Set reasonable priority (P2 default, adjust based on context)
@@ -168,10 +173,20 @@ When invoked:
    # Check if area of code exists
    ```
 
-4. Check for duplicates:
+4. Choose the owning store, then check for duplicates there:
    ```bash
-   bd list --status=open
-   bd search "<keywords from description>"
+   ~/.agents/skills/next/scripts/next-select stores
+   ```
+
+   In local mode (`workspace: false`) the single `local` store owns the work. At a validated
+   workspace root the cwd store is the *workspace* store: put cross-project work there and
+   repository-owned work in that repository's `directory`. A candidate store with
+   `usable: false` fails closed — report its `error` and create nothing there or elsewhere.
+   Every later `bd` call in intake uses `bd -C <directory>`.
+
+   ```bash
+   bd -C <directory> list --status=open
+   bd -C <directory> search "<keywords from description>"
    ```
 
 5. Decide on bead structure:
@@ -182,18 +197,18 @@ When invoked:
 6. Create bead(s):
    ```bash
    # For Jira-sourced beads, include --external-ref and --labels
-   bd create --title="..." --type=feature|bug|task --priority=2 \
+   bd -C <directory> create --title="..." --type=feature|bug|task --priority=2 \
      --description="..." \
      --external-ref "jira-SP-123" \
      --labels "jira"
 
    # For free-text beads (no Jira reference)
-   bd create --title="..." --type=feature|bug|task --priority=2 --description="..."
+   bd -C <directory> create --title="..." --type=feature|bug|task --priority=2 --description="..."
    ```
 
 7. If multiple beads, set dependencies:
    ```bash
-   bd dep add <dependent> <dependency>
+   bd -C <directory> dep add <dependent> <dependency>
    ```
 
    When creating multiple beads from a single Jira ticket, all beads get the same `--external-ref` and `jira` label so they can be traced back to the source ticket.
@@ -251,8 +266,8 @@ proposed edits and any new beads.
 bd -C <directory> update <id> --description/--design/--notes/--acceptance/--priority/--labels
 ```
 
-New beads that investigation revealed go through the normal create path (steps 4–7) so they get
-dedup-checked and linked with `bd dep add`.
+New beads that investigation revealed go through the normal create path (steps 4–7) in the
+resolved store so they get dedup-checked and linked with `bd -C <directory> dep add`.
 
 ### Rules
 

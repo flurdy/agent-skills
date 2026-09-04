@@ -3,7 +3,8 @@ set -euo pipefail
 
 usage() {
     cat >&2 <<'EOF'
-usage: confirmed-bd.sh <proposal-sha256> <confirmed-sha256> <action> [arguments]
+usage: confirmed-bd.sh [--directory DIR] <proposal-sha256> <confirmed-sha256> <action> [arguments]
+  --directory DIR  proven owning Beads store; every bd call runs as `bd -C DIR`
 actions:
   preflight-create|create --title VALUE --type VALUE --priority VALUE \
     --description VALUE --acceptance VALUE --metadata VALUE [--parent ID]
@@ -25,6 +26,23 @@ valid_sha256() {
 
 valid_id() {
     [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]
+}
+
+directory=''
+if [[ ${1:-} == --directory ]]; then
+    [[ $# -ge 2 ]] || usage
+    directory=$2
+    shift 2
+    [[ -d $directory && ! -L $directory ]] || fail "owning store directory not found: $directory"
+    [[ -d $directory/.beads && ! -L $directory/.beads ]] || fail "no usable .beads store in: $directory"
+fi
+
+bd_cmd() {
+    if [[ -n $directory ]]; then
+        bd -C "$directory" "$@"
+    else
+        bd "$@"
+    fi
 }
 
 [[ $# -ge 3 ]] || usage
@@ -122,7 +140,7 @@ PY
             valid_id "$parent" || fail "invalid parent ID: $parent"
         fi
 
-        command=(bd create --title "$title" --type "$type" --priority "$priority" \
+        command=(create --title "$title" --type "$type" --priority "$priority" \
             --description "$description" --acceptance "$acceptance" --metadata "$metadata")
         if [[ -n $parent ]]; then
             command+=(--parent "$parent")
@@ -131,24 +149,24 @@ PY
             command+=(--dry-run)
         fi
         command+=(--json)
-        "${command[@]}"
+        bd_cmd "${command[@]}"
         ;;
     update-type)
         [[ $# -eq 1 ]] || usage
         valid_id "$1" || fail "invalid issue ID: $1"
-        bd update "$1" --type epic --json
+        bd_cmd update "$1" --type epic --json
         ;;
     set-parent)
         [[ $# -eq 2 ]] || usage
         valid_id "$1" || fail "invalid issue ID: $1"
         valid_id "$2" || fail "invalid parent ID: $2"
-        bd update "$1" --parent "$2" --json
+        bd_cmd update "$1" --parent "$2" --json
         ;;
     add-blocker)
         [[ $# -eq 2 ]] || usage
         valid_id "$1" || fail "invalid dependent ID: $1"
         valid_id "$2" || fail "invalid prerequisite ID: $2"
-        bd dep add "$1" "$2" --type blocks --json
+        bd_cmd dep add "$1" "$2" --type blocks --json
         ;;
     *)
         fail "unsupported action: $action"

@@ -42,9 +42,16 @@ assert_not_contains "$SKILL" 'disable-model-invocation:'
 assert_contains "$SKILL" 'Select this skill dynamically, or through `/plan-to-backlog`, only when:'
 assert_contains "$SKILL" 'The existence or approval of a plan alone is not a trigger.'
 assert_contains "$SKILL" 'Proposal-first. May recommend no backlog change. Never writes without confirmation.'
+assert_contains "$SKILL" 'next-select stores'
+assert_contains "$SKILL" 'next-select resolve <id>'
+assert_contains "$SKILL" 'confirmed-bd.sh --directory <directory>'
+assert_contains "$SKILL" 'do not fall back to
+the workspace store'
+assert_contains "$SKILL" 'Do not write to a store other than the one resolved or chosen in step 2.'
 
 frontmatter=$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$SKILL")
 for permission in \
+    'Bash(~/.agents/skills/next/scripts/next-select:*)' \
     'Bash(bd status:*)' \
     'Bash(bd list:*)' \
     'Bash(bd search:*)' \
