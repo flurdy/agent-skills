@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 
@@ -55,9 +55,10 @@ the full source, proposal, and confirmation procedure.
 ## Ownership boundary
 
 - `/architect` owns technical planning and remains read-only.
-- `/triage` owns unstructured prompt/Jira intake and hands approved structured plans here.
-- `/plan-to-backlog` alone owns plan-derived disposition, proposal, confirmation, apply,
-  and recovery.
+- `/triage` owns unstructured prompt/Jira intake and explicit `--human-review` tracking of
+  pending human decisions; it hands approved implementation plans here without creating children.
+- `/plan-to-backlog` alone owns approved implementation-plan disposition, proposal, confirmation,
+  apply, and recovery. It does not establish ownership of an unapproved human decision.
 - `/backlog-groom` remains retrospective and read-only by default.
 
 Do not call `/triage` to classify or apply the plan. Similar low-level Beads lookups do not

@@ -12,7 +12,7 @@ quick-start and deliberately links to the detailed policy rather than reproducin
 | Need | Command | What happens |
 |---|---|---|
 | A quick independent perspective | `/second-opinion ask "…"` | Uses `peer`, the default single route chosen to differ from the current model vendor. |
-| Review an open pull request | `/second-opinion review-pr 123` | Gathers PR metadata and diff, then asks one independent peer to review it. |
+| Review an open pull request | `/second-opinion review-pr 123` | Uses a qualified, pinned review-pr snapshot, then asks an eligible independent peer. |
 | Challenge an implementation plan | `/second-opinion validate-plan "…"` | Reviews feasibility, gaps, risks, dependencies, and simpler alternatives. |
 | Structure a bug investigation | `/second-opinion triage-bug "…"` | Requests root-cause hypotheses and falsification steps. |
 | Ask a specific provider | `/second-opinion ask "…" --agent codex` | Runs exactly the named local CLI route. |
@@ -105,7 +105,11 @@ manager. Put exact OpenRouter model IDs in the local configuration, never in thi
 ## Cost, privacy, and consent
 
 Local CLI routes are read-only reviewers and may inspect readable files in the current repository.
-Only run them where that repository is safe to share with their providers. The skill removes obvious
+Only run them where that repository is safe to share with their providers. PR mode additionally
+requires the invoking directory to already be the verified clean PR-head checkout; otherwise local
+routes are unavailable, never silently redirected. Remote packet routes need no checkout.
+See [PR evidence and stale-safety](references/pr-evidence.md) for the original-identity and local
+rechecks required before assessment. These are stale checks, not immutable filesystem isolation. The skill removes obvious
 secrets from assembled context, but you remain responsible for not requesting review of credentials,
 private keys, `.env` contents, or sensitive personal data.
 
@@ -129,7 +133,10 @@ termination diagnostics include bounded response identity, normalized/native fin
 tool-call count. `incomplete` routes never contribute route quorum; the completion contract checks
 transport completion, not correctness or semantic consensus.
 
-Treat the final assessment as a review checklist:
+PR opinions whose final identity/state or checkout check fails are preserved as stale/unvalidated,
+with no current PR assessment or merge verdict. Successful transport or quorum cannot override that.
+
+Treat an eligible final assessment as a review checklist:
 
 1. Check each actionable finding against the code, diff, tests, or primary documentation.
 2. Keep independently evidenced concerns, including a single strong concern.

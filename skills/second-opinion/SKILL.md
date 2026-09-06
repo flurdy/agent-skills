@@ -1,11 +1,11 @@
 ---
 name: second-opinion
 description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git:*),Bash(gh:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.2.0"
+version: "3.3.0"
 author: "flurdy"
 ---
 
@@ -51,7 +51,9 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 - OpenRouter subset only: `curl`, plus either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT`, and a configured panel/profile in
   `~/.agents/second-opinion/config.json`. Optional exact-model `modelPolicies` in that user-local
   file may set `consent: "allow"`; absent or invalid policies remain confirmation-required.
-- `gh` for PR context.
+- PR context: `gh`, Python 3.10+, and the installed `review-pr/scripts/gh-pr-snapshot.py` collector.
+  Missing/partial/stale evidence stops PR dispatch; local routes also require a proven invoking
+  checkout. Read [PR evidence and stale-safety](references/pr-evidence.md) for every PR invocation.
 
 Read [references/review-panels.md](references/review-panels.md) when `quorum` or `consensus` is
 selected. If the selected panel contains OpenRouter routes, also read
@@ -96,7 +98,8 @@ never translated.
 Extract:
 
 - mode: `review-pr`, `validate-plan`, `triage-bug`, or `ask`;
-- target: PR number, plan, bug description, or question;
+- target: PR URL, `owner/repo#number`, current-repository shorthand, plan, bug description, or question;
+- PR-only optional `--expected-head` SHA, passed unchanged to the shared collector;
 - agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, or `consensus`;
 - panel: a local profile name;
 - timeout: 1–30 minutes, default 10;
@@ -119,14 +122,15 @@ it from task risk, panel size, or an API key.
 
 ### review-pr
 
-```bash
-gh pr view {PR_NUMBER} --json title,body,additions,deletions,changedFiles,state,baseRefName,headRefName
-gh pr diff {PR_NUMBER}
-```
+Follow [PR evidence and stale-safety](references/pr-evidence.md) completely: collect through the
+`review-pr` authority, retain repo/node/head/base/state identity, sanitize one fixed packet, gate
+local routes on the already-matching invoking checkout, and revalidate after opinions return.
+No independent mutable metadata/diff collection or default-branch substitution is permitted.
 
-Without a number, use the current branch PR. Build a prompt covering correctness, security,
-performance, maintainability, and missing edge/error handling, followed by PR metadata and the exact
-diff.
+A partial/stale/failed packet is not ready to send. Missing local checkout proof makes local routes
+unavailable, not permission to read the workspace. Final validation failure yields **no current PR
+assessment**; preserve original opinions only as stale/unvalidated evidence. This skill supplies
+independent claims, never a merge verdict, publication, requirements sign-off, or automatic fixes.
 
 ### validate-plan
 
@@ -148,15 +152,16 @@ Pass the question with current-repository context.
 
 For every mode, remove secrets, credentials, `.env` contents, private keys, and irrelevant personal
 data. Never silently truncate oversized context; summarize before route selection and say so. Local CLI
-routes are explicitly approved read-only repository reviewers and may inspect files in the current
-repository, so use them only when that repository's readable contents are safe to share with those
-providers. OpenRouter receives the sanitized prompt as its user message plus a fixed, non-secret completion
+routes are read-only repository reviewers and may inspect files in the current repository, so use
+them only when that repository's readable contents are safe to share with those providers. For PR
+mode, the stricter verified-cwd eligibility and final revalidation contract above is mandatory. OpenRouter receives the sanitized prompt as its user message plus a fixed, non-secret completion
 contract; it receives no tools or repository access.
 
 ## 3. Execute one peer/direct agent
 
-Resolve `peer` using the independence rule, then invoke exactly one route. Pass an assembled prompt
-without allowing writes.
+Resolve `peer` using the independence rule, then invoke exactly one eligible route. Pass the actual
+assembled packet without allowing writes. PR mode must pass its just-in-time local preflight first;
+an unavailable route is not permission to substitute another provider or cwd.
 
 ### Claude
 
@@ -171,17 +176,7 @@ setting and report `native-default`.
 
 ### Codex
 
-For a PR, prefer the native review command:
-
-```bash
-codex review --base {base_branch} {review_model_config}
-```
-
-`codex review` has no `--model` flag. For an explicit resolved model, expand
-`{review_model_config}` to `-c 'model="<id>"'`; otherwise omit it and report the native default.
-Do not claim an effective effort unless an explicit native Codex config override was supplied.
-
-For other modes:
+All modes, including PR review, use the assembled packet rather than a branch-based native review:
 
 ```bash
 codex exec --sandbox read-only {exec_model_flag} "{assembled_prompt}"
@@ -236,6 +231,10 @@ panel; they do not authorize substitution.
   {repeated_route_overrides}
 ```
 
+For PR mode, perform the local preflight from the evidence contract immediately before this call.
+If the invoking checkout is ineligible, do not run the local subset; report its routes unavailable
+with the context reason and let evaluation preserve missing results. Never forge successful results.
+
 Save the returned JSON array to a mode-private result file. The coordinator invokes each enabled
 local route at most once, in bounded parallel batches, with read-only tools/sandboxing and prompt
 stdin. Disabled routes are not invoked. Preserve missing CLIs, timeouts, and failures.
@@ -288,6 +287,10 @@ claims. Remove all private prompt/result files after evaluation, success or fail
 
 ## 5. Present panel results
 
+For PR mode, finish the PR evidence contract's final revalidation **before** this section or any
+single-route assessment. If it fails, show transport/quorum counts and responses only under their
+stale/unvalidated label; do not synthesize current evidence-backed agreements or PR conclusions.
+
 First show every route faithfully:
 
 ```markdown
@@ -329,8 +332,14 @@ Never convert a majority into correctness.
 
 ## 6. Repository-grounded assessment
 
-Critically verify every material external claim against actual repository evidence. Present a concise
-assessment table:
+For PR mode, complete the original-identity remote recheck and any required full local recheck in
+the PR evidence contract first. A failed check means no current PR assessment; show historical
+opinions with their stale/unvalidated status instead. Never assess against unrelated or moved cwd.
+
+For eligible results, critically verify every material external claim against the supplied scope
+and its matching repository evidence. Missing supporting context remains Uncertain, not a new search
+scope. This is advisory claim validation, not `verify-task` coverage or `review-pr` merge clearance.
+Present a concise assessment table:
 
 ```markdown
 ### My Assessment

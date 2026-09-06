@@ -1,10 +1,10 @@
 ---
 name: architect
 description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed decisions, reviewable slices, acceptance evidence, and conditional human review ownership without editing code.
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd status:*),Bash(find:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,mcp__jira__*,mcp__confluence__*"
+allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git branch --show-current:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * show:*),Bash(bd -C * status:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,jira_issue,confluence_page"
 model-tier: premium
 effort: xhigh
-version: "1.9.1"
+version: "2.0.0"
 author: "flurdy"
 ---
 
@@ -124,20 +124,22 @@ Never block on model selection if the user has already made the intent clear.
 ### 3. Gather Context Read-Only
 
 Stay read-only while gathering context. Do **not** edit code, create branches, create beads,
-transition tickets, or commit changes during investigation. The bounded human-review flow in
-step 4 may mutate Beads only after the plan is complete and the user gives immediate explicit
-confirmation.
+transition tickets, or commit changes. Architect never creates or updates tracker records,
+even after a user confirms a proposed plan or owner. Step 4 renders an explicitly owned handoff;
+only a separate invocation of the receiving workflow can propose and apply tracker changes.
 
 Gather only the context needed to plan:
 
 1. **Tracker context**
    - Jira key: fetch the ticket, acceptance criteria, linked Confluence/design links, and
      related issues using Jira tools or `/jira-ticket` when available.
-   - Bead id: run `bd show <id>` and inspect dependencies/children when relevant.
-   - When `bd status` succeeds in the current repository, use `bd list --status=open` and
-     targeted `bd search "<keywords>" --status all` queries to check current and historical
-     work for plausible duplicates or related items. Inspect only high-signal matches; this
-     is a read-only relevance check, not a backlog audit.
+   - Bead id: resolve through `~/.agents/skills/next/scripts/next-select resolve <id>` before
+     reading. Use only the returned store via `bd -C <directory> show <id>`; inspect relevant
+     dependencies/children there. Ambiguous or unavailable ownership means no guessed-store reads.
+   - For new work, use `next-select stores` and choose by outcome, not cwd. In the proven store,
+     use `bd -C <directory> list --status=open` and targeted
+     `bd -C <directory> search "<keywords>" --status all` for duplicates and related work.
+     Inspect only high-signal matches; this is a relevance check, not a backlog audit.
    - When Beads is unavailable, use the established Jira/Trello/other tracker when its
      context is accessible. Otherwise retain a tracker-neutral view of independently
      valuable durable work; do not introduce a tracker merely to satisfy the template.
@@ -193,9 +195,9 @@ Output a plan that is implementation-ready but does not perform implementation.
 Detailed plans are working input, not current architecture documentation.
 Do not create Markdown solely to preserve planning reasoning.
 
-Render the plan inline by default. If the user explicitly requests a durable file or a stable source
-is required for later review, label it as planning input, link its human review owner, and state its
-outcome-based disposition.
+Render the plan inline. Reuse an existing stable source when supplied; label it as planning input
+and state its outcome-based disposition. A request to persist new planning input or its review owner
+produces the explicit handoff below, not a file or tracker write from Architect.
 
 The final user-facing plan starts with the decision summary, before investigation detail:
 
@@ -315,68 +317,26 @@ For an approved structured plan in an active Beads repository:
 
 #### Human decision ownership for unapproved plans
 
-Apply this lifecycle only when the recommendation requires an explicit human approval before work
-can responsibly proceed. Informational answers, already-approved plans, and plans with no pending
-approval do not need a review bead. If an established non-Beads tracker owns the source, keep the
-review there; do not create a shadow Beads decision.
+When an unapproved recommendation needs durable human decision ownership, render:
 
-**Exactly one blocked human review owner** must own an unapproved plan in an active Beads repository:
+```text
+/triage --human-review <source>
+```
 
-1. **Inspect the source.** Decide whether the source spike/design bead is still open and can carry
-   the pending decision, but do not select it until duplicate review work has been checked.
-2. **Check existing review work.** Use targeted duplicate queries, including
-   `bd list --status open,in_progress,blocked --label human` and, when a source id exists,
-   `bd list --status open,in_progress,blocked --label human --metadata-field source_bead=<source-id>`.
-   Also inspect high-signal title/spec matches. An existing matching review is the sole owner; reuse
-   it even when the source could also carry the decision. Never create a second review item for the
-   same source or decision.
-3. **Choose the owner.** Only when no separate review exists, prefer the source spike/design bead
-   when it can own review. Create at most one dedicated review only when the Beads source is closed
-   or cannot clearly represent the decision.
-4. **Confirm before writing.** Show the exact source update or dedicated-review proposal first.
-   Ask for explicit confirmation immediately before any tracker mutation. If confirmation is
-   declined, make no tracker change, do not claim durable ownership, and keep the plan inline rather
-   than creating a planning document with no owner.
+`<source>` is the existing source selector/reference or this exact inline plan. Include the decision
+question, proposed owner (not created or updated), and disposition for approval, rejection/defer,
+or revision. Do not invoke triage automatically or treat approval of the plan as permission to
+write tracking. No durable owner exists until the receiving workflow verifies its confirmed write.
 
-A reused source remains its existing work type rather than being converted solely for workflow
-mechanics. A dedicated review uses type `decision`.
+The [triage-owned human-review lifecycle](../triage/references/human-review.md) owns duplicate
+checks, source reuse versus a dedicated blocked human decision, per-action confirmation, partial
+recovery, and rationale/disposition recording. Do not reproduce or execute that mutation procedure
+here. Keep unowned input inline; never create an orphan planning document.
 
-Whether reusing the source or using a dedicated decision, apply both:
-
-- add the canonical `human` label; and
-- set status `blocked`.
-
-Use the configured human assignee when one is available; otherwise do not guess. Add optional
-descriptive metadata such as `review_owner=human`, `review_status=pending`, and
-`source_bead=<source-id>`. Whether reusing or creating, the review content must include:
-
-- the concise recommendation and exact decision question;
-- three explicit outcomes: **Approve**, **Defer or reject**, and **Request revision**;
-- the stable detailed-input reference, when one exists;
-- the documentation disposition for every outcome; and
-- acceptance stating that human rationale is recorded before the owner is resolved.
-
-Mark the owner as awaiting explicit human review so it cannot be mistaken for agent-ready
-implementation. Do not create implementation children or any implementation tracker item from
-Architect. If a create succeeds but a later blocking/update step fails, surface the partial state
-and repair or reuse that same item; never create a replacement.
-
-Resolve the decision lifecycle explicitly:
-
-- **Approve** — record the rationale and approved scope. When durable materialization is requested,
-  hand off to `/plan-to-backlog <plan-source>`; do not invoke it automatically. Retain detailed
-  planning input only until the approved outcome is represented by its implementation owner or
-  owning component documentation.
-- **Defer or reject** — record the rationale and remove the detailed planning input unless a concise,
-  clearly labelled historical decision record has deliberate retention value.
-- **Request revision** — record the requested changes, keep the same blocked review owner, and keep
-  the planning input only while those changes are pending.
-
-Do not resolve a review owner while its outcome or documentation disposition is still unknown.
-
-Use `/triage` for raw prompt or Jira intake, not approved-plan materialization. For Jira, Trello, or
-other established trackers without Beads, recommend that tracker's normal creation workflow as a
-later explicit user action; do not create a parallel Beads decision.
+Informational answers, approved plans, and plans without a pending human decision need no review
+item. If another tracker already owns the decision, recommend its normal explicit workflow rather
+than shadowing it in Beads. Approved implementation materialization remains a separate
+`/plan-to-backlog <plan-source>` handoff, not human-review intake.
 
 ### 5. External Validation, When Requested
 
@@ -447,8 +407,8 @@ accordingly, and explicitly state that external validation was skipped.
 ### 6. Guardrails
 
 - Do not implement code changes.
-- Do not create or mutate Jira issues. Do not mutate Beads except for the bounded human-review
-  ownership flow above, after immediate explicit confirmation.
+- Do not create or mutate Jira issues or Beads. Tracker writes belong only to the explicit
+  receiving workflow; confirmation never expands Architect's read-only boundary.
 - Do not create implementation tracker items. Label implementation proposals as not created and
   route approved-plan materialization through `/plan-to-backlog`.
 - Prefer small, reversible implementation slices with observable outcomes and proportionate proof.

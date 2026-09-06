@@ -29,4 +29,15 @@ grep -Fq 'Explicit `--effort <level>` is supported only for a direct Claude rout
 grep -Fq -- '--agent claude --model fable --effort xhigh' "$FABLE_PROMPT" || \
   fail "ask-fable does not request xhigh effort"
 
+PR_CONTRACT="$ROOT/skills/second-opinion/references/pr-evidence.md"
+for invariant in 'gh-pr-snapshot.py' 'reviewReady' 'headSha' 'baseSha' 'stateKey' 'nodeId' '--verify-only' '--expected-head' '--expected-base' '--expected-state-key' 'pwd -P' 'checkout.available' 'already matches' 'full collection' 'stale/unvalidated' 'partial' 'same sanitized packet' 'not OS-level isolation' 'Do not retry'; do
+  grep -Fq -- "$invariant" "$PR_CONTRACT" || fail "missing immutable PR invariant: $invariant"
+done
+if grep -Eq 'gh pr (view|diff)|codex review --base' "$SKILL"; then
+  fail 'second-opinion still assembles a mutable PR packet'
+fi
+grep -Fq 'references/pr-evidence.md' "$SKILL" || fail 'PR context contract must be mandatory'
+grep -Fq 'All modes, including PR review' "$SKILL" || fail 'Codex must receive the actual packet'
+grep -Fq 'no current PR assessment' "$SKILL" || fail 'stale external claims must not authorize a current assessment'
+grep -Fq 'final revalidation **before** this section' "$SKILL" || fail 'PR stability must gate panel synthesis, not only the final assessment'
 printf 'second-opinion skill contract tests passed\n'

@@ -10,8 +10,8 @@ second-opinion skill applies an `opus` model default only when the resolved dire
 Resolution order:
 
 1. Explicit `--model <id>` wins and is passed through using the selected command's native control.
-   Claude, Gemini, and `codex exec` accept a model flag; `codex review` instead requires
-   `-c 'model="<id>"'` because it has no `--model` option.
+   Claude, Gemini, and `codex exec` accept a model flag. All modes use the assembled prompt;
+   PR mode never substitutes Codex's native branch-based review for the pinned packet.
 2. `--model fast` uses a verified CLI-native cheap/fast alias when available; otherwise the skill
    retains and reports the native default.
 3. With no `--model`, a resolved Claude route uses `--model opus`; resolved Codex and Gemini routes

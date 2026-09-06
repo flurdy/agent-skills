@@ -42,7 +42,13 @@ done
 # Skills that create new work: store listing used and every create/dep in code qualified.
 for skill in triage plan-to-backlog; do
     file="$ROOT_DIR/skills/$skill/SKILL.md"
-    frontmatter "$file" | grep -Fq -- "Bash($RESOLVER:*)" || fail "$skill: resolver not in allowed-tools"
+    permissions=$(frontmatter "$file")
+    for mode in resolve stores; do
+        if ! grep -Fq -- "Bash($RESOLVER:*)" <<< "$permissions" &&
+           ! grep -Fq -- "Bash($RESOLVER $mode:*)" <<< "$permissions"; then
+            fail "$skill: resolver $mode not in allowed-tools"
+        fi
+    done
     assert_contains "$file" "$RESOLVER stores"
     assert_contains "$file" 'usable: false'
     if code_lines "$file" | grep -Eq '^\s*bd (close|update|create|dep|list|search) '; then

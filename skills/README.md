@@ -2,7 +2,7 @@
 
 | Skill | Description |
 |-------|-------------|
-| architect | Architecture and implementation planning gate for complex or high-blast-radius work; adds conditional, evidence-backed Adopt/Extend/Compose/Build research to reviewable slices, acceptance evidence, and tracking recommendations without editing code |
+| architect | Read-only architecture and implementation planning with evidence-backed research, acceptance slices, and explicit tracking handoffs; never writes code or tracker records |
 | artifact-hygiene | Run a local-only, read-only advisory audit of publishable files and unpublished branch history with isolated Gitleaks and redaction-safe findings |
 | backlog-groom | Per-bead quality audit over the open backlog — flags vague descriptions, missing acceptance criteria, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Read-only sweep; mutations apply only on approval, destructive ones confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello) |
 | beads | Shared Beads workflow baseline for resolving the owning store, separating ephemeral checklists from durable tracking, routing focused operations, and confirming remote Dolt actions |
@@ -31,7 +31,7 @@
 | name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
 | next | Globally rank ready beads across validated workspace stores, isolating failed sources with local fallback. Modes: `safe`, `sprint`, `task`, `bug`, `quick` |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
-| pedantic-review | Opinionated craft review of your own changes — flags rushed code, missed reuse, misplaced symbols, weak test deltas, and drift from project consensus |
+| pedantic-review | Read-only craft and test-design review; requirements, coverage sufficiency, execution, and fixes stay with their separate owners |
 | pi-spend | Read-only estimate of Pi model cost by provider and model for today, this week, this month, and all recorded history, separating metered credit usage from flat-rate subscription usage |
 | plan-to-backlog | Dynamically materialize an explicitly approved plan into proposal-first Beads tracking when durable ownership is requested, with no-item/single-item/epic outcomes and explicit confirmation before writes |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion |
@@ -48,7 +48,7 @@
 | reply-comments | Publish prepared PR-feedback outcomes through separate confirmed push, reply, and inline-thread resolution gates with race and duplicate protection |
 | review-comments | Select and independently validate PR feedback, make focused verified local fixes, reopen its bead after a committed fix, and commit locally without publishing remote actions |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
-| second-opinion | Query one independent peer or configurable local/OpenRouter panels with distinct quorum and evidence-backed consensus policies |
+| second-opinion | Independent advisory claims from one peer or a configured panel; PR evidence uses pinned snapshots and explicit stale-safety checks |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
@@ -59,8 +59,8 @@
 | total-review | Portable pre-PR gauntlet with revision-bound evidence, explicit manual/missing review coverage, optional independent reviewers, and at most two fix/review passes |
 | tracking-sweep | Portfolio-wide drift sweep across Jira, beads, and GitHub PRs — flags status drift, orphan work, parent-moved beads, and stale items. Read-only |
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
-| triage | Create bead(s) from a user prompt or Jira ticket |
-| verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
+| triage | Create/refine beads from raw requests or Jira, or own explicitly requested blocked human decisions; approved implementation plans go to plan-to-backlog |
+| verify-task | Verify explicit requirements and coverage against a fixed scope using discovered repository-native gates; report missing, failed, or stale evidence without repairs |
 | watch-actions-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a confirmed read-only smoke test scoped to the change. Goal-terminating; staging by default, production read-only opt-in |
 | watch-flux-rollout | After a push, watch CircleCI and FluxCD until the exact commit is built, the Kubernetes image changes, and pods are ready, then run a confirmed read-only smoke test. Goal-terminating |
 | watch-pr-feedback | Watch open PRs for normalized feedback, independently validate each new or edited actionable item once, and render a bounded decision queue. Read-only by default; attended mode pauses only for acknowledgment |

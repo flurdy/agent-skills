@@ -110,6 +110,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("--continue", SKILL)
         self.assertIn("Halt is sticky", SKILL)
 
+    def test_composer_does_not_restore_blanket_runner_permissions(self):
+        frontmatter = SKILL.split('---', 2)[1]
+        self.assertNotRegex(frontmatter, r'Bash\((git|bd|make|npm|npx):\*\)')
+        self.assertIn('Bash(bd -C * create:*)', frontmatter)
+        self.assertIn('per-command permission', SKILL)
+
+    def test_new_coverage_handoff_obeys_sticky_halt(self):
+        self.assertIn('invalidate G2', SKILL)
+        self.assertIn('no in-pass jump back to G2', SKILL)
+        self.assertIn('fresh run from G1', SKILL)
+
     def test_safety_and_ledger_authority(self):
         self.assertIn("one authoritative ledger", SKILL)
         self.assertIn("Never send secrets", SKILL)

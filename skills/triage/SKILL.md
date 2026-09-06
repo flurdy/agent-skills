@@ -1,11 +1,11 @@
 ---
 name: triage
-description: "Create bead(s) from a raw user prompt or Jira ticket, or refine an existing bead in place when given its ID. Investigates relevance, checks for duplicates, may split complex requests, and delegates approved structured plans to plan-to-backlog."
-allowed-tools: "Read,Bash(bd close:*),Bash(bd create:*),Bash(bd dep:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/next/scripts/next-select:*),Grep,Glob,Task,AskUserQuestion"
+description: "Create or refine beads from raw requests, Jira, or explicit human-decision handoffs. Investigates relevance and duplicates; delegates approved implementation plans to plan-to-backlog."
+allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * dep:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.3.2"
+version: "1.4.0"
 author: "flurdy"
 ---
 
@@ -26,16 +26,26 @@ Analyze user requests and create appropriate beads with intelligent investigatio
 
 ## Relationship to approved plans
 
-This skill owns raw prompt and Jira intake. When input clearly cites an approved
-architecture or implementation plan and asks for durable materialization, stop with a
+This skill owns raw prompt and Jira intake, plus the explicit human-decision mode below.
+When input clearly cites an approved architecture or implementation plan and asks for durable materialization, stop with a
 paste-ready `/plan-to-backlog <plan-source>` handoff. Do not invoke the separate
 materialization workflow from inside triage.
 Do not classify plan children or create beads first. `/plan-to-backlog` owns source
 citation, no-item versus single-item versus epic disposition, proposal preview,
 confirmation, apply, and recovery.
 
-If the plan is not approved or the user is asking to improve it, route to `/architect`
-instead of creating tracking from an unstable plan.
+If the user wants to improve the technical plan, route to `/architect` instead of tracking an
+unstable design. For an explicit `--human-review` request about a complete but unapproved
+recommendation, use the decision mode below; pending approval is its purpose, not a reason to
+bounce back to Architect.
+
+## Explicit human-decision mode
+
+`/triage --human-review <source>` establishes or updates one blocked human review owner, not
+implementation tracking. Read [human-review ownership](references/human-review.md) and follow it
+instead of the generic intake/refine procedure. It owns duplicate checks, source reuse versus a
+dedicated decision, exact per-action confirmation, partial recovery, and rationale/disposition.
+Architect only renders this handoff; it never invokes triage. This mode never edits planning files.
 
 ## Usage
 
@@ -46,6 +56,7 @@ instead of creating tracking from an unstable plan.
 /triage skills-1fw                       # Refine an existing bead (see Refine mode)
 /triage skills-1fw split it              # Refine with additional instructions
 /triage shared:skills-1fw                # Repo-qualified, when the ID exists in several stores
+/triage --human-review <source>          # Explicit pending human decision, not implementation
 ```
 
 ## What This Skill Does
@@ -120,6 +131,8 @@ After triage, provide:
 When invoked:
 
 1. Parse the input to determine the source:
+   - **Explicit `--human-review`**: use the linked human-review contract, not intake/refine.
+     It redirects approved implementation materialization without writing decision records first.
    - **Approved structured plan**: A cited architecture/implementation plan plus a request
      to create or reconcile durable tracking. Return a paste-ready
      `/plan-to-backlog <plan-source>` handoff and stop; do not run triage's duplicate,

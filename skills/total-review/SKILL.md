@@ -1,10 +1,10 @@
 ---
 name: total-review
 description: "Portable pre-PR quality gauntlet: cleanup, verification, craft, correctness, security, and optional independent reviews. Binds every gate to the final scope, reports missing coverage, and caps fix/review passes at two."
-allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
+allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),Bash(git remote get-url:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * search:*),Bash(bd -C * create:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 
@@ -57,6 +57,8 @@ accept that scope, mark it unavailable rather than reviewing a different change.
 Reading a skill does not grant its tools. G6/G7 require authorized composition of `second-opinion`
 with its tools and consent policy; if the harness cannot provide that, record `unavailable`.
 The read-file fallback never authorizes running provider CLIs directly from this skill.
+Discovered cleanup/test commands require existing per-command permission or a current permission
+request; this composer does not restore blanket build-tool grants removed by its delegates.
 
 | Gate | Preferred route | Required | If unavailable |
 |---|---|---|---|
@@ -79,8 +81,9 @@ Report intentional exclusions even when the requested coverage is clear.
 assumed auto-fix command. Manual routes are explicitly labeled self-review, never independent coverage.
 Read [evidence and manual gates](references/evidence.md) before starting; it defines the ledger,
 snapshot recipe, state meanings, and concrete manual review checks. Git is required; `gh` is required
-only for PR scope. Project runtimes come from the project's documented commands, not guessed `npx`
-downloads. Missing dependencies degrade as above. Do not install or reconfigure tools during a run.
+only for PR scope. Use [verify-task's repository-native gate discovery](../verify-task/SKILL.md#4-discover-repository-native-gates)
+for execution obligations; do not maintain a second runner catalog here or guess `npx` downloads.
+Missing dependencies degrade as above. Do not install or reconfigure tools during a run.
 
 Honor the runtime's configured model-tier/effort routing. If reduced capability is known, disclose it
 and ask to continue or stop, unless the user explicitly selected that model. Never invent a model ID.
@@ -160,6 +163,10 @@ Apply `pedantic-review` read-only to the scope packet and nearby repository patt
 mode use head-pinned neighboring context from the same qualified repository; if unavailable, mark
 G3 incomplete rather than reading an unrelated checkout. Its **Must** (or **Must Fix**) tier halts, **Should** becomes a P1 candidate, and **Consider** a P2/P3 candidate.
 For pure prose with no meaningful craft dimension, record `na` and why. Do not auto-apply suggestions.
+A craft **Owner handoff** naming a new requirements/coverage gap must invalidate G2 even when the
+revision is unchanged. Record it under its actual owner, not as a second craft score. A material
+handoff halts this run with G2 incomplete; there is no in-pass jump back to G2. Revalidation belongs
+to a fresh run from G1 under the sticky-halt rule below, never a hidden extra pass or CLEAR.
 
 ### G4 — Correctness
 

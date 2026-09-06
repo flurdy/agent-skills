@@ -42,6 +42,8 @@ help:
 	@echo "make test-project-brief"
 	@echo "make test-skill-pilot"
 	@echo "make test-architect"
+	@echo "make test-pedantic-review"
+	@echo "make test-verify-task"
 	@echo "make test-plan-to-backlog"
 	@echo "make test-thoughtbox"
 	@echo "make test-beads"
@@ -98,7 +100,7 @@ clean-code:
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
 TEST_TARGETS := test-validate-skills test-assemble test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
-  test-architect test-plan-to-backlog test-beads test-next test-handoffs \
+  test-architect test-pedantic-review test-verify-task test-plan-to-backlog test-beads test-next test-handoffs \
   test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
   test-today test-yesterday test-wrap-up test-watch-protocols
@@ -144,8 +146,16 @@ test-project-brief:
 test-skill-pilot:
 	@python3 -m unittest discover -s tests -p 'test_run_skill_pilot.py'
 
+.PHONY: test-pedantic-review test-verify-task
+
 test-architect:
 	@bash skills/architect/tests/test-skill-contract.sh
+
+test-pedantic-review:
+	@bash skills/pedantic-review/tests/test-skill-contract.sh
+
+test-verify-task:
+	@bash skills/verify-task/tests/test-skill-contract.sh
 
 test-plan-to-backlog:
 	@skills/plan-to-backlog/tests/test-helpers.sh
