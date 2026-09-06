@@ -17,12 +17,13 @@
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
 | create-pr | Create a pull request from the current branch following project conventions, and close the associated bead |
 | delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
+| develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
 | handoffs-tidy | Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes. |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
-| implement-solution | Premium workflow for non-trivial, implementation-ready coding where material local trade-offs justify repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment |
+| implement-solution | Load before implementation-ready coding with interacting behavior, state/error paths, or local design trade-offs, including when ongoing work becomes complex; premium judgment and proportional TDD, not mechanical-edit ceremony |
 | jira-comment | Draft and post a terse house-style comment on a Jira ticket after confirmation |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |

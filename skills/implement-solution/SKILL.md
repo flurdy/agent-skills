@@ -1,11 +1,11 @@
 ---
 name: implement-solution
-description: Premium workflow for non-trivial, bounded implementation with clear requirements — repository-pattern discovery, proportional TDD, and explicit KISS/YAGNI judgment. Skip for mechanical edits, unresolved diagnosis, or architecture decisions.
+description: "Use before non-trivial coding with clear requirements: interacting behavior, state/error paths, or local design trade-offs. Also use when ongoing implementation becomes complex. Premium implementation; skip mechanical edits and unresolved diagnosis."
 allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "2.1.0"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -13,7 +13,9 @@ author: "flurdy"
 
 Implement the smallest maintainable solution that meets the requested outcome. Apply strong engineering judgment before and during coding without replacing the model's native coding ability with a principle checklist.
 
-This is a bounded premium/high implementation route. Select it dynamically when a task is implementation-ready but material local engineering judgment makes stronger configured capability worthwhile. Explicit invocation also opts in. It is not an always-on gate and should not add ceremony when the repository already makes the right change obvious.
+This is a bounded premium/high implementation route. Load it before coding when a task is implementation-ready and the conditions below apply; do not wait for the user to name the skill. Reassess during implementation when an apparently simple change exposes those conditions. Preserve the established context, tests, and completed work rather than restarting discovery. Explicit invocation also opts in. It is not an always-on gate and should not add ceremony when the repository already makes the right change obvious.
+
+For model-initiated loading, read this skill separately from mutation calls and wait for the next model response before emitting edits. Routing cannot upgrade tool arguments already generated. Continue here after a coding-entry handoff; do not call the entry skill again.
 
 ## When to Use
 
@@ -24,6 +26,8 @@ Use this skill when requirements and any required diagnosis are sufficiently cle
 - a present responsibility, dependency, duplication, or mutation trade-off materially affects maintainability or correctness;
 - an implementation already in progress needs substantive simplification rather than mechanical cleanup; or
 - the user explicitly invokes `/implement-solution` or requests a premium or strongest-capability implementation pass.
+
+For example, implementing a diagnosed retry/idempotency fix, changing validation across an API and UI, or refactoring duplicated domain rules with meaningful compatibility trade-offs can qualify. A rename, formatter fix, or one obvious established-pattern edit does not qualify merely because it touches code.
 
 Do not route through it merely because a request changes code, contains the word "implement," or asks for simplicity. Skip mechanical edits and changes with one obvious established pattern. Use `/diagnose-bug` while the cause is unknown and `/architect` when consequential design decisions remain unresolved.
 

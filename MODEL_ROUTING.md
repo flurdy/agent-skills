@@ -58,9 +58,30 @@ Skill metadata routes the current parent only. It does not classify or authorize
 
 ## Client behavior
 
-- **Pi:** a local router maps `model-tier` to configured candidates, honors `effort`, confirms locally classified metered candidates, permits nested upgrades but not downshifts, and restores the previous route after settlement.
+- **Pi:** a local router maps `model-tier` to configured candidates, honors `effort`, applies runtime-local spend consent, permits nested upgrades but not downshifts within an existing routed run, and restores the previous route after settlement unless manually overridden. The first routed skill can replace a stronger session model; nested rank protection is not a baseline capability floor.
 - **Claude Code:** reads native `model:` and `effort`; semantic `model-tier` remains the portable source classification.
 - **Codex:** keeps exact routing in Codex configuration or explicit CLI/runtime controls.
+
+## Coding entry and selection
+
+[develop](skills/develop/SKILL.md) is the lightweight standard/high entry for authorized
+code changes, including routine edits and discussion-to-implementation transitions.
+It hands off implementation-ready work with material judgment to
+[implement-solution](skills/implement-solution/SKILL.md), which can also be selected
+directly. An already-active implementation specialist does not re-enter through develop.
+Keep diagnosis and consequential architecture decisions with their owning skills.
+
+In Pi, automatic skill loading is model-decided. With implicit routing enabled, an
+exact loaded-skill `read` requests a route for a subsequent model response; it cannot
+regenerate already-emitted mutation arguments. Read entry/specialist skills separately
+from mutations. Explicit `/skill:develop` invokes the entry skill, but neither explicit
+nor implicit selection guarantees a switch if the router is disabled, a candidate is
+unavailable, or consent/manual-selection rules prevent it. No skill provides pre-write
+enforcement or fixes the first-route downgrade limitation described above.
+
+Use `/model-tier status` to inspect actual routing. A fresh-session trial is needed to
+assess whether natural-language requests select the intended skills; metadata validation
+and usage-ledger attribution alone do not prove selection recall or implementation use.
 
 ## Authoring rule
 
