@@ -47,6 +47,8 @@ help:
 	@echo "make test-plan-to-backlog"
 	@echo "make test-thoughtbox"
 	@echo "make test-beads"
+	@echo "make test-beads-migrate"
+	@echo "make test-beads-migrate-cli  # optional installed CLI help only"
 	@echo "make test-next"
 	@echo "make test-handoffs"
 	@echo "make test-pi-spend"
@@ -100,7 +102,7 @@ clean-code:
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
 TEST_TARGETS := test-validate-skills test-assemble test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
-  test-architect test-pedantic-review test-verify-task test-plan-to-backlog test-beads test-next test-handoffs \
+  test-architect test-pedantic-review test-verify-task test-plan-to-backlog test-beads test-beads-migrate test-next test-handoffs \
   test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
   test-today test-yesterday test-wrap-up test-watch-protocols
@@ -170,6 +172,14 @@ test-beads:
 	@bash skills/beads/tests/test-skill-contract.sh
 	@bash skills/beads/tests/test-consumer-routing.sh
 	@python3 -m unittest discover -s skills/next/tests -p 'test_next_select.py'
+
+.PHONY: test-beads-migrate test-beads-migrate-cli
+
+test-beads-migrate:
+	@python3 -m unittest discover -s skills/beads-migrate-to-dolt/tests -p 'test_*.py'
+
+test-beads-migrate-cli:
+	@python3 skills/beads-migrate-to-dolt/tests/check_cli_help.py
 
 test-next:
 	@python3 -m unittest discover -s skills/next/tests -p 'test_*.py'

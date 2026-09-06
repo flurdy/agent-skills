@@ -50,6 +50,12 @@ test -f .beads/metadata.json && cat .beads/metadata.json
 
 ### 3. Check Configuration, Remotes, and Worktrees
 
+**Safety gate before store-opening probes:** bd may auto-migrate on store open. On an old,
+unknown or potentially pending schema, stop at file-only evidence unless the installed probe path
+is proven nonmutating. Recommend the [migration core's protected-backup path](../beads-migrate-to-dolt/SKILL.md#2-quiesce-and-verify-a-mandatory-backup)
+for separate authorization; do not perform its backup or migration from this read-only check.
+The bd commands below are conditional on that proof, not permission to open an unprotected store.
+
 ```bash
 cat .beads/config.yaml 2>/dev/null
 git worktree list 2>/dev/null
