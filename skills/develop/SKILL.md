@@ -3,7 +3,7 @@ name: develop
 description: "Load before authorized code changes: features, fixes, refactors, tests, and mechanical edits, including discussion-to-coding transitions. Read separately from edits. Skip read-only requests and implementation already owned by a specialist."
 model-tier: standard
 effort: high
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 
@@ -11,7 +11,7 @@ author: "flurdy"
 
 A lightweight coding entry point, not another implementation workflow. Request the
 runtime's configured standard/high route, then use normal repository-grounded coding
-judgment. Explicit invocation is `/develop <task>`; in Pi use `/skill:develop <task>`.
+judgment. Explicit invocation is `/develop <task>`; in Pi use `/skill:develop <task>`. On Claude Code this skill carries no `model:` pin on purpose: it rides the session model rather than downgrading to the standard alias, while Pi routes by `model-tier`.
 
 Read this skill once per new coding run, even if its text remains in context from a
 previous run. Use a standalone skill read before generating mutation calls.

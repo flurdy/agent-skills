@@ -4,13 +4,13 @@ description: Generate, compare, refine, and export image assets from a single cr
 allowed-tools: "Read,Write,Grep,Glob,AskUserQuestion,ToolSearch,Bash(curl:*),Bash(file:*),Bash(mkdir:*),mcp__recraft__*"
 model-tier: standard
 effort: high
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 
 # Image Studio
 
-Generate project-ready icons, illustrations, backgrounds, and raster imagery from one creative brief. Use Recraft when it is configured. Other image providers are optional adapters, not a requirement.
+Generate project-ready icons, illustrations, backgrounds, and raster imagery from one creative brief. Use Recraft when it is configured. Other image providers are optional adapters, not a requirement. On Claude Code this skill carries no `model:` pin on purpose: it rides the session model rather than downgrading to the standard alias, while Pi routes by `model-tier`.
 
 ## Usage
 
