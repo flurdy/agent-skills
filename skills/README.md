@@ -54,7 +54,7 @@
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
 | thoughtbox | Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to `/triage`, and render separately confirmed scoped resolution commands without executing either workflow |
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |
-| today | Read-only same-day catch-up across the current conversation and objective commits, PRs, Jira touches, and Beads activity in validated workspace repositories |
+| today | Read-only same-day or previous-workday activity recap; owns shared rendering, with current-session context in same-day mode |
 | token-dashboard | Read-only current-session and UTC-week token telemetry for Pi, Claude Code, Codex, and optional OpenRouter management analytics; normalized JSON and terminal views without transcript or credential output |
 | total-review | Portable pre-PR gauntlet with revision-bound evidence, explicit manual/missing review coverage, optional independent reviewers, and at most two fix/review passes |
 | tracking-sweep | Portfolio-wide drift sweep across Jira, beads, and GitHub PRs — flags status drift, orphan work, parent-moved beads, and stale items. Read-only |
@@ -69,7 +69,7 @@
 | watch-review-requests | Watch direct inbound GitHub review requests, run one bounded repository-qualified review at a time, and pause for private, draft-only, deferred, or separately confirmed external dispositions |
 | watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees, incl. worktree-only settings drift), and a paste-ready resume block for the next session |
-| yesterday | Read-only previous-workday stand-up recap across objective commits, PRs, Jira touches, and Beads activity; selects Friday when run on Monday |
+| yesterday | Alias for `/today --previous-workday`: objective previous-workday recap; selects Friday when run on Monday |
 
 ## Model routing
 
