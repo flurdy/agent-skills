@@ -61,7 +61,6 @@
 | triage | Create bead(s) from a user prompt or Jira ticket |
 | verify-task | Verify that a task's implementation meets requirements and has adequate test coverage |
 | watch-actions-rollout | After a merge, watch the GitHub Actions deploy run until the gating job lands, then run a confirmed read-only smoke test scoped to the change. Goal-terminating; staging by default, production read-only opt-in |
-| watch-admin | No-go except for the isolated BLC UAT candidate; requires a fresh stable standard route and keeps injected ticks self-contained |
 | watch-flux-rollout | After a push, watch CircleCI and FluxCD until the exact commit is built, the Kubernetes image changes, and pods are ready, then run a confirmed read-only smoke test. Goal-terminating |
 | watch-pr-feedback | Watch open PRs for normalized feedback, independently validate each new or edited actionable item once, and render a bounded decision queue. Read-only by default; attended mode pauses only for acknowledgment |
 | watch-prs | Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence (fast ~3m when CI is in flight, backing off 10→30m when settled) until end of day, with transition-driven suggested next actions. Unattended; pass `\d+m` for a fixed interval |

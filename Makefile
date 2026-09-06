@@ -25,7 +25,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help check test lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help check test lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make check   (clean-code, lint-python, validate-skills, security-scan, test)"
@@ -63,7 +63,6 @@ help:
 	@echo "make test-today"
 	@echo "make test-yesterday"
 	@echo "make test-wrap-up"
-	@echo "make test-watch-admin"
 	@echo "make test-watch-pr-feedback"
 	@echo "make test-watch-prs"
 	@echo "make test-watch-release"
@@ -227,10 +226,6 @@ test-wrap-up:
 	@bash skills/wrap-up/tests/test-handoff-path.sh
 	@bash skills/wrap-up/tests/test-skill-contract.sh
 
-test-watch-admin:
-	@bash skills/watch-admin/tests/test-skill-contract.sh
-	@python3 -m unittest discover -s skills/watch-admin/tests -p 'test_*.py'
-
 test-watch-pr-feedback:
 	@bash skills/watch-pr-feedback/tests/test-skill-contract.sh
 
@@ -249,7 +244,7 @@ test-watch-rollouts:
 	@bash skills/watch-actions-rollout/tests/test-skill-contract.sh
 	@bash skills/watch-flux-rollout/tests/test-skill-contract.sh
 
-test-watch-protocols: test-watch-admin test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts
+test-watch-protocols: test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

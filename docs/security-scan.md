@@ -80,8 +80,8 @@ doing a full baseline rather than a regression check.
    does not make a skill read-only.
 3. **Untrusted-content handling.** Skills reading PR bodies, review comments,
    Jira/Confluence/Trello text, or fetched logs should frame that content as
-   data. Four skills carry the guard — `diagnose-bug`, `outstanding-work`,
-   `project-brief`, `watch-admin` — and their wording is the reference.
+   data. Three skills carry the guard — `diagnose-bug`, `outstanding-work`,
+   `project-brief` — and their wording is the reference.
 4. **Content laundering.** Text imported from an external tracker into a bead
    loses its provenance and downstream skills read it as internal prose. The
    importers fence it — `<!-- external-text:trello -->` in trello-pull.sh, the
