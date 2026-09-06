@@ -5,7 +5,7 @@ allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.agents/skills/lan
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.12.0"
+version: "0.12.1"
 author: "flurdy"
 ---
 
@@ -18,6 +18,7 @@ Show a consolidated landscape of where you are and what to do next, pulling from
 ```bash
 /landscape          # Full landscape
 /landscape quick    # Skip PR details (faster, Jira + working-copy + beads-if-present only)
+/loop 30m /landscape quick   # Unattended refresh through the day (Claude Code); pair with /watch-prs for CI
 ```
 
 ## What It Shows
