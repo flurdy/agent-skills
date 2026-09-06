@@ -55,7 +55,9 @@ for invariant in \
     '600' \
     'Load and follow the skill named `release-manager` now.' \
     'blocks the active tick until the user answers' \
-    'Never push, sync config, or restart a deployment without the explicit answer' \
+    'Never push without the explicit answer' \
+    'Never invoke release-maintenance, reconcile manifests, sync config, or restart workloads in a watch tick' \
+    'Do not recompute gates' \
     '`next-tick:`' \
     '### Claude Code fallback' \
     'ScheduleWakeup' \

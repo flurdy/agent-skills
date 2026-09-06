@@ -1,0 +1,7 @@
+#!/usr/bin/env python3
+"""Collect and evaluate release evidence; never perform release actions."""
+from release_gates import main
+
+
+if __name__ == "__main__":
+    main()

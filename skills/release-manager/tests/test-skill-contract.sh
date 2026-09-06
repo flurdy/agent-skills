@@ -1,52 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-AUTHORITY="$SKILL_DIR/scripts/release-order"
-CI_AUTHORITY="$SKILL_DIR/scripts/release-ci"
-
-fail() {
-    printf 'FAIL: %s\n' "$*" >&2
-    exit 1
-}
-
-[ -x "$AUTHORITY" ] || fail "missing executable release-order authority"
-[ -x "$CI_AUTHORITY" ] || fail "missing executable release-ci authority"
-[ -x "$SKILL_DIR/scripts/pact-graph" ] || fail "missing executable pact provider"
-
-grep -Fq 'pact-graph' "$AUTHORITY" || fail "release-order does not compose the pact provider"
-
-for consumer in release-manager release-status ready-to-release; do
-    skill="$SKILL_DIR/../$consumer/SKILL.md"
-    grep -Fq './scripts/release-order' "$skill" || fail "$consumer does not use release-order"
-    if grep -Fq './scripts/pact-graph' "$skill"; then
-        fail "$consumer still invokes pact-graph directly"
-    fi
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+for script in release-order release-ci pact-graph; do
+    [ -x "$SKILL_DIR/scripts/$script" ] || fail "missing executable $script adapter"
 done
-
-grep -Fq './scripts/release-order --write' "$SKILL_DIR/SKILL.md" || \
-    fail "release-manager does not reconcile through the ordering authority"
-grep -Fq './scripts/release-ci' "$SKILL_DIR/SKILL.md" || \
-    fail "release-manager does not document the CI authority"
-grep -Fq 'ciRevision' "$SKILL_DIR/SKILL.md" || \
-    fail "release-manager does not consume normalized CI revision evidence"
-grep -Fq 'ciExpectedRevision' "$SKILL_DIR/SKILL.md" || \
-    fail "release-manager does not consume the exact upstream revision"
-
-gate_section="$(awk '/^6\. \*\*Evaluate ready-to-push/{capture=1} /^6b\. \*\*Contract coverage beads/{capture=0} capture' "$SKILL_DIR/SKILL.md")"
-for provider_term in CircleCI 'GitHub Actions' 'Cloud Build' ci-status.sh; do
-    if grep -Fq "$provider_term" <<<"$gate_section"; then
-        fail "release-manager CI gate contains provider-specific term: $provider_term"
-    fi
+grep -Fq pact-graph "$SKILL_DIR/scripts/release-order" || fail 'order adapter must compose Pact'
+skill="$SKILL_DIR/SKILL.md"
+for required in 'Do not recompute' 'fresh authority result' 'exact command' 'only `READY`' 'Legacy maintenance state' 'next-tick:' 'upstream' 'malformed' 'one active manager'; do
+    grep -Fq "$required" "$skill" || fail "missing manager invariant: $required"
 done
-if grep -Fq "confirmed the service's tests pass locally" <<<"$gate_section"; then
-    fail "release-manager lets local tests override unavailable CI evidence"
+if grep -Eq 'Bash\((kubectl|make k8s-sync|make feature-toggles-disabled|\./scripts/release-order)' "$skill"; then
+    fail 'recurring manager retains infrastructure mutation authority'
 fi
-grep -Fq 'If `docs/release-manifest.yaml` is absent' "$SKILL_DIR/SKILL.md" || \
-    fail "release-manager does not define manifest-free defaults"
-grep -Fq 'If `docs/release-manifest.yaml` is absent' "$SKILL_DIR/../release-status/SKILL.md" || \
-    fail "release-status does not define manifest-free defaults"
-grep -Fq 'If `docs/release-manifest.yaml` is absent' "$SKILL_DIR/../ready-to-release/SKILL.md" || \
-    fail "ready-to-release does not define manifest-free defaults"
-
-printf '%s\n' 'release authority skill contract tests passed'
+if grep -Eq 'ln -sfn|chmod \+x|resourceVersion.*moves|ageBaseline.*fresh' "$skill"; then
+    fail 'recurring manager retains setup repair or heuristic restart confirmation'
+fi
+maintenance="$SKILL_DIR/../release-maintenance/SKILL.md"
+for required in './scripts/release-order --write' 'never invoked by' 'one visible command' '--context' 'generation' 'Legacy maintenance state' 'acknowledge-rollout'; do
+    grep -Fq -- "$required" "$maintenance" || fail "missing isolated maintenance invariant: $required"
+done
+if grep -Eq 'Bash\((kubectl --context|\./scripts/mgit:\*)' "$maintenance"; then
+    fail 'maintenance must not blanket-preapprove mutating Git/Kubernetes commands'
+fi
+printf '%s\n' 'release action ownership contract tests passed'

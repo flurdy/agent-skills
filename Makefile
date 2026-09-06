@@ -202,6 +202,7 @@ test-ready-to-merge:
 	@bash skills/ready-to-merge/tests/test-skill-contract.sh
 
 test-ready-to-release:
+	@python3 -m unittest discover -s skills/ready-to-release/tests -p 'test_release_gates.py'
 	@bash skills/ready-to-release/tests/test-skill-contract.sh
 
 test-release-ci:

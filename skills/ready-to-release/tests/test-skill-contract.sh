@@ -1,52 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-SKILL="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/SKILL.md"
-
-fail() {
-    printf 'FAIL: %s\n' "$*" >&2
-    exit 1
-}
-
-assert_has() {
-    local text="$1"
-    grep -Fq -- "$text" "$SKILL" || fail "expected '$text' in $SKILL"
-}
-
-assert_not_has() {
-    local text="$1"
-    if grep -Fq -- "$text" "$SKILL"; then
-        fail "did not expect '$text' in $SKILL"
+SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+[ -x "$SKILL_DIR/scripts/release-gates" ] || fail 'missing executable readiness authority'
+for consumer in ready-to-release release-status release-manager; do
+    skill="$SKILL_DIR/../$consumer/SKILL.md"
+    grep -Fq '/skills/ready-to-release/scripts/release-gates' "$skill" || fail "$consumer must call the shared authority"
+    grep -Fq 'Do not recompute' "$skill" || fail "$consumer must not duplicate verdict policy"
+    if grep -Eq 'Bash\(\./scripts/(release-digest|release-order|contract-check):' "$skill"; then
+        fail "$consumer still collects release evidence independently"
     fi
-}
-
-assert_has 'allowed-tools: "Read,Bash(./scripts/release-digest:*),Bash(./scripts/release-order:*),Bash(./scripts/contract-check:*)"'
-assert_has 'service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age|ciRevision|ciExpectedRevision'
-assert_has '`Gate | Result | Evidence`'
-assert_has '`➖ N/A`'
-assert_has 'An N/A row is never a blocker by itself'
-assert_has 'ciBranch == gitBranch'
-assert_has 'both revisions must be non-`-`'
-assert_has 'ciRevision == ciExpectedRevision'
-assert_has 'Exact `success` → `✅ pass`; exact `failed`/`error` → `❌ block`; exact `running` → `⚠️ hold`'
-assert_has '`provider=none` with an empty graph is valid'
-assert_has '`non_deploying` service → `➖ N/A` with no verdict impact'
-assert_has 'order evidence is unavailable'
-assert_has 'no contract relationship applies'
-assert_has 'no toggle policy applies'
-assert_has 'deployment evidence is unavailable'
-assert_has 'unavailable safety-critical evidence produces `HOLD ⚠️`'
-assert_has 'Hard blockers take precedence over holds'
-assert_has 'never prompt and never mutate state'
-
-assert_not_has 'letterbox'
-assert_not_has 'CircleCI'
-assert_not_has 'AskUserQuestion'
-assert_not_has 'Write,'
-assert_not_has 'Edit,'
-assert_not_has 'Bash(make'
-assert_not_has 'make ci-status'
-assert_not_has 'make deploy-status'
-assert_not_has 'make feature-toggles'
-
-printf '%s\n' 'ready-to-release portability contract tests passed'
+done
+grep -Fq 'false' "$SKILL_DIR/references/evidence-contract.md" || fail 'toggle policy undocumented'
+grep -Fq 'non-deploying' "$SKILL_DIR/references/evidence-contract.md" || fail 'non-deploying boundary undocumented'
+grep -Fq 'never prompt' "$SKILL_DIR/SKILL.md" || fail 'deep gate must remain passive'
+printf '%s\n' 'release readiness authority contract tests passed'

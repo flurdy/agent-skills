@@ -7,7 +7,7 @@ description: >
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -54,7 +54,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 3. Use this self-contained prompt in the start call:
 
    ```text
-   Load and follow the skill named `release-manager` now. This is one attended release tick. Invoke the skill rather than improvising its steps, render its full dashboard and every confirmation as visible text, and wait for each answer. Never push, sync config, or restart a deployment without the explicit answer to that action's current question in this tick. An `ask_user_question` call blocks the active tick until the user answers; do not call `watch_loop` complete while a question is open. After release-manager has finished all answered prompts and printed its final `next-tick:` line, call the matching `watch_loop` action: complete with outcome: continue. In adaptive mode pass that line's numeric N as delaySeconds; if the line is missing or malformed, use 600. In fixed mode omit delaySeconds. Do not complete before the dashboard, answers, tick summary, and cadence recommendation are visible.
+   Load and follow the skill named `release-manager` now. This is one attended release tick. Invoke the skill rather than improvising its steps, render its full dashboard and every confirmation as visible text, and wait for each answer. Never push without the explicit answer to that action's current question in this tick and release-manager's fresh shared-authority recheck. Never invoke release-maintenance, reconcile manifests, sync config, or restart workloads in a watch tick; an answer cannot expand this boundary. An `ask_user_question` call blocks the active tick until the user answers; do not call `watch_loop` complete while a question is open. After release-manager has finished all answered prompts and printed its final `next-tick:` line, call the matching `watch_loop` action: complete with outcome: continue. In adaptive mode pass that line's numeric N as delaySeconds; if the line is missing or malformed, use 600. In fixed mode omit delaySeconds. Do not complete before the dashboard, answers, tick summary, and cadence recommendation are visible.
    ```
 
 4. For adaptive mode, state the local deadline and that the first tick lands after about one
@@ -112,7 +112,7 @@ unless the tick explicitly loads it — so the output contract and ordering must
 prompt string itself:
 
 ```
-/loop /release-manager — each tick: invoke the release-manager skill via the Skill tool (never improvise its steps from memory), render its full dashboard and any prompts as visible text, and only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
+/loop /release-manager — each tick: invoke the release-manager skill via the Skill tool (never improvise its steps from memory), render its full dashboard and any prompts as visible text; only offer pushes using its fresh shared-authority verdict and current-command confirmation; never invoke release-maintenance, reconcile manifests, sync config, or restart workloads; only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
 ```
 
 Pass that whole string as the loop prompt, and echo it back unchanged in every `ScheduleWakeup`
@@ -127,14 +127,14 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 ```
 
 Use `{N}` as the `delaySeconds` for the next wake (the dynamic loop clamps to `[60, 3600]`). Don't
-second-guess the bucket — `/release-manager` already weighs rollout/CI/queue state (step 8b):
+second-guess the bucket — `/release-manager` already weighs the authority's rollout/CI observations and its prompt queue:
 
 - **hot** (~180s) — a push is mid-rollout or CI is running; check soon to catch it.
 - **warm** (~600s) — pending work, nothing time-critical.
 - **cold** (1200 → 1800s) — settled; escalating back-off via the `quietStreak` counter.
 
 Stop and don't reschedule once the wake would land past `{stop_hour}:00`. If a tick produces no
-`next-tick:` line (e.g. it errored before step 8b), fall back to ~600s and continue.
+`next-tick:` line (e.g. it errored before the cadence recommendation), fall back to ~600s and continue.
 
 #### Fixed mode (interval given)
 
@@ -143,7 +143,7 @@ ignored. The same per-tick contract applies (minus the `ScheduleWakeup` ordering
 fixed ticks):
 
 ```
-/loop {interval} /release-manager — each tick: invoke the release-manager skill via the Skill tool and render its full dashboard as visible text; a tick that only runs scripts is a failed tick
+/loop {interval} /release-manager — each tick: invoke the release-manager skill via the Skill tool and render its full dashboard as visible text; only offer pushes using its fresh shared-authority verdict and current-command confirmation; never invoke release-maintenance, reconcile manifests, sync config, or restart workloads; a tick that only runs scripts is a failed tick
 ```
 
 Tell the loop to stop at `{stop_hour}:00` local time. If neither `watch_loop` nor the required
@@ -151,6 +151,10 @@ Claude scheduling capability is available, explain that recurring watches are un
 stop.
 
 ## Note
+
+Readiness belongs to `ready-to-release/scripts/release-gates`, consumed by `/release-manager`.
+Do not recompute gates in the scheduler. Configuration sync, manifest reconciliation, and restarts
+belong to separately invoked `/release-maintenance`, never this loop, even after a tick answer.
 
 `/release-manager` prompts (push / defer / cancel) and **blocks each tick until you answer**, so
 this loop is meant to run **attended** in a visible tab. The adaptive interval is time measured
