@@ -22,7 +22,7 @@ line_of() {
 [[ -f "$SKILL" ]] || fail "missing review-comments skill"
 
 for invariant in \
-    'version: "1.2.0"' \
+    'version: "2.0.0"' \
     '`owner/repo#number`' \
     'matching checkout' \
     'stable `identity`' \
@@ -54,6 +54,9 @@ for invariant in \
     'edge case' \
     'Stage explicit paths' \
     'commit locally' \
+    'Reopen the bead after a committed fix' \
+    'next/scripts/next-select resolve <bead-id>' \
+    'next/scripts/next-select start <bead-id>' \
     'Never publishes' \
     '`/reply-comments`' \
     'Feedback ID' \
@@ -76,6 +79,9 @@ if grep -Eq '^[[:space:]]*git push([[:space:]]|$)' "$SKILL"; then
 fi
 if grep -Eq -- '--force(-with-lease)?' "$SKILL"; then
     fail 'review-comments must not introduce force push'
+fi
+if grep -Fq 'bd -C <directory> close' "$SKILL"; then
+    fail 'review-comments may reopen but must never close a bead'
 fi
 
 printf '%s\n' 'review-comments attended contract tests passed'

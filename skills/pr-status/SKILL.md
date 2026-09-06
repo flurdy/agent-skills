@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.13.0"
+version: "1.13.1"
 author: "flurdy"
 ---
 
@@ -178,7 +178,7 @@ Fire on transitions, not standing state: on the first check of a session list th
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
 | new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
 | → ⚠️ behind (fell behind base) | `/rebase-main` (on that PR's branch) |
-| → 🔔 awaiting review (no longer draft, still no reviewers) | `/request-review` |
+| → 🔔 awaiting review (no longer draft, still no reviewers) | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
 
 Order most actionable first (🚀 → 💬 → ⚠️ → 🔔); omit the section when no PR changed state.
 

@@ -1,11 +1,11 @@
 ---
 name: stack-branch
 description: Create a new branch stacked on another PR. Use when you want to start work that depends on an existing PR that hasn't been merged yet.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/stack-branch/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Skill,AskUserQuestion,mcp__jira__*"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
@@ -43,18 +43,18 @@ If parent branch not specified:
 git branch --show-current
 ```
 
-If on a feature branch (not main), offer to use it as the parent.
-Otherwise, ask the user which branch to stack on.
+If attached to a non-default branch, offer to use it as the parent. If detached or on the repository
+default branch, ask which PR branch to stack on.
 
-### 3. Ensure Parent is Up to Date
+### 3. Resolve the parent ref
+
+Fetch the parent branch read-only and require its remote-tracking ref to exist. The parent is an
+existing PR branch, so `origin/{parent-branch}` is the authoritative base. Do not check out or pull
+the parent branch:
 
 ```bash
-# Fetch the parent branch
 git fetch origin {parent-branch}
-
-# Check out and update local copy
-git checkout {parent-branch}
-git pull origin {parent-branch}
+git rev-parse --verify origin/{parent-branch}
 ```
 
 ### 4. Create Branch Name
@@ -77,45 +77,79 @@ Create branch name:
 
 Example: `feat/AB-456-add-caching-layer`
 
-### 5. Create the Branch
+### 5. Preflight the new branch
+
+Run the shared read-only branch preflight before changing checkout state:
 
 ```bash
-git checkout -b {new-branch-name}
+~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh {new-branch-name}
 ```
 
-### 6. Push and Set Upstream
+#### Working tree gate
+
+If `tracked_changes=true` or `untracked_changes=true`, stop before switching or creating a branch.
+Use `AskUserQuestion` to offer **Commit first**, **Stash and continue**, or **Abort**. Never stash,
+discard, or carry changes to another branch without that choice. If HEAD is detached, stop and ask
+the user to preserve it on a branch before switching away.
+
+#### Existing branch gate
+
+- A non-empty `worktree_path` that differs from `current_worktree` means another worktree owns
+  the target: do not switch or create; report the path and offer to continue there. Compare canonical
+  worktree roots, not the invocation directory (which may be a subdirectory).
+- `local_branch_exists=true`: offer **Resume existing branch** or **Abort**. Resume with
+  `git switch {new-branch-name}` and skip creation.
+- Remote-only (`remote_branch_exists=true`): offer **Track remote branch** or **Abort**. If chosen,
+  fetch it and run `git switch --track -c {new-branch-name} origin/{new-branch-name}`.
+- With no local branch and `remote_branch_exists=unknown`, stop before creating or pushing because
+  collision safety is unresolved.
+
+### 6. Create the branch
+
+For a genuinely new branch, branch directly from the fetched parent ref:
+
+```bash
+git switch --no-track -c {new-branch-name} origin/{parent-branch}
+```
+
+After creating or resuming the branch, record the parent using GitHub CLI's supported per-branch
+merge-base configuration so `/create-pr` can target it later:
+
+```bash
+git config branch.{new-branch-name}.gh-merge-base {parent-branch}
+```
+
+### 7. Confirm branch push
+
+Rerun the preflight for `{new-branch-name}` after creating or resuming it. Skip this phase only when
+`target_published=true`: HEAD matches the exact `origin/{new-branch-name}` destination, not a parent
+upstream. On `unknown` or a preflight error, stop; on `false`, offer to publish the branch.
+Show the exact branch and remote, then use `AskUserQuestion`
+**immediately before** the command. If approved, the command must be the next tool call, standalone
+and unchained:
 
 ```bash
 git push -u origin {new-branch-name}
 ```
 
-### 7. Inform User
+Approval applies only to that one command. A retry or any later remote mutation requires fresh
+confirmation. If declined, keep the branch local and do not attempt PR creation.
+
+### 8. Inform user
 
 Tell the user:
-- Created branch `{new-branch-name}` based on `{parent-branch}`
-- When creating a PR, target `{parent-branch}` not `main`
+- Created or resumed branch `{new-branch-name}` based on `{parent-branch}`
+- `/create-pr` will read the recorded parent and target `{parent-branch}`, not `main`
 - When `{parent-branch}` is merged, use `/rebase-merged-parent` to rebase onto main
 
-### 8. Optional: Create Draft PR
+### 9. Offer draft PR handoff
 
-Ask if the user wants to create a draft PR now:
+Only offer this when the branch exists on `origin`. Ask whether to continue with:
 
-Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
-
-#### Create the PR targeting parent branch
-
-```bash
-~/.agents/skills/stack-branch/scripts/gh-pr-create.sh --draft --base {parent-branch} --title "{type}({scope}): {description}" --body "$(cat <<'EOF'
-{body}
-EOF
-)"
+```text
+/create-pr --draft {parent-branch}
 ```
 
-If the script is unavailable, fall back to:
-
-```bash
-gh pr create --draft --base {parent-branch} --title "{type}({scope}): {description}" --body "$(cat <<'EOF'
-{body}
-EOF
-)"
-```
+This choice authorizes only the handoff. `/create-pr` owns the complete draft, the immediate PR
+creation confirmation, the remote command, and closing the associated bead. Approval of the earlier
+branch push never carries into PR creation.

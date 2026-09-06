@@ -11,7 +11,7 @@
 | browser-screenshot | Take a screenshot of the running web application for visual verification of UI/CSS changes |
 | circleci-status | Check CircleCI build status and failed job logs for the current GitHub repository |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
-| complete-task | Complete an in-progress task by running clean-code, staging, and committing; closes the bead in trunk repos or hands off to /create-pr in PR repos |
+| complete-task | Complete an in-progress task by running clean-code, staging, and committing; closes on trunk, hands off to /create-pr in PR workflows, and protects detached commits |
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
 | contract-check | Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests |
 | contract-test | Run consumer-driven contract tests (pact-lite, no broker). Supports single-service and multi-service project-wide runs |
@@ -43,7 +43,7 @@
 | release-manager | Interactive release gatekeeper for letterbox — prompts to push/defer/cancel each ready service, auto-files a bead on CI failure, enforces deploy order, watches rollouts, nudges toggles. Advisory: only pushes on explicit choice |
 | release-status | Read-only release dashboard for letterbox — built-but-unpushed, pushed-but-not-rolled-out, deployed-but-toggle-off, and deploy-order blocks. Passive: never prompts or pushes |
 | reply-comments | Publish prepared PR-feedback outcomes through separate confirmed push, reply, and inline-thread resolution gates with race and duplicate protection |
-| review-comments | Select and independently validate PR feedback, make focused verified local fixes, and commit locally without publishing remote actions |
+| review-comments | Select and independently validate PR feedback, make focused verified local fixes, reopen its bead after a committed fix, and commit locally without publishing remote actions |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
 | second-opinion | Query one independent peer or configurable local/OpenRouter panels with distinct quorum and evidence-backed consensus policies |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |

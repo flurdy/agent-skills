@@ -1,11 +1,11 @@
 ---
 name: review-comments
 description: Address PR review feedback through explicit item selection, independent validation, focused local fixes, verification, and a local commit. Never publishes remote actions; use reply-comments for separately confirmed push, reply, and resolution gates.
-allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git branch --show-current),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd list:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git branch --show-current),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "1.2.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
@@ -150,6 +150,37 @@ For each approved fix or coherent selected group:
 Do not skip verification, bypass hooks, amend unrelated commits, or claim a fix without a successful
 local commit. If tests fail, stop and keep remote actions unavailable. If multiple items require
 unrelated changes, use separate commits. This skill does not publish the commit.
+
+#### Reopen the bead after a committed fix
+
+A PR workflow closes its bead when the PR is created. Reopen it only when this run produced a
+successful local commit for at least one selected `confirmed defect` or accepted `valid improvement`.
+Replies, acknowledgements, deferrals, false positives, and uncommitted edits never change bead state.
+
+1. List closed candidates, then match the PR's Jira key against the bead title/description or use an
+   obvious one-to-one correspondence. If none match, skip silently. If several match, ask which one;
+   never guess.
+
+   ```bash
+   bd list --status=closed
+   ```
+2. Prove ownership before reading or mutating the selected bead:
+
+   ```bash
+   ~/.agents/skills/next/scripts/next-select resolve <bead-id>
+   ```
+
+   On `ambiguous`, `unavailable`, or `not-found`, reopen nothing and report the routing problem.
+   If the bead is already `in_progress`, leave it unchanged.
+3. For a resolved closed bead, use the shared start path so the transition records the required
+   claim attribution:
+
+   ```bash
+   ~/.agents/skills/next/scripts/next-select start <bead-id>
+   ```
+
+This local reopen does not authorize a push, reply, or resolution. If reopening fails, preserve the
+commit and report the bead mismatch; remote handoff preparation may continue.
 
 ### 8. Prepare the Remote Handoff
 

@@ -1,11 +1,11 @@
 ---
 name: start-ticket
 description: Initialize work on a Jira ticket. Creates a new branch with conventional commit prefix based on the ticket type. Use when starting work on a new ticket.
-allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Read,Skill,mcp__jira__*"
+allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Read,Skill,AskUserQuestion,mcp__jira__*"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.2.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
@@ -18,6 +18,14 @@ Initialize work on a Jira ticket by looking up the ticket details and creating a
 ```
 /start-ticket AB-123
 ```
+
+## Requirements
+
+The shared `scripts/git-branch-preflight.sh` helper requires Bash, Git (with `git switch`), and awk.
+It reports working-tree and branch facts without changing refs or files, and queries `origin` for
+exact destination publication. A missing helper, failed status read, or unknown remote state is a
+stop condition, not permission to assume a clean tree or absent branch. `current_worktree` is the
+canonical root from `git rev-parse --show-toplevel`; invoke from any repository subdirectory.
 
 ## Instructions
 
@@ -83,22 +91,63 @@ When a live handoff remains, ask with `AskUserQuestion`:
 
 > 📥 You have a handoff `{slug}` ({date} {time}) for `{TICKET-NUMBER}` on branch `{branch}`. Resume it instead of creating a new branch?
 
-- **Resume handoff (recommended)** — `Read` `~/.claude/handoffs/{filename}` and render it **verbatim** in a fenced block as resume context. Then resume its branch rather than creating a new one: `git checkout {branch}` if it exists locally, else hand to `/handoffs` for the full (worktree-aware) resume flow. **Skip step 4** — don't `git checkout -b` over an existing branch. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`.
+- **Resume handoff (recommended)** — `Read` `~/.claude/handoffs/{filename}` and render it **verbatim** in a fenced block as resume context. Hand to `/handoffs` for its worktree-aware resume flow rather than switching blindly. **Skip the fresh-branch path in step 4** — don't create over an existing branch. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`.
 - **Start fresh** — ignore the handoff and continue to step 4 with a new branch.
 
 If `list.sh` errors or there's no handoffs dir, proceed to step 4 silently — this is a courtesy, never a blocker.
 
-### 4. Create the Branch
+### 4. Preflight and create the branch
+
+Run the shared read-only branch preflight before changing checkout state:
 
 ```bash
-# Ensure we're on main and up to date
-git checkout main
-git pull origin main
-
-# Create and switch to new branch
-git checkout -b {branch-name}
+~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh {new-branch-name}
 ```
 
-### 5. Confirm to User
+#### Working tree gate
 
-Output the created branch name and ticket summary so the user knows they're ready to start work.
+If `tracked_changes=true` or `untracked_changes=true`, stop before switching or creating a branch.
+Use `AskUserQuestion` to offer **Commit first**, **Stash and continue**, or **Abort**. Never stash,
+discard, or carry changes to another branch without that choice. If HEAD is detached, stop and ask
+the user to preserve it on a branch before switching away.
+
+#### Existing branch gate
+
+- A non-empty `worktree_path` that differs from `current_worktree` means another worktree owns
+  the target: do not switch or create; report the path and offer to continue there. Compare canonical
+  worktree roots, not the invocation directory (which may be a subdirectory).
+- `local_branch_exists=true`: offer **Resume existing branch** or **Abort**. Resume with
+  `git switch {new-branch-name}` and skip creation.
+- Remote-only (`remote_branch_exists=true`): offer **Track remote branch** or **Abort**. If chosen,
+  fetch it and run `git switch --track -c {new-branch-name} origin/{new-branch-name}`.
+- With no local branch and `remote_branch_exists=unknown`, report that collision safety could not be
+  established and stop before creating or pushing.
+
+For a genuinely new branch, resolve the default branch from `origin/HEAD` (falling back to local
+`main`, then `master`), fetch it, and branch directly from its remote-tracking ref. Do not check out
+or pull the base branch:
+
+```bash
+git fetch origin {default-branch}
+git switch --no-track -c {new-branch-name} origin/{default-branch}
+```
+
+### 5. Confirm branch push
+
+Rerun the preflight for `{new-branch-name}` after creating or resuming it. Skip this phase only when
+`target_published=true`: HEAD matches the exact `origin/{new-branch-name}` destination, not a parent
+upstream. On `unknown` or a preflight error, stop; on `false`, offer to publish the branch.
+Show the exact branch and remote, then use `AskUserQuestion`
+**immediately before** the command. If approved, the command must be the next tool call, standalone
+and unchained:
+
+```bash
+git push -u origin {new-branch-name}
+```
+
+Approval applies only to that one command. A retry or any later remote mutation requires fresh
+confirmation. If declined, keep the branch local.
+
+### 6. Confirm to User
+
+Output the active branch, ticket summary, and whether it remains local or now tracks `origin`.

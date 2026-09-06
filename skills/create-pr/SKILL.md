@@ -1,11 +1,11 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.2"
+version: "2.0.0"
 author: "flurdy"
 ---
 
@@ -16,30 +16,46 @@ Create a pull request from the current branch using project conventions.
 ## Usage
 
 ```
-/create-pr
+/create-pr                              # Resolve recorded/default base
+/create-pr {base-branch}                # Explicit base, including a stacked parent
+/create-pr --draft {base-branch}        # Create a draft PR against that base
 ```
 
 ## Instructions
 
-### 1. Gather Context
+Parse optional `--draft` plus at most one `{base-branch}`. Reject unknown or duplicate arguments.
+Expand `{draft-flag}` to `--draft` when requested and to nothing otherwise.
 
-Run these commands to understand the current state:
+### 1. Gather context
+
+Get the current branch and working-copy state:
 
 ```bash
-# Get current branch name
 git branch --show-current
-
-# Check if branch needs pushing
 git status -sb
-
-# Get commits on this branch not on main
-git log main..HEAD --oneline
-
-# Get diff summary against main
-git diff main...HEAD --stat
 ```
 
-### 2. Extract Jira Ticket from Branch Name
+If the branch is empty, stop: HEAD is detached. Preserve the commit on a branch before attempting
+to push or create a PR.
+
+### 2. Resolve the PR base
+
+Use the first available source:
+
+1. explicit `{base-branch}` argument;
+2. `git config --get branch.{branch-name}.gh-merge-base` (recorded by `/stack-branch`);
+3. the default branch from `origin/HEAD`, falling back to local `main`, then `master`.
+
+If the result is empty, equals the head branch, or does not resolve to a commit, ask rather than
+guessing. Fetch the selected base, then use it consistently for context and PR creation:
+
+```bash
+git fetch origin {base-branch}
+git log origin/{base-branch}..HEAD --oneline
+git diff origin/{base-branch}...HEAD --stat
+```
+
+### 3. Extract Jira Ticket from Branch Name
 
 Parse the branch name to find the ticket number:
 
@@ -49,7 +65,7 @@ Parse the branch name to find the ticket number:
 
 If no ticket found, ask the user.
 
-### 3. Look Up Jira Ticket
+### 4. Look Up Jira Ticket
 
 Use the `/jira-ticket` skill or the Jira MCP tools directly to get ticket details for the PR description:
 
@@ -59,7 +75,7 @@ mcp__jira__jira_get with:
   jq: "{key: key, summary: fields.summary, description: fields.description}"
 ```
 
-### 4. Generate PR Title
+### 5. Generate PR Title
 
 Use conventional commit format based on branch prefix:
 
@@ -74,9 +90,9 @@ Use conventional commit format based on branch prefix:
 
 Infer the scope from changed files (e.g., `offers-cms`, `web`, `api`).
 
-### 5. Generate PR Body
+### 6. Generate PR Body
 
-Analyze the actual code changes (use `git diff main...HEAD`) to write a meaningful description.
+Analyze the actual code changes (use `git diff origin/{base-branch}...HEAD`) to write a meaningful description.
 
 House style: say what changed in general terms, easy to digest. Keep the why brief or absent
 (Jira/Trello owns it) and details minimal (the commits and diff own them). No test narrative, no
@@ -85,32 +101,49 @@ future-task lists, no names, no bead IDs.
 Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
 
 
-### 6. Push and Create PR
+### 7. Confirm push
+
+Run the shared preflight immediately before deciding whether publication is needed:
 
 ```bash
-# Push branch with upstream tracking
+~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh {branch-name}
+```
+
+Skip this phase only when `target_published=true`: HEAD matches the exact `origin/{branch-name}` destination.
+Never infer publication from a parent upstream or stale remote-tracking ref. On `unknown` or a
+preflight error, stop. Otherwise show the exact branch and remote. Use `AskUserQuestion`
+**immediately before** the push. If approved, the push must be the next tool call, standalone and unchained:
+
+```bash
 git push -u origin {branch-name}
 ```
 
-Create the PR targeting main:
+Approval applies only to this push. A retry requires fresh confirmation. If declined, stop before
+PR creation.
+
+### 8. Confirm PR creation
+
+First show the user the target, title, and complete body draft. Then use `AskUserQuestion`
+**immediately before** creating the PR. Push approval does not authorize this second remote action.
+If approved, invoke the wrapper as the next tool call, standalone and unchained:
 
 ```bash
-~/.agents/skills/create-pr/scripts/gh-pr-create.sh --base main --title "{title}" --body "$(cat <<'EOF'
+~/.agents/skills/create-pr/scripts/gh-pr-create.sh {draft-flag} --base {base-branch} --title "{title}" --body "$(cat <<'EOF'
 {body}
 EOF
 )"
 ```
 
-If the script is unavailable, fall back to:
+If the script is unavailable, show and separately confirm the fallback before running it:
 
 ```bash
-gh pr create --base main --title "{title}" --body "$(cat <<'EOF'
+gh pr create {draft-flag} --base {base-branch} --title "{title}" --body "$(cat <<'EOF'
 {body}
 EOF
 )"
 ```
 
-### 7. Close the Associated Bead
+### 9. Close the Associated Bead
 
 Once the PR is created, close the bead for this work — this is the preferred close point in a PR workflow (the commit was done in `/complete-task`, which deliberately left the bead open for this step). Reopen later if review demands major changes.
 
@@ -122,7 +155,7 @@ Skip this whole step silently if `bd` is unavailable or the repo has no beads da
    bd list --status=in_progress
    ```
 
-   Match by the Jira key from §2 appearing in the bead title/description, or an obvious 1:1 correspondence to the branch.
+   Match by the Jira key from §3 appearing in the bead title/description, or an obvious 1:1 correspondence to the branch.
 
 2. If multiple beads plausibly match, ask the user which (if any) to close with `AskUserQuestion`. If none match, skip silently — don't invent one.
 
@@ -151,8 +184,10 @@ Skip this whole step silently if `bd` is unavailable or the repo has no beads da
    bd -C <directory> update <bead-id> --status=in_progress
    ```
 
-Note: `/ready-to-merge` already closes a bead only "if still in_progress" post-merge, so closing here is compatible — by merge time it's normally already closed and that step no-ops.
+Note: `/ready-to-merge` closes a bead only if it is `in_progress`. It therefore no-ops when this
+close remains current, but closes it post-merge if `/review-comments` reopened it for substantial
+review work.
 
-### 8. Return Result
+### 10. Return Result
 
 Output the PR URL so the user can view it, and note the bead that was closed (or left open, if none matched).
