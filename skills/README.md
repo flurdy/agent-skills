@@ -37,9 +37,10 @@
 | project-brief | Read-only workspace-level synthesis of project outcomes, requirement linkage, delivery evidence, coordination risks, and the single most important next coordination action |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
 | ready-to-release | Deep release-readiness gate for a single letterbox service — CI green, contracts in sync, deploy-order prereqs, feature toggle present, unpushed work vs the live deploy. Emits a gate table and a verdict |
-| rebase-main | Rebase the current branch onto an updated main branch |
-| rebase-merged-parent | Rebase after a parent PR has been merged to main |
-| rebase-parent | Rebase the current branch onto an updated parent PR branch |
+| rebase | Rebase onto updated main, an updated stacked parent, or main after the parent merged — proves the child-only range before rewriting; explicit dirty-tree, test, force-push, and retarget gates |
+| rebase-main | Alias for `/rebase main` |
+| rebase-merged-parent | Alias for `/rebase merged {old-parent}` |
+| rebase-parent | Alias for `/rebase parent {parent-branch}` |
 | release-manager | Interactive release gatekeeper for letterbox — prompts to push/defer/cancel each ready service, auto-files a bead on CI failure, enforces deploy order, watches rollouts, nudges toggles. Advisory: only pushes on explicit choice |
 | release-status | Read-only release dashboard for letterbox — built-but-unpushed, pushed-but-not-rolled-out, deployed-but-toggle-off, and deploy-order blocks. Passive: never prompts or pushes |
 | reply-comments | Publish prepared PR-feedback outcomes through separate confirmed push, reply, and inline-thread resolution gates with race and duplicate protection |

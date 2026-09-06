@@ -140,7 +140,7 @@ confirmation. If declined, keep the branch local and do not attempt PR creation.
 Tell the user:
 - Created or resumed branch `{new-branch-name}` based on `{parent-branch}`
 - `/create-pr` will read the recorded parent and target `{parent-branch}`, not `main`
-- When `{parent-branch}` is merged, use `/rebase-merged-parent` to rebase onto main
+- When `{parent-branch}` is merged, use `/rebase merged {parent-branch}` to rebase onto main
 
 ### 9. Offer draft PR handoff
 

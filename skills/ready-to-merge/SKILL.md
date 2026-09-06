@@ -185,7 +185,7 @@ Render compactly. Skip empty sections.
 - Trello: {card-name} (or `—`)
 
 **Stacked children** _(omit section if none)_
-- ⚠️ #{n} {title} — will need `/rebase-merged-parent` after this merges.
+- ⚠️ #{n} {title} — will need `/rebase merged {this-branch}` after this merges.
 
 **Diff summary**
 - 3–5 bullets, each one short, derived from the diff. No file lists.
@@ -215,7 +215,7 @@ or
 
 ### Phase 9 — Ask for go/no-go
 
-If verdict is ❌ blocked, stop here. Print the blockers and suggest next steps (often `/rebase-main`, `/review-comments`, `/clean-code`).
+If verdict is ❌ blocked, stop here. Print the blockers and suggest next steps (often `/rebase main`, `/review-comments`, `/clean-code`).
 
 If `--no-merge` was passed, stop here regardless.
 
@@ -266,7 +266,7 @@ Then list **post-merge follow-ups** as a checklist (do NOT execute them):
 
 - [ ] Transition Jira {KEY} → Test/Review (or Done)
 - [ ] `bd close {bead-id}` if a bead is still in_progress
-- [ ] `/rebase-merged-parent` on stacked child PR(s): #{n1}, #{n2}
+- [ ] `/rebase merged {this-branch}` on stacked child PR(s): #{n1}, #{n2}
 - [ ] Pull the default branch locally and remove the merged worktree/branch (only if the remote-branch delete above was denied or skipped)
 
 Don't auto-perform these — they're explicit user follow-ups, often touching other branches/repos. In particular, do not switch the local checkout to the default branch or run `git worktree`/`git branch -d` yourself.

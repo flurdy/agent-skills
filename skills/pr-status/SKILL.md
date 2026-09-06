@@ -177,7 +177,7 @@ Fire on transitions, not standing state: on the first check of a session list th
 |---|---|
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
 | new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
-| → ⚠️ behind (fell behind base) | `/rebase-main` (on that PR's branch) |
+| → ⚠️ behind (fell behind base) | `/rebase main` (on that PR's branch) |
 | → 🔔 awaiting review (no longer draft, still no reviewers) | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
 
 Order most actionable first (🚀 → 💬 → ⚠️ → 🔔); omit the section when no PR changed state.

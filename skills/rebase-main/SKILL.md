@@ -1,146 +1,28 @@
 ---
 name: rebase-main
-description: Rebase the current branch onto an updated main branch. Use when main has been updated and you need to incorporate those changes into your feature branch.
-allowed-tools: "Read,Edit,Bash(git:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
-model-tier: premium
-model: opus
-effort: high
-version: "1.0.0"
+description: Rebase the current branch onto an updated main branch. Alias for `/rebase main`.
+allowed-tools: "Read,Skill"
+model-tier: economy
+model: haiku
+effort: low
+version: "2.0.0"
 author: "flurdy"
 ---
 
-# Rebase onto Main
+# rebase-main (alias)
 
-Rebase the current feature branch onto the latest main branch.
+Retained entry point. The workflow lives in the `rebase` skill; this alias only fixes the
+target mode.
 
 ## Usage
 
 ```
-/rebase-main
+/rebase-main 
 ```
 
 ## Instructions
 
-### 1. Check Current State
-
-```bash
-# Get current branch
-git branch --show-current
-
-# Check for uncommitted changes
-git status --porcelain
-```
-
-If there are uncommitted changes, ask the user whether to:
-- Stash them before rebasing
-- Commit them first
-- Abort the rebase
-
-### 2. Fetch Latest Main
-
-```bash
-git fetch origin main
-```
-
-### 3. Check if Rebase is Needed
-
-```bash
-# See how many commits main is ahead
-git rev-list --count HEAD..origin/main
-```
-
-If main is not ahead, inform the user the branch is already up to date.
-
-### 4. Perform Rebase
-
-```bash
-git rebase origin/main
-```
-
-### 5. Handle Conflicts
-
-If conflicts occur:
-
-1. List the conflicting files:
-   ```bash
-   git diff --name-only --diff-filter=U
-   ```
-
-2. For each conflicting file:
-   - Read the file to understand the conflict
-   - Resolve the conflict appropriately
-   - Stage the resolved file: `git add {file}`
-
-3. Continue the rebase:
-   ```bash
-   git rebase --continue
-   ```
-
-4. If conflicts are too complex, offer to abort:
-   ```bash
-   git rebase --abort
-   ```
-
-### 6. Verify With Tests
-
-After the rebase completes (especially if conflicts were resolved), run the project's tests to confirm nothing was broken by the rebase or the conflict resolution.
-
-Try the project's standard test command in this order:
-
-```bash
-# Prefer Makefile target if present
-make test
-
-# Otherwise the project's package manager
-npm test
-# or
-npx <test-runner>
-# or
-sbt test
-```
-
-If tests fail, **stop and report to the user** before pushing. Do not force-push a broken rebase. If the rebase was trivial (no conflicts) and the user wants to skip testing, they can say so — but default to running them.
-
-### 7. Force Push (if branch was already pushed)
-
-```bash
-# Check if branch has upstream
-git rev-parse --abbrev-ref @{upstream} 2>/dev/null
-```
-
-No upstream means nothing to force-push. Render `Force push: not applicable` and skip to
-step 8.
-
-Otherwise gather the evidence the user needs to answer, and show it:
-
-```bash
-git log --oneline @{upstream}..HEAD   # commits that will replace the remote branch
-git log --oneline HEAD..@{upstream}   # remote commits that will be discarded
-```
-
-A force-push rewrites published history. Anyone who has fetched this branch — a
-colleague, or a stacked child branch — has their work orphaned by it. Use
-`AskUserQuestion` to request explicit permission **immediately before** the push, showing
-the branch, its upstream, both commit lists above, and the exact command.
-
-- **Force-push (Recommended)** — on this answer, make the standalone
-  `git push --force-with-lease` invocation as the next tool call. Do not hide it in a
-  script or command chain.
-- **Not now** — leave the rebase local and say so plainly in step 8.
-- **Stop** — perform no remote action.
-
-A successful rebase, passing tests, the branch already having an upstream, or the user
-having invoked this skill are **not** permission to push. Only the answer to this question
-is. Never use bare `--force`.
-
-If the push is rejected because the branch moved, stop and report. Do not retry, do not
-re-fetch and re-push, and do not escalate to `--force` — a moved branch means someone
-else's work is at stake, which is exactly what `--force-with-lease` exists to catch.
-
-### 8. Report Result
-
-Tell the user:
-- How many commits were rebased
-- Whether force push was needed, and if it was declined or not applicable, that the
-  rebase is local only and the remote branch still holds the old history
-- Any conflicts that were resolved
+Invoke the `rebase` skill with the Skill tool and the arguments `main {args}`, where
+`{args}` are the arguments given here, if any. If the Skill tool is unavailable, read
+`~/.agents/skills/rebase/SKILL.md` and follow it with that target. Perform no step of the
+rebase here.

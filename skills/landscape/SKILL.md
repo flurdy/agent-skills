@@ -373,7 +373,7 @@ After all blocks render, add a short footer with a concrete next step, picked fr
 
 - If the current branch's PR is **approved, CI green, 0 threads, clean merge state** → suggest merging it (this unblocks stacked PRs).
 - If the current branch's PR has **unresolved review threads** → suggest `/review-comments`.
-- If the current branch's PR is **behind main** → suggest `/rebase-main`.
+- If the current branch's PR is **behind main** → suggest `/rebase main`.
 - If there is uncommitted work → suggest committing or stashing.
 - If a workspace member repo (§4a or §4b) is **diverged** → suggest rebasing/pulling it before it can block a push (name the repo).
 - If a sibling service repo has **unpushed commits** or uncommitted work → suggest pushing/committing it (name the repo).
