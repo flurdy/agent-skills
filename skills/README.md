@@ -55,7 +55,7 @@
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |
 | today | Read-only same-day catch-up across the current conversation and objective commits, PRs, Jira touches, and Beads activity in validated workspace repositories |
 | token-dashboard | Read-only current-session and UTC-week token telemetry for Pi, Claude Code, Codex, and optional OpenRouter management analytics; normalized JSON and terminal views without transcript or credential output |
-| total-review | Full pre-PR quality gauntlet — chains clean-code, verify-task, code-review, pedantic-review, /review, /security-review, and tiered /second-opinion. Halts on critical findings, emits beads for the rest |
+| total-review | Portable pre-PR gauntlet with revision-bound evidence, explicit manual/missing review coverage, optional independent reviewers, and at most two fix/review passes |
 | tracking-sweep | Portfolio-wide drift sweep across Jira, beads, and GitHub PRs — flags status drift, orphan work, parent-moved beads, and stale items. Read-only |
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create bead(s) from a user prompt or Jira ticket |

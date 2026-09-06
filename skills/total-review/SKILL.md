@@ -1,368 +1,286 @@
 ---
 name: total-review
-description: "Full pre-PR quality gauntlet — runs clean-code, verify-task, code-review, pedantic-review, /review, /security-review, and tiered /second-opinion in cost order. Halts on Must-Fix findings, emits beads for the rest, iterates heavy phases up to twice."
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh:*),Bash(bd create:*),Bash(bd list:*),Bash(bd show:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill,AskUserQuestion"
+description: "Portable pre-PR quality gauntlet: cleanup, verification, craft, correctness, security, and optional independent reviews. Binds every gate to the final scope, reports missing coverage, and caps fix/review passes at two."
+allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(make:*),Bash(npm:*),Bash(npx:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
 model-tier: premium
 effort: xhigh
-version: "0.4.0"
+version: "1.0.0"
 author: "flurdy"
 ---
 
 # Total Review
 
-The complete pre-PR quality gauntlet. Runs every review skill in increasing cost order, halts on critical findings, emits beads for the rest, and iterates the heavy phases up to twice. The local-iterating cousin of `/ultrareview`.
+A local, bounded pre-PR gauntlet in increasing cost order. Compose installed skills, use explicit
+manual review where the host lacks a suitable reviewer, and keep one authoritative ledger of scope,
+fixes, gate evidence, and findings. A command's absence or an old clean result is never clearance.
 
-## When to Use
-
-- Before opening a PR for human review, when the change is non-trivial and you want a thorough self-check
-- After a refactor or a feature that touched several files
-- When you want a deliberate "everything I have, in the right order" sweep without remembering the sequence yourself
-
-## When NOT to Use
-
-- Trivial config / docs / translation changes — run `/clean-code` alone
-- WIP commits mid-task — use `/verify-task` instead
-- Reviewing someone else's PR — use `/review-pr`
-- As the final external panel — `/ultrareview` is the cloud multi-agent version; this skill ends by suggesting it
-
-## Relationship to other skills
-
-This is a **synthesis layer**. It calls existing skills, it does not reimplement them.
-
-| Skill | Role in this gauntlet |
-|-------|-----------------------|
-| `/clean-code` | Phase 1 — auto-fix lint/format |
-| `/verify-task` | Phase 2 — requirements + test coverage |
-| `/code-review` | Phase 3 — cheap reuse/quality cleanup (formerly `/simplify`) |
-| `/pedantic-review` | Phase 4 — craft critique |
-| `/review` | Phase 5 — built-in correctness review |
-| `/security-review` | Phase 6 — security audit (any finding halts) |
-| `/second-opinion` | Phase 7 — tiered external review (single → panel) |
-| `/ultrareview` | Suggested next step after the gauntlet — deeper cloud-agent pass |
-| `/ready-to-merge` | Suggested next step after `/create-pr` — post-PR merge gate |
+Use before a non-trivial PR or after a substantial refactor. For a trivial change use `clean-code`;
+for unfinished work use `verify-task`; for someone else's PR use `review-pr`. This skill does not
+commit, push, publish PR feedback, or change the installed client configuration.
 
 ## Usage
 
-```
-/total-review                # Branch vs main, full sequence
-/total-review --uncommitted  # Uncommitted changes only
-/total-review --skip-external # Skip /second-opinion phases (cost cap)
-/total-review --no-iterate   # Single pass through analytical phases
-/total-review --pr <N>       # Run against an existing PR
-```
-
-## Critical Findings (Halt Criteria)
-
-A **critical finding** halts the gauntlet immediately: emit a P0 bead, report, and stop. Do not proceed to later phases. Restart from Phase 1 after fixing the halt finding (re-run normally — there is no resume mode).
-
-Critical means **any** of:
-
-- Failing test (from `/verify-task` or `make test`)
-- Any finding from `/security-review` (no exceptions — every security finding halts)
-- A **Must Fix** tier finding from `/pedantic-review`, or a **blocking-severity** finding from `/review` or `/second-opinion` (these phases label findings explicitly — only that top tier halts)
-- Secrets detected in the diff (`.env`, credentials, API keys grep)
-- Missing required behaviour from `/verify-task` (requirement not met, not just under-tested)
-
-Everything else — including `Should Fix` (P1) pedantic findings, generic correctness bugs, partial coverage, style preferences, and individual second-opinion suggestions — goes onto the **bead pile** for the final report. P1 is heavy enough to track but not heavy enough to stop the gauntlet.
-
-## Instructions
-
-### Tier guard
-
-This skill is `model-tier: premium`. Before starting, check which model you are
-running as. If it is below the premium tier for this runtime (e.g. Sonnet or Haiku in
-Claude Code), say so and ask via `AskUserQuestion` whether to:
-
-- **Continue here** — accept reduced depth on this run
-- **Stop** — switch model (`/model` in Claude Code) or rerun in a premium session
-
-Skip the prompt when the user explicitly chose the current model. On a premium model,
-stay silent and proceed.
-
-### 0. Parse arguments and orient
-
-Extract from the arguments:
-
-- **scope**: `branch` (default), `uncommitted`, or `pr` (with PR number)
-- **--skip-external**: bool, default false
-- **--no-iterate**: bool, default false
-- **--inline-findings**: bool, default false — skip `bd create`, render all findings in the final report only
-
-Confirm context, then **snapshot the scope** so later phases compare against a fixed SHA even if new commits land mid-run:
-
-```bash
-git status --porcelain
-git rev-parse --abbrev-ref HEAD
-SCOPE_HEAD=$(git rev-parse HEAD)
-SCOPE_BASE=$(git merge-base origin/main HEAD 2>/dev/null || echo main)
-git log --oneline ${SCOPE_BASE}..${SCOPE_HEAD}
+```text
+/total-review                         # Branch changes plus selected local work
+/total-review --uncommitted           # Local changes; initial HEAD is the fixed base
+/total-review --pr <N> --repo <owner/repo>
+/total-review --skip-external         # Explicit local-only coverage
+/total-review --no-iterate            # One pass; no fix/review loop
+/total-review --inline-findings       # No Beads writes
 ```
 
-Record `SCOPE_BASE` and `SCOPE_HEAD` once at Phase 0 and use `git diff ${SCOPE_BASE}..${SCOPE_HEAD}` for every subsequent phase. Do not re-read `HEAD` between phases — the gauntlet reviews a frozen scope, not a moving target.
+Flags compose; reject conflicting scopes, missing values, duplicate or unknown flags. `--pr` requires
+an explicit repository or a verified current-checkout repository identity; never resolve a bare PR
+number across repositories. No resume or halt-override flag exists.
 
-For `--uncommitted` scope, snapshot the staged+unstaged diff once into `/tmp/total-review-scope.patch` and re-use it across phases.
+## 0. Resolve capabilities and scope
 
-If `--pr <N>`, set the scope to that PR. Phases 1–3 (`clean-code`, `verify-task`, `code-review`) mutate the working tree, so they require a checkout of the PR branch:
+### Portable composition
 
-- If the local working tree is clean (`git status --porcelain` empty) **and** no unrelated branch is checked out — run `gh pr checkout {N}` and proceed normally through all phases.
-- Otherwise — fall back to **diff-only mode**: skip Phases 1–3, fetch the PR diff via `gh pr diff {N}` and `gh pr view {N}`, and run Phases 4–9 against that diff. Note the skip in the final report.
+Read the installed skill by name and follow its instructions with the ledger's exact scope packet.
+Use the native skill loader when exposed; otherwise read `~/.agents/skills/<name>/SKILL.md` and
+execute its instructions using the current harness's tools. Do not type a slash command into a shell.
 
-Never run Phases 1–3 against the current checkout when `--pr <N>` points at a different branch — that would mutate the wrong tree.
-
-If there are no changes in scope, stop with a friendly message.
-
-### 1. Phase 1 — Clean Code (auto-fix)
-
-```
-Skill /clean-code
-```
-
-`clean-code` auto-fixes mechanical issues and must exit zero warnings/errors. If it can't reach a clean state, halt — downstream tools assume a lint-clean tree.
-
-### 2. Phase 2 — Verify Task (requirements + tests)
-
-First, check whether the scope contains any **code files** — files outside `*.md`, `*.txt`, `docs/`, `LICENSE`, and other pure-documentation paths:
-
-```bash
-git diff --name-only ${SCOPE_BASE}..${SCOPE_HEAD} | grep -vE '\.(md|txt|rst)$|^docs/|^LICENSE' | head -1
-```
-
-If empty (markdown / docs / config only) → **skip Phase 2 with a note**: "Phase 2 skipped — diff contains no code files." `verify-task` has nothing meaningful to verify against a docs-only diff.
-
-Otherwise:
-
-```
-Skill /verify-task
-```
-
-Read the verification report carefully. Map outcomes:
-
-| `/verify-task` says | Action here |
+| Client | Shared skill resolution |
 |---|---|
-| Verdict: Ready to commit | Continue |
-| Test failure | **Critical — halt** |
-| Requirement not met | **Critical — halt** |
-| Partial test coverage | Add to bead pile (priority 2), continue |
-| Tests not needed | Continue |
+| Pi | Native skill loading when available; otherwise read the shared SKILL.md with Read. |
+| Claude Code | Native Skill tool when available; otherwise read the shared SKILL.md with Read. |
+| Codex | Native skill loading when available; otherwise read the shared SKILL.md with the file-reading tool. |
 
-If halted, emit a P0 bead and stop.
+Never infer availability from the client name, a familiar command name, or catalog prose. Check the
+exposed tools, installed skill files, and documented project commands first. Host-native correctness
+or security reviewers are usable only if their read-only behavior, scope input, and cost policy are
+known. Otherwise choose the explicit manual route *before launch*. No new reviewer skills or client
+plugins are required. Do not let a composed skill replace the ledger scope with its default branch
+or remote PR diff. Read and apply its review procedure to the supplied packet; if the route cannot
+accept that scope, mark it unavailable rather than reviewing a different change.
+Reading a skill does not grant its tools. G6/G7 require authorized composition of `second-opinion`
+with its tools and consent policy; if the harness cannot provide that, record `unavailable`.
+The read-file fallback never authorizes running provider CLIs directly from this skill.
 
-### 3. Phase 3 — Code-review (cheap auto-fix)
+| Gate | Preferred route | Required | If unavailable |
+|---|---|---|---|
+| G1 Cleanup | `clean-code`, or documented project formatter/linter | Yes when applicable | Documented equivalent only; otherwise unavailable. |
+| G2 Requirements/tests | `verify-task` with supplied requirements and exact scope | Yes | Use its manual requirements/coverage procedure and documented tests; missing execution evidence is unavailable. |
+| G3 Craft/reuse | `pedantic-review` with exact scope | Yes for code | Use its installed review procedure manually; if unreadable, unavailable. |
+| G4 Correctness | Verified read-only host reviewer | Yes | Run the manual correctness checklist in the reference. |
+| G5 Security | Verified read-only host reviewer | Yes | Run the manual security checklist in the reference. |
+| G6 Independent peer | `second-opinion` ask mode, peer route | Unless skipped | Record unavailable/declined/skipped, never pass. |
+| G7 Premium panel | `second-opinion` ask mode, premium quorum | Opt-in | Record unavailable/declined/skipped, never pass. |
 
-Apply the same code-files-in-scope check as Phase 2. If the diff is docs-only, **skip Phase 3 with a note**: "Phase 3 skipped — diff contains no code files." `/code-review` is a code reuse/quality scan and has no signal on prose.
+Determine whether G7 is requested at preflight, not after seeing review results; this scope choice
+never authorizes metered routes. Freeze the expected gate set before starting: G1–G5 when applicable, G6 by default (excluded only
+by `--skip-external`), and G7 only when explicitly requested/accepted. An unrequested G7 is recorded
+`skipped` with reason "not requested", never passed. Cost consent remains separate: a requested
+review whose route is missing or whose metered consent is declined remains expected but incomplete.
+Report intentional exclusions even when the requested coverage is clear.
 
-Otherwise:
+`clean-code` owns mechanical cleanup; `pedantic-review` already covers reuse. There is no separate
+assumed auto-fix command. Manual routes are explicitly labeled self-review, never independent coverage.
+Read [evidence and manual gates](references/evidence.md) before starting; it defines the ledger,
+snapshot recipe, state meanings, and concrete manual review checks. Git is required; `gh` is required
+only for PR scope. Project runtimes come from the project's documented commands, not guessed `npx`
+downloads. Missing dependencies degrade as above. Do not install or reconfigure tools during a run.
 
-```
-Skill /code-review
-```
+Honor the runtime's configured model-tier/effort routing. If reduced capability is known, disclose it
+and ask to continue or stop, unless the user explicitly selected that model. Never invent a model ID.
 
-`/code-review` (formerly `/simplify`) auto-applies cheap reuse/quality improvements. Treat any **prompt-before-apply** suggestions as findings — apply them inline only if mechanical and safe, otherwise queue as a P2 bead. An effort level can be passed (e.g. `/code-review high`) if a deeper pass is wanted, but the default is appropriate for this phase.
+### Local scope
 
-After this phase, re-run `make clean-code` if any edits were applied (a cheap sanity check that auto-fixes didn't reintroduce lint).
+Record repository root, current branch, initial HEAD, task requirements, and included/excluded local
+paths. Use a **fixed comparison base** for the whole run:
 
-### 4. Phase 4 — Pedantic Review (craft critique)
+- Branch mode: resolve the actual default branch from `origin/HEAD` or documented repository policy
+  (local `main`/`master` only when verified). Resolve its merge-base with initial HEAD to a full SHA.
+  Missing/ambiguous base or failed Git commands stop scope collection; never fall back to a literal ref.
+- Uncommitted mode: fix the base to initial HEAD, not whichever HEAD exists after a later fix commit.
+- Unborn HEAD: ask the user to make the initial commit first; this gauntlet needs a comparison commit.
 
-```
-Skill /pedantic-review
-```
+The initial scope includes committed branch work (branch mode), staged, unstaged, and selected
+untracked files. If unrelated local work exists, ask which paths belong before mutation. `clean-code`
+is repository-wide: if its writes cannot be separated safely, stop or choose a nonmutating partial
+review rather than touching unrelated work. Never discard/stash/reset another change for this skill.
+A valid empty scope yields `NO CHANGES`, not a passed gauntlet.
 
-Parse findings by tier:
+### PR scope
 
-- **Must Fix** → critical, halt
-- **Should Fix** → P1 bead, add to pile
-- **Consider** → P2/P3 bead, add to pile
-
-Do **not** auto-apply pedantic fixes — the value of pedantic-review is the user making the call. Emit beads, don't edit code.
-
-### 5. Phase 5 — Built-in Review (`/review`)
-
-```
-Skill /review
-```
-
-Parse the output:
-
-- Bugs / correctness issues → P1 bead at minimum; if "blocking severity" wording, treat as critical and halt
-- Style / preference notes → P3 bead
-- Compliments / "looks good" → ignore
-
-### 6. Phase 6 — Security Review (`/security-review`)
-
-```
-Skill /security-review
-```
-
-**Any** non-empty finding here is critical. Emit P0 bead per finding, halt the gauntlet. Re-runs after fixing must come back clean before continuing.
-
-If `/security-review` returns clean, continue.
-
-### 7. Phase 7 — Single External Opinion (standard independent pass)
-
-If `--skip-external` is set, jump to Phase 9.
-
-Use the lowest responsible independent route first. Let `peer` choose a provider independent from
-the current session. Do not use any route or OpenRouter as an unbounded default loop; if the selected
-route is metered, keep the timeout/scope small and state that it is a deliberate external pass.
-
-First, check whether the scope has a reviewable PR:
+Collect qualified metadata and diff using read-only commands:
 
 ```bash
-gh pr view --json number 2>/dev/null
+gh pr view {N} --repo {owner}/{repo} --json url,headRefOid,baseRefOid,headRefName,baseRefName,isCrossRepository
+gh pr diff {N} --repo {owner}/{repo}
 ```
 
-Branch with an open PR → invoke the review mode:
+Bind repository, PR number, head SHA, and base SHA. Re-read identities after diff collection; a moving
+head/base invalidates the packet. For a local full run, prove that the current repository and checkout
+match the selected PR, the tree is clean, and local HEAD equals the PR head. Resolve the local
+merge-base from those exact commits before mutation. If any proof or commit is unavailable, use
+**diff-only** mode, not the current checkout's code. Do not auto-checkout, fetch into a worktree, or
+switch branches. Offer a separate user-controlled checkout and fresh run if full local coverage is wanted.
 
+In diff-only mode G1 and executable tests in G2 are `unavailable`. Requirements can still be reviewed,
+but that does not imply test execution. Run the read-only gates against the qualified packet; return
+`PARTIAL` even if those gates are clean. Do not apply local fixes in diff-only mode.
+
+Once a matching local PR checkout receives accepted fixes, the result is a **local candidate derived
+from that PR**, not clearance of the published PR: local fixes are not evidence for the remote PR head.
+Do not switch back to a remote-only diff for external review. At the final checkpoint, re-read the
+qualified PR head and base; unexpected remote movement invalidates the run and requires fresh scope.
+
+## 1. Run the gates in cost order
+
+Initialize `pass_count=1`. Every gate receives the current scope revision plus requirements and writes
+its method, result, evidence, and finding IDs back to the ledger. Missing output, nonzero commands,
+partial reads, or an unavailable route are not a clean result. Recheck the scope after every gate.
+
+### G1 — Cleanup and scope refresh
+
+Run `clean-code` when its project target is available. Otherwise use an existing documented equivalent;
+never invent commands or silently install dependencies. If no applicable cleanup exists, record `na`
+with repository evidence. A missing expected linter is `unavailable`; a failing one halts.
+
+Only mechanical cleanup is automatic. Behavioral fixes need a concrete user choice first. Record all
+accepted edits, including files outside the starting diff. Rebuild the scope after every accepted fix,
+including formatter changes, before verification or review. Repeat the cleanup check if its first
+invocation changed files; only a successful stable run earns `pass` for the new revision.
+
+### G2 — Requirements and tests
+
+Apply `verify-task` to the stated requirements, not an inferred nearby task. Check requirements for
+**all** changes, including documentation and config. Docs-only may make executable tests `na`, not the
+whole gate. Record the reason; file extensions alone do not establish that config or skill behavior
+needs no tests. Use the project's actual test command. Diff-only analysis cannot borrow local tests.
+
+Failing tests or unmet requirements halt. Partial coverage becomes a finding with its concrete gap;
+missing required execution evidence is `unavailable`, so the verdict cannot be CLEAR.
+
+### G3 — Craft and reuse
+
+Apply `pedantic-review` read-only to the scope packet and nearby repository patterns. In diff-only
+mode use head-pinned neighboring context from the same qualified repository; if unavailable, mark
+G3 incomplete rather than reading an unrelated checkout. Its **Must** (or **Must Fix**) tier halts, **Should** becomes a P1 candidate, and **Consider** a P2/P3 candidate.
+For pure prose with no meaningful craft dimension, record `na` and why. Do not auto-apply suggestions.
+
+### G4 — Correctness
+
+Use the verified native route or the [manual correctness checklist](references/evidence.md#correctness-fallback).
+Validate findings against actual code and requirements. Blocking correctness issues halt; other proven
+bugs become P1 candidates. Missing context needed to assess correctness is `unavailable`, not pass.
+
+### G5 — Security
+
+Use the verified native route or the [manual security checklist](references/evidence.md#security-fallback).
+Any validated security finding halts. A speculative concern remains a finding or evidence gap until
+validated; do not label it a clean audit. Never send secrets to reviewers or reproduce secret values
+in evidence, prompts, output, or Beads. Sanitize context before independent review; if sanitizing removes
+material review context, mark that coverage incomplete rather than pretending to review the whole diff.
+
+### G6 — One independent peer
+
+With `--skip-external`, record `skipped` and continue to the final checkpoint (or the fix decision if
+there are findings). Otherwise load `second-opinion` and use its **ask** mode with the current sanitized
+scope packet, never a separately fetched PR diff:
+
+```text
+second-opinion ask "Review the attached scope revision and requirements. Focus on correctness, contradictions, unsafe commands, and silent failures; cite evidence." --agent peer
 ```
-Skill /second-opinion review-pr --agent peer
+
+The skill owns provider independence, read-only tools, bounded timeouts, and metered-route consent.
+Include the actual packet, not just the template above. Report incomplete or failed responses faithfully.
+Validate material claims before severity assignment; repeated agreement does not prove correctness.
+
+### Fix decision — at most two passes
+
+Halt is sticky: any halt stops later gates and goes to the final report. After the user fixes the halt,
+start a fresh run from G1; no hidden resume bypass exists.
+
+Offer the fix option only when iteration is still available. For nonblocking findings within that
+budget, offer **Apply selected fixes and re-review** or **Keep findings and finish**; otherwise report
+findings and finish without offering in-run edits. Apply nothing without a concrete selection. If selected and iteration is allowed, record the accepted
+fix paths, increment `pass_count` before returning to G1, refresh the scope, and rerun G1–G6. The cap is
+**2 total passes**, including the first, and never resets inside this run. `--no-iterate` caps it at one.
+No fixes are applied inside this run once the cap is reached; changes made anyway invalidate earlier
+evidence and produce `PARTIAL` pending a new run. Never report stale reviews as completed on new code.
+
+### G7 — Premium quorum panel
+
+Run once, after the final local pass and peer pass, only with explicit approval (or an explicit current-run
+request for that panel). `--skip-external` always skips it. Decline means `declined`, not a completed panel.
+This uses the configured `premium` profile; an absent profile is `unavailable`, not a decline or a
+built-in default panel. Never substitute another profile silently. Load `second-opinion` and let it enforce configured routes, quorum, independence reporting, and separate
+metered-route consent:
+
+```text
+second-opinion ask "Review the attached final scope revision for material issues missed by the prior gates; cite repository evidence." --agent quorum --panel premium
 ```
 
-No PR (test run on `main`, unpublished branch, `--uncommitted` scope) → fall back to ask mode, feeding the diff as the question body:
+Use the same final packet and record prior findings without instructing reviewers to agree. Incomplete
+quorum is unavailable coverage even if some routes succeed. Panel findings do not start another fix loop;
+record them and require a fresh run if fixes change the revision. Never invoke model CLIs directly here.
 
-```
-Skill /second-opinion ask "Review this diff as a critical PR reviewer. Focus on internal contradictions, under-specified behaviour, wrong commands or paths, and silent failure modes. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent peer
-```
+## 2. Final checkpoint and verdict
 
-**Never call an external model CLI directly from this skill.** The `/second-opinion` skill handles
-provider independence, read-only invocation, stdin, and quoting safely; bypassing it risks both
-same-vendor review and shell-quoting hangs.
+Recapture scope immediately before reporting. Any unexpected branch/HEAD/content change, unknown file
+provenance, or moved PR identity makes affected evidence `stale`; stop and ask for a fresh scope rather
+than silently expanding it. Expected accepted fixes require their own revision and gate reruns.
+The final ledger—not an early snapshot, phase counter, or saved "looks good"—is authoritative.
 
-Parse findings either way:
+Derive the outcome in this order:
 
-- "Bug" / "incorrect" / "missing handling" → P1 bead; if the reviewer flags blocking severity, halt
-- "Consider" / "suggest" → P2 bead
-- Style / nit → P3 bead
+1. **HALTED** — validated halt finding or failed required command; record later gates as `not-run`.
+2. **PARTIAL** — missing expected gate evidence (unavailable, stale, pending, not-run, failed,
+   declined, or skipped), or diff-only execution. If core gates pass but an expected independent
+   route is incomplete, say "core gates clear; external coverage incomplete"—never full-gauntlet clearance.
+3. **FINDINGS** — complete current evidence with nonblocking unresolved findings.
+4. **CLEAR** — every expected applicable gate passed on the final revision, no unresolved findings,
+   and no expected coverage missing. Evidence-backed `na` is permitted only for an inapplicable check.
 
-After this phase, decide whether to iterate (Phase 8) or proceed to the wide panel (Phase 9).
+CLEAR is scoped to the expected gate set: label intentional exclusions explicitly, e.g. "CLEAR —
+local-only; external skipped" or "CLEAR — core + peer; premium panel not requested". Neither claims
+the omitted reviewer ran; only all seven passed gates permit full-gauntlet clearance.
 
-### 8. Phase 8 — Iterate (optional, max 2 total passes through phases 4–7)
+`PARTIAL` can include actionable findings; neither hides the other. Preserve successful individual
+routes without promoting a partial panel to complete. Never claim merge readiness or clearance of
+unpublished changes on the remote PR.
 
-Iterate **only if** all of:
-
-- `--no-iterate` was not passed
-- Some bead-worthy non-trivial findings were emitted in phases 4–7 **and the user has just applied fixes** for them (ask via `AskUserQuestion` — "Apply fixes for these findings now and re-run analytical phases?")
-- The current pass count is < 2
-
-If iterating, jump back to Phase 1 (re-lint the new state) and proceed through Phase 7 again. The second pass should converge — if new critical findings appear in pass 2 that didn't exist in pass 1, halt and report (the change introduced regressions).
-
-If not iterating, proceed to Phase 9.
-
-### 9. Phase 9 — Premium Quorum Review Panel
-
-If `--skip-external` is set, jump to Phase 10. A normal `/total-review` run approves one standard
-external pass, not necessarily a premium panel. Because this phase may invoke multiple premium and
-potentially metered routes, ask for confirmation unless the user explicitly requested a premium panel
-or full premium review. Let `/second-opinion` enforce the configured panel's OpenRouter consent policy.
-
-Same PR-detection as Phase 7. Branch with an open PR:
-
-```
-Skill /second-opinion review-pr --agent quorum --panel premium
-```
-
-No PR (fall back to ask mode):
-
-```
-Skill /second-opinion ask "Review this diff as a premium panel. Focus on issues not yet caught by /pedantic-review, /review, /security-review, and the prior peer pass. Be terse, severity-tagged. Diff follows:\n\n<diff>" --agent quorum --panel premium
-```
-
-This runs the configured `premium` routes in parallel and requires its successful-route quorum.
-The panel may mix local and OpenRouter routes or contain multiple routes from one provider.
-The purpose is a final deep review after cheaper phases have already made the code clean.
-
-Verify every material finding against repository evidence before classifying it. Assign priority from
-the validated impact and severity, not from how many routes repeat it. Repeated support is useful
-context, but never establishes correctness; one well-evidenced unique blocker may halt while a repeated
-unsupported claim remains non-actionable.
-
-### 10. Phase 10 — Final Report
-
-Render a single readout. Quiet success — only show sections that have content.
+Render one compact report from the ledger:
 
 ```markdown
-## Total Review — {branch | PR #N | uncommitted}
+## Total Review — {scope / local candidate derived from PR}
+**Outcome:** CLEAR | FINDINGS | PARTIAL | HALTED | NO CHANGES
+**Scope:** {repository, fixed base, final HEAD, revision, included/excluded paths}
+**Passes:** {1 or 2}; **Coverage:** {local/manual/independent/panel limitations}
 
-**Outcome**: ✅ All clear | ⚠️ Bead pile ready | ❌ Halted at Phase {N}
+| Gate | Method | Result | Revision | Evidence / finding IDs |
+|---|---|---|---|---|
+| ...all seven gates, including skipped and unavailable ones... |
 
-**Passes**: {1 or 2}
-**External phases**: {ran | skipped}
-
-### Halt reason _(omit if not halted)_
-{Phase, finding, bead id created}
-
-### Bead pile _(omit if empty)_
-| Bead | Priority | Source phase | Summary |
-|------|----------|--------------|---------|
-| {id} | P{0–3}   | {phase}      | {one line} |
-
-### Auto-applied fixes _(omit if none)_
-- {file:line} — {what clean-code/code-review changed}
-
-### Next steps
-- {recommended action based on outcome}
+**Accepted fixes:** {paths and reasons, or none}
+**Findings:** {validated severity, source, file:line, open/fixed, bead or inline ID}
+**Next:** {fix blocker, fill evidence gap, address findings, or create PR}
 ```
 
-Recommended next steps by outcome:
+## Findings and tracking
 
-- **All clear, no beads** → "Run `/create-pr` to open the PR. Optionally `/ultrareview` for a deeper cloud-agent pass before requesting human review."
-- **Bead pile (no halts)** → "Address bead pile (`/next` to pick), then re-run `/total-review`. Or open PR now and address beads as follow-ups if the pile is low-priority only."
-- **Halted** → "Fix the halt finding (bead {id}), then re-run `/total-review` to restart from Phase 1. The full re-run is intentional — cheap phases stay cheap, and any new lint/test fallout from the fix gets caught."
+The ledger owns finding identity and status; Beads are downstream tracking, not a second verdict.
+Validate and deduplicate findings across gates/passes before writes. Recheck a previously reported
+finding on the final revision; a stale finding cannot silently become fixed. Prioritize from validated
+impact, not a blanket P0 for every halt. Do not create duplicate beads on the second pass.
 
-## Bead Emission
+With `--inline-findings`, absent Beads, or unproven ownership, keep numbered findings inline. Otherwise
+load the Beads baseline, prove the outcome's owning store with `next-select stores`, inspect candidate
+existing items in that store, and use `bd -C <directory>` for every read/write. Reuse an existing item
+when it owns the same issue; resolve it with `next-select resolve <id>` before updating. New items name
+source gate, final revision, severity rationale, and redaction-safe file references. Do not synchronize
+Dolt, initialize a store, or close tracking merely because a report says the finding was fixed.
 
-Default behaviour: use `bd create` for every finding that isn't fixed inline:
+## Failures
 
-```bash
-bd create --title="<short title>" \
-  --type=<bug|task> \
-  --priority=<0|1|2|3> \
-  --description="<finding details + source phase + file:line refs>"
-```
-
-Conventions:
-
-- **Type**: `bug` for correctness/security/test failures, `task` for cleanups/refactors/style.
-- **Title**: prefix with `[total-review]` so they're easy to find later.
-- **Description**: must include source phase, severity rationale, and file paths so future-you can act on it without re-running the gauntlet.
-- Capture each finding as its own bead — do NOT batch unrelated findings together.
-
-**Skip bead emission entirely** in any of these cases — render findings inline in the final report instead, under a "Findings" section grouped by source phase:
-
-- `--inline-findings` flag was passed (e.g. utility / skills / docs repos where beads add noise)
-- `bd` is not available in the repo (`which bd` fails)
-- The repo has no beads configuration (`.beads/` missing and no `bd` initialised)
-
-In all three cases the final report grows a "Findings" section; halts still print but reference a finding number rather than a bead id.
-
-## Auto-fix Policy
-
-| Phase | Auto-fix? |
-|-------|-----------|
-| 1 — clean-code | Yes — that's its job |
-| 2 — verify-task | No — never modifies code |
-| 3 — code-review | Yes for mechanical; prompt for behavioural |
-| 4 — pedantic-review | No — emit beads only |
-| 5 — review | No — emit beads only |
-| 6 — security-review | No — emit beads only (and halt) |
-| 7, 9 — second-opinion | No — emit beads only |
-
-After any auto-fix, re-run lint (`make clean-code`) to confirm a clean tree before proceeding.
-
-## Rules
-
-- **Order matters** — never reorder cheaper phases after expensive ones. The whole point is failing fast and cheap.
-- **Halt is sticky** — if a phase halts, do not silently continue. Either stop or require `--continue`.
-- **Iteration cap is 2 total passes** through phases 4–7. Hard cap. No exceptions.
-- **External phases are skippable** via `--skip-external` for cost control. Local phases are not skippable — they're the floor.
-- **Never auto-apply fixes** from pedantic / review / security / second-opinion. Their value is in the user's judgement call.
-- **Always emit beads, never just print findings**. The bead pile is the deliverable when the gauntlet finishes with non-critical issues.
-- **Suggest `/ultrareview` at the end** when the outcome is clean — it's the deeper external follow-up.
-- **Be quiet on success.** A clean phase is a one-line "✅ Phase N passed". Save the verbose readout for actual findings.
-
-## Failure modes
-
-- **A sub-skill errors out**: report the error, halt the gauntlet, do NOT silently skip. The user decides whether to retry or skip-with-flag.
-- **`/second-opinion` CLI not authenticated**: suggest `--skip-external` or fixing the auth, then continue without external phases.
-- **`bd` not available**: fall back to in-report findings list, warn the user.
-- **No `make clean-code` target**: try project-appropriate fallbacks (`npm run lint`, `make lint`); if none exist, skip Phase 1 with a warning.
-- **`--pr` against a PR with no checkout**: fetch the branch (`gh pr checkout {N}`) before running phases that need a working tree, or fall back to diff-only phases (skip 1–3, run 4–9 on the diff).
+- Missing capabilities are recorded before execution. An actual route failure is not permission to switch execution modes.
+  Preserve the exact failure and state, stop, and request a same-route retry or explicit user decision.
+  In particular, never silently replace a failed subagent with a foreground/CLI process.
+- Authentication, timeout, malformed output, or denied cost consent never count as completed review.
+  An unavailable optional route may leave the run PARTIAL; no silent retry, cost expansion, or substitution.
+- If lint/tests/review generate new source changes, refresh and revalidate them like any other fix.
+  Unapproved or unrelated generated changes are a scope blocker; do not hide or revert them.
+- No automatic remote mutations, branch switches, commits, broad staging, or history rewrites.
