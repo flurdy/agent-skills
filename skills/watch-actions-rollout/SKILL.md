@@ -15,7 +15,7 @@ author: "flurdy"
 # Watch GitHub Actions Rollout
 
 Watch a post-merge GitHub Actions deploy to staging, then smoke-test the change once it lands —
-the generic, GitHub-Actions-based cousin of `/watch-release` (which is hardwired to letterbox's
+the generic, GitHub-Actions-based cousin of `/watch-release` (which is hardwired to a specific
 kubectl/CircleCI/Flux stack). Built for client repos with extensive CD workflows.
 
 Chains naturally after `/ready-to-merge`: merge → watch the deploy job → confirm the change is live.
@@ -223,5 +223,5 @@ run is one command. Only on explicit yes.
 
 - Goal-terminating, so unlike `/watch-prs` and `/watch-release` it does not take a stop-hour.
 - This skill is for GitHub-Actions-deployed repos. For CircleCI + FluxCD repos use
-  `/watch-flux-rollout` (same shape, kubectl/CircleCI watch); for letterbox's multirepo release
+  `/watch-flux-rollout` (same shape, kubectl/CircleCI watch); for the configured multirepo release
   flow use `/watch-release` / `/release-status`.

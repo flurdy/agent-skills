@@ -3,7 +3,7 @@
 # Emits one JSON object describing a k8s Deployment's live rollout state — image
 # tag, ready/desired replicas, newest pod creation time. The jq shaping lives
 # here so the call site stays a clean, allowlistable prefix for the
-# /watch-flux-rollout poll loop. Extracted from letterbox's deploy-status.sh
+# /watch-flux-rollout poll loop. Extracted from the multirepo deploy-status.sh flow
 # (the per-service kubectl leg), generalised: no name prefix/suffix conventions.
 set -uo pipefail
 

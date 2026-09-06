@@ -20,8 +20,8 @@ single-repo services deployed the Flux image-automation way: CircleCI builds and
 image tagged `<base>.<CIRCLE_BUILD_NUM>`, a Flux ImagePolicy bumps the Deployment, the cluster
 rolls it out.
 
-The rollout-confirmation semantics are extracted from letterbox's `/release-manager` (step 4)
-and `deploy-status.sh`: the exact post-push tag is **unknowable at push time** (the build
+The rollout-confirmation semantics are extracted from the multirepo `/release-manager` (step 4)
+and `deploy-status.sh` flow: the exact post-push tag is **unknowable at push time** (the build
 number is assigned when CircleCI runs), so "deployed" means the live tag has **moved off** the
 pre-push baseline — never an exact-tag match.
 
@@ -216,8 +216,8 @@ offer to write the resolved `namespace`, `deployment`, `url`, and `smoke` to
 ## Notes
 
 - Goal-terminating, so it takes no stop-hour (unlike `/watch-prs` / `/watch-release`).
-- CronJob-backed services (no Deployment, no ready replicas) aren't covered; letterbox's
+- CronJob-backed services (no Deployment, no ready replicas) aren't covered; the multirepo
   `deploy-status.sh` has the aggregation pattern (`cron` / `cron:rollout` markers) to extract
   if the need arises.
-- For GitHub-Actions-deployed repos use `/watch-actions-rollout`; for letterbox's multirepo
+- For GitHub-Actions-deployed repos use `/watch-actions-rollout`; for the configured multirepo
   release flow use `/watch-release` / `/release-status`.

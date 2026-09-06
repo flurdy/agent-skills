@@ -11,7 +11,7 @@ author: "flurdy"
 
 # Contract Check — Pact Health Auditor
 
-Audits the health of consumer-driven contract tests across all letterbox services. Surfaces staleness, sync gaps, uncommitted pacts, missing tests, documentation drift, and disabled tests.
+Audits the health of consumer-driven contract tests across all project services. Surfaces staleness, sync gaps, uncommitted pacts, missing tests, documentation drift, and disabled tests.
 
 This is a **read-only audit** — it does not run tests or modify files. Use `/contract-test` to execute contract test workflows.
 
@@ -216,7 +216,7 @@ When invoked with a service name (`/contract-check dispatch`):
 ## Error Handling
 
 - **Script not found**: Create the symlink (see Setup)
-- **mgit not found**: Error — must be run from within the letterbox project root
+- **mgit not found**: Error — must be run from within the project root
 - **No consumer pact files**: Report that consumer tests haven't been run; suggest `make test-contract` in consumer services
 - **Service directory missing**: Skip gracefully, note in output
 

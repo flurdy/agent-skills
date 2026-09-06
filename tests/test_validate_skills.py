@@ -38,7 +38,8 @@ See the repository model-routing policy.
 """
 
 
-VALIDATOR_PATH = Path(__file__).resolve().parents[1] / "scripts" / "validate-skills.py"
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+VALIDATOR_PATH = REPOSITORY_ROOT / "scripts" / "validate-skills.py"
 
 
 def load_validator():
@@ -51,6 +52,19 @@ def load_validator():
 
 
 VALIDATOR = load_validator()
+
+
+class SharedCatalogContentTest(unittest.TestCase):
+    def test_shared_skills_do_not_name_private_project(self) -> None:
+        private_project = b"letter" + b"box"
+        matches = [
+            str(path.relative_to(REPOSITORY_ROOT))
+            for path in (REPOSITORY_ROOT / "skills").rglob("*")
+            if path.is_file()
+            and "__pycache__" not in path.parts
+            and private_project in path.read_bytes().lower()
+        ]
+        self.assertEqual([], matches)
 
 
 class ValidateSkillsTest(unittest.TestCase):

@@ -1,5 +1,5 @@
 #!/bin/bash
-# contract-check.sh — Audit health of pact contract tests across letterbox services
+# contract-check.sh — Audit health of pact contract tests across project services
 # Performs mechanical checks: staleness, uncommitted files, sync coverage, relationship matrix
 
 set -euo pipefail
@@ -11,7 +11,7 @@ find_project_root() {
         [[ -f "$dir/.mgit.conf" ]] && echo "$dir" && return
         dir="$(dirname "$dir")"
     done
-    echo "ERROR: Could not find .mgit.conf (run from within the letterbox project)" >&2
+    echo "ERROR: Could not find .mgit.conf (run from within the project)" >&2
     exit 1
 }
 
@@ -266,7 +266,7 @@ check_matrix() {
 # Does each provider's CI actually VERIFY the consumer pacts synced into it?
 # This is distinct from sync-gaps (is the pact built and synced?): a pact can
 # be synced into the provider yet never verified by the provider's CI.
-# Two CI styles in letterbox:
+# Two CI styles in this project:
 #   tag  -> `sbt testOnly -- -n tags.ContractVerifyTest` auto-verifies EVERY
 #           synced pact (good — nothing to enumerate).
 #   enum -> PACTCONSUMER env vars enumerate consumers explicitly; any consumer
