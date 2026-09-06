@@ -73,6 +73,19 @@ PLACEHOLDER_EMAIL_DOMAINS = {
     b"localhost",
 }
 PLACEHOLDER_EMAIL_SUFFIXES = (b".example", b".invalid", b".localhost", b".test")
+BEAD_PREFIX = re.compile(r"[a-z][a-z0-9-]{0,31}")
+BEAD_SUFFIX = rb"[a-z0-9]{3,8}"
+BEAD_CHILD = rb"(?:\.[0-9]+)*"
+BEAD_GENERIC = rb"[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-(?=[a-z]*[0-9])" + BEAD_SUFFIX
+BEAD_CONFIG_PREFIX = re.compile(
+    rb"^[ \t]*issue-prefix[ \t]*:[ \t]*\"?([a-z][a-z0-9-]{0,31})\"?[ \t]*$", re.MULTILINE
+)
+BEAD_JSONL_ID = re.compile(
+    rb"\"id\"[ \t]*:[ \t]*\"([a-z][a-z0-9-]{0,31}?)-" + BEAD_SUFFIX + BEAD_CHILD + rb"\""
+)
+MAX_BEAD_PREFIXES = 32
+MAX_BEAD_DISCOVERY_BYTES = 262_144
+AUDIT_SELF_PATH = "/artifact-hygiene/"
 
 
 @dataclass(frozen=True)
@@ -100,16 +113,7 @@ CUSTOM_DETECTORS = (
         detector="scanner.inline-allow",
         severity="info",
         pattern=re.compile(rb"gitleaks\s*:\s*allow", re.IGNORECASE),
-        canary=b"gitleaks:allow",
-    ),
-    CustomDetector(
-        category="bead-reference",
-        detector="beads.reference",
-        severity="high",
-        pattern=re.compile(
-            rb"(?<![A-Za-z0-9-])[a-z][a-z0-9]*-[a-z0-9]{3}(?![A-Za-z0-9-])"
-        ),
-        canary=b"skills" + b"-9yx",
+        canary=b"gitleaks" + b":allow",
     ),
     CustomDetector(
         category="personal-data",
@@ -132,6 +136,7 @@ CUSTOM_DETECTORS = (
             rb"(?:@[A-Za-z0-9_][A-Za-z0-9_.-]{1,63}|"
             rb"[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?"
             rb"(?:[ \t]+[A-Z][a-z]{2,63}(?:[-'][A-Z][a-z]{2,63})?)?)"
+            rb"(?![A-Za-z0-9_])"
         ),
         canary=b"ask " + b"Canary Person",
     ),
@@ -159,6 +164,35 @@ CUSTOM_DETECTOR_IDS = frozenset(
         "ai.attribution",
     }
 )
+
+
+def build_bead_detector(prefixes: tuple[str, ...]) -> CustomDetector:
+    """Match Beads IDs: known prefixes with any base36 suffix, plus a generic
+    digit-bearing shape so a repository file can only widen detection."""
+    shapes = [BEAD_GENERIC]
+    canary = b"canary" + b"-9yx"
+    if prefixes:
+        alternation = b"|".join(
+            re.escape(prefix.encode()) for prefix in sorted(prefixes, key=len, reverse=True)
+        )
+        shapes.insert(0, b"(?:" + alternation + b")-" + BEAD_SUFFIX)
+        canary = prefixes[0].encode() + b"-shy"
+    return CustomDetector(
+        category="bead-reference",
+        detector="beads.reference",
+        severity="high",
+        pattern=re.compile(
+            rb"(?<![A-Za-z0-9-])(?:" + b"|".join(shapes) + rb")" + BEAD_CHILD + rb"(?![A-Za-z0-9-])"
+        ),
+        canary=canary,
+    )
+
+
+def active_detectors(bead_detector: CustomDetector) -> tuple[CustomDetector, ...]:
+    return CUSTOM_DETECTORS[:2] + (bead_detector,) + CUSTOM_DETECTORS[2:]
+
+
+DEFAULT_DETECTORS = active_detectors(build_bead_detector(()))
 
 
 class AuditError(RuntimeError):
@@ -1012,18 +1046,67 @@ def detector_policy(
     return allowed_categories, allowed_secret_fingerprints, policy
 
 
-def custom_detector_capability_probe(deadline: float) -> bool:
-    if {detector.detector for detector in CUSTOM_DETECTORS} != CUSTOM_DETECTOR_IDS:
+def read_bounded(path: Path) -> bytes:
+    try:
+        with path.open("rb") as handle:
+            return handle.read(MAX_BEAD_DISCOVERY_BYTES)
+    except OSError:
+        return b""
+
+
+def bead_prefixes(runner: BoundedRunner, repository: Path) -> tuple[tuple[str, ...], str]:
+    """Known Beads prefixes from clone-local configuration, the environment, and
+    the repository's own Beads store. Prefixes only widen the detector."""
+    found: list[str] = []
+
+    def add(value: str | bytes) -> None:
+        text = value.decode(errors="replace") if isinstance(value, bytes) else value
+        text = text.strip().lower()
+        if BEAD_PREFIX.fullmatch(text) and text not in found and len(found) < MAX_BEAD_PREFIXES:
+            found.append(text)
+
+    configured = git(
+        runner,
+        repository,
+        "config",
+        "--local",
+        "--no-includes",
+        "--get-all",
+        "artifactHygiene.beadPrefixes",
+        allowed_returncodes=(0, 1),
+    )
+    for line in decode_text(configured.stdout).splitlines():
+        for part in line.split(","):
+            add(part)
+    for part in os.environ.get("ARTIFACT_HYGIENE_BEAD_PREFIXES", "").split(","):
+        add(part)
+    source = "configured" if found else "generic"
+    store = repository / ".beads"
+    for match in BEAD_CONFIG_PREFIX.finditer(read_bounded(store / "config.yaml")):
+        add(match.group(1))
+    for match in BEAD_JSONL_ID.finditer(read_bounded(store / "issues.jsonl")):
+        add(match.group(1))
+    if found and source == "generic":
+        source = "repository"
+    return tuple(found), source
+
+
+def custom_detector_capability_probe(
+    deadline: float, detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS
+) -> bool:
+    if {detector.detector for detector in detectors} != CUSTOM_DETECTOR_IDS:
         return False
-    for detector in CUSTOM_DETECTORS:
+    for detector in detectors:
         if monotonic() >= deadline or detector.pattern.search(detector.canary) is None:
             return False
     return True
 
 
-def custom_detector_coverage(deadline: float) -> Coverage:
-    coverage = Coverage("custom-detectors", records=len(CUSTOM_DETECTORS))
-    if not custom_detector_capability_probe(deadline):
+def custom_detector_coverage(
+    deadline: float, detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS
+) -> Coverage:
+    coverage = Coverage("custom-detectors", records=len(detectors))
+    if not custom_detector_capability_probe(deadline, detectors):
         coverage.partial("custom-detector-unavailable")
     return coverage
 
@@ -1082,8 +1165,10 @@ def detect_non_secret(
     commit: str | None = None,
     field_name: str | None = None,
     allowed_categories: frozenset[str] = frozenset(),
+    detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    audit_self = AUDIT_SELF_PATH in "/" + path
     beads_email_spans = (
         beads_attribution_email_spans(data)
         if path == ".beads/issues.jsonl"
@@ -1091,7 +1176,7 @@ def detect_non_secret(
     )
 
     def append_matches(detector: CustomDetector) -> bool:
-        if detector.category in allowed_categories:
+        if detector.category in allowed_categories or audit_self:
             return True
         if detector.category in HISTORY_ONLY_CATEGORIES and source != "branch-history":
             return True
@@ -1114,6 +1199,8 @@ def detect_non_secret(
                 continue
             if detector.detector == "pii.email":
                 if match.span() in beads_email_spans:
+                    continue
+                if data[match.end() : match.end() + 1] == b":":
                     continue
                 domain = match.group(0).lower().rsplit(b"@", 1)[-1]
                 if domain in PLACEHOLDER_EMAIL_DOMAINS or domain.endswith(
@@ -1149,7 +1236,7 @@ def detect_non_secret(
     if monotonic() >= deadline:
         coverage.limited("custom-detector-timeout")
         return results
-    for detector in CUSTOM_DETECTORS:
+    for detector in detectors:
         if not append_matches(detector):
             return results
     if PurePosixPath(path).name in SUPPRESSION_FILES:
@@ -1354,6 +1441,7 @@ def scan_history_records(
     coverage: Coverage,
     collector: FindingCollector,
     allowed_categories: frozenset[str],
+    detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS,
 ) -> None:
     total_bytes = 0
     path_records = 0
@@ -1377,6 +1465,7 @@ def scan_history_records(
                 commit=commit,
                 field_name="message",
                 allowed_categories=allowed_categories,
+                detectors=detectors,
             ),
             coverage,
         ):
@@ -1436,6 +1525,7 @@ def scan_history_records(
                     coverage=coverage,
                     commit=commit,
                     allowed_categories=allowed_categories,
+                    detectors=detectors,
                 ),
                 coverage,
             ):
@@ -1494,7 +1584,9 @@ def scan(
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
-    custom_detectors = custom_detector_coverage(deadline)
+    prefixes, bead_prefix_source = bead_prefixes(runner, repository)
+    detectors = active_detectors(build_bead_detector(prefixes))
+    custom_detectors = custom_detector_coverage(deadline, detectors)
     candidates = collect_candidates(runner, repository, working)
     collector = FindingCollector(allowed_secret_fingerprints)
     for candidate in candidates:
@@ -1506,6 +1598,7 @@ def scan(
                 deadline=deadline,
                 coverage=working,
                 allowed_categories=allowed_categories,
+                detectors=detectors,
             ),
             working,
         ):
@@ -1622,6 +1715,7 @@ def scan(
                         history,
                         collector,
                         allowed_categories,
+                        detectors,
                     )
 
     try:
@@ -1654,9 +1748,10 @@ def scan(
             "repository": identity,
             "head": head,
             "policy": policy,
+            "beadPrefixSource": bead_prefix_source,
         },
         "provenance": {
-            "helperVersion": "0.3.3-poc",
+            "helperVersion": "0.4.0-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,

@@ -4,7 +4,7 @@ description: Run a local-only, read-only advisory audit of publishable working-t
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
 effort: high
-version: "0.3.4"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -44,6 +44,16 @@ messages and added patch lines—rather than re-reporting content already publis
 personal-data matches in dependency lockfiles are ignored, as are email addresses under reserved example domains.
 Email addresses in the `owner`, `created_by`, and `assignee` fields of Beads `.beads/issues.jsonl`
 records are treated as structural attribution; unrelated fields remain reportable.
+
+The Bead-reference detector matches known prefixes with any 3–8 character base36 suffix and
+optional `.N` children, plus a generic digit-bearing shape so a checked-in file can only widen
+detection. Known prefixes come from clone-local `artifactHygiene.beadPrefixes` (multi-valued or
+comma-separated), `ARTIFACT_HYGIENE_BEAD_PREFIXES`, and the repository's own `.beads/config.yaml`
+`issue-prefix` and `.beads/issues.jsonl` IDs; `target.beadPrefixSource` reports which. Plain
+hyphenated words such as `dry-run` are not reported. Email matches immediately followed by `:` are
+treated as scp-style Git URLs, personal-name matches stop at identifier boundaries, and paths under
+an `artifact-hygiene/` directory are exempt from the non-secret detectors because the audit's own
+source and fixtures necessarily contain canary shapes; secret scanning still covers them.
 
 A clone may allow Bead references only with local, unshared configuration:
 

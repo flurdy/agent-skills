@@ -1194,12 +1194,129 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def test_missing_custom_detector_makes_coverage_partial(self) -> None:
         helper = load_helper_module()
 
-        with mock.patch.object(helper, "CUSTOM_DETECTORS", helper.CUSTOM_DETECTORS[:-1]):
-            coverage = helper.custom_detector_coverage(helper.monotonic() + 5)
+        coverage = helper.custom_detector_coverage(
+            helper.monotonic() + 5, helper.DEFAULT_DETECTORS[:-1]
+        )
 
         self.assertEqual(coverage.source, "custom-detectors")
         self.assertEqual(coverage.status, "partial")
         self.assertIn("custom-detector-unavailable", coverage.errors)
+
+    def test_generic_bead_shape_ignores_hyphenated_words(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        words = ("dry-run", "watch-prs", "diagnose-bug", "python-3.14", "x-abcdefghi1")
+        ids = ("agents" + "-c56", "inbox" + "-n424", "ai-tools" + "-dw1", "skills" + "-ip3.3")
+        data = "\n".join(words + ids).encode() + b"\n"
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="notes.md",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual(
+            [item["location"]["line"] for item in findings],
+            [len(words) + 1 + offset for offset in range(len(ids))],
+        )
+        self.assertTrue(all(item["detector"] == "beads.reference" for item in findings))
+
+    def test_known_prefixes_match_digitless_ids_and_only_widen(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        detector = helper.build_bead_detector(("skills", "ai-tools"))
+        data = b"skills-shy\nother-shy\nother-a1b\nai-tools-shy\nskillset-shy\n"
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="notes.md",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+            detectors=helper.active_detectors(detector),
+        )
+
+        self.assertEqual([item["location"]["line"] for item in findings], [1, 3, 4])
+        self.assertTrue(
+            helper.custom_detector_capability_probe(
+                helper.monotonic() + 5, helper.active_detectors(detector)
+            )
+        )
+
+    def test_bead_prefixes_come_from_clone_config_environment_and_store(self) -> None:
+        helper = load_helper_module()
+        runner = helper.BoundedRunner(helper.monotonic() + 5)
+        self.assertEqual(helper.bead_prefixes(runner, self.repository.root), ((), "generic"))
+
+        self.repository.write(".beads/config.yaml", 'issue-prefix: "skills"\n')
+        self.repository.write(
+            ".beads/issues.jsonl", '{"id":"ai-tools-dw1"}\n{"id":"Bad Prefix-x1"}\n'
+        )
+        self.assertEqual(
+            helper.bead_prefixes(runner, self.repository.root),
+            (("skills", "ai-tools"), "repository"),
+        )
+
+        self.repository.run("config", "--local", "artifactHygiene.beadPrefixes", "router, agents")
+        with mock.patch.dict(os.environ, {"ARTIFACT_HYGIENE_BEAD_PREFIXES": "inbox"}):
+            prefixes, source = helper.bead_prefixes(runner, self.repository.root)
+        self.assertEqual(source, "configured")
+        self.assertEqual(prefixes, ("router", "agents", "inbox", "skills", "ai-tools"))
+
+    def test_email_detector_skips_scp_style_git_urls(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        data = b"git@github.com:owner/repo.git\nmaintainer@" + b"acme.dev\n"
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="script.sh",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual([(i["detector"], i["location"]["line"]) for i in findings], [("pii.email", 2)])
+
+    def test_name_detector_ignores_camel_case_identifiers(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        data = b"only then call ScheduleWakeup as the last action\nthen ask " + b"Philip\n"
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="SKILL.md",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual([(i["detector"], i["location"]["line"]) for i in findings], [("pii.name", 2)])
+
+    def test_audit_skill_paths_are_exempt_from_non_secret_detectors(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        data = b"ask " + b"Philip\nbead: skills" + b"-9yx\n" + ALLOW_CONTROL.encode() + b"\n"
+
+        exempt = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="skills/artifact-hygiene/tests/fixture.py",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+        reported = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path="skills/other/tests/fixture.py",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual(exempt, [])
+        self.assertEqual(len(reported), 3)
 
     def test_custom_detector_honors_deadline_during_matching(self) -> None:
         helper = load_helper_module()
