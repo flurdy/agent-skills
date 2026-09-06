@@ -12,5 +12,6 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 - [`/discuss <question>`](discuss.md) — inspect and research without changing files or external state
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
 - [`/trim-comments [file-or-PR]`](trim-comments.md) — remove redundant inline comments and docblocks
+- [`/watch-landscape [minutes]`](watch-landscape.md) — refresh `/landscape quick` on a fixed cadence until end of day
 
 See [installation and configuration](../docs/installation.md#prompt-templates) for client setup.
