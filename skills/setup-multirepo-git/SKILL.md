@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(git:*),Bash(ln:*),Bash(mkdir:*),Bash(cat:*),Bash
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -19,14 +19,14 @@ These rules apply whenever working in a project that has a `.mgit.conf` file in 
 
 ### Always use mgit for service git operations
 
-**Rule: Use `./scripts/mgit <subcommand> <service>` for all git operations on service repositories.** This wrapper runs `git -C` under the hood but puts the subcommand first and service last, enabling permission patterns to distinguish safe vs dangerous operations.
+**Rule: Use `./scripts/mgit <subcommand> <service>` for all git operations on service repositories.** This wrapper runs `git -C` under the hood but puts the subcommand before the service, giving harness-specific permission policies a stable command prefix. The wrapper itself does not enforce approvals.
 
 Use `root` or `.` as the service name for the root repo.
 
-Never use `cd <service> && git ...` (breaks auto-approval). Never run bare `git add/status/commit` expecting it to pick up service files — that targets the root repo.
+Never use `cd <service> && git ...` (bypasses the documented wrapper prefix). Never run bare `git add/status/commit` expecting it to pick up service files — that targets the root repo.
 
 ```bash
-# CORRECT — works from project root, auto-approvable for safe operations
+# CORRECT — invoke from the project root using the configured wrapper prefix
 ./scripts/mgit status my-service --short
 ./scripts/mgit diff my-service
 ./scripts/mgit add my-service src/main/MyFile.scala
@@ -39,10 +39,10 @@ Never use `cd <service> && git ...` (breaks auto-approval). Never run bare `git 
 ./scripts/mgit add root AGENTS.md
 ./scripts/mgit commit . -m "docs: update agents"
 
-# WRONG — requires manual approval (permission wildcards don't match mid-string)
+# WRONG for this workflow — bypasses the configured mgit prefix
 git -C my-service status --short
 
-# WRONG — changes directory, breaks auto-approval
+# WRONG for this workflow — changes directory and bypasses mgit
 cd my-service && git status --short
 
 # WRONG — targets root repo, service folders are gitignored
@@ -96,15 +96,37 @@ services=service-a,service-b,service-c
 
 ### Step 3: Symlink the mgit script
 
-Ensure a `scripts/` directory exists, then create the symlink:
+Resolve installed resources once in Bash before linking or reading templates. A nonempty
+`SKILLS_DIR` is authoritative: use an absolute path and never silently replace an invalid override.
+Without it, prefer the canonical root; fall back to the Claude alias root only if this skill unit
+is absent. Legacy Codex-only installations can set `SKILLS_DIR` explicitly; they are not auto-selected.
 
 ```bash
-mkdir -p scripts
-SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-if [[ ! -d "$SKILLS_DIR" ]]; then
-  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+set -eu
+if [[ -z "${SKILLS_DIR:-}" ]]; then
+  SKILLS_DIR="$HOME/.agents/skills"
+  if [[ ! -d "$SKILLS_DIR/setup-multirepo-git" ]]; then
+    SKILLS_DIR="${CLAUDE_SKILLS_DIR:-${CLAUDE_HOME:-$HOME/.claude}/skills}"
+  fi
 fi
-ln -sf "$SKILLS_DIR/setup-multirepo-git/scripts/mgit" scripts/mgit
+[[ "$SKILLS_DIR" = /* ]] || { echo "SKILLS_DIR must be absolute" >&2; exit 1; }
+for resource in SKILL.md scripts/mgit templates/permissions.json templates/AGENTS-MGIT.md; do
+  [[ -f "$SKILLS_DIR/setup-multirepo-git/$resource" && -r "$SKILLS_DIR/setup-multirepo-git/$resource" ]] || {
+    echo "Missing setup-multirepo-git resource: $resource" >&2; exit 1;
+  }
+done
+[[ -x "$SKILLS_DIR/setup-multirepo-git/scripts/mgit" ]] || { echo "mgit is not executable" >&2; exit 1; }
+```
+
+Missing resources stop setup; do not create dangling links or repair the shared installation here.
+After installation-root changes, re-run the approved project setup rather than retargeting silently.
+Keep the resolved root for steps 4–5 (shell calls may not share variables). Preview the exact paths;
+create links only after setup approval and never overwrite an existing destination implicitly:
+
+```bash
+[[ ! -e scripts/mgit && ! -L scripts/mgit ]] || { echo "Destination exists: scripts/mgit" >&2; exit 1; }
+mkdir -p scripts
+ln -s "$SKILLS_DIR/setup-multirepo-git/scripts/mgit" scripts/mgit
 ```
 
 Verify the symlink works:
@@ -115,29 +137,22 @@ Verify the symlink works:
 
 ### Step 4: Output permission patterns
 
-Read the permission template from the skill resources and output it for the user:
+Read `$SKILLS_DIR/setup-multirepo-git/templates/permissions.json` using the root validated in step 3.
+The existing filename is retained for compatibility, but these are **Claude Code** `Bash(...)`
+patterns, not portable permission configuration. Show the fragment for the user to review and merge
+under `permissions` in their Claude settings; do not edit settings automatically.
 
-```bash
-SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-if [[ ! -d "$SKILLS_DIR" ]]; then
-  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
-fi
-cat "$SKILLS_DIR/setup-multirepo-git/templates/permissions.json"
-```
-
-Tell the user to merge these patterns into their agent-specific local settings file. The `allow` patterns enable auto-approval for safe read-only operations. The `ask` patterns require confirmation for dangerous operations.
+The `allow` list includes `add`, `commit`, `stash`, and `fetch`: it is **not read-only**. Review those
+choices against repository rules before adopting them. Codex uses its own sandbox/approval controls;
+Pi core does not enforce this JSON or skill `allowed-tools`. Installed Pi policy extensions may add
+controls; inspect their actual configuration rather than translating Claude syntax or assuming
+approvals are enforced. Frontmatter and a wrapper prefix never replace user/repository authorization.
 
 ### Step 5: Output AGENTS.md block
 
-Read the AGENTS template from the skill resources and output it:
-
-```bash
-SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-if [[ ! -d "$SKILLS_DIR" ]]; then
-  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
-fi
-cat "$SKILLS_DIR/setup-multirepo-git/templates/AGENTS-MGIT.md"
-```
+Read `$SKILLS_DIR/setup-multirepo-git/templates/AGENTS-MGIT.md` using the root validated in step 3
+and output it. If this is a new shell/tool context, reuse the verified absolute path or repeat the
+read-only resource resolution; never fall back to a different root for templates.
 
 Tell the user to include this block in their project's `AGENTS.md` file, customizing the service names and any project-specific details.
 

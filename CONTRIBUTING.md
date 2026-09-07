@@ -76,6 +76,28 @@ allowed-tools: "Bash(~/.agents/skills/my-skill/scripts/fetch-data.sh:*)"
 Separate multiple patterns with commas. Glob patterns match the full command
 string. Without `allowed-tools`, users may be prompted for every tool call.
 
+### Portable resource and tool discovery
+
+Project setup defaults to `~/.agents/skills`. A nonempty `SKILLS_DIR` is an explicit override:
+validate its absolute path and required unit files; do not silently replace a bad override.
+Without an override, a Claude alias root may be a documented compatibility fallback when the
+canonical unit is absent. Legacy Codex-only installations can supply their root explicitly.
+Validate resources before creating links, never just the existence of the root directory. Reuse
+one validated root for a skill's scripts and templates, and do not overwrite user-owned links.
+
+Keep harness permission syntax explicit: `Bash(...)` and skill `allowed-tools` are Claude-style
+metadata, not a portable enforcement guarantee. Never install permission settings as a side effect
+of resource discovery. Document which template grants permit mutations.
+
+Tool names and schemas vary by harness. Prefer adequate exposed tools; if absent, use discovery
+only when actually provided (`ToolSearch` in Claude Code, or a runtime-specific alternative).
+An unavailable tool/search result does not prove missing server configuration. Inspect the schema
+before invocation and give a precise missing-capability or request-error handoff. Do not turn a
+request failure into repeated discovery, copy credential-bearing configuration, or claim runtime
+MCP behavior from static skill tests. Consumer skills should delegate discovery to the tool-owning
+skill rather than copying another partial fallback. Tests for these conventions live in
+`tests/test_portability.py`; run `make test-portability`.
+
 ## Validation and tests
 
 `make check` is the full gate and is what CI runs. It takes a couple of minutes:

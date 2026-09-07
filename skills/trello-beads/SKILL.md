@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(bd create:*),Bash(bd list:*),Bash(bd show:*),Bas
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -35,15 +35,41 @@ When invoked as `/trello-beads setup`, or when setting up a new project:
 
 ### Step 1: Symlink scripts
 
+Resolve resources in Bash first. A nonempty absolute `SKILLS_DIR` is authoritative; an invalid
+override stops rather than falling back. Otherwise prefer the canonical root, with a Claude alias
+fallback only when this skill unit is absent. Legacy Codex-only roots require explicit `SKILLS_DIR`.
+
 ```bash
-mkdir -p scripts
-SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-if [[ ! -d "$SKILLS_DIR" ]]; then
-  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+set -eu
+if [[ -z "${SKILLS_DIR:-}" ]]; then
+  SKILLS_DIR="$HOME/.agents/skills"
+  if [[ ! -d "$SKILLS_DIR/trello-beads" ]]; then
+    SKILLS_DIR="${CLAUDE_SKILLS_DIR:-${CLAUDE_HOME:-$HOME/.claude}/skills}"
+  fi
 fi
-ln -sf "$SKILLS_DIR/trello-beads/scripts/trello-api.sh" scripts/trello-api
-ln -sf "$SKILLS_DIR/trello-beads/scripts/trello-pull.sh" scripts/trello-pull
-ln -sf "$SKILLS_DIR/trello-beads/scripts/trello-sync.sh" scripts/trello-sync
+[[ "$SKILLS_DIR" = /* ]] || { echo "SKILLS_DIR must be absolute" >&2; exit 1; }
+for resource in SKILL.md scripts/trello-api.sh scripts/trello-pull.sh scripts/trello-sync.sh scripts/owning-store.sh; do
+  [[ -f "$SKILLS_DIR/trello-beads/$resource" && -r "$SKILLS_DIR/trello-beads/$resource" ]] || {
+    echo "Missing trello-beads resource: $resource" >&2; exit 1;
+  }
+done
+for script in trello-api.sh trello-pull.sh trello-sync.sh; do
+  [[ -x "$SKILLS_DIR/trello-beads/scripts/$script" ]] || { echo "$script is not executable" >&2; exit 1; }
+done
+```
+
+Missing resources stop setup before linking. Preview and confirm actual source/destination paths;
+never overwrite an existing destination implicitly. Reuse the verified absolute root across tool
+calls (shell variables may not persist). After installation-root changes, repeat approved setup.
+
+```bash
+for destination in scripts/trello-api scripts/trello-pull scripts/trello-sync; do
+  [[ ! -e "$destination" && ! -L "$destination" ]] || { echo "Destination exists: $destination" >&2; exit 1; }
+done
+mkdir -p scripts
+ln -s "$SKILLS_DIR/trello-beads/scripts/trello-api.sh" scripts/trello-api
+ln -s "$SKILLS_DIR/trello-beads/scripts/trello-pull.sh" scripts/trello-pull
+ln -s "$SKILLS_DIR/trello-beads/scripts/trello-sync.sh" scripts/trello-sync
 ```
 
 Verify:

@@ -126,6 +126,13 @@ Set these as environment variables or accept the defaults:
 | `SKIP_AGENTS` | Skip the Claude-style agent layer when `1` | `0` |
 | `SKIP_PROMPTS` | Skip the Pi prompt layer when `1` | `0` |
 
+Project helper setup should target the canonical root and validate the specific skill's required
+resources before linking. A nonempty `SKILLS_DIR` is authoritative; missing resources are an error,
+not a reason to silently select a different installation. Documented pre-migration setup can fall
+back to the Claude alias root when the canonical unit is absent. Legacy Codex-only roots require an
+explicit override. After migration or cleanup, revalidate project links and repeat approved setup if
+needed; the installer does not silently retarget project-owned links.
+
 See `.env.example` and `.envrc.example` for shell and direnv examples.
 
 ## Coexisting with existing content

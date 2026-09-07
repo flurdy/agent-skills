@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(npm:*),Bash(npx:*),Bash(scripts/screenshot:*),Bash(ln:
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -24,12 +24,35 @@ npx playwright install chromium
 
 2. Symlink the screenshot script into the project's `scripts/` directory:
 
+Resolve resources in Bash first. A nonempty absolute `SKILLS_DIR` is authoritative; never replace
+an invalid override silently. Otherwise prefer the canonical root, falling back to the Claude alias
+root only when this skill unit is absent. Legacy Codex-only roots require explicit `SKILLS_DIR`.
+
 ```bash
-SKILLS_DIR="${SKILLS_DIR:-${CODEX_HOME:-$HOME/.codex}/skills}"
-if [[ ! -d "$SKILLS_DIR" ]]; then
-  SKILLS_DIR="${CLAUDE_HOME:-$HOME/.claude}/skills"
+set -eu
+if [[ -z "${SKILLS_DIR:-}" ]]; then
+  SKILLS_DIR="$HOME/.agents/skills"
+  if [[ ! -d "$SKILLS_DIR/browser-screenshot" ]]; then
+    SKILLS_DIR="${CLAUDE_SKILLS_DIR:-${CLAUDE_HOME:-$HOME/.claude}/skills}"
+  fi
 fi
-ln -sfn "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" scripts/screenshot
+[[ "$SKILLS_DIR" = /* ]] || { echo "SKILLS_DIR must be absolute" >&2; exit 1; }
+for resource in SKILL.md scripts/screenshot.sh; do
+  [[ -f "$SKILLS_DIR/browser-screenshot/$resource" && -r "$SKILLS_DIR/browser-screenshot/$resource" ]] || {
+    echo "Missing browser-screenshot resource: $resource" >&2; exit 1;
+  }
+done
+[[ -x "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" ]] || { echo "screenshot.sh is not executable" >&2; exit 1; }
+```
+
+Missing resources stop before linking. Preview actual source/destination paths and obtain setup
+approval; never overwrite an existing destination implicitly. Reuse the verified absolute root
+across tool calls (shell variables may not persist). Repeat approved setup after root migrations.
+
+```bash
+[[ ! -e scripts/screenshot && ! -L scripts/screenshot ]] || { echo "Destination exists: scripts/screenshot" >&2; exit 1; }
+mkdir -p scripts
+ln -s "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" scripts/screenshot
 ```
 
 ## Usage

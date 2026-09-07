@@ -2,14 +2,14 @@
 
 Each service folder is its own **independent git repository** — they are NOT submodules, NOT part of the root repo. The root `.gitignore` excludes all service folders.
 
-**Rule: Always use `./scripts/mgit <subcommand> <service>` for service git operations.** This wrapper runs `git -C` under the hood but puts the subcommand first and service last, enabling permission patterns to distinguish safe vs dangerous operations.
+**Rule: Always use `./scripts/mgit <subcommand> <service>` for service git operations.** This wrapper runs `git -C` under the hood but puts the subcommand before the service, giving harness-specific permission policies a stable prefix. `Bash(...)` patterns are Claude Code syntax; Codex and Pi require their own controls. The wrapper does not enforce approvals.
 
 Use `root` or `.` as the service name for the root repo.
 
-Never use `cd <service> && git ...` (breaks auto-approval). Never run bare `git add/status/commit` expecting it to pick up service files — that targets the root repo.
+Never use `cd <service> && git ...` (bypasses the documented wrapper prefix). Never run bare `git add/status/commit` expecting it to pick up service files — that targets the root repo.
 
 ```bash
-# CORRECT — works from anywhere, auto-approvable for safe operations
+# CORRECT — invoke from the project root using the configured wrapper prefix
 ./scripts/mgit status my-service --short
 ./scripts/mgit diff my-service
 ./scripts/mgit add my-service src/main/MyFile.scala
@@ -21,10 +21,10 @@ Never use `cd <service> && git ...` (breaks auto-approval). Never run bare `git 
 ./scripts/mgit add . AGENTS.md
 ./scripts/mgit commit root -m "docs: update agents"
 
-# WRONG — requires manual approval (permission wildcards don't match mid-string)
+# WRONG for this workflow — bypasses the configured mgit prefix
 git -C my-service status --short
 
-# WRONG — requires manual approval
+# WRONG for this workflow — changes directory and bypasses mgit
 cd my-service && git status --short
 
 # WRONG — targets root repo, service folders are gitignored

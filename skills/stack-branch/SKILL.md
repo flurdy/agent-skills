@@ -1,11 +1,11 @@
 ---
 name: stack-branch
 description: Create a new branch stacked on another PR. Use when you want to start work that depends on an existing PR that hasn't been merged yet.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -26,13 +26,10 @@ Create a new branch based on an existing PR branch (not main) for dependent work
 
 The first argument is the Jira ticket number for the new work.
 
-Use the `/jira-ticket` skill or the Jira MCP tools directly to get ticket details:
-
-```
-mcp__jira__jira_get with:
-  path: /rest/api/3/issue/{ticketNumber}
-  jq: "{key: key, summary: fields.summary, issuetype: fields.issuetype.name}"
-```
+Use [jira-ticket](../jira-ticket/SKILL.md) for the key, summary and issue type. It owns tool
+availability, deferred discovery and unavailable-context handoffs. If skill invocation is absent,
+read that installed skill and follow it; do not reconstruct the lookup. Stop branch creation if
+required context remains unavailable rather than guessing the branch prefix.
 
 ### 2. Identify Parent Branch
 

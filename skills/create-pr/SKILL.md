@@ -1,11 +1,11 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -67,13 +67,10 @@ If no ticket found, ask the user.
 
 ### 4. Look Up Jira Ticket
 
-Use the `/jira-ticket` skill or the Jira MCP tools directly to get ticket details for the PR description:
-
-```
-mcp__jira__jira_get with:
-  path: /rest/api/3/issue/{ticketNumber}
-  jq: "{key: key, summary: fields.summary, description: fields.description}"
-```
+Use [jira-ticket](../jira-ticket/SKILL.md) for the key, summary and description. It owns tool
+availability, deferred discovery and unavailable-context handoffs. If skill invocation is absent,
+read that installed skill and follow it; do not reconstruct the lookup. Missing context remains
+unavailable in the draft unless supplied by the user; never fabricate fetched requirements.
 
 ### 5. Generate PR Title
 

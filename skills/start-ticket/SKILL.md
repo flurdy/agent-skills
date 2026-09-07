@@ -1,11 +1,11 @@
 ---
 name: start-ticket
 description: Initialize work on a Jira ticket. Creates a new branch with conventional commit prefix based on the ticket type. Use when starting work on a new ticket.
-allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Read,Skill,AskUserQuestion,mcp__jira__*"
+allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Read,Skill,AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -31,13 +31,10 @@ canonical root from `git rev-parse --show-toplevel`; invoke from any repository 
 
 ### 1. Look Up the Jira Ticket
 
-Use the `/jira-ticket` skill or the Jira MCP tools directly to fetch the ticket details:
-
-```
-mcp__jira__jira_get with:
-  path: /rest/api/3/issue/{ticketNumber}
-  jq: "{key: key, summary: fields.summary, type: fields.issuetype.name}"
-```
+Use [jira-ticket](../jira-ticket/SKILL.md) for the key, summary and issue type. It owns tool
+availability, deferred discovery and unavailable-context handoffs. If skill invocation is absent,
+read that installed skill and follow it; do not reconstruct the lookup. If context remains
+unavailable, stop branch creation or obtain the user-provided fields through that handoff.
 
 ### 2. Determine the Branch Prefix
 
