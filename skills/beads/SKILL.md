@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.1.1"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -117,10 +117,26 @@ Make the attribution idempotent for the same session, issue, and store so retrie
 attempts do not create duplicate comments. Mutation helpers such as `next-select start` enforce
 this convention; prose alone is not sufficient.
 
+## Lifecycle and human decisions
+
+Pick the lifecycle verb that records why the bead left the ready queue rather than closing
+everything the same way:
+
+- `bd close --reason` when the outcome is complete or deliberately abandoned; say which.
+- `bd supersede` when a newer bead replaces it, so the history points forward.
+- `bd defer --until` when it is waiting on a date or external event; do not park it at P4.
+
+When progress needs a decision only the user can make, do not guess or leave the question in
+chat. Record the options in the bead, add the `human` label, and stop that thread. `bd human list`
+surfaces pending decisions; `bd human respond` records the answer and closes the bead, so
+follow-on work goes in a new or dependent bead rather than reopening it.
+
+Before reporting a tracked item as done, close it in its owning store.
+
 ## Use current CLI guidance
 
-Use `bd prime` to recover the active repository's current workflow context after compaction or
-when local Beads policy is unclear; hooks may already have injected it. Use `bd where` when the
+Run `bd prime` yourself when local Beads policy is unclear; no hook injects it, and this baseline
+plus repository guidance override anything it prints. Use `bd where` when the
 current repository's active store is uncertain. That identifies the local active store, not the
 owner of an arbitrary selector, so existing-bead ownership still requires the shared resolver.
 
