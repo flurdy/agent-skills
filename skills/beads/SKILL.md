@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 
@@ -132,6 +132,9 @@ surfaces pending decisions; `bd human respond` records the answer and closes the
 follow-on work goes in a new or dependent bead rather than reopening it.
 
 Before reporting a tracked item as done, close it in its owning store.
+
+Do not use `bd remember` for cross-session notes; the harness's own memory owns those, and Beads
+holds only tracked work.
 
 ## Use current CLI guidance
 
