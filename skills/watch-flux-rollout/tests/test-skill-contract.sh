@@ -63,7 +63,8 @@ for invariant in \
     'mcp__claude-in-chrome__*' \
     'mcp__playwright__*' \
     '### Claude Code fallback' \
-    '/loop Watch the CircleCI+Flux rollout of {sha}' \
+    '/loop When already permitted' \
+    'Then watch the CircleCI+Flux rollout of {sha}' \
     'If neither `watch_loop` nor `/loop` is available' \
     'Never `flux reconcile`, `kubectl rollout restart`, `kubectl apply`, or' \
     're-trigger CI to hurry a rollout along.'; do

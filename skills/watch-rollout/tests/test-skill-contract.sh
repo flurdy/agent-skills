@@ -47,7 +47,10 @@ for invariant in \
 done
 
 assert_not_contains "$DISPATCHER" 'watch_loop'
-assert_not_contains "$DISPATCHER" 'Bash('
+permission=$(grep -o 'Bash([^)]*)' "$DISPATCHER")
+# shellcheck disable=SC2088 # literal installed-path permission, not shell expansion
+[[ "$permission" == 'Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*)' ]] || \
+    fail 'dispatcher may grant only the optional counter command'
 assert_contains "$ACTIONS" 'name: watch-actions-rollout'
 assert_contains "$FLUX" 'name: watch-flux-rollout'
 

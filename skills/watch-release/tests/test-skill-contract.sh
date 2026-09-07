@@ -61,7 +61,8 @@ for invariant in \
     '`next-tick:`' \
     '### Claude Code fallback' \
     'ScheduleWakeup' \
-    '/loop {interval} /release-manager' \
+    '/loop {interval} When already permitted' \
+    'Then run /release-manager' \
     'If neither `watch_loop` nor the required' \
     'Claude scheduling capability is available'; do
     assert_contains "$invariant"

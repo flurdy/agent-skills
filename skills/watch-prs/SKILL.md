@@ -4,9 +4,10 @@ description: >
   Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence
   (fast when CI is in flight, backing off when settled) until end of day. Unattended:
   renders tables and suggested next actions, never prompts or blocks.
+allowed-tools: "Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*)"
 model-tier: standard
 effort: medium
-version: "2.5.0"
+version: "2.6.0"
 author: "flurdy"
 ---
 
@@ -28,6 +29,21 @@ preserves stable identity/update comparisons and makes partial fetches visible o
 /watch-prs 5m 17      # fixed 5m, stop at 17:00
 ```
 
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+Do not count `status`, `reset`, `recheck`, `disposition`, or internal ticks as invocations. The
+self-contained tick prompt owns tick recording; do not record again on a nested skill read.
+See [the counter contract](../watch-telemetry/SKILL.md) for opt-in, partial coverage and retention.
+
 ## Instructions
 
 Parse arguments: a positive interval matching `\d+m` (absent → adaptive mode, the default), and a
@@ -47,7 +63,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 3. Use this self-contained tick prompt in the start call:
 
    ```text
-   Load and follow the skill named `pr-status` now. Render its full dashboard as visible text. Do not execute any suggested action. Read the final `next-tick:` line and use its numeric N as the adaptive delay when required. Finish only after the dashboard with the matching `watch_loop complete` call injected by the runtime.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `pr-status` now. Render its full dashboard as visible text. Do not execute any suggested action. Read the final `next-tick:` line and use its numeric N as the adaptive delay when required. Finish only after the dashboard with the matching `watch_loop complete` call injected by the runtime.
    ```
 
 4. For adaptive mode, make the terminating start call with:
@@ -117,7 +133,7 @@ substituting the stop hour — then confirm the loop is started and the first da
 about a minute:
 
 ```
-/pr-status — afterwards schedule the next check: ScheduleWakeup(delaySeconds = N from your next-tick line, prompt = this message verbatim), or ScheduleWakeup(stop: true) if that wake would land past {stop_hour}:00
+When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs claude tick` once; telemetry failure must not block the watch. Then invoke /pr-status — afterwards schedule the next check: ScheduleWakeup(delaySeconds = N from your next-tick line, prompt = this message verbatim), or ScheduleWakeup(stop: true) if that wake would land past {stop_hour}:00
 ```
 
 Each wakeup is then a plain `/pr-status` run — dashboard first, one `ScheduleWakeup` call at the
@@ -132,7 +148,7 @@ dashboard, and the dashboard is the whole point.
 Invoke the `/loop` skill with the literal interval; the `next-tick:` line is ignored:
 
 ```
-/loop {interval} /pr-status
+/loop {interval} When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs claude tick` once; telemetry failure must not block the watch. Then invoke the pr-status skill and render its full read-only dashboard. Do not execute suggested actions.
 ```
 
 Tell the loop to stop at `{stop_hour}:00` local time.

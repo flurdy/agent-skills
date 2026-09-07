@@ -1,19 +1,19 @@
 ---
 name: watch-rollout
 description: Choose and launch the appropriate rollout watcher. Prompts between implemented deployment stacks unless an explicit selector is supplied, then delegates without weakening stack-specific safety.
-allowed-tools: "AskUserQuestion,Skill(watch-actions-rollout),Skill(watch-flux-rollout)"
+allowed-tools: "AskUserQuestion,Skill(watch-actions-rollout),Skill(watch-flux-rollout),Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*)"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
 # Choose Rollout Watcher
 
 Select the deployment stack, then delegate the entire rollout watch to its specialist skill. This
-router does not inspect deployments, run commands, schedule polling, or combine stack-specific
-safety rules.
+router does not inspect deployments, run domain commands, schedule polling, or combine stack-specific
+safety rules. Optional invocation telemetry is the only command exception; it cannot record ticks.
 
 ## Usage
 
@@ -27,6 +27,20 @@ safety rules.
 Legacy target forms remain valid. For example, `/watch-rollout 6790`, `/watch-rollout <sha>`, and
 `/watch-rollout --run 28440286944` ask for the stack and then pass the original arguments to the
 selected implementation.
+
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-rollout {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+The selected specialist records its own invocation; those are distinct entry-point observations,
+not two unique watches. See [the counter contract](../watch-telemetry/SKILL.md).
 
 ## Route selection
 

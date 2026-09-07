@@ -133,7 +133,8 @@ for invariant in \
     'outcome: stop' \
     '### Claude Code fallback' \
     'ScheduleWakeup' \
-    '/loop {interval} /watch-review-requests tick fixed --reviews {N} --stop-at {deadline_iso}' \
+    '/loop {interval} When already permitted' \
+    'exactly the arguments `tick fixed --reviews {N} --stop-at {deadline_iso}`' \
     'Fable' \
     'next-tick:'; do
     assert_contains "$invariant"

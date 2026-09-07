@@ -57,7 +57,8 @@ for invariant in \
     '/watch-stop' \
     '### Claude Code fallback' \
     'ScheduleWakeup' \
-    '/loop {interval} /pr-status' \
+    '/loop {interval} When already permitted' \
+    'Then invoke the pr-status skill' \
     'Fable'; do
     assert_contains "$invariant"
 done

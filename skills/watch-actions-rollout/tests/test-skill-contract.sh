@@ -65,7 +65,8 @@ for invariant in \
     'gh run view {run_id} --json databaseId,name,workflowName,headSha,status,conclusion,event' \
     'Record `headSha` as `{sha}`' \
     '### Claude Code fallback' \
-    '/loop Watch GitHub Actions run {run_id}' \
+    '/loop When already permitted' \
+    'Then watch GitHub Actions run {run_id}' \
     'If neither `watch_loop` nor `/loop` is available' \
     'Never re-trigger, cancel, re-run, or approve a workflow; never deploy.'; do
     assert_contains "$invariant"

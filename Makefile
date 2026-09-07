@@ -73,6 +73,7 @@ help:
 	@echo "make test-watch-review-requests"
 	@echo "make test-watch-rollouts"
 	@echo "make test-watch-protocols"
+	@echo "make test-watch-telemetry"
 	@echo "make list"
 	@echo "make doctor"
 	@echo "make doctor-codex    # compatibility alias; same shared skill root"
@@ -105,7 +106,7 @@ TEST_TARGETS := test-validate-skills test-assemble test-artifact-hygiene \
   test-architect test-pedantic-review test-verify-task test-plan-to-backlog test-beads test-beads-migrate test-next test-handoffs \
   test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
-  test-today test-yesterday test-wrap-up test-watch-protocols
+  test-today test-yesterday test-wrap-up test-watch-protocols test-watch-telemetry
 
 test: $(TEST_TARGETS)
 
@@ -266,6 +267,11 @@ test-watch-rollouts:
 	@bash skills/watch-flux-rollout/tests/test-skill-contract.sh
 
 test-watch-protocols: test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts
+
+.PHONY: test-watch-telemetry
+
+test-watch-telemetry:
+	@python3 -m unittest discover -s skills/watch-telemetry/tests -p 'test_*.py'
 
 list:
 	@$(CLAUDE_ENV) $(ASSEMBLE) list

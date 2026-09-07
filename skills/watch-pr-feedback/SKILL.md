@@ -4,11 +4,11 @@ description: >
   Watch the user's open GitHub PRs for normalized feedback, validate each new or edited
   actionable item once, and render a bounded decision queue. Read-only by default; attended
   mode pauses only when the queue needs acknowledgment.
-allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checkout.py:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(date:*),mcp__jira__jira_get,AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checkout.py:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(date:*),mcp__jira__jira_get,AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "1.1.5"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -36,7 +36,26 @@ and one stop hour from `0` through `23` (default `18`). No interval means adapti
 unknown or duplicate arguments. Resolve today's stop hour in local time and do not start at or past
 it.
 
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+Do not count `status`, `reset`, `recheck`, `disposition`, or internal ticks as invocations. The
+self-contained tick prompt owns tick recording; do not record again on a nested skill read.
+See [the counter contract](../watch-telemetry/SKILL.md) for opt-in, partial coverage and retention.
+
 ## Safety boundary
+
+The named execution-counter helper above is the sole local-write exception and is not a preflight
+probe. It never stores feedback, queue state, or review content. All other write prohibitions below
+remain unchanged; optional counters do not authorize persisted watcher state.
 
 Default read-only mode never prompts and never edits code, changes the working tree, runs commands
 that may create build artifacts, publishes GitHub content, changes thread state, or changes Git
@@ -111,7 +130,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -161,14 +180,20 @@ Before starting the Claude adaptive path, apply the established session-model gu
 would discard the tick's visible output. Recommend a Sonnet/Opus session or fixed mode instead.
 
 For adaptive mode, schedule a 60-second first wake with a self-contained prompt equivalent to the
-Pi tick prompt. Each completed tick computes N, renders all skill-authored content including the
+Pi tick prompt: replace the Pi recorder call with `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback claude tick` before scheduling. Never retain Pi attribution in a Claude wake. Carry the adapted prompt verbatim into every later wake.
+Each completed tick computes N, renders all skill-authored content including the
 final `next-tick:` cadence line, then calls `ScheduleWakeup` last with N and emits no further
 skill-authored text. Stop rather than reschedule past the local deadline or after the third
 consecutive failure for one repository/source. In attended mode, ask and wait before the trailing
 schedule call; an unanswered question must not create another wake.
 
-For fixed mode, use `/loop {interval} /watch-pr-feedback tick {read-only|attended}` and state the
-local stop hour. Fixed ticks ignore `next-tick:` for scheduling but still emit it as their final
+For fixed mode, use this self-contained prompt and state the local stop hour:
+
+```text
+/loop {interval} When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback claude tick` once; telemetry failure must not block the watch. Then invoke the watch-pr-feedback skill with exactly the arguments `tick {read-only|attended}`. Render its complete output and preserve its session-local state and safety boundaries. Do not start another watcher or record another invocation.
+```
+
+Fixed ticks ignore `next-tick:` for scheduling but still emit it as their final
 skill-authored line without another watcher summary. Every fallback tick must load this skill,
 enter `tick` mode, render visible output, and preserve the same session-local state and safety
 boundary.

@@ -4,11 +4,11 @@ description: >
   After a merge, watch the GitHub Actions deploy until the gating job lands, then run a
   scoped smoke test against staging (browser for UI, GET for read-only API).
   Goal-terminating loop — stops when the deploy lands and the smoke completes, or fails.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*),Bash(gh api:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh run view:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*),Bash(gh api:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh run view:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -30,6 +30,20 @@ Chains naturally after `/ready-to-merge`: merge → watch the deploy job → con
 /watch-actions-rollout --prod          # allow a read-only prod smoke (safety-gated, see below)
 /watch-actions-rollout --no-smoke      # watch the deploy only, skip the smoke test
 ```
+
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-actions-rollout {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+Do not count internal continuation ticks as invocations. The self-contained tick prompt owns tick
+recording; do not record again on a nested skill read. See [the counter contract](../watch-telemetry/SKILL.md).
 
 ## Procedure
 
@@ -131,7 +145,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 2. Make this prompt self-contained with the resolved values before passing it to `action: start`:
 
    ```text
-   Load and follow the skill named `watch-actions-rollout` now. This is one continuation tick, not new watcher setup. Watch GitHub Actions run {run_id} ({workflow} on {sha}); the gating job is "{gating_job}" and the confirmed smoke is {smoke spec with URL, or "disabled (--no-smoke)"}. Run ~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh {run_id}. Render the current gating-job status as visible text. If it is in_progress, waiting, queued, or not yet started and no upstream job has failed, call the matching `watch_loop` action: complete with outcome: continue. If it or an upstream prerequisite failed, report the failure and complete with outcome: stop. On gating-job success, either report deploy success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. Do not complete before rendering the status or terminal evidence. Never re-trigger, cancel, re-run, or approve a workflow; never deploy.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-actions-rollout pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-actions-rollout` now. This is one continuation tick, not new watcher setup. Watch GitHub Actions run {run_id} ({workflow} on {sha}); the gating job is "{gating_job}" and the confirmed smoke is {smoke spec with URL, or "disabled (--no-smoke)"}. Run ~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh {run_id}. Render the current gating-job status as visible text. If it is in_progress, waiting, queued, or not yet started and no upstream job has failed, call the matching `watch_loop` action: complete with outcome: continue. If it or an upstream prerequisite failed, report the failure and complete with outcome: stop. On gating-job success, either report deploy success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. Do not complete before rendering the status or terminal evidence. Never re-trigger, cancel, re-run, or approve a workflow; never deploy.
    ```
 
 3. State that the watcher starts after about one minute, polls every four minutes, and is capped at
@@ -160,7 +174,8 @@ If `watch_loop` is unavailable, retain the existing `/loop` path. Hand it the sa
 in a self-contained dynamic-loop prompt:
 
 ```
-/loop Watch GitHub Actions run {run_id} ({workflow} on {sha}).
+/loop When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-actions-rollout claude tick` once; telemetry failure must not block the watch.
+Then watch GitHub Actions run {run_id} ({workflow} on {sha}).
 Run: ~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh {run_id}.
 While the gating job "{gating_job}" is in_progress, waiting, queued, or not yet started,
 reschedule ~240s.

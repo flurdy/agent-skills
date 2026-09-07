@@ -4,10 +4,11 @@ description: >
   Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence
   (fast when something is in flight, backing off when settled) until end of day. Prompts to
   push / defer / cancel as services become ready; runs attended.
+allowed-tools: "Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.3.0"
+version: "1.4.0"
 author: "flurdy"
 ---
 
@@ -30,6 +31,21 @@ burning a tick every 10 minutes when nothing is happening.
 
 Adaptive is the default. Pass an explicit `\d+m` interval only when you deliberately want a fixed
 cadence (e.g. demoing, or a tab you glance at on a known rhythm).
+
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-release {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+Do not count `status`, `reset`, `recheck`, `disposition`, or internal ticks as invocations. The
+self-contained tick prompt owns tick recording; do not record again on a nested skill read.
+See [the counter contract](../watch-telemetry/SKILL.md) for opt-in, partial coverage and retention.
 
 ## Instructions
 
@@ -54,7 +70,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 3. Use this self-contained prompt in the start call:
 
    ```text
-   Load and follow the skill named `release-manager` now. This is one attended release tick. Invoke the skill rather than improvising its steps, render its full dashboard and every confirmation as visible text, and wait for each answer. Never push without the explicit answer to that action's current question in this tick and release-manager's fresh shared-authority recheck. Never invoke release-maintenance, reconcile manifests, sync config, or restart workloads in a watch tick; an answer cannot expand this boundary. An `ask_user_question` call blocks the active tick until the user answers; do not call `watch_loop` complete while a question is open. After release-manager has finished all answered prompts and printed its final `next-tick:` line, call the matching `watch_loop` action: complete with outcome: continue. In adaptive mode pass that line's numeric N as delaySeconds; if the line is missing or malformed, use 600. In fixed mode omit delaySeconds. Do not complete before the dashboard, answers, tick summary, and cadence recommendation are visible.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-release pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `release-manager` now. This is one attended release tick. Invoke the skill rather than improvising its steps, render its full dashboard and every confirmation as visible text, and wait for each answer. Never push without the explicit answer to that action's current question in this tick and release-manager's fresh shared-authority recheck. Never invoke release-maintenance, reconcile manifests, sync config, or restart workloads in a watch tick; an answer cannot expand this boundary. An `ask_user_question` call blocks the active tick until the user answers; do not call `watch_loop` complete while a question is open. After release-manager has finished all answered prompts and printed its final `next-tick:` line, call the matching `watch_loop` action: complete with outcome: continue. In adaptive mode pass that line's numeric N as delaySeconds; if the line is missing or malformed, use 600. In fixed mode omit delaySeconds. Do not complete before the dashboard, answers, tick summary, and cadence recommendation are visible.
    ```
 
 4. For adaptive mode, state the local deadline and that the first tick lands after about one
@@ -112,7 +128,7 @@ unless the tick explicitly loads it — so the output contract and ordering must
 prompt string itself:
 
 ```
-/loop /release-manager — each tick: invoke the release-manager skill via the Skill tool (never improvise its steps from memory), render its full dashboard and any prompts as visible text; only offer pushes using its fresh shared-authority verdict and current-command confirmation; never invoke release-maintenance, reconcile manifests, sync config, or restart workloads; only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
+/loop When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-release claude tick` once; telemetry failure must not block the watch. Then run /release-manager — each tick: invoke the release-manager skill via the Skill tool (never improvise its steps from memory), render its full dashboard and any prompts as visible text; only offer pushes using its fresh shared-authority verdict and current-command confirmation; never invoke release-maintenance, reconcile manifests, sync config, or restart workloads; only THEN call ScheduleWakeup as the very last action of the turn; the turn ends the instant ScheduleWakeup returns, so a tick that schedules before rendering shows the user nothing and has failed
 ```
 
 Pass that whole string as the loop prompt, and echo it back unchanged in every `ScheduleWakeup`
@@ -143,7 +159,7 @@ ignored. The same per-tick contract applies (minus the `ScheduleWakeup` ordering
 fixed ticks):
 
 ```
-/loop {interval} /release-manager — each tick: invoke the release-manager skill via the Skill tool and render its full dashboard as visible text; only offer pushes using its fresh shared-authority verdict and current-command confirmation; never invoke release-maintenance, reconcile manifests, sync config, or restart workloads; a tick that only runs scripts is a failed tick
+/loop {interval} When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-release claude tick` once; telemetry failure must not block the watch. Then run /release-manager — each tick: invoke the release-manager skill via the Skill tool and render its full dashboard as visible text; only offer pushes using its fresh shared-authority verdict and current-command confirmation; never invoke release-maintenance, reconcile manifests, sync config, or restart workloads; a tick that only runs scripts is a failed tick
 ```
 
 Tell the loop to stop at `{stop_hour}:00` local time. If neither `watch_loop` nor the required

@@ -4,11 +4,11 @@ description: >
   After a push or merge, watch a CircleCI + FluxCD deploy until it lands — CI green,
   then the k8s Deployment image tag moves and pods go ready — then run a read-only
   smoke test scoped to the change. Goal-terminating loop; stops on landing or failure.
-allowed-tools: "Read,Grep,Glob,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Grep,Glob,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -32,6 +32,20 @@ pre-push baseline — never an exact-tag match.
 /watch-flux-rollout <sha>          # specific commit
 /watch-flux-rollout --no-smoke     # watch the rollout only, skip the smoke test
 ```
+
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-flux-rollout {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+Do not count internal continuation ticks as invocations. The self-contained tick prompt owns tick
+recording; do not record again on a nested skill read. See [the counter contract](../watch-telemetry/SKILL.md).
 
 ## Procedure
 
@@ -124,7 +138,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 2. Make this prompt self-contained with the resolved values before passing it to `action: start`:
 
    ```text
-   Load and follow the skill named `watch-flux-rollout` now. This is one continuation tick, not new watcher setup. Watch the CircleCI+Flux rollout of {sha} on {branch}, deployment {deployment} in {namespace}, fromTag "{fromTag}", with confirmed smoke {smoke spec with URL, or "disabled (--no-smoke)"}. Stage 1: run ~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}; parse ---CIRCLECI-STATUS--- and require pipeline.vcs.revision to equal {sha}. If none exists yet or its workflows are running, render that status and call the matching `watch_loop` action: complete with outcome: continue. If a workflow for that revision failed, report it and complete with outcome: stop. Stage 2, only after CI succeeds: run ~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}. Deployed means tag moved off "{fromTag}" and ready equals desired. If not deployed, render tag and readiness, then complete with outcome: continue; but if CI has been green over 30 minutes and the tag is still "{fromTag}", report a Flux stall and complete with outcome: stop. Once deployed, either report success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. If the same read-only CI or kubectl poll fails on two consecutive ticks, report it and stop. Never reconcile Flux, restart or apply Kubernetes resources, re-trigger CI, or issue a mutating smoke request.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-flux-rollout pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-flux-rollout` now. This is one continuation tick, not new watcher setup. Watch the CircleCI+Flux rollout of {sha} on {branch}, deployment {deployment} in {namespace}, fromTag "{fromTag}", with confirmed smoke {smoke spec with URL, or "disabled (--no-smoke)"}. Stage 1: run ~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}; parse ---CIRCLECI-STATUS--- and require pipeline.vcs.revision to equal {sha}. If none exists yet or its workflows are running, render that status and call the matching `watch_loop` action: complete with outcome: continue. If a workflow for that revision failed, report it and complete with outcome: stop. Stage 2, only after CI succeeds: run ~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh {deployment} {namespace}. Deployed means tag moved off "{fromTag}" and ready equals desired. If not deployed, render tag and readiness, then complete with outcome: continue; but if CI has been green over 30 minutes and the tag is still "{fromTag}", report a Flux stall and complete with outcome: stop. Once deployed, either report success when smoke is disabled, or run the confirmed read-only smoke and report pass/fail with captured evidence; then complete with outcome: stop. If the same read-only CI or kubectl poll fails on two consecutive ticks, report it and stop. Never reconcile Flux, restart or apply Kubernetes resources, re-trigger CI, or issue a mutating smoke request.
    ```
 
 3. State that the watcher starts after about one minute, polls every four minutes, and is capped at
@@ -153,7 +167,8 @@ If `watch_loop` is unavailable, retain the existing `/loop` path. Hand it the sa
 in a self-contained dynamic-loop prompt:
 
 ```
-/loop Watch the CircleCI+Flux rollout of {sha} on {branch} ({deployment} in {namespace}).
+/loop When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-flux-rollout claude tick` once; telemetry failure must not block the watch.
+Then watch the CircleCI+Flux rollout of {sha} on {branch} ({deployment} in {namespace}).
 Stage 1 — CI: run ~/.agents/skills/circleci-status/scripts/status.sh {branch} {sha}; parse
 ---CIRCLECI-STATUS---. If no pipeline with vcs.revision {sha} yet, or its workflows are
 still running → reschedule ~240s. If a workflow for {sha} failed → report it and stop.

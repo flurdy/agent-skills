@@ -3,11 +3,11 @@ name: watch-review-requests
 description: >
   Watch for direct GitHub review requests, run one bounded repository-qualified review at a time,
   and pause for private, draft-only, defer, or separately confirmed external dispositions.
-allowed-tools: "Read,Grep,Glob,Skill(review-pr),Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checkout.py:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(gh pr review:*),AskUserQuestion"
+allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Skill(review-pr),Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checkout.py:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(gh pr review:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: xhigh
-version: "1.0.0"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -50,7 +50,26 @@ Stop deadline: {local timestamp}
 Review budget: {N premium review attempts}
 ```
 
+## Execution telemetry
+
+Only for a normal valid execution request, not when reading this file as context, record once:
+
+```text
+~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-review-requests {harness} invocation
+```
+
+Bind `{harness}` to `pi` or `claude` from the known current harness, never a model name or shell
+probe; otherwise skip. Use only already-permitted recording. Never enable collection, change
+permissions, or wait for telemetry approval. Missing/denied/failed recording must not block work.
+Do not count `status`, `reset`, `recheck`, `disposition`, or internal ticks as invocations. The
+self-contained tick prompt owns tick recording; do not record again on a nested skill read.
+See [the counter contract](../watch-telemetry/SKILL.md) for opt-in, partial coverage and retention.
+
 ## Safety boundary
+
+The named execution-counter helper above is the sole local-write exception and is not a preflight
+probe. It never stores feedback, queue state, or review content. All other write prohibitions below
+remain unchanged; optional counters do not authorize persisted watcher state.
 
 Queue collection and review analysis are read-only. Never switch branches, create a checkout,
 fetch, edit code, change Git history, mark notifications, alter requested reviewers, submit a
@@ -122,7 +141,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
    tick dependent on prose from the initiating turn:
 
    ```text
-   Load and follow the skill named `watch-review-requests` now in `tick` mode. This is one attended inbound-review tick, not a watcher start. Cadence is {cadence_mode}; the immutable run stop deadline is {deadline_iso}; the configured premium-review attempt budget is {review_budget}; derive the remaining review count from that budget minus the session-local reviewAttempts count. Preserve the session-local collector state, pending dispositions, completedWorkKeys, reviewAttempts, in-flight record, failures, and quiet streak. The premium route {premium_route} was established before launch; verify it still satisfies premium before invoking Skill(review-pr). If required state is unavailable, stop rather than resetting the budget or replaying work. Collect the bounded requested-review queue, use only the allowlisted gh-pr-checkout helper for optional local discovery, never run ad-hoc shell probes, process direct actionable work strictly one review at a time, render every complete immutable review before marking it locally reviewed, reverify it before every disposition stage, and wait for each answer. Never submit to GitHub without showing the exact draft and receiving the separate final confirmation followed by immutable verification; Slack is draft-only and never sends. An open question blocks the tick: do not call watch_loop complete while waiting. Do not start another premium invocation when the deadline or review budget is reached; always finish a retained or newly returned complete result through rendering, verification, local completion, and disposition, then stop. After visible output and the final next-tick line, call the matching protocol-v1 watch_loop action: complete. Use outcome: continue and adaptive delaySeconds from that line, or omit delaySeconds in fixed mode; use outcome: stop for a handoff, external send, deadline/budget exhaustion, lost state, or terminal failure.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-review-requests pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-review-requests` now in `tick` mode. This is one attended inbound-review tick, not a watcher start. Cadence is {cadence_mode}; the immutable run stop deadline is {deadline_iso}; the configured premium-review attempt budget is {review_budget}; derive the remaining review count from that budget minus the session-local reviewAttempts count. Preserve the session-local collector state, pending dispositions, completedWorkKeys, reviewAttempts, in-flight record, failures, and quiet streak. The premium route {premium_route} was established before launch; verify it still satisfies premium before invoking Skill(review-pr). If required state is unavailable, stop rather than resetting the budget or replaying work. Collect the bounded requested-review queue, use only the allowlisted gh-pr-checkout helper for optional local discovery, never run ad-hoc shell probes, process direct actionable work strictly one review at a time, render every complete immutable review before marking it locally reviewed, reverify it before every disposition stage, and wait for each answer. Never submit to GitHub without showing the exact draft and receiving the separate final confirmation followed by immutable verification; Slack is draft-only and never sends. An open question blocks the tick: do not call watch_loop complete while waiting. Do not start another premium invocation when the deadline or review budget is reached; always finish a retained or newly returned complete result through rendering, verification, local completion, and disposition, then stop. After visible output and the final next-tick line, call the matching protocol-v1 watch_loop action: complete. Use outcome: continue and adaptive delaySeconds from that line, or omit delaySeconds in fixed mode; use outcome: stop for a handoff, external send, deadline/budget exhaustion, lost state, or terminal failure.
    ```
 
 4. Adaptive start:
@@ -166,7 +185,8 @@ start preflight. Use Claude's existing scheduling capability. If neither `Schedu
 For adaptive mode, apply the established Fable session-model guard: Fable must not start an
 adaptive watcher because its trailing scheduling call can discard visible output. Recommend a
 Sonnet/Opus session or fixed mode. Otherwise schedule the first tick after 60
-seconds with the same self-contained contract. Each completed adaptive tick renders first, waits
+seconds with the same self-contained contract: replace the Pi recorder call with `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-review-requests claude tick` before scheduling. Never retain Pi attribution in a Claude wake. Carry the adapted prompt verbatim into every later wake.
+Each completed adaptive tick renders first, waits
 for every answer, and calls `ScheduleWakeup` last using the numeric N from `next-tick:`. After the terminal
 `next-tick:` line, emit no more natural-language output; adaptive mode immediately calls
 `ScheduleWakeup`, while fixed mode ends the turn. Never schedule while a question is open. Stop
@@ -175,7 +195,7 @@ instead of scheduling past the deadline or after a terminal outcome.
 For fixed mode use:
 
 ```text
-/loop {interval} /watch-review-requests tick fixed --reviews {N} --stop-at {deadline_iso}
+/loop {interval} When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-review-requests claude tick` once; telemetry failure must not block the watch. Then invoke the watch-review-requests skill with exactly the arguments `tick fixed --reviews {N} --stop-at {deadline_iso}`. Render its complete output and preserve its session-local state, budget, deadline, serial work and confirmation boundaries. Do not start another watcher or record another invocation.
 ```
 
 Substitute the resolved interval, budget, and deadline before launch. Fixed ticks ignore adaptive
