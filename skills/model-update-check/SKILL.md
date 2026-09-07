@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-upda
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -84,21 +84,22 @@ Never choose by lexical model-name ordering or release date alone.
 
 For `model-tier-router.json`:
 
-- Keep tier semantics from `MODEL_ROUTING.md`: cheap bulk, standard workflow, focused/advanced
-  coding, long-context audit, premium reasoning, and premium review are different jobs.
+- Read [MODEL_ROUTING.md](../../MODEL_ROUTING.md): shared tiers are `economy`, `standard`, and
+  `premium`; effort is independent. Compare the actual configured keys/roles against that authority,
+  not an obsolete six-tier taxonomy. Unknown local roles merit review, not automatic renaming.
 - Preserve subscription/OAuth-first ordering and each candidate's trusted `metered` classification.
-- Treat OpenAI Luna/Terra/Sol, Anthropic Haiku/Sonnet/Fable/Opus, and Gemini Flash/Pro as distinct
-  capability/cost roles. A newer model in another role is not a drop-in upgrade.
+- Preserve each configured role using capability, pricing and billing evidence. Model branding or
+  release order does not establish role equivalence; a newer model is not a drop-in upgrade.
 - Do not copy prices, context sizes, or effort mappings into the router; Pi owns model metadata.
 
 For `second-opinion/config.json`:
 
-- Preserve explicit named profiles, bounded fan-out, configured quorum, and per-run OpenRouter
-  consent.
+- Preserve explicit named profiles, bounded fan-out, configured quorum, and the second-opinion
+  owner's exact-model/per-run OpenRouter consent rules; this audit grants no execution consent.
 - Audit all legacy `models` entries and only `kind: "openrouter"` entries in mixed `routes` profiles.
   Local routes retain their CLI-native model resolution and are not OpenRouter catalog entries.
 - Use `recentOpenRouterByNamespace` only to find same-provider candidates. Preserve provider
-  diversity; same-provider corroboration does not add an independent provider to quorum.
+  diversity; same-provider corroboration does not add an independent provider to consensus coverage.
 - Exact IDs stay local. Do not write them into shared skill documentation.
 
 ### 5. Render the report

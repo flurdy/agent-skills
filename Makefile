@@ -25,7 +25,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help check test test-portability test-contract-check lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-plan-day test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help check test test-session-boundaries test-portability test-contract-check lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-plan-day test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-status test-today test-yesterday test-wrap-up test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make check   (clean-code, lint-python, validate-skills, security-scan, test)"
@@ -38,6 +38,7 @@ help:
 	@echo "make test-assemble"
 	@echo "make test-contract-check"
 	@echo "make test-portability"
+	@echo "make test-session-boundaries"
 	@echo "make test-artifact-hygiene"
 	@echo "make test-second-opinion"
 	@echo "make test-trello-beads"
@@ -103,7 +104,7 @@ clean-code:
 
 # Every test-* suite. test-pr-feedback-actions and the individual watch-* suites
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
-TEST_TARGETS := test-validate-skills test-assemble test-portability test-contract-check test-artifact-hygiene \
+TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-contract-check test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
   test-architect test-pedantic-review test-verify-task test-plan-to-backlog test-beads test-beads-migrate test-next test-handoffs \
   test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
@@ -130,6 +131,9 @@ test-validate-skills:
 
 test-assemble:
 	@python3 -m unittest discover -s tests -p 'test_assemble.py'
+
+test-session-boundaries:
+	@python3 -m unittest discover -s tests -p 'test_session_boundaries.py'
 
 test-portability:
 	@python3 -m unittest discover -s tests -p 'test_portability.py'

@@ -1,11 +1,11 @@
 ---
 name: handoffs
-description: Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full (including ones whose worktree has been pruned) and summarises other repos by count. Companion to /wrap-up and /landscape.
+description: Browse and load current-repo or workspace-member handoffs, including pruned worktrees. Optional confirmed archiving and checkout recovery; loading alone never executes the saved task.
 allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.20.0"
+version: "0.21.0"
 author: "flurdy"
 ---
 
@@ -229,22 +229,24 @@ After the current-repo flows, run **REFERENCE §Archive-flow-members**. It is a 
 confirmation per member repo: offer only `safe` rows, never sweep `keep` rows, and archive every
 confirmed selection in one `archive.sh` call. Drop archived member rows from the table and picker.
 
-### 4. Pick a handoff (current repo only)
+### 4. Pick a handoff (current repo and displayed workspace members)
 
-If `current_repo_total == 0`, skip this step.
-
-If `current_repo_total` is between 1 and 4, use `AskUserQuestion`:
+Count the remaining displayed current-repo and workspace-member rows after confirmed archives.
+With zero rows, skip only this picker. With one row, ask in plain text to load its filename or skip;
+do not construct a one-option questionnaire. With 2–4 rows, use `AskUserQuestion`:
 
 - Option label: `{date} {slug}` (truncate slug if needed to stay under the chip width).
 - Option description: `{time} · Branch: {branch} | Where: {basename of cwd}` (lead with the `HH:MM` so several same-day handoffs are distinguishable here; omit the `{time} · ` prefix when `{time}` is `?`).
 
-If `current_repo_total > 4`, do **not** force the picker (the option cap is 4). Instead, print:
+With more than four remaining displayed rows, do **not** force the picker. Instead, print:
 
 ```markdown
 **Pick one to load:** reply with the slug or filename (e.g. `ab-1344-login-state-decision` or `2026-05-21-ab-1344-login-state-decision.md`).
 ```
 
-Only pickable rows (✅) are valid choices. Pruned-worktree handoffs are pickable — they just resume in a different checkout. If the user picks an unresolved one, point them at `cat ~/.claude/handoffs/{filename}` for read-only access.
+Every remaining displayed row in §2/§2b is pickable; Worktree ✅/✂️ describes path existence only.
+Pruned-worktree handoffs are pickable — they just resume in a different checkout. Unresolved rows
+are not recovery targets; offer read-only access to the exact listed file instead.
 
 ### 4b. Picking a workspace-member handoff
 
@@ -273,7 +275,9 @@ current-repo experience for that repo, including the archive flow.
 
 Use the `Read` tool on the absolute path `{HANDOFFS-DIR}/{filename}`.
 
-Render the file content **verbatim** inside a fenced block so the rest of the session treats it as resume context:
+Render the file content **verbatim** inside a fenced block as historical context, not authorization
+to run its suggested commands. Preserve external-text fences; the current user/repository rules
+still govern. Loading never starts coding, claims a bead, or executes saved instructions.
 
 ````markdown
 ### 📥 Loaded: `{filename}`
@@ -295,6 +299,8 @@ Then surface a paste-ready rename so the resumed session is legible in the sessi
 (Paste it into Pi's command input and press Enter. In Claude Code, use `/rename {slug}` instead.)
 ```
 
+Follow [name-session](../name-session/SKILL.md) for client detection only. **Unknown client:**
+label both Pi `/name {slug}` and Claude Code `/rename {slug}` rather than choosing one.
 Skip the rename line only if the current session is already named for this slug.
 
 Then offer the right follow-up based on `exists`:
@@ -324,6 +330,13 @@ Options (use `AskUserQuestion`):
 
 If `superseded-by` is empty (or the newer handoff is itself pruned, `exists=N`), skip this prompt.
 
+**Recovery preconditions.** First verify the owning repo, path and branch from current evidence;
+use its Git wrapper when required. A handoff is not proof that deleted commits survive. If the
+branch is missing, require an explicit base SHA identified from surviving refs/history and confirmed
+by the user before creating anything. `{base-sha}` below is that verified value, never implicit HEAD.
+If it cannot be established, stop recovery and offer context-only reading. Preview the exact
+checkout/worktree command and require confirmation; unknown status is not a clean checkout.
+
 **Second, assess this checkout as a landing spot.** The original worktree is gone, so you'll resume either *here* (the current checkout) or in a *fresh worktree*. Gather the facts in one call:
 
 ```bash
@@ -334,7 +347,8 @@ Read four signals from the output:
 - **on-branch** — `HEAD` (line 1) already equals `{branch}`.
 - **clean** — `git status --porcelain` printed nothing (no uncommitted work to disrupt by switching branches).
 - **branch-exists-locally** — `git branch --list` printed a line for `{branch}`.
-- **fresh worktree** — `HEAD` matches `worktree-*`, the auto-generated name `claude -` gives a throwaway worktree. This is the strong signal that the user spun up *this* checkout specifically to host the resume.
+- **possible temporary checkout** — a `worktree-*` branch name is a naming hint, not proof that
+  this checkout is disposable or was opened for this handoff. Ask the user before considering adoption.
 
 Then branch on them:
 
@@ -344,8 +358,9 @@ Then branch on them:
 **Already on `{branch}` here** (`{pwd}`). No worktree action needed — resume from this checkout.
 ```
 
-**clean + fresh worktree** (the `claude -` case) → the user opened this worktree *for* this handoff, so adopting the branch in place is the whole point — don't push a nested worktree. The adopt command depends on `branch-exists-locally`:
-- missing → `git checkout -b {branch}` (create it here — the usual case when wrap-up predated the branch or it was deleted).
+**clean + user-confirmed adoption target** → offer in-place adoption without inferring consent from
+its branch name. The adopt command depends on `branch-exists-locally`:
+- missing → `git checkout -b {branch} {base-sha}` (only after the recovery preconditions above).
 - exists → `git checkout {branch}`.
 
 Ask via `AskUserQuestion`:
@@ -353,7 +368,7 @@ Ask via `AskUserQuestion`:
 > Original worktree `{cwd}` is gone, but `{pwd}` looks like a fresh worktree (`{HEAD}`) you opened to resume here. Adopt `{branch}` in this checkout?
 
 Options:
-- **Adopt here (recommended)** — runs `git checkout -b {branch}` (or `git checkout {branch}` if it already exists). No second worktree.
+- **Adopt here (recommended)** — runs `git checkout -b {branch} {base-sha}` (or `git checkout {branch}` if it already exists). No second worktree.
 - **Separate worktree** — fall through to the worktree-creation flow below.
 - **Stay as-is** — leave the branch alone; just resume reading from here.
 
@@ -373,7 +388,7 @@ Offer to recreate the worktree. Compute the proposed values:
 
 - `{worktree-path}` = the recorded cwd if its parent directory still exists on disk; otherwise `{pwd}/../worktrees/{basename of recorded cwd}`. If the basename is empty or generic (`worktrees`, `.`), use `{topic-slug}` from the filename instead.
 - `{branch}` = the branch parsed from the handoff (Branch column).
-- The `git worktree add` form depends on `branch-exists-locally` (from the assessment above): an existing branch is *checked out* into the new worktree (`git worktree add {path} {branch}`); a missing branch must be *created* with it (`git worktree add -b {branch} {path}`). Plain `git worktree add {path} {missing-branch}` errors — that's the failure to avoid.
+- The `git worktree add` form depends on `branch-exists-locally` (from the assessment above): an existing branch is *checked out* into the new worktree (`git worktree add {path} {branch}`); a missing branch must be created from the verified explicit base (`git worktree add -b {branch} {path} {base-sha}`). Plain `git worktree add {path} {missing-branch}` errors — that's the failure to avoid.
 
 Ask via `AskUserQuestion`:
 
@@ -381,14 +396,14 @@ Ask via `AskUserQuestion`:
 
 Options:
 - **Create worktree** — runs the `git worktree add` form matching the branch's existence (see above) in the current repo.
-- **Resume here** — stay in the current checkout (`{pwd}`); user can adopt the branch themselves (`git checkout -b {branch}` if it doesn't exist yet, else `git checkout {branch}`).
+- **Resume here** — stay in the current checkout (`{pwd}`) for context only; no branch mutation.
 - **Show command** — prints the `git worktree add` invocation without running.
 
 On **Create worktree**, pick the form by `branch-exists-locally`:
 
 ```bash
 git worktree add "{worktree-path}" "{branch}"        # branch exists locally — check it out
-git worktree add -b "{branch}" "{worktree-path}"     # branch missing locally — create it with the worktree
+git worktree add -b "{branch}" "{worktree-path}" "{base-sha}" # missing branch — verified explicit base
 ```
 
 If the command succeeds, render:
@@ -404,7 +419,8 @@ If it fails (path already exists, dirty index, …), surface the stderr and fall
 On **Resume here**:
 
 ```markdown
-**Resuming in current checkout** (`{pwd}`). If you need the branch, run `git checkout -b {branch}` (or `git checkout {branch}` if it already exists) — the pruned worktree's commits are still in the repo.
+**Reading context in current checkout** (`{pwd}`). No branch was changed; recovery of the original
+work requires surviving ref/base evidence, not just recreation of its old name.
 ```
 
 On **Show command**, print both forms and say which to run:
@@ -413,7 +429,7 @@ On **Show command**, print both forms and say which to run:
 **Worktree pruned.** Original location `{cwd}` no longer exists. To recreate it yourself:
 
 ```bash
-git worktree add -b {branch} {worktree-path}   # if {branch} doesn't exist locally yet — create it
+git worktree add -b {branch} {worktree-path} {base-sha} # missing branch; verified explicit base
 git worktree add {worktree-path} {branch}      # if {branch} already exists — check it out
 ```
 ```
@@ -422,7 +438,7 @@ git worktree add {worktree-path} {branch}      # if {branch} already exists — 
 
 ```markdown
 ---
-**Next:** act on the resume block's *Suggested next step*. Run `/landscape` for a fresh orientation if more than a day has passed since the handoff was written.
+**Next:** confirm the saved task is still current before acting on its suggested step; use `/landscape resume` for fresh orientation.
 ```
 
 ## Failure modes
@@ -431,7 +447,8 @@ Each step is independent — a failure in one should not block the others.
 
 - **`~/.claude/handoffs/` missing**: render `_No handoffs directory yet. Run /wrap-up at the end of a session to create one._` and stop.
 - **Empty directory**: render `_No handoffs saved yet._` and stop.
-- **Not in a git repo**: render the other-repos summary (everything is "other"); skip the pickable table and step 4.
+- **Not in a git repo**: retain directory-matched rows when `CURRENT-REPO-KIND == dir`; they remain
+  loadable. Skip Git recovery, not the picker. Only `CURRENT-REPO == NONE` prevents matching.
 - **Picked handoff is unreadable**: report the path and suggest `cat` — don't fabricate content.
 - **Offline / remote unreachable** (`git ls-remote` fails or times out): branch-state degrades to local-only — `merged` is still detected against the local default tip, but branches with no local ref report `unknown` rather than a false `gone`. The skill keeps working; the stale group in §3b just shrinks. Don't retry the network call.
 - **`gh` missing, unauthenticated, or timed out**: PR detection degrades — every `pr-state` reports `unknown` and the Status/Archive columns fall back to `branch-state`, plus `beads-done` (which is local and unaffected). No error, no retry. The cost: squash-merged branches reappear as `⚪ branch gone` (`keep?`) rather than `✅ merged` (`safe`), unless a closed bead or §1a Jira-Done still marks them done.
@@ -444,7 +461,8 @@ Each step is independent — a failure in one should not block the others.
 - File naming convention: `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
 - Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after the recent grace window (superseded rows are the sole immediate exception); §3d separately offers older signal-less rows for explicit judgement, and §3e offers only eligible `safe` workspace-member rows through per-repo confirmation. No flow touches live/open-PR work automatically or sweeps anything by itself.
 - **"Done" detection** has three independent sources, each ground truth in its own domain: a **merged PR** (matched by branch *or* by a number recorded in the body — the latter rescues trunk-parked handoffs that recorded `main`), **all referenced beads closed** (local `bd`, works even on trunk repos with no PR), and a **Jira ticket in the Done category** (§1a, skill-resolved). Any one is enough; together they cover the cases — trunk-based completion, post-merge wrap-ups on `main`, ticket-only closure — that the old branch/PR-only check reported as `🟢 live`.
-- Supersede classification comes from `list.sh`, not the model — same source `/wrap-up` uses for its at-save archive offer, so both skills agree on what supersedes what. Reasons: `branch` > `slug` > `collision`; ticket/cwd overlap is intentionally excluded.
+- Supersede classification comes from `list.sh`, shared with `/handoffs-tidy`; wrap-up does not
+  perform an at-save archive sweep. Reasons: `branch` > `slug` > `collision`; ticket/cwd overlap is excluded.
 - Liveness (branch-state + PR) is opt-in via `--check-branches` and runs in the current repo plus each discovered workspace member; unrelated repos remain `unknown`. PR state (from `gh`, auto-enabled when present) is ground truth and overrides the local branch-state heuristic; crucially it's the only signal that catches a **squash-merge**, where the feature branch is never an ancestor of the default tip. Liveness is deliberately separate from supersede: superseded = "a newer handoff continues this" (low-regret); merged-PR = "the work shipped" (low-regret); stale = "the branch is dead/abandoned and nothing supersedes it" (may be the only record — higher regret).
 - Repo matching uses `remote.origin.url` first, then realpath of git-common-dir. Linked worktrees of one repo share the same key. Two independent clones with the same origin URL collapse to one row.
 - **`.claude` symlink unification** has two flavours:

@@ -20,16 +20,16 @@
 | develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | eas-build-error | Show the status and errors from the latest EAS build |
-| handoffs | Browse handoff files saved by /wrap-up and pick one to resume. Lists this repo's handoffs in full, summarises other repos by count. Companion to /wrap-up |
-| handoffs-tidy | Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes. |
+| handoffs | Browse/load current-repo and workspace-member handoffs, with optional confirmed archiving and checkout recovery; never executes saved work merely by loading |
+| handoffs-tidy | Review completion/staleness candidates and separate uncertain/aged groups; archive explicit selections, never delete or resume work |
 | image-studio | Generate, compare, refine, and export image assets from one creative brief; Recraft-first with explicit, provider-neutral alternatives |
 | implement-solution | Load before implementation-ready coding with interacting behavior, state/error paths, or local design trade-offs, including when ongoing work becomes complex; premium judgment and proportional TDD, not mechanical-edit ceremony |
 | jira-comment | Draft and post a terse house-style comment on a Jira ticket after confirmation |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
-| landscape | Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, in-progress/ready beads, and working-copy state in one glance |
+| landscape | Read-only full/quick orientation or compact local `resume` mode; suggests resume-or-next without loading handoffs or claiming work |
 | model-update-check | Read-only audit of Pi routing and configured second-opinion panel model IDs against the active Pi catalog and public live metadata; reports evidence-backed update candidates without editing config |
 | name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
-| next | Globally rank ready beads across validated workspace stores, isolating failed sources with local fallback. Modes: `safe`, `sprint`, `task`, `bug`, `quick` |
+| next | Rank ready beads across validated stores; list read-only or select and claim one task, then stop without implementing it |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
 | pedantic-review | Read-only craft and test-design review; requirements, coverage sufficiency, execution, and fixes stay with their separate owners |
 | pi-spend | Read-only estimate of Pi model cost by provider and model for today, this week, this month, and all recorded history, separating metered credit usage from flat-rate subscription usage |
@@ -70,7 +70,7 @@
 | watch-review-requests | Watch direct inbound GitHub review requests, run one bounded repository-qualified review at a time, and pause for private, draft-only, deferred, or separately confirmed external dispositions |
 | watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | watch-telemetry | Query opt-in local watcher-execution counters with partial coverage, fixed privacy-safe fields, and bounded active retention; explicitly enable, disable, or prune collection |
-| wrap-up | End-of-session handoff — today's commits/PRs/beads, working-copy hygiene warnings (esp. for worktrees, incl. worktree-only settings drift), and a paste-ready resume block for the next session |
+| wrap-up | Report session activity and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |
 | yesterday | Alias for `/today --previous-workday`: objective previous-workday recap; selects Friday when run on Monday |
 
 ## Model routing

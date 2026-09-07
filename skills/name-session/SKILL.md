@@ -1,11 +1,11 @@
 ---
 name: name-session
 description: Derive a conventional session name from the branch ticket, active bead, open PR, and current work, then print the paste-ready rename command for the active client. Use when a session's auto-name is generic.
-allowed-tools: "Bash(git rev-parse:*), Bash(git branch:*), Bash(bd list:*), Bash(gh pr view:*)"
+allowed-tools: "Read,Bash(git rev-parse:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(bd -C * show:*),Bash(gh pr view:*)"
 model-tier: standard
 model: sonnet
 effort: low
-version: "0.1.1"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -14,6 +14,11 @@ author: "flurdy"
 Build a `<scope>-<descriptive>` name from the current context and emit the active client's ready-to-paste rename command.
 
 ## Important — client command and limitation
+
+Harness selection comes from the current tool surface.
+Never use the shell, PATH, filesystem, process list, or installed binaries to detect another client.
+Treat the client as unknown when that surface does not conclusively identify Pi or Claude Code.
+These rules are shared with `/wrap-up` and `/handoffs`; command printing is a proposal, not execution.
 
 - It **cannot rename the session for you.** Slash commands emitted in model output are inert text; the user must enter the command in the client's command input.
 - **Pi:** use `/name {session-name}`. Never suggest `/rename` or `/settings name` in Pi.
@@ -37,18 +42,20 @@ Examples: `AB-1505-rebase-pr-status`, `bd-412-flaky-test-hunt`, `pr-6563-review-
 
 ## Instructions
 
-### 1. Gather scope signals (parallel)
+### 1. Gather scope signals
 
-```bash
-git rev-parse --abbrev-ref HEAD
-bd list --status=in_progress 2>/dev/null
-```
+Read the current branch with `git rev-parse --abbrev-ref HEAD`, using the repository wrapper where
+required. Extract a ticket with `[A-Z]+-\d+`; detached HEAD is not a branch/ticket signal.
 
-- Extract a Jira ticket from the branch by matching `/[A-Z]+-\d+/`.
-- If no ticket and exactly one bead is in progress, use its ID.
-- If neither and there's an obvious PR in play this session, run `gh pr view --json number,title` to grab the number. Don't fetch a PR speculatively — only if the session is clearly about one.
+Without a ticket, prefer the bead explicitly identified as this session's work. If tracker validation
+is needed, run `~/.agents/skills/next/scripts/next-select resolve <selector>` and use the returned
+owner for `bd -C <directory> show <id>`. Unavailable/ambiguous ownership drops that signal; do not scan
+all in-progress claims and assume one belongs here. Existing known session context needs no fetch.
+If neither applies and a PR is clearly this session's topic, use its known identity or a scoped
+`gh pr view --json number,title`. No speculative PR request.
 
-Fail soft: any missing signal just drops to the next priority. Not in a git repo → skip straight to a descriptive-only name.
+Fail soft: unknown evidence stays unknown. Outside Git, known session context can still name the
+work; otherwise use the descriptive part alone. No tracker, Git, or client state is changed.
 
 ### 2. Derive the descriptive half
 
@@ -56,13 +63,14 @@ From the **current conversation**, pick the ≤4-word kebab phrase that best nam
 
 ### 3. Emit the rename command
 
-For Pi, render exactly:
+Compute `{session-name}` first: `{scope}-{descriptive}` when scope exists, otherwise just
+`{descriptive}` with no leading hyphen. For Pi, render exactly:
 
 ```markdown
 **Proposed session name** — scope from {where the scope came from}, descriptive from this session:
 
 ```
-/name {scope}-{descriptive}
+/name {session-name}
 ```
 
 Paste it into Pi's command input and press Enter.

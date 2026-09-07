@@ -1,18 +1,18 @@
 ---
 name: handoffs-tidy
-description: Prune handoffs that no longer point at live work — superseded, done, stale, or old and wholly unclassified — and archive only what you confirm so the /handoffs picker stays focused. Archives, never deletes.
+description: Review handoffs for confirmed archiving: superseded, done or stale candidates, plus separate assisted review of old/uncertain rows. Age alone never proves completion. Archives files, never deletes or resumes work.
 allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: low
-version: "0.5.0"
+version: "0.6.0"
 author: "flurdy"
 ---
 
 # Handoffs-tidy — retire handoffs that no longer point at live work
 
-Keep `~/.claude/handoffs/` focused on **live** threads. Handoffs go stale three ways, and the
-common one isn't supersede:
+Keep `~/.claude/handoffs/` focused through four review groups. Only the first three have
+completion/staleness evidence; the fourth is explicitly uncertain:
 
 - **Superseded** — a newer handoff continues the same thread (same branch / topic / same-day re-wrap).
 - **Done** — the work shipped: its PR merged, every referenced bead is closed, the branch landed, or
@@ -29,7 +29,8 @@ files move to `~/.claude/handoffs/archive/` and stay greppable.
 Run it **ad-hoc** whenever the picker feels noisy, or right after a `/wrap-up`. It is the standalone
 twin of `/handoffs`'s opt-in archive step (§3b): same `list.sh` classification, same archive flow —
 shared verbatim via `REFERENCE.md` — but with no full table, no picker, and no resume step. It only
-ever offers candidates; it never touches a live or open-PR row.
+ever archives explicit selections. Automatic candidate groups exclude live/unknown rows;
+§Trunk-review and §Age-review separately allow assisted judgement of uncertain rows, never by age alone.
 
 > **Earlier versions only found _superseded_ handoffs** (it ran `list.sh` with no flags and looked at
 > one field). That's why it rarely found anything — supersede is the narrowest signal. From v0.2.0 it
@@ -114,15 +115,15 @@ for `needs-review` or step 5c for `needs-age-review`.
 - **Status**: the §Status glyph for the row.
 - **Group**: `Superseded` / `Done` / `Stale`. A row that is both superseded and otherwise archivable
   goes in **Superseded** (the safest reason to archive). Order the table Superseded → Done → Stale.
-- **Archive?**: pre-suggest `✅` for `safe` (Superseded, Done) and leave `☐` for `keep` (Stale) —
-  Stale rows may be the only record of an abandoned thread.
+- **Archive?**: label `safe` as a recommendation and `keep` as requiring care, not selected choices.
+  Stale rows may be the only record of an abandoned thread; confirmation follows the shared spec.
 
 ### 5. Confirm + archive
 
 Run the archive flow exactly as REFERENCE §Archive-flow specifies: prompt with `AskUserQuestion`
 (multiSelect, one option per candidate, grouped and described per that section), then archive the
-selected filenames in one `archive.sh` call and parse `---ARCHIVED---` / `---SKIPPED---`. Pre-check
-`safe` candidates; leave `keep` unchecked. Surface every `---SKIPPED---` line verbatim with its
+selected filenames in one `archive.sh` call and parse `---ARCHIVED---` / `---SKIPPED---`. Follow
+REFERENCE prompt bounds; leave all choices unselected. Surface every `---SKIPPED---` line verbatim with its
 reason. Never offer a `🟢 live`, `🟠 PR open`, or `unknown` row. `archive.sh` only moves — never deletes.
 
 ```markdown
@@ -173,7 +174,8 @@ Skip the step entirely when the gate doesn't pass.
 ### 6. Done
 
 If nothing was archivable or reviewable (steps 4–5d), or the user selected none, say so plainly and stop. This command
-never touches live work and never deletes — at worst it's a no-op.
+never executes the saved work or deletes files. Uncertain handoffs are archived only through the
+separate assisted confirmation; no selection means no mutation.
 
 ## Failure modes
 

@@ -1,11 +1,11 @@
 ---
 name: wrap-up
-description: End-of-session handoff — summarise today's commits, PRs, and beads, warn about uncommitted/unpushed work (across all repos in a multi-repo workspace, and in worktrees), and emit a paste-ready resume block. Run before leaving the client.
-allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(bd update:*), Write, AskUserQuestion, Skill(tidy-settings), mcp__jira__jira_get"
+description: Summarise session activity and working-copy risks, then save a resume handoff. Reports tracker/settings drift without repairing it; new files auto-save, overwrites need confirmation. Run before leaving the client.
+allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Read, Write, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.12.0"
+version: "0.13.0"
 author: "flurdy"
 ---
 
@@ -23,17 +23,16 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 
 1. Activity roundup for today (commits, PRs created/merged, beads closed).
 2. Working-copy hygiene — flag uncommitted, unpushed, or worktree-only state.
-3. Settings drift — flag permissions living only in a worktree's `.claude` settings (lost on prune) and offer `/tidy-settings` to promote them.
+3. Settings/tracker drift — report risks and name their separate review workflow; do not repair them.
 4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
 5. Auto-save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` when that file is free; prompt only on collision/overwrite or when choosing a different name.
-6. Optional: archive older handoffs this one supersedes (same branch/topic) so the picker stays focused.
+6. Optionally point to `/handoffs-tidy` for a separately requested archive review; do not invoke it.
 7. Reminder to leave the client manually with its own command — the skill cannot exit for you.
 
 ## Important — client-specific commands
 
-Follow `/name-session`'s client-selection convention. Harness selection comes from the current tool surface.
-Never use the shell, PATH, filesystem, process list, or installed binaries to detect another client.
-Treat the client as unknown when that surface does not conclusively identify Pi or Claude Code.
+Follow `/name-session`'s client-selection convention. Read [name-session](../name-session/SKILL.md)
+for detection only; do not invoke its scope lookup during wrap-up.
 
 - **Pi:** use `/quit`. Never recommend `/exit` in Pi.
 - **Claude Code:** use `/exit`.
@@ -72,7 +71,9 @@ If `---GIT-COMMON-DIR---` and `---GIT-DIR---` differ, the cwd is a **linked work
 
 Capture `---REPO-ROOT---` as `{repo-root}` for the resume block in §4. It's the stable identity `/handoffs` uses to group sessions per project — independent of which worktree wrote the handoff, and resilient to the worktree being pruned later.
 
-**If `{branch}` equals `---DEFAULT-BRANCH---` _and_ the repo has linked worktrees (>1 `---WORKTREES---` entry), the cwd is parked on the trunk.** That branch almost never holds the session's work — it usually lived on a feature branch in another worktree, and recording `main` would send `/handoffs` hunting for a PR that isn't on the trunk. Flag it here; §4 reconciles against today's actual activity before writing the resume block. **On a single-checkout repo (no linked worktrees), committing to the trunk is normal — skip the reconciliation entirely.**
+Default to the current cwd/branch, including trunk-based repositories with retained worktrees.
+Other worktrees do not prove this session belongs elsewhere. §4 considers an alternative only when
+this conversation identifies unfinished work there; a completed temporary branch is not a resume target.
 
 Render:
 
@@ -105,7 +106,8 @@ It emits delimited sections:
 - `---BEADS-STATUS---` — `OK` / `NO_BD` / `NO_BEADS_IN_REPO`.
 - `---BEADS-IN-PROGRESS---` — output of `bd list --status=in_progress` (state being left for tomorrow).
 - `---BEADS-STALE-DAYS---` — the idle grace period in days (`WRAP_UP_STALE_DAYS`, default 7). §3a names it in the prompt.
-- `---BEADS-STALE-CANDIDATES---` — `bd list --status=in_progress --updated-before={today − STALE_DAYS}`: in-progress beads idle for the **whole grace period**, not merely "not touched today". This is §3a's candidate set. Windowing on a multi-day cutoff (rather than midnight) means a bead a parallel session set `in_progress` today, a bead you've worked over several days without committing, and a bead you touched earlier on a day of repeated wrap-ups all stay out of the candidate set — only genuinely-idle WIP surfaces.
+- `---BEADS-STALE-CANDIDATES---` — aged tracker claims selected by the helper's update-time cutoff.
+  These are §3a's report-only candidates, not proof of inactivity; session activity is unverified.
 - `---BEADS-CREATED-TODAY---` — open Beads created inside the emitted local window; the helper queries with equivalent UTC bounds and excludes closed-same-day rows so they appear only in `BEADS-CLOSED`.
 - `---BEADS-CLOSED---` — closed Beads whose closure timestamp falls inside the same UTC-normalized window.
 
@@ -208,7 +210,8 @@ Render each of the three lists only when non-empty. Combine into compact tables 
 Notes:
 - The default `bd list` output already filters out closed beads, so `BEADS-CREATED-TODAY` naturally excludes ones that were closed the same day. Those appear under "Closed today" instead — no de-duplication needed.
 - **In-progress** is the most load-bearing for resume — it's the answer to "what was I in the middle of?" Always render it first when non-empty.
-- **Epic context.** If today's beads belong to a parent epic (multi-session work), add one line after the tables: `_Epic {id}: {closed}/{total} closed — path to goal: {a} → {b} → … → closes {goal-bead}._` Derive the chain from the blocking deps (`bd show {epic}`). When one epic dominates the session, this is far more resume-useful than three flat lists — it's the "how far are we and what unblocks the finish" view. Skip it for ad-hoc, non-epic beads.
+- **Epic context.** Include already-verified parent/dependency context from this session if useful;
+  do not start a new tracker investigation to complete the handoff. Mark unknown progress unknown.
 - If all three are empty, skip the whole `### 🎯 Beads` heading. If only some are non-empty, render just the populated tables and skip the empty ones (don't show `_No created today._` placeholders — silence is shorter).
 
 ### 2. 🧠 Today's threads (model-summarised)
@@ -245,14 +248,16 @@ Render a small status block + appropriate warning:
 
 Then exactly one of the warnings below (pick the first matching rule):
 
-1. **Uncommitted changes** → `⚠️ Uncommitted work — commit, stash, or discard before leaving this client. The resume block does not preserve file diffs.`
-2. **Unpushed commits** → `⚠️ {N} unpushed commit(s) — push before leaving this client if the branch survives in a remote PR, or accept that this branch lives only locally.`
+1. **Uncommitted changes** → `⚠️ Uncommitted work — the resume block does not preserve file diffs. Review in a separate preservation task before removing this checkout.`
+2. **Unpushed commits** → `⚠️ {N} unpushed commit(s) remain local. A handoff does not publish them or authorize a push.`
 3. **Linked worktree, clean, no unpushed, no stashes** → `ℹ️ Linked worktree with no code to preserve. If you prune this worktree (`git worktree remove`), only the conversation context is lost — the auto-saved resume block below is your durable recovery path.`
 4. **Main checkout, clean** → no warning.
 
 Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSAFE---` as a footnote if any exist — easy to forget those after closing the session.
 
-**Not-yours changes.** If the working copy holds uncommitted changes you did **not** make this session — e.g. a forked or parallel session is editing the same checkout — call them out as *belonging to another session* and do **not** commit or stash them in the wrap-up. The §1 commit-author filter and your own conversation history tell you what was yours; anything else in `git status` is someone else's WIP to leave alone.
+**Unattributed changes.** Report changes not attributable to this session as ownership unknown,
+not automatically another session's work. Never commit, stash, discard, push, or repair any changes
+inside wrap-up. A commit author or tracker status does not establish session ownership.
 
 ### 3b. 🗂️ Multi-repo roll-up
 
@@ -297,46 +302,17 @@ Render one line per drifting file:
 
 (For a `parse-error` count, render `` `{file}` does not parse — `/tidy-settings` will diagnose `` instead.)
 
-Then offer to fix it now with `AskUserQuestion` — options: **Run /tidy-settings**, **Skip — note in resume block**.
+Add an Open-threads bullet: `{count} worktree-only permission(s) in {worktree} — separately run
+/tidy-settings before pruning`. This is report-only: do not invoke a repair skill or copy settings.
 
-- **Run /tidy-settings** → invoke the `tidy-settings` skill via the Skill tool, then resume the wrap-up at §3a. Its worktree-promotion triage is the authoritative flow — do **not** reimplement the diff or copy entries between settings files yourself.
-- **Skip** → add a bullet to §4's **Open threads**: `{count} worktree-only permission(s) in {worktree} — run /tidy-settings before pruning`.
+### 3a. 🧹 Aged tracker claims (report-only)
 
-### 3a. 🧹 Stale in-progress beads
-
-Skip this whole section if `---BEADS-STATUS---` was `NO_BD`/`NO_BEADS_IN_REPO` or if `---BEADS-STALE-CANDIDATES---` was empty.
-
-Work from `---BEADS-STALE-CANDIDATES---`, **not** the full `---BEADS-IN-PROGRESS---` list — it's already pre-filtered to beads idle for the whole grace period (`---BEADS-STALE-DAYS---`, default 7 days), so a bead updated within that window — actively worked by a parallel session, carried over several days, or touched earlier on a day of repeated wrap-ups — won't appear. For each candidate bead, check whether its ID (e.g. `bd-123`) appears in any of today's signals:
-
-- Commit subjects (§1 Commits)
-- Branch names from the worktree list (§1 Commits, second column)
-- PR titles (§1 PRs today)
-- The current branch (§0)
-
-A bead with **no match in any of those** is "stale in_progress" — moved to `in_progress` and idle for `---BEADS-STALE-DAYS---`+ days since, with no commit/branch/PR trace today. Tomorrow's `/landscape` will misreport it as live WIP. Bead hygiene matters: always flag these — don't quietly skip the section.
-
-If any stale beads exist, render (substitute the actual `{stale-days}` from `---BEADS-STALE-DAYS---`):
-
-```markdown
-### 🧹 Stale in-progress
-
-These beads are in_progress but have been idle for {stale-days}+ days, with no commits, PRs, or branch references today:
-
-| ID | Type | Pri | Title |
-|----|------|-----|-------|
-```
-
-Then prompt with `AskUserQuestion` (multiSelect, options are the bead IDs):
-
-> Demote selected beads back to `ready` so tomorrow's WIP list is honest? Skip any you genuinely intend to keep open — e.g. design work in chat only, or a long-running task still live in a parallel session.
-
-For each selected bead:
-
-```bash
-bd update {id} --status=ready
-```
-
-After any demotions, recompute the **Beads** header field in §4 so demoted IDs don't reappear as in-progress in the resume block. (Demoted beads are still worth mentioning in the open-threads bullets if relevant — they're just no longer claimed as WIP.)
+Use `---BEADS-STALE-CANDIDATES---` and `---BEADS-STALE-DAYS---`; skip when the tracker is absent
+or no candidates were returned. List the candidate IDs with their owning repository when known.
+Say: `Tracker claims not updated for {stale-days}+ days; session activity is unverified.`
+Absence from commits, branches or PRs is not proof of abandonment; private bead IDs need not appear
+in any of them. Keep current status in the handoff and name `/backlog-groom` as a separate review
+when relevant. Wrap-up does not change tracker status, close work, or claim a task.
 
 ### 4. 🧷 Resume block
 
@@ -362,9 +338,11 @@ This is the explicit "what should we call this session" cue — without it, the 
 
 > **Gate — skip this whole sub-section unless the repo has linked worktrees** (more than one `---WORKTREES---` entry from §0). With only the main checkout there is no other-worktree feature branch to recover, so just record the current branch as-is (even the trunk). The reconciliation below is worktree-specific machinery and pure noise for projects that don't use worktrees — don't run it for them.
 
-The resume block's `{branch}` and `{cwd}` default to §0's current cwd and branch. But when §0 flagged that `{branch}` equals `---DEFAULT-BRANCH---` (the cwd is parked on `main`/`master`), that branch is almost never where the session's work lived — recording it sends `/handoffs` looking for a PR on the trunk (there is none) and leaves liveness detection blind to the real feature branch.
+The resume block's `{branch}` and `{cwd}` default to §0's current cwd and branch. Preserve that
+location in trunk-based work. Only reconcile when this session has identified unfinished work in
+another checkout; worktree count, commit authorship and matching branch names do not prove ownership.
 
-When parked on the trunk, pick a better resume target from the data already gathered, in priority order:
+For that identified unfinished work, locate a possible resume target in the existing evidence:
 
 1. **Today's commits on a feature branch** — a non-default branch in §1's Commits table with commits today. Map it to its worktree path via §0's `---WORKTREES---`.
 2. **A PR created/merged today** (§1 PRs) whose head branch is a feature branch.
@@ -372,7 +350,8 @@ When parked on the trunk, pick a better resume target from the data already gath
 
 Then:
 
-- **Exactly one feature branch stands out** → record *that* branch as `{branch}` and its worktree path as `{cwd}` (set `{worktree-note}` to `(worktree at {path})` if it's a linked worktree). Surface the swap so it's visible, not silent:
+- **Exactly one confirmed session target stands out** → record that branch/cwd, with a linked-worktree
+  note when applicable. Never substitute an unrelated or already-integrated branch. Surface the change:
 
   `> Wrapped from `{cwd-on-trunk}` (on `{default-branch}`), but today's work is on `{feature-branch}` in `{feature-worktree}` — recording that as the resume location.`
 
@@ -491,7 +470,9 @@ The directory naming convention (`~/.claude/handoffs/YYYY-MM-DD-slug.md`) means 
 
 ### 5a. 🗂️ Tidy superseded handoffs → `/handoffs-tidy`
 
-The supersede-detection + archive flow has been **moved out to its own `/handoffs-tidy` command** — it was heavy to carry on every wrap-up, and pruning is a distinct intent from handing off. After saving (§5), if this handoff continues an older thread you want to retire, run **`/handoffs-tidy`** (it reuses the same `handoffs/scripts/list.sh` + `archive.sh`). Wrap-up itself no longer touches `~/.claude/handoffs/archive/`.
+Archiving belongs to a separately requested `/handoffs-tidy` run. After saving, mention that
+handoff if older context may need review; do not invoke it or inspect archive candidates here.
+Wrap-up does not touch `~/.claude/handoffs/archive/`.
 
 ### 6. Footer
 
@@ -526,16 +507,16 @@ Each section is independent — fail soft, don't block the rest.
 
 - **Not in a git repo**: skip §0 worktree detection, §1 commits, §3 hygiene. Still produce §2 threads and §4 resume block — they're the load-bearing parts.
 - **gh not authenticated**: skip the PRs sub-section, print `_GitHub CLI not authenticated — PR roundup skipped._`
-- **No Jira MCP**: omit Jira pointers from the resume block; do not fail.
+- **No Jira access**: retain known session Jira pointers and label fresh lookup unavailable; do not
+  discard established context or invent fetched evidence.
 - **No `bd` / no `.beads/`**: skip the beads sub-section and §3a silently.
-- **`bd update` fails** for a selected bead: report the error inline, keep going with the rest. Don't abort the skill — the resume block is still the primary artifact.
 - **Multi-repo roll-up (§3b) errors or finds nothing**: skip the section silently — single-repo sessions hit this normally; it's additive, not load-bearing.
 - **Settings-drift probe (§3c) empty or `python3` missing**: skip the section silently. `/tidy-settings` run by hand covers the same ground.
-- **`/tidy-settings` invocation fails from §3c**: fall back to the Skip path (note the drift in the resume block's open threads) and continue the wrap-up.
 - **Handoff save fails (§5)**: keep the resume block visible, print the attempted path and error, and continue to the footer. The generated block is still the recovery artifact even if the durable file write failed.
 
 ## Notes
 
 - This skill is intentionally *generative* in §2 and §4 — the model writes the threads and resume block from the current conversation history. The Bash fetches in §1 and §3 are mechanical guardrails so the qualitative parts are anchored in real activity rather than vibes.
-- **Stale-bead grace period.** §3a only flags in-progress beads idle for `WRAP_UP_STALE_DAYS` days (default 7), not merely "untouched today". This is what stops repeated same-day wrap-ups — and multi-day work-in-chat — from nagging you to demote beads that are still live. Tighten it (`export WRAP_UP_STALE_DAYS=3`) if you want drift caught sooner, or loosen it further if even weekly prompts are too eager. A non-numeric value falls back to 7.
+- **Tracker age window.** `WRAP_UP_STALE_DAYS` defaults to 7; a non-numeric value falls back to 7.
+  This changes report filtering only, never the meaning of a claim or permission to demote it.
 - Don't suggest `git stash` as a way to "preserve" work for tomorrow without committing — stashes evaporate from memory faster than commits, and worktree pruning takes them with it. Prefer a WIP commit on a throwaway branch if there's something to save.

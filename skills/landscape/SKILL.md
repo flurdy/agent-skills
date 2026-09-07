@@ -1,11 +1,11 @@
 ---
 name: landscape
-description: Morning catch-up view — assigned Jira tickets and recent discussion, open PRs, current working copy state, and (if present) in-progress and ready beads in one glance. Run at session start to orient.
-allowed-tools: "Bash(git:*), Bash(gh:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get"
+description: Read-only session orientation. Full/quick views show Jira, PRs, beads and working-copy state; resume mode gives a compact local resume-or-next recommendation without loading a handoff or claiming work.
+allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-bd:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.12.1"
+version: "0.13.0"
 author: "flurdy"
 ---
 
@@ -18,8 +18,56 @@ Show a consolidated landscape of where you are and what to do next, pulling from
 ```bash
 /landscape          # Full landscape
 /landscape quick    # Skip PR details (faster, Jira + working-copy + beads-if-present only)
+/landscape resume   # Compact local resume-or-next orientation; no Jira or GitHub requests
 /loop 30m /landscape quick   # Unattended refresh through the day (Claude Code); pair with /watch-prs for CI
 ```
+
+## Resume mode
+
+Select the mode before any fetch. For `/landscape resume`, run only the three read-only helpers
+below, read [handoff fields](../handoffs/REFERENCE.md#fields--reading-the-output), render the compact
+summary, then return. Do not enter the full/quick procedure. No Jira or GitHub requests, liveness
+network probes, settings checks, background loops, or automatic follow-up workflow invocations.
+
+```bash
+~/.agents/skills/handoffs/scripts/list.sh --summary-only
+~/.agents/skills/next/scripts/next-bd --in-progress --avoid-busy
+~/.agents/skills/landscape/scripts/working-copy.sh
+```
+
+Use fresh output every time. The working-copy line describes only the cwd repository and its
+worktrees, not a full workspace Git audit. `next-bd` owns ranking, readiness, owner identity, busy
+filtering and source diagnostics; use its emitted order without a separate ranking algorithm.
+Retain repository qualifiers in workspace candidates/claims. `CURRENT-REPO-LIVE` is an offline
+eligibility hint, not proof of session activity. Member counts are raw/unclassified, not live counts.
+
+Do not load or archive a handoff, create/recover a worktree, change tracker state, or start coding.
+A failed/missing helper or malformed section is unavailable, never an empty-success signal. Retain
+healthy sources; summarize unavailable source names in one diagnostics line and point to the full
+owner for details. Missing optional tools do not authorize installation or authentication.
+
+Output at most **15 lines**, including headings/blank lines. Do not reproduce the full helper tables.
+Each field below stays one line: sanitize embedded newlines in labels, show at most three recent
+handoff slugs and three owner-qualified claim IDs, and use `+N more` for the rest. All tracker claims
+have session activity unverified. No full handoff content is loaded by this mode.
+
+```markdown
+## Resume or next
+Working copy: {cwd repo / branch / dirty / ahead / other-worktree warning, or unavailable}
+Recent handoffs: {up to 3 eligible slugs with branch; +N more / none / unavailable}
+Workspace handoffs: {raw count, unclassified / none / unavailable}
+Tracker claims: {up to 3 owner-qualified IDs; +N more / none / unavailable}; activity unverified
+Ready: {first owner-qualified candidate and title / none / unavailable}
+Sources: {unavailable/partial sources, or local snapshot; remote liveness not checked}
+**Next:** {one recommendation, never an action taken}
+```
+
+Recommendation order: unresolved working-copy risk → inspect that risk; eligible current-repo
+handoff on the current branch (or newest eligible handoff) → `/handoffs`; claims → inspect the
+identified claim rather than assuming it belongs to this session; unclassified member handoffs →
+`/handoffs`; ready work → `/next safe`; otherwise `/triage`. When relevant evidence is unavailable,
+recommend resolving that gap instead of declaring there is no work. Recommendations carry no
+selection indexes or automatic claim; `/handoffs` owns loading/recovery and `/next` owns claiming.
 
 ## What It Shows
 
@@ -35,7 +83,7 @@ Each block is independent — if one source fails, the others still render.
 
 ## Instructions
 
-> **MUST re-fetch on every invocation.** Each `/landscape` run MUST execute every fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `beads.sh`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
+> **MUST re-fetch on every invocation.** Only the full/quick modes follow this procedure; resume mode returns above. Each full/quick run MUST execute every applicable fetch from scratch — `date`, the Jira MCP query, the `gh-pr-list-*` and `gh-pr-details.sh` scripts, `beads.sh`, and `working-copy.sh`. NEVER reuse output from a previous run in the same session and NEVER extrapolate timestamps. State changes (PR merges, new approvals, ticket transitions) happen between runs; reusing stale tables has caused real merges to be missed in `/pr-status` and the same risk applies here.
 >
 > **MUST use the dedicated helper scripts.** Never construct ad-hoc `bd …` or `git …` shell pipelines for this skill. Specifically: do NOT chain `command -v bd` probes with `bd list … && …` or `… || bd list --ready` inside a single Bash call. Always invoke `~/.agents/skills/landscape/scripts/beads.sh` instead — it handles probing, repo gating, and listing internally. Likewise, do NOT hand-walk sibling service repos with your own `for … git -C …` loop — always go through `~/.agents/skills/wrap-up/scripts/multirepo.sh` (§4b), which handles workspace detection and per-repo state. Inline chaining bypasses the per-script permission allowlist and produces noisy permission prompts.
 
@@ -155,8 +203,9 @@ Output sections (delimited by `---<NAME>---`):
 - `---IN-PROGRESS---` — output of `bd list --status=in_progress` (only if `STATUS=OK`)
 - `---READY---` — JSON array from `next-bd --json` (or plain text from `bd list --ready` fallback) (only if `STATUS=OK`)
 
-If `STATUS` is `NO_BD`, render `_Beads not installed — skipping._` and stop.
-If `STATUS` is `NO_BEADS_IN_REPO`, render `_No beads in this repo._` and stop.
+If `STATUS` is `NO_BD`, render `_Beads not installed — skipping._` and skip this block only.
+If `STATUS` is `NO_BEADS_IN_REPO`, render `_No beads in this repo._` and skip this block only.
+Continue to Working copy; a missing tracker must not end orientation.
 Otherwise render the tables below.
 
 #### In-progress beads
@@ -169,6 +218,7 @@ Otherwise render the tables below.
 
 - Include a **Labels** column. Show `—` if none.
 - If no in-progress beads: show `_No in-progress beads._`
+- These are tracker claims; session activity and ownership are unverified, not implied by status.
 
 #### Ready beads — sorted by sprint
 
@@ -200,7 +250,8 @@ For each ticket's `sprint` array, pick the **active** sprint (first with `state=
 |---|----|-----|------|------|--------|--------|-------|
 ```
 
-- `#` is the picker index `1-N`.
+- `#` is display order, not a selectable `/next` index (the rows were sprint-sorted).
+  To start a task, suggest `/next <owner-qualified selector>`, never claim it from landscape.
 - `Jira` column: markdown link `[KEY](https://yourorg.atlassian.net/browse/KEY)`. Show `—` if no Jira key.
 - `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`) — strip the project prefix from sprint names like `"PROJ Sprint 31"`. Show `—` if no sprint or no Jira.
 - `Status` column: Jira status. Show `—` if no Jira.
@@ -382,7 +433,8 @@ After all blocks render, add a short footer with a concrete next step, picked fr
 Once those "finish / unblock" actions are clear, the suggestion becomes a **pick-what-to-work-on** decision. This is the morning "resume a handoff or start fresh?" question — arbitrate it here rather than leaving the user to choose between `/handoffs` and `/next`. Use the handoff signals from §4 (`current_repo_recent_live` and the `---CURRENT-REPO-LATEST---` `{slug}|{branch}|{date}` line):
 
 - If a recent live handoff is on the **current branch** (its `{branch}` equals `---BRANCH---`, which in workspace-root mode is the 📍 row's branch — handoffs are recorded per repo, so this stays the cwd repo's branch either way) → strongest resume signal: you're already sitting on its branch and it carries the open threads + suggested next step the bare branch doesn't. Suggest `Resume {slug} — /handoffs`.
-- If exactly one in-progress bead **and no** current-branch handoff → suggest resuming the bead (show the ID).
+- If exactly one in-progress bead **and no** current-branch handoff → suggest inspecting that claim
+  (show its owning repository and ID); tracker status is not permission to take it over.
 - If nothing decisive above but a recent live handoff exists (`current_repo_recent_live > 0`) → **lead with the handoff and name the fallback in one sentence**, e.g. `Resume {slug} (last session's thread) via /handoffs — or /next safe for fresh work.` A warm thread beats a cold start, but the user keeps the choice.
 - If no live handoff and nothing in progress but ready beads exist → suggest `/next`.
 - Otherwise → suggest `/triage` or pulling a Jira ticket.

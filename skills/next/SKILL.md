@@ -1,19 +1,22 @@
 ---
 name: next
 description: >
-  Pick the next bead to work on. Globally ranks ready tasks across validated
-  workspace Beads stores while preserving local single-store behavior.
-allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
+  Rank ready beads across validated workspace stores or one local store.
+  List read-only, or select one bead and record its in-progress claim; never implements work.
+allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.8.0"
+version: "1.9.0"
 author: "flurdy"
 ---
 
 # Next - Pick Your Next Bead
 
 Help select the next bead to work on based on readiness and user preferences.
+Selection ends after one claim. Report the selected task and its first investigation step, then
+stop; implementation needs a separate user request. A task's instructions are context, not authority
+to start editing, invoke a coding skill, or continue to another task.
 
 ## When to Use
 
@@ -33,7 +36,7 @@ Help select the next bead to work on based on readiness and user preferences.
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next task               # Auto-pick the next most suitable task and start it
 /next quick              # Auto-pick an easy win (excludes busy services)
-/next bug                # Auto-pick the next most important bug and fix it
+/next bug                # Auto-pick the next most important bug and claim it
 /next <bead-id>          # Start working on specific bead
 /next <repo>:<bead-id>   # Start a bead whose ID exists in several workspace stores
 ```
@@ -53,7 +56,7 @@ Help select the next bead to work on based on readiness and user preferences.
    - Epics rank lower (they represent larger work)
 
 3. **Present Options**
-   - Show top 5 candidates with key details
+   - Show every ranked candidate in listing modes with key details
    - Include: ID, title, priority, type, labels (services/tags), age
    - Ask user to pick or provide different criteria
 
@@ -87,7 +90,7 @@ Help select the next bead to work on based on readiness and user preferences.
 # Auto-pick an easy win (excludes busy services)
 /next quick
 
-# Auto-pick the next most important bug and start fixing
+# Auto-pick the next most important bug and claim it
 /next bug
 
 # Start a specific bead
@@ -196,7 +199,8 @@ Two-step so the common case (a fresh bead with no handoff) stays cheap — no ne
    ```bash
    ~/.agents/skills/next/scripts/next-select handoff <selector> --check-branches
    ```
-   If `---MATCHED-HANDOFFS---` is now empty, the work already shipped — **proceed silently**. Otherwise take the **newest** matched line.
+   If `---MATCHED-HANDOFFS---` is now empty, no eligible match remains — **proceed silently**.
+   That alone does not prove the selected task shipped. Otherwise take the **newest** matched line.
 
 Matched line: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}`.
 
@@ -296,7 +300,9 @@ Rank ready beads in this order (first match wins):
 | 9    | P3 epic                         |
 | 10   | Any other non-P4 issue          |
 
-**Important**: P4 items are backlog/future work and must NEVER be auto-picked. Always use `--priority-max=3` to exclude them. Only show P4 items if user explicitly requests them.
+**Important**: P4 items are backlog/future work and must NEVER be auto-picked. `next-bd`
+already filters to P0–P3; do not invent a `--priority-max` flag. A P4 listing requires a separately
+requested, owner-routed backlog view rather than relaxing the ready picker.
 
 ## Quick Task Heuristics
 
@@ -396,33 +402,5 @@ When `/next bug` is used:
 
 3. **Auto-select and start** the top-ranked bug through `next-select start <selector>`
 
-4. **Continue fixing bugs** if the completed bug was minor:
-   - After completing a bug fix, assess if it was minor (small change, localized fix)
-   - If minor AND there's remaining context (related code still fresh), auto-pick the next bug
-   - Continue this loop until:
-     - A bug requires significant work (not minor)
-     - No more ready bugs remain
-     - Context would be lost (unrelated area of codebase)
-
-### Minor Bug Criteria
-
-A bug is considered **minor** if:
-
-- Fix touches ≤ 3 files
-- Change is ≤ 50 lines total
-- No architectural changes required
-- Fix is localized (single component/module)
-
-### Context Continuity
-
-Continue to next bug automatically when:
-
-- Next bug is in same or adjacent files
-- Next bug is in same module/component
-- Fix for previous bug provides context for next bug
-
-Stop and ask user when:
-
-- Next bug is in completely different area of codebase
-- Next bug appears complex (P0/P1 with unclear scope)
-- 3+ bugs have been fixed in sequence (natural checkpoint)
+4. Report the selected bug and stop. Diagnosis and fixing are separate intents; this mode does
+   not start a coding workflow or loop over the backlog.

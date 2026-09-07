@@ -6,6 +6,15 @@ script's output, classify each handoff, and run the archive flow**. The *signals
 from `list.sh` (the `archive-class` field already encodes the safe/keep verdict after recent-retention) — this file is the
 single source for how to render and act on them, so the two skills can never drift on classification.
 
+## Prompt boundaries
+
+All archive flows below require explicit filename selections. Suggestions are not preselected
+consent. Use 2–4 options per structured question; for a single candidate offer Archive / Keep.
+For more than four candidates, use bounded batches or a plain-text filename selection with an exact
+confirmation. An abandoned prompt selects nothing. This also applies to §Trunk-review and §Age-review:
+those assisted groups may have unknown/live display status and empty archive-class. They are explicit
+exceptions to the automatic-candidate restrictions in §Archive-flow, not permission to archive by age.
+
 Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review.
 
 ---
@@ -47,6 +56,11 @@ Delimited sections:
 - `---STALE-DAYS---` — configured age floor for assisted age review (the recent-window size by default).
 - `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
+- `---MATCHED-HANDOFFS---` — emitted with `--bead` / `--ticket`: exact-token, case-insensitive
+  current-repo matches, excluding superseded/completed/inactive rows under the available evidence.
+  Fields: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}`.
+  Offline eligibility is not proof of live session ownership or remote branch state. An empty match
+  does not prove the requested task shipped; a failed lookup is not an empty match.
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
 - `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent active current-repo handoff; completed, stale, and superseded rows are excluded. (Consumed by `/landscape`; ignore here.)
 - `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_classified=N`.
