@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass
@@ -33,6 +34,8 @@ BLOCK_HOURS = ("work", "project-session", "evening")
 WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 PLAN_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 ARTIFACT_DIR = Path(".artifacts") / "plan-day"
+NEXT_SCRIPTS = Path.home() / ".agents" / "skills" / "next" / "scripts"
+THOUGHTBOX_SCHEMA = 1
 
 
 class PlanDayError(Exception):
@@ -225,6 +228,211 @@ def prune(stale: list[str]) -> None:
         Path(path).unlink()
 
 
+def run_process(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    try:
+        return subprocess.run(command, cwd=cwd, capture_output=True, text=True, check=False)
+    except FileNotFoundError as error:
+        raise PlanDayError(f"{command[0]} is not installed or not on PATH") from error
+
+
+def run_json(command: list[str], cwd: Path) -> Any:
+    result = run_process(command, cwd)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        raise PlanDayError(f"{' '.join(command)}: {detail}")
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        raise PlanDayError(f"{' '.join(command)}: invalid JSON output") from error
+
+
+def write_collector(workspace: Workspace, source: str, items: list[dict[str, Any]]) -> Path:
+    errors = [
+        error for index, item in enumerate(items) for error in validate_item(item, f"{source}[{index}]")
+    ]
+    if errors:
+        raise PlanDayError("\n".join(errors))
+    workspace.artifacts_dir.mkdir(parents=True, exist_ok=True)
+    path = workspace.artifacts_dir / f"{source}.json"
+    path.write_text(json.dumps(items, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def bead_item(bead: dict[str, Any], repository: str) -> dict[str, Any]:
+    labels = bead.get("labels") or []
+    specified = bool(str(bead.get("description") or "").strip()) and bool(
+        str(bead.get("acceptance_criteria") or "").strip()
+    )
+    return {
+        "source": "beads",
+        "id": str(bead.get("id", "")),
+        "title": str(bead.get("title", "")),
+        "priority": min(max(int(bead.get("priority", 2)), 0), 4),
+        "due": None,
+        "status": str(bead.get("status", "")),
+        "url": "",
+        "repository": repository,
+        "delegable": specified and bead.get("status") == "open" and "human" not in labels,
+    }
+
+
+def collect_beads(workspace: Workspace) -> dict[str, Any]:
+    root = workspace.root
+    ready = run_json([str(NEXT_SCRIPTS / "next-bd"), "--json"], root)
+    stores = run_json([str(NEXT_SCRIPTS / "next-select"), "stores"], root)
+    if not isinstance(ready, list) or not isinstance(stores, dict):
+        raise PlanDayError("next helpers returned unexpected JSON")
+    items = [bead_item(bead, str(bead.get("repository", ""))) for bead in ready]
+    diagnostics: list[str] = []
+    for store in stores.get("stores", []):
+        if not store.get("usable"):
+            diagnostics.append(f"{store.get('repository')}: {store.get('error')}")
+            continue
+        directory = Path(store["directory"])
+        active = run_json(
+            ["bd", "-C", str(directory), "list", "--status", "in_progress", "--json", "--readonly"],
+            directory,
+        )
+        items.extend(bead_item(bead, store["repository"]) for bead in active or [])
+    return {"items": items, "diagnostics": diagnostics}
+
+
+def jira_issues(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, dict) and isinstance(payload.get("issues"), list):
+        issues = []
+        for issue in payload["issues"]:
+            fields = issue.get("fields") or {}
+            issues.append(
+                {
+                    "key": issue.get("key"),
+                    "summary": fields.get("summary"),
+                    "status": (fields.get("status") or {}).get("name"),
+                    "priority": (fields.get("priority") or {}).get("name"),
+                    "duedate": fields.get("duedate"),
+                }
+            )
+        return issues
+    if isinstance(payload, list):
+        return payload
+    raise PlanDayError("jira input must be a search response or a projected issue array")
+
+
+def collect_jira(workspace: Workspace, client_name: str, source: Path) -> dict[str, Any]:
+    client = next((c for c in workspace.config["clients"] if c["name"] == client_name), None)
+    if client is None:
+        raise PlanDayError(f"pa.toml: no [[clients]] entry named {client_name!r}")
+    jira = client.get("jira") or {}
+    base_url = str(jira.get("base_url", "")).rstrip("/")
+    levels = workspace.config["priority"]["jira"]
+    try:
+        payload = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise PlanDayError(f"{source}: {error}") from error
+    items = []
+    for issue in jira_issues(payload):
+        name = issue.get("priority")
+        if name not in levels:
+            raise PlanDayError(f"pa.toml: priority.jira has no mapping for {name!r}")
+        key = str(issue.get("key") or "")
+        items.append(
+            {
+                "source": "jira",
+                "id": key,
+                "title": str(issue.get("summary") or ""),
+                "priority": levels[name],
+                "due": issue.get("duedate") or None,
+                "status": str(issue.get("status") or ""),
+                "url": f"{base_url}/browse/{key}" if base_url else "",
+                "repository": Path(client["workspace"]).name,
+                "delegable": False,
+            }
+        )
+    return {"items": items, "diagnostics": []}
+
+
+def thoughtbox_data(command: list[str], cwd: Path) -> Any:
+    result = run_process(command, cwd)
+    try:
+        envelope = json.loads(result.stdout)
+    except json.JSONDecodeError as error:
+        detail = result.stderr.strip() or "invalid JSON output"
+        raise PlanDayError(f"thoughtbox: {detail}") from error
+    if not isinstance(envelope, dict) or envelope.get("schemaVersion") != THOUGHTBOX_SCHEMA:
+        raise PlanDayError("thoughtbox returned an unsupported JSON envelope")
+    if envelope.get("ok") is not True:
+        failure = envelope.get("error") or {}
+        raise PlanDayError(f"thoughtbox: {failure.get('code', 'UNKNOWN')}: {failure.get('message', '')}")
+    return envelope.get("data")
+
+
+def collect_thoughtbox(workspace: Workspace) -> dict[str, Any]:
+    default = workspace.config["priority"]["thoughtbox_default"]
+    items: list[dict[str, Any]] = []
+    diagnostics: list[str] = []
+    resolved = 0
+    for member in (*workspace.config["clients"], *workspace.config["projects"]):
+        repo = workspace.root / member["workspace"]
+        repository = Path(member["workspace"]).name
+        try:
+            context = thoughtbox_data(
+                ["thoughtbox", "context", "resolve", "--repo", str(repo), "--json"], workspace.root
+            )
+            thoughts = thoughtbox_data(
+                [
+                    "thoughtbox", "list", "--repo", context["workingDirectory"],
+                    "--profile", context["profile"], "--json",
+                ],
+                workspace.root,
+            )
+        except PlanDayError as error:
+            if "not installed" in str(error):
+                raise
+            diagnostics.append(f"{repository}: {error}")
+            continue
+        resolved += 1
+        for thought in thoughts or []:
+            if not isinstance(thought, dict):
+                continue
+            if thought.get("kind") == "diagnostic":
+                diagnostics.append(f"{repository}: malformed thought {thought.get('id')}")
+                continue
+            if thought.get("status") != "inbox":
+                continue
+            text = " ".join(str(thought.get("text") or "").split()) or "Untitled thought"
+            items.append(
+                {
+                    "source": "thoughtbox",
+                    "id": str(thought.get("id") or ""),
+                    "title": text if len(text) <= 120 else f"{text[:117]}...",
+                    "priority": default,
+                    "due": None,
+                    "status": "inbox",
+                    "url": "",
+                    "repository": repository,
+                    "delegable": False,
+                }
+            )
+    if resolved == 0:
+        raise PlanDayError("thoughtbox: no configured workspace resolved to a context; " + "; ".join(diagnostics))
+    return {"items": items, "diagnostics": diagnostics}
+
+
+def collect(workspace: Workspace, args: argparse.Namespace) -> dict[str, Any]:
+    if args.source == "beads":
+        result = collect_beads(workspace)
+    elif args.source == "jira":
+        result = collect_jira(workspace, args.client, args.input)
+    else:
+        result = collect_thoughtbox(workspace)
+    path = write_collector(workspace, args.source, result["items"])
+    return {
+        "source": args.source,
+        "count": len(result["items"]),
+        "path": str(path),
+        "diagnostics": result["diagnostics"],
+    }
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="plan_day.py", description=__doc__.splitlines()[0])
     parser.add_argument("--workspace", type=Path, help="workspace root (default: search upward)")
@@ -232,6 +440,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     commands.add_parser("config", help="print the validated pa.toml as JSON")
     validate = commands.add_parser("validate", help="check collector JSON against the contract")
     validate.add_argument("files", nargs="+", type=Path)
+    collect = commands.add_parser("collect", help="run one collector and write .artifacts/plan-day/<source>.json")
+    collect.add_argument("source", choices=("beads", "jira", "thoughtbox"))
+    collect.add_argument("--client", help="jira: [[clients]] name owning the input")
+    collect.add_argument("--input", type=Path, help="jira: saved MCP search result to normalise")
     commands.add_parser("merge", help="merge validated collector output from .artifacts/plan-day")
     plans = commands.add_parser("plans", help="locate today's, the previous, and stale plan files")
     plans.add_argument("--today", type=date.fromisoformat, default=None)
@@ -250,6 +462,10 @@ def main(argv: list[str]) -> int:
         workspace = load_workspace(args.workspace)
         if args.command == "config":
             output: dict[str, Any] = {"root": str(workspace.root), **workspace.config}
+        elif args.command == "collect":
+            if args.source == "jira" and (not args.client or not args.input):
+                raise PlanDayError("collect jira needs --client and --input")
+            output = collect(workspace, args)
         elif args.command == "merge":
             output = merge(workspace)
         else:

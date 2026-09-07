@@ -1,7 +1,7 @@
 ---
 name: plan-day
 description: Render today's plan from a My PA workspace — ranked Jira, Trello, Beads and Thoughtbox items assigned to work, project-session, evening or skip blocks, flagged when delegable to an unattended agent session, written to a dated ephemeral plan file.
-allowed-tools: "Read, Bash(date:*), Bash(python3 ~/.agents/skills/plan-day/scripts/plan_day.py:*)"
+allowed-tools: "Read, Bash(date:*), Bash(python3 ~/.agents/skills/plan-day/scripts/plan_day.py:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
@@ -64,9 +64,37 @@ python3 ~/.agents/skills/plan-day/scripts/plan_day.py validate .artifacts/plan-d
 
 1. **Config.** `python3 ~/.agents/skills/plan-day/scripts/plan_day.py config` prints the
    validated `pa.toml` and the workspace root. Stop on any error; do not plan from defaults.
-2. **Collect.** Run each enabled source's collector from its own skill and write the result to
-   `.artifacts/plan-day/<source>.json`. Collectors are owned by later beads; until one exists,
-   its source stays in `missing_sources` and the plan says so.
+2. **Collect.** Run one collector per enabled source. Each validates its items and writes
+   `.artifacts/plan-day/<source>.json`, printing a count and diagnostics. A source without a
+   collector, or whose collector fails, stays in `missing_sources` and the plan says so.
+
+   ```bash
+   python3 ~/.agents/skills/plan-day/scripts/plan_day.py collect beads
+   python3 ~/.agents/skills/plan-day/scripts/plan_day.py collect thoughtbox
+   python3 ~/.agents/skills/plan-day/scripts/plan_day.py collect jira --client {name} --input .artifacts/plan-day/jira-{name}.raw.json
+   ```
+
+   - **beads** runs the `/next` helpers from the workspace root: ready candidates across every
+     usable store plus in-progress claims per store, read-only. A bead is `delegable` when it is
+     open, has both a description and acceptance criteria, and lacks the `human` label.
+   - **thoughtbox** resolves a context for every `[[clients]]` and `[[projects]]` workspace and
+     keeps Inbox thoughts only, at `priority.thoughtbox_default`. Members without a context are
+     diagnostics, never failures; a missing `thoughtbox` CLI fails the whole source closed.
+   - **jira** cannot be fetched from a script. For each `[[clients]]` entry with a `jira` table,
+     query with the MCP tool and save the response verbatim as the `--input` file, then normalise:
+
+     ```text
+     mcp__jira__jira_get
+       path: /rest/api/3/search/jql
+       queryParams:
+         jql: assignee = currentUser() AND statusCategory != Done ORDER BY priority DESC, updated DESC
+         fields: summary,status,priority,duedate
+         maxResults: 50
+     ```
+
+     Priority names map through `priority.jira`; an unmapped name fails closed so the mapping is
+     fixed in `pa.toml` rather than guessed. `jira.base_url` on the client builds the deep link.
+     Never fetch with a JQL other than the one above and never write back to Jira.
 3. **Merge.** `python3 ~/.agents/skills/plan-day/scripts/plan_day.py merge` validates every
    collector file, adds `hours` from the matching `[[clients]]` or `[[projects]]` entry, sorts by
    priority then due date, and lists missing and disabled sources.
