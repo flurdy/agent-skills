@@ -3,8 +3,9 @@ name: artifact-hygiene
 description: Run a local-only, read-only advisory audit of publishable working-tree files and unpublished branch history with redaction-safe findings.
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.4.0"
+version: "0.4.1"
 author: "flurdy"
 ---
 
@@ -12,7 +13,8 @@ author: "flurdy"
 
 Run the local-only proof of concept that checks whether repository content is safe to publish. The
 helper is the only component allowed to read candidate content. The active model receives normalized,
-redacted findings and coverage—not raw candidate content. On Claude Code this skill carries no `model:` pin on purpose: it rides the session model rather than downgrading to the standard alias, while Pi routes by `model-tier`.
+redacted findings and coverage—not raw candidate content. Claude Code uses the Sonnet alias for this
+bounded interpretation; Pi continues to route by `model-tier`.
 
 This skill is advisory and read-only. It never fetches, follows links, calls remote services, validates
 credentials, installs hooks, blocks CI, edits files, changes Git state, rewrites history, or creates

@@ -3,9 +3,9 @@ name: backlog-groom
 description: "Per-bead backlog quality audit — flags thin descriptions, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits, duplicates. Read-only; mutations need approval, dangerous ones one by one; judges quality, not template conformance."
 allowed-tools: "Read, Grep, Glob, Task, AskUserQuestion, Bash(bd status:*), Bash(bd list:*), Bash(bd show:*), Bash(bd lint:*), Bash(bd stale:*), Bash(bd find-duplicates:*), Bash(bd children:*), Bash(bd epic:*), Bash(bd label:*), Bash(bd priority:*), Bash(bd update:*), Bash(bd note:*), Bash(bd close:*), Bash(bd supersede:*), Bash(bd dep:*), Bash(bd memories:*), mcp__jira__jira_get"
 model-tier: standard
-model: sonnet
+model: opus
 effort: high
-version: "0.1.1"
+version: "0.1.2"
 author: "flurdy"
 ---
 

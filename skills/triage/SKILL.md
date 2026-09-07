@@ -3,9 +3,9 @@ name: triage
 description: "Create or refine beads from raw requests, Jira, or explicit human-decision handoffs. Investigates relevance and duplicates; delegates approved implementation plans to plan-to-backlog."
 allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * dep:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
-model: sonnet
+model: opus
 effort: high
-version: "1.4.0"
+version: "1.4.1"
 author: "flurdy"
 ---
 

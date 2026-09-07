@@ -3,9 +3,9 @@ name: jira-comment
 description: Draft and post a terse comment on a Jira ticket. Fetches the ticket and recent comments for context, shows the draft, and posts only after explicit confirmation.
 allowed-tools: "mcp__jira__jira_get,mcp__jira__jira_post,ToolSearch,AskUserQuestion"
 model-tier: economy
-model: haiku
+model: sonnet
 effort: medium
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 

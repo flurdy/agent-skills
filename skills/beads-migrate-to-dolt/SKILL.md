@@ -3,9 +3,9 @@ name: beads-migrate-to-dolt
 description: "Safely migrate classic Beads data or upgrade a Dolt schema, preserving backups and remote history. Repository aftercare is a separate, explicitly selected mode."
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(bd --version),Bash(bd migrate --help),Bash(bd init --help),Bash(bd import --help),Bash(bd export --help),Bash(bd bootstrap --help),Bash(bd backup --help),Bash(bd dolt stop --help),Bash(bd list --help),Bash(bd doctor --help),Bash(bd help init-safety),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git worktree list:*)"
 model-tier: premium
-model: opus
+model: fable
 effort: high
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 

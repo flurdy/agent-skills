@@ -3,9 +3,9 @@ name: project-brief
 description: Read-only workspace-level synthesis of project outcomes, requirement linkage, delivery evidence, coordination risks, and the single most important next coordination action.
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/project-brief/scripts/collect.sh:*),Bash(git -C:*),Bash(gh pr list:*),Bash(gh pr view:*),mcp__jira__jira_get"
 model-tier: standard
-model: sonnet
+model: opus
 effort: high
-version: "0.3.0"
+version: "0.3.1"
 author: "flurdy"
 ---
 

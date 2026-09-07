@@ -32,7 +32,7 @@ Instructions for the agent go here.
 
 Allowed portable tiers are `economy`, `standard`, and `premium`. Allowed effort
 values are `low`, `medium`, `high`, and `xhigh`. An optional floating `model:` alias
-(`haiku`, `sonnet`, or `opus`) is a Claude Code-only hint, not portable routing
+(`haiku`, `sonnet`, `opus`, or `fable`) is a Claude Code-only hint, not portable routing
 metadata. Exact providers, model IDs, billing classification, and fallback policy
 remain runtime-local.
 

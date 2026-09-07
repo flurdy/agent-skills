@@ -3,9 +3,9 @@ name: plan-to-backlog
 description: "Materialize an approved cited plan into proportionate Beads tracking when the user asks for durable ownership. Recommends no item, one item, or a bounded epic; checks owners and duplicates; previews every write; applies only after exact confirmation."
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd status:*),Bash(bd list:*),Bash(bd search:*),Bash(bd show:*),Bash(bd children:*),Bash(~/.agents/skills/plan-to-backlog/scripts/utc-now.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Bash(~/.agents/skills/plan-to-backlog/scripts/confirmed-bd.sh:*),mcp__jira__*,mcp__confluence__*"
 model-tier: standard
-model: sonnet
+model: opus
 effort: high
-version: "1.2.1"
+version: "1.2.2"
 author: "flurdy"
 ---
 

@@ -20,7 +20,7 @@ REQUIRED_FIELDS = (
 )
 ALLOWED_MODEL_TIERS = ("economy", "standard", "premium")
 ALLOWED_EFFORTS = ("low", "medium", "high", "xhigh")
-ALLOWED_CLAUDE_MODELS = ("haiku", "sonnet", "opus")
+ALLOWED_CLAUDE_MODELS = ("haiku", "sonnet", "opus", "fable")
 # Descriptions load into every session's skill listing across all clients;
 # keep the per-session token cost bounded.
 MAX_DESCRIPTION_LENGTH = 250

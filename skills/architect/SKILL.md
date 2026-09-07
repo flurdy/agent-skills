@@ -3,8 +3,9 @@ name: architect
 description: Architecture and implementation planning gate for complex or high-blast-radius work. Produces evidence-backed decisions, reviewable slices, acceptance evidence, and conditional human review ownership without editing code.
 allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git branch --show-current:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * show:*),Bash(bd -C * status:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(ls:*),Bash(pwd:*),Bash(rg:*),WebFetch,WebSearch,Skill(librarian),Skill(second-opinion),AskUserQuestion,jira_issue,confluence_page"
 model-tier: premium
+model: fable
 effort: xhigh
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 

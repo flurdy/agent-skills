@@ -44,13 +44,31 @@ A skill that directly launches an external model must implement fresh consent at
 
 ## Claude Code `model:` hint
 
-`model:` is an optional Claude Code-only floating alias (`haiku`, `sonnet`, or `opus`). It is not portable routing metadata:
+`model:` is an optional Claude Code-only floating alias (`haiku`, `sonnet`, `opus`, or `fable`). It is not portable routing metadata:
 
 - Pi's skill router ignores it.
 - Codex uses its own configuration.
 - Agents omit it because Pi may honor `model:` in agent files.
 
-Use a pin only when running the skill on that Claude capability class is intentional. An unpinned `premium` skill rides the session model and must retain its existing advisory tier guard. Runtime-specific exceptions such as `watch-prs` belong in that skill, not in this shared policy.
+Use a pin only when running the skill on that Claude capability class is intentional. A
+Claude-only upgrade does not require changing `model-tier` or `effort`: those remain the portable
+capability and reasoning requirements, not a one-to-one alias map. Reserve `fable` for the hardest
+or longest-running work, such as architecture, diagnosis, complex migration, and comprehensive
+review; do not blanket-promote routine workflows or recurring polling.
+
+Claude Code's [skill model override](https://code.claude.com/docs/en/skills#frontmatter-reference)
+applies for the rest of the current turn; the session model resumes on the next prompt. With
+`context: fork`, the pin selects the subagent model instead. A pin is a selection, not a minimum
+capability floor: invoking a lower-pinned skill can replace a stronger active model. Neither a
+pin nor a successful metadata check proves the requested model was used; runtime availability
+and policy still apply.
+
+An unpinned `premium` skill rides the session model and must retain its existing advisory tier
+guard. Runtime-specific exceptions such as `watch-prs` belong in that skill, not in this shared
+policy. Fable can use subscription limits or usage credits depending on the account; consult
+[Claude Code's usage-credit behavior](https://code.claude.com/docs/en/model-config#fable-and-usage-credits).
+Shared pins never classify billing or waive runtime consent, including for external child
+launches. Non-interactive Claude Code can bill usage credits without an interactive prompt.
 
 ## Parent and child routing
 

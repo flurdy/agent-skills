@@ -36,7 +36,7 @@ not a generic archive folder.
 - A skill is `skills/<name>/SKILL.md`; declare `model-tier` (`economy`, `standard`, or
   `premium`) plus `effort` (`low`, `medium`, `high`, or `xhigh`), `version`, and `author`
   in frontmatter. Avoid hard-coding provider/model IDs in shared skills — the exception
-  is an optional floating `model:` alias (`haiku`/`sonnet`/`opus`) as a Claude Code
+  is an optional floating `model:` alias (`haiku`/`sonnet`/`opus`/`fable`) as a Claude Code
   routing hint; agents omit it because Pi may honor `model:` in agent files. See
   `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
 - Add one alphabetical description row to `skills/README.md` for every new skill.

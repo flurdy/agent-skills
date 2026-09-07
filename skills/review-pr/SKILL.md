@@ -3,8 +3,9 @@ name: review-pr
 description: Review a repository-qualified pull request at an immutable head, compare it with Jira requirements, and return a read-only verdict with explicit evidence completeness.
 allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),mcp__jira__jira_get,AskUserQuestion"
 model-tier: premium
+model: opus
 effort: xhigh
-version: "2.1.0"
+version: "2.1.1"
 author: "flurdy"
 ---
 

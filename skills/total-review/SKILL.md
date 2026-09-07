@@ -3,8 +3,9 @@ name: total-review
 description: "Portable pre-PR quality gauntlet: cleanup, verification, craft, correctness, security, and optional independent reviews. Binds every gate to the final scope, reports missing coverage, and caps fix/review passes at two."
 allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),Bash(git remote get-url:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * search:*),Bash(bd -C * create:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
 model-tier: premium
+model: fable
 effort: xhigh
-version: "1.0.1"
+version: "1.0.2"
 author: "flurdy"
 ---
 

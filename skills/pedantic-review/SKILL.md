@@ -3,8 +3,9 @@ name: pedantic-review
 description: "Read-only craft review of changed code and test design: reuse, placement, complexity, and repository conventions. Requirements, coverage sufficiency, execution, and fixes have separate owners."
 allowed-tools: "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git ls-files:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),AskUserQuestion"
 model-tier: premium
+model: opus
 effort: xhigh
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 

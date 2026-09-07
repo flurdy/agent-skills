@@ -187,13 +187,25 @@ class ValidateSkillsTest(unittest.TestCase):
         )
         self.assert_error_contains("effort 'extreme' is invalid")
 
+    def test_supported_claude_model_aliases_pass(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        for model in ("haiku", "sonnet", "opus", "fable"):
+            with self.subTest(model=model):
+                path.write_text(
+                    VALID_SKILL.replace("model: sonnet", f"model: {model}"),
+                    encoding="utf-8",
+                )
+                self.assertEqual([], self.errors())
+
     def test_invalid_claude_model_alias_fails(self) -> None:
         path = self.root / "skills" / "alpha" / "SKILL.md"
-        path.write_text(
-            VALID_SKILL.replace("model: sonnet", "model: claude-sonnet-5"),
-            encoding="utf-8",
-        )
-        self.assert_error_contains("model alias 'claude-sonnet-5' is invalid")
+        for model in ("claude-sonnet-5", "claude-fable-5-1", "unknown"):
+            with self.subTest(model=model):
+                path.write_text(
+                    VALID_SKILL.replace("model: sonnet", f"model: {model}"),
+                    encoding="utf-8",
+                )
+                self.assert_error_contains(f"model alias '{model}' is invalid")
 
     def test_claude_model_alias_is_optional(self) -> None:
         path = self.root / "skills" / "alpha" / "SKILL.md"

@@ -3,8 +3,9 @@ name: verify-task
 description: "Verify explicit requirements and coverage against a fixed implementation scope using discovered repository-native gates. Reports missing, failed, or stale evidence; never fixes code or changes tracking."
 allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(git status:*),Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),AskUserQuestion"
 model-tier: premium
+model: opus
 effort: xhigh
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 
