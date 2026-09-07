@@ -1,231 +1,120 @@
 ---
 name: contract-check
-description: "Audit health of contract tests across services — staleness, sync gaps, uncommitted pacts, missing tests."
-allowed-tools: "Read,Grep,Glob,Bash(./scripts/contract-check:*),Bash(./scripts/mgit:*),Bash(ls:*),Bash(chmod:*),Skill,AskUserQuestion"
+description: "Read-only Pact-lite health audit: content drift, uncommitted pacts, sync gaps, static CI evidence, and semantic test gaps. One status authority; never runs tests or repairs setup."
+allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/contract-check/scripts/contract-check.sh:*)"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "2.0.0"
 author: "flurdy"
 ---
 
-# Contract Check — Pact Health Auditor
+# Contract Check — Read-Only Pact Health
 
-Audits the health of consumer-driven contract tests across all project services. Surfaces staleness, sync gaps, uncommitted pacts, missing tests, documentation drift, and disabled tests.
+Own contract health evidence and rendering. The [runner](../contract-test/SKILL.md) owns
+explicit test generation, local sync, normalization and provider verification. Release workflows
+consume this audit's mechanical evidence; do not create a second health collector.
 
-This is a **read-only audit** — it does not run tests or modify files. Use `/contract-test` to execute contract test workflows.
-
-## When to Use
-
-- Starting a work session to check contract health
-- After modifying connectors or API endpoints
-- Before a release to verify all contracts are synced and committed
-- Periodically to catch drift and gaps
+This audit never runs tests, creates links, changes permissions, copies pacts, fixes CI, or writes
+tracking. Do not normalize before auditing or dismiss generated-looking diffs as harmless. Report
+findings and optional next-command pointers without confirmation prompts or automatic handoffs.
+A separate setup request belongs to the [project setup contract](references/project-setup.md).
 
 ## Usage
 
-```
-/contract-check              # Full audit (all checks)
-/contract-check status       # Summary dashboard only
-/contract-check stale        # Consumer output newer than provider copy
-/contract-check uncommitted  # Pact files not committed in service repos
-/contract-check sync-gaps    # Trace each intended edge: consumer test → built pact → synced to provider
-/contract-check coverage     # Provider CI verifies each synced pact? (catches commented-out/disabled consumers)
-/contract-check missing      # Connectors with no consumer tests
-/contract-check docs         # Documentation drift in pact-workflow.md
-/contract-check disabled     # Contract tests excluded from default builds
-/contract-check <service>    # All checks scoped to one service
+```text
+/contract-check                 # full mechanical and semantic audit
+/contract-check status          # same evidence, summary only
+/contract-check stale           # content equality and timestamp diagnostics
+/contract-check uncommitted     # provider-pact Git status
+/contract-check sync-gaps        # intended → built → synced edges
+/contract-check coverage        # bounded static CircleCI evidence
+/contract-check matrix          # observed consumer/provider file relationships
+/contract-check missing         # semantic missing-test review
+/contract-check docs            # semantic documentation drift
+/contract-check disabled        # semantic test-exclusion review
+/contract-check <service>        # verified service, scoped presentation
 ```
 
-## Setup
+`full` and `all` mean the default full audit. Reject unrecognized arguments instead of guessing
+commands or treating an unknown name as a service. This is not a setup/remediation interface.
 
-On first run, ensure the script symlink exists:
+## Prerequisites and scope
+
+The helper requires Bash 4+, GNU stat/date, standard shell utilities and the existing project
+integration documented in [project setup](references/project-setup.md). Automated discovery is
+limited to flat services with `target/pacts/` consumer output and `(src/)test/resources/pacts/`
+provider input. Do not claim support for arbitrary language layouts or nested workspace paths.
+
+Run from the intended project. The helper honors an existing absolute `RELEASE_PROJECT_ROOT`
+when supplied by the release authority; otherwise it finds the nearest ancestor `.mgit.conf`.
+Verify that root before execution. Missing/invalid setup is **UNKNOWN**, not permission to create it.
+
+Before checks that execute project-owned helpers, inspect `scripts/mgit` and `scripts/pact-pairs`
+and their delegated commands. Their required modes must be read-only; unknown or mutating helpers
+make that check unavailable. Do not execute unreviewed project code merely because a file exists.
+`stale`, `coverage`, and `matrix` do not require these project helper calls. Missing executable
+support means unavailable; do not install dependencies or repair permissions.
+
+For a service view, confirm the service in project topology. Mechanical collection is project-wide;
+filter its findings to edges involving that service and scope semantic reads to it. Do not present
+full-project totals as service totals. If project-wide reads are outside authorization, report that
+mechanical scoping is unsupported rather than expanding access silently.
+
+## Collect once
+
+Call the installed authority directly; no project symlink is needed for this audit:
 
 ```bash
-ln -sfn "$SKILLS_DIR/contract-check/scripts/contract-check.sh" ./scripts/contract-check
-chmod +x ./scripts/contract-check
+~/.agents/skills/contract-check/scripts/contract-check.sh all
 ```
 
-Where `$SKILLS_DIR` resolves to `${CLAUDE_HOME:-$HOME/.claude}/skills`.
+Replace `all` with the validated mechanical subcommand when only that check was requested.
+Full/status uses one `all` collection, reusing its matrix for semantic review. If a dependency is
+unsafe/unavailable, collect only independent safe checks and label omitted checks UNKNOWN.
+Never substitute an arbitrary project `scripts/contract-check` implementation.
 
-## Instructions
+| Signal | Meaning |
+|---|---|
+| `OK` | Observed evidence matches the bounded check; not a live test result |
+| `STALE` / `DIFFERS` | Pact bytes differ; consumer newer / not newer |
+| `MISSING_PROVIDER` | No provider copy found in the supported layout |
+| `UNCOMMITTED` | Modified, staged, deleted, renamed or untracked provider pact path |
+| `NOT_BUILT` / `NOT_SYNCED` | Intended edge lacks built output / built edge lacks provider copy |
+| `GAP ... style=enum ... not-verified=...` | Literal CI enumeration omits synced consumer names |
+| `GAP ... style=unsupported ... evidence=unavailable` | CI evidence UNKNOWN, not proven missing tests |
+| `CLEAN` | No Git findings from successfully inspected provider directories |
+| `NO_DATA` / `status=error` | Absent observations / failed collector; never an all-clear |
+| `SUMMARY` / `TOTAL` | Mechanical counters; preserve error/completeness context |
 
-### Step 0: Ensure Setup
+CI results are **static configuration text**, not proof a job is enabled, scheduled, reachable,
+checks every file, or passed. Even tag-style OK requires project-specific validation of the selector
+and workflow. Other CI engines and dynamic forms remain unknown; see the supported conventions.
+No consumer output proves only that output is absent, not that tests were never run.
 
-Check that `./scripts/contract-check` exists and is executable. If not, create the symlink as shown in Setup above.
+## Semantic review
 
-### Step 1: Parse Subcommand
+For full/status or the requested semantic mode:
 
-Parse the user's argument:
-- `(none)` or `full` → Run all checks (mechanical + semantic)
-- `status` → Run all checks but only show the summary table
-- `stale` → Run `./scripts/contract-check stale`
-- `uncommitted` → Run `./scripts/contract-check uncommitted`
-- `sync-gaps` → Run `./scripts/contract-check sync-gaps`
-- `coverage` → Run `./scripts/contract-check coverage` (CI verifies each synced pact?)
-- `missing` → Run semantic Missing Consumer Tests check (Step 3)
-- `docs` → Run semantic Documentation Drift check (Step 4)
-- `disabled` → Run semantic Disabled Tests check (Step 5). `coverage` is the mechanical
-  companion: it catches commented-out PACTCONSUMER entries in a provider's CI verify job.
-- `<service>` → Run all checks scoped to that service
-- `matrix` → Run `./scripts/contract-check matrix`
+- **Missing tests:** use project documentation, connector/client code and actual consumer tests to
+  identify intended internal boundaries. Do not infer providers solely by stripping a filename
+  suffix, assume every connector is internal, or use a fixed service/external-connector roster.
+- **Documentation:** locate the project's authoritative Pact workflow documentation; compare its
+  declared relationships with the collected matrix. Absence of generated files is not proof a
+  documented relationship is obsolete. Missing documentation is unavailable evidence.
+- **Disabled tests:** inspect build exclusions, selected test suites, Makefile recipes and CI paths.
+  Distinguish intentional unit-test exclusions with an explicit contract target from contract tests
+  that have no evidenced execution path. Do not execute a build to discover its configuration.
 
-### Step 1b: Normalize Before Checking (recommended)
+Mark uncertain mappings and unsupported layouts UNKNOWN. Keep semantic findings separate from
+mechanical findings and cite the relevant file/command evidence.
 
-Before running the `uncommitted` check (or `all`/`full`), suggest running `make normalize-pacts` first. Pact libraries regenerate random UUIDs, dates, and strings on every test run, causing noisy git diffs that aren't real contract changes. The normalizer replaces these with deterministic placeholders.
+## Report
 
-**Note:** `normalize-pacts.py` currently only normalizes values referenced by `generators.body` metadata. UUIDs in `providerStates.params`, `request.path`, `request.headers`, and `response.headers` are NOT yet normalized — those may still show as noise in uncommitted diffs. Flag these as noise in the report when the diff is UUID-only.
+Render one table: check, PASS/INFO/WARN/FAIL/UNKNOWN, evidence/limitations. Full audit adds finding
+rows by consumer/provider; status omits detail, not missing evidence. Preserve successful checks
+when another is unavailable. Static CI OK is informational, never a live verification PASS.
 
-### Step 2: Mechanical Checks (via script)
-
-Run the appropriate script subcommand:
-
-```bash
-./scripts/contract-check all      # or stale, uncommitted, sync-gaps, coverage, matrix
-```
-
-Parse the script output. Each line starts with a status keyword:
-- `OK` — no action needed
-- `STALE` — consumer pact is newer than provider copy
-- `DIFFERS` — same age but content differs
-- `MISSING_PROVIDER` — provider does not have this pact file
-- `UNCOMMITTED` — pact file has uncommitted changes
-- `NOT_BUILT` — (sync-gaps) consumer test exists but produced no pact in target/ (tests not run)
-- `NOT_SYNCED` — (sync-gaps) pact is built but not copied into the provider (run sync-pacts.sh)
-- `GAP` — (coverage) provider CI does not verify all its synced consumer pacts
-  (`style=enum` with commented-out consumers, or `style=none` with no verify job)
-- `CLEAN` — no issues found
-- `NO_DATA` — no consumer pact files found
-- `SUMMARY` — counts for the check
-
-### Step 3: Missing Consumer Tests (LLM-driven)
-
-For each consumer service, compare connectors against consumer test files:
-
-1. **Find connectors** — Glob for connector files:
-   - Play services (admin, hosted, registration, profile, web): `<service>/app/connectors/*Connector.scala`
-   - Scala 3 services (digest, patrol, reconciler, dispatch, etc.): `<service>/src/main/scala/**/connectors/*Connector.scala`
-
-2. **Find consumer tests** — Glob for consumer test files:
-   - Play services: `<service>/test/contract/*Consumer*.scala`
-   - Scala 3 services: `<service>/src/test/scala/**/contract/*Consumer*.scala`
-
-3. **Extract provider name** from connector filename: strip `Connector` suffix, lowercase. E.g., `AccountConnector.scala` → `account`.
-
-4. **Exclude external connectors** that are not internal services:
-   - Braintree, Stripe, SES, Spam, Web, Api (base class), ConnectorConfiguration, ConnectorModule
-
-5. **Cross-reference**: For each connector, check if a matching consumer test exists. Report connectors with no consumer test.
-
-Output format:
-```
-### Missing Consumer Tests
-| Service | Connector | Provider | Has Consumer Test |
-|---------|-----------|----------|-------------------|
-| reconciler | EventConnector | event | NO |
-| reconciler | MessageQueueConnector | messagequeue | NO |
-```
-
-### Step 4: Documentation Drift (LLM-driven)
-
-1. Read `docs/pact-workflow.md`
-2. Run `./scripts/contract-check matrix` to get actual relationships
-3. Compare the documented consumer→provider relationships against the matrix
-4. Flag:
-   - Consumers listed in docs but not in matrix (or vice versa)
-   - Providers listed in docs but not in matrix (or vice versa)
-   - Stale TODOs or notes that have been resolved
-   - Missing entries for newer services (digest, patrol, reconciler, profile)
-
-### Step 5: Disabled Tests (LLM-driven)
-
-1. Search for contract test exclusions in build.sbt files:
-   - Pattern: `-l tags.ContractTest` or `--exclude-tags=ContractTest`
-   - Check both active and commented-out exclusions
-
-2. For services with active exclusions, check if the Makefile `test-contract` target overrides it (e.g., with `set Test/testOptions := Nil`)
-
-3. Report:
-   - Services where `sbt test` silently skips contract tests
-   - Whether the Makefile target correctly overrides the exclusion
-   - Services lacking a `test-contract` Makefile target entirely
-
-### Step 6: Format Report
-
-Combine all findings into a health report:
-
-```markdown
-# Contract Health Report
-
-## Summary
-| Check            | Status | Details                        |
-|------------------|--------|--------------------------------|
-| Staleness        | PASS/WARN/FAIL | X stale / Y total       |
-| Uncommitted      | PASS/WARN | X files across Y services     |
-| Sync coverage    | PASS/FAIL | X/Y pairs in sync-pacts.sh   |
-| Verify coverage  | PASS/FAIL | X providers verify all synced pacts |
-| Missing tests    | PASS/WARN | X connectors without tests    |
-| Documentation    | PASS/FAIL | X items out of date           |
-| Disabled tests   | PASS/INFO | X services exclude by default |
-
-## Staleness
-[details from script output]
-
-## Uncommitted Pact Files
-[details from script output]
-
-## Sync Coverage Gaps
-[details from script output]
-
-## Missing Consumer Tests
-[details from LLM analysis]
-
-## Documentation Drift
-[details from LLM analysis]
-
-## Disabled Tests
-[details from LLM analysis]
-
-## Recommended Actions (priority order)
-1. [most impactful fix first]
-2. ...
-```
-
-Status thresholds:
-- **PASS**: No issues found
-- **INFO**: Informational, no action required
-- **WARN**: Issues found but not blocking
-- **FAIL**: Significant gaps that should be addressed
-
-### Step 7: Offer Remediation
-
-After presenting the report, ask the user:
-
-> Would you like me to create beads for the issues found? I can triage them as P3 tasks with appropriate service labels.
-
-If the user agrees, use `/triage` to create beads for actionable findings. Group related findings into single beads where appropriate (e.g., "Add digest, patrol, reconciler to sync-pacts.sh" as one bead rather than three).
-
-## Scoped Checks (single service)
-
-When invoked with a service name (`/contract-check dispatch`):
-
-1. Run mechanical checks and filter output to only show lines involving that service (as consumer or provider)
-2. Run semantic checks scoped to that service only
-3. Present a focused report for just that service
-
-## Error Handling
-
-- **Script not found**: Create the symlink (see Setup)
-- **mgit not found**: Error — must be run from within the project root
-- **No consumer pact files**: Report that consumer tests haven't been run; suggest `make test-contract` in consumer services
-- **Service directory missing**: Skip gracefully, note in output
-
-## Known Provider Pact Directories
-
-Most providers use `test/resources/pacts/`. Exceptions:
-- **event**: `src/test/resources/pacts/`
-- **membership**: `src/test/resources/pacts/`
-
-## Known External Connectors (exclude from missing-test checks)
-
-Braintree, Stripe, SES, SpamConfiguration, WebConfiguration, ApiConnector (abstract base), ConnectorConfiguration, ConnectorModule
+Recommended actions are pointers only: `/contract-test consumer|sync|provider|full` for a separately
+requested run, or an explicit coding/setup request for missing integration/tests/CI. Do not run them,
+normalize files, create tasks, or offer automatic remediation from this audit.

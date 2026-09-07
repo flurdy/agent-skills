@@ -15,7 +15,15 @@ find_project_root() {
     exit 1
 }
 
-PROJECT_ROOT="$(find_project_root)"
+if [[ -n "${RELEASE_PROJECT_ROOT:-}" ]]; then
+    [[ "$RELEASE_PROJECT_ROOT" = /* && -d "$RELEASE_PROJECT_ROOT" ]] || {
+        echo "ERROR: RELEASE_PROJECT_ROOT must be an existing absolute directory" >&2
+        exit 1
+    }
+    PROJECT_ROOT="$RELEASE_PROJECT_ROOT"
+else
+    PROJECT_ROOT="$(find_project_root)"
+fi
 cd "$PROJECT_ROOT"
 
 MGIT="./scripts/mgit"
@@ -66,6 +74,9 @@ check_stale() {
         if [[ ! -f "$provider_file" ]]; then
             echo "MISSING_PROVIDER  $consumer -> $provider  (provider file not found: $provider_file)"
             missing_provider=$((missing_provider + 1))
+        elif cmp -s "$consumer_file" "$provider_file"; then
+            echo "OK  $consumer -> $provider"
+            ok=$((ok + 1))
         else
             local consumer_ts provider_ts
             consumer_ts="$(stat -c %Y "$consumer_file" 2>/dev/null || echo 0)"
@@ -79,21 +90,15 @@ check_stale() {
                 echo "STALE  $consumer -> $provider  (consumer: $consumer_date, provider: $provider_date, delta: ${delta_days}d)"
                 stale=$((stale + 1))
             else
-                # Check content equality too
-                if ! cmp -s "$consumer_file" "$provider_file"; then
-                    echo "DIFFERS  $consumer -> $provider  (same age but content differs)"
-                    stale=$((stale + 1))
-                else
-                    echo "OK  $consumer -> $provider"
-                    ok=$((ok + 1))
-                fi
+                echo "DIFFERS  $consumer -> $provider  (content differs; consumer not newer)"
+                stale=$((stale + 1))
             fi
         fi
     done
 
     if [[ "$total" -eq 0 ]]; then
         echo "NO_DATA  No consumer pact files found in */target/pacts/"
-        echo "         Run consumer tests first (make test-contract in consumer services)"
+        echo "         Generation is a separate /contract-test consumer request using inspected project commands"
     fi
 
     echo ""
@@ -106,7 +111,7 @@ check_uncommitted() {
     echo "## Uncommitted Pact Files"
     echo ""
 
-    local uncommitted=0 services_checked=0
+    local uncommitted=0 services_checked=0 failed=0
 
     # Check provider services for uncommitted pact files
     for provider_dir in */test/resources/pacts */src/test/resources/pacts; do
@@ -122,29 +127,28 @@ check_uncommitted() {
 
         # Use mgit to check status
         local status_output
-        status_output="$($MGIT status "$service" -- "$pact_rel/" 2>/dev/null)" || continue
+        if ! status_output="$(GIT_OPTIONAL_LOCKS=0 "$MGIT" status "$service" --porcelain=v1 --untracked-files=all -- "$pact_rel/" 2>/dev/null)"; then
+            echo "NO_DATA  $service Git status unavailable; uncommitted pacts are UNKNOWN"
+            failed=$((failed + 1))
+            continue
+        fi
 
-        # Filter for actual file status lines (modified:, new file:, deleted:, ??)
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
-
-            local trimmed
-            trimmed="$(echo "$line" | sed 's/^[[:space:]]*//')"
-            [[ -z "$trimmed" ]] && continue
-
-            # Only keep lines that are actual file statuses
-            [[ "$trimmed" =~ ^(modified:|new\ file:|deleted:|renamed:|copied:|\?\?) ]] || continue
-
-            echo "UNCOMMITTED  $service  $trimmed"
+            printf 'UNCOMMITTED  %s  %s\n' "$service" "$line"
             uncommitted=$((uncommitted + 1))
         done <<< "$status_output"
     done
 
+    if [[ "$failed" -gt 0 ]]; then
+        echo "SUMMARY  uncommitted=$uncommitted services_checked=$services_checked status=error"
+        return
+    fi
     if [[ "$uncommitted" -eq 0 ]]; then
         echo "CLEAN  All pact files are committed across $services_checked provider services"
     else
         echo ""
-        echo "HINT  Some diffs may be UUID/date noise. Run 'make normalize-pacts' first to reduce noise."
+        echo "NOTE  Inspect changes before overwriting; generated-looking values are not proof of harmless noise."
     fi
 
     echo ""
@@ -203,7 +207,7 @@ check_sync_gaps() {
             echo "NOT_BUILT   ${key/->/ -> }  (consumer test present but no pact in target/ — tests not run?)"
             not_built=$((not_built + 1))
         elif [[ -z "${synced_edges[$key]:-}" ]]; then
-            echo "NOT_SYNCED  ${key/->/ -> }  (built but not copied to provider — run scripts/sync-pacts.sh)"
+            echo "NOT_SYNCED  ${key/->/ -> }  (built but not copied to provider; /contract-test sync is a separate request)"
             not_synced=$((not_synced + 1))
         else
             echo "OK          ${key/->/ -> }"
@@ -263,18 +267,13 @@ check_matrix() {
 }
 
 # ─── CI VERIFICATION COVERAGE ────────────────────────────────────────────────
-# Does each provider's CI actually VERIFY the consumer pacts synced into it?
-# This is distinct from sync-gaps (is the pact built and synced?): a pact can
-# be synced into the provider yet never verified by the provider's CI.
-# Two CI styles in this project:
-#   tag  -> `sbt testOnly -- -n tags.ContractVerifyTest` auto-verifies EVERY
-#           synced pact (good — nothing to enumerate).
-#   enum -> PACTCONSUMER env vars enumerate consumers explicitly; any consumer
-#           that is commented out (or simply not listed) is NOT verified — a
-#           silent coverage hole where the provider can break that consumer.
+# Bounded static CircleCI text conventions, not YAML/workflow execution analysis.
+# Enum literals name consumers; a tag-driven sbt command names an all-pacts selector.
+# See references/project-setup.md for assumptions and unsupported shapes.
 
 check_coverage() {
     echo "## CI Verification Coverage"
+    echo "NOTE  static configuration text only; does not prove jobs are enabled, reachable, or passing"
     echo ""
     local gaps=0 ok=0 providers=0
 
@@ -294,21 +293,34 @@ check_coverage() {
 
         local cfg="$provider/.circleci/config.yml"
         if [[ ! -f "$cfg" ]]; then
-            echo "GAP  $provider  no .circleci/config.yml (cannot verify ${#synced_consumers[@]} consumer(s))"
+            echo "GAP  $provider  style=unsupported synced=${#synced_consumers[@]} evidence=unavailable (no supported .circleci/config.yml)"
             gaps=$((gaps + 1))
             continue
         fi
 
-        # Active (uncommented) PACTCONSUMER entries, normalised to the bare name.
+        local active_cfg
+        if ! active_cfg="$(sed 's/#.*//' "$cfg")"; then
+            echo "GAP  $provider  style=unsupported synced=${#synced_consumers[@]} evidence=unavailable (unreadable CI configuration)"
+            gaps=$((gaps + 1))
+            continue
+        fi
         local -a active=()
+        local val invalid=false
         while IFS= read -r val; do
-            [[ -z "$val" ]] && continue
-            active+=("$(echo "$val" | sed 's/-consumer//')")
-        done < <(grep -E '^[[:space:]]*PACTCONSUMER[0-9]*:' "$cfg" 2>/dev/null \
+            val="$(printf '%s' "$val" | sed -E "s/^[[:space:]]+//; s/[[:space:]]+$//; s/^\"(.*)\"$/\\1/; s/^'(.*)'$/\\1/")"
+            if [[ "$val" =~ ^[A-Za-z0-9_][A-Za-z0-9_-]*$ ]]; then
+                active+=("${val%-consumer}")
+            else
+                invalid=true
+            fi
+        done < <(grep -E '^[[:space:]]*PACTCONSUMER[0-9]*:' <<< "$active_cfg" \
                  | sed -E 's/.*PACTCONSUMER[0-9]*:[[:space:]]*//')
 
         local style="" ; local -a unverified=()
-        if [[ ${#active[@]} -gt 0 ]]; then
+        local tag_selector='testOnly[[:space:]]+--[[:space:]]+-n[[:space:]]+tags\.ContractVerifyTest'
+        if $invalid; then
+            style="unsupported"
+        elif [[ ${#active[@]} -gt 0 ]]; then
             style="enum"
             local c a found
             for c in "${synced_consumers[@]}"; do
@@ -316,19 +328,21 @@ check_coverage() {
                 for a in "${active[@]}"; do [[ "$a" == "$c" ]] && found=true && break; done
                 $found || unverified+=("$c")
             done
-        elif grep -q "ContractVerifyTest" "$cfg" 2>/dev/null; then
-            style="tag"   # verifies every synced pact — no enumeration to miss
+        elif grep -Eq "^[[:space:]]*((-[[:space:]]*)?(run|command):[[:space:]]*)?sbt[[:space:]]+(\"$tag_selector\"|'$tag_selector'|$tag_selector)[[:space:]]*$" <<< "$active_cfg"; then
+            style="tag"
         else
-            style="none"
-            unverified=("${synced_consumers[@]}")
+            style="unsupported"
         fi
 
-        if [[ ${#unverified[@]} -gt 0 ]]; then
+        if [[ "$style" == unsupported ]]; then
+            echo "GAP  $provider  style=unsupported synced=${#synced_consumers[@]} evidence=unavailable (no supported literal verification evidence)"
+            gaps=$((gaps + 1))
+        elif [[ ${#unverified[@]} -gt 0 ]]; then
             local list; list="$(IFS=,; echo "${unverified[*]}")"
             echo "GAP  $provider  style=$style synced=${#synced_consumers[@]} not-verified=$list"
             gaps=$((gaps + 1))
         else
-            echo "OK   $provider  style=$style synced=${#synced_consumers[@]} verified"
+            echo "OK   $provider  style=$style synced=${#synced_consumers[@]} (static configuration names verification)"
             ok=$((ok + 1))
         fi
     done
@@ -347,7 +361,7 @@ usage() {
     echo "  stale        Check for stale provider pact files"
     echo "  uncommitted  Check for uncommitted pact files"
     echo "  sync-gaps    Trace each intended edge: consumer test -> built pact -> synced to provider"
-    echo "  coverage     Check CI verification coverage (does the provider verify each synced pact?)"
+    echo "  coverage     Inspect supported static CI verification evidence (not live CI results)"
     echo "  matrix       Show full relationship matrix"
     echo ""
 }
