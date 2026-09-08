@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.4.1"
+version: "0.4.2"
 author: "flurdy"
 ---
 
@@ -19,6 +19,15 @@ bounded interpretation; Pi continues to route by `model-tier`.
 This skill is advisory and read-only. It never fetches, follows links, calls remote services, validates
 credentials, installs hooks, blocks CI, edits files, changes Git state, rewrites history, or creates
 tracker or remote state.
+
+## Placement and enforcement
+
+The helper and skill remain together under `~/.agents/skills/` as the portable, client-neutral audit
+discovered by Pi, Claude Code, and Codex. The model can render its redacted advisory report; a hook
+cannot. Enforcement therefore stays in thin client-specific hooks that call the helper and map its
+result to allow or deny, such as the
+[Claude Code push gate in ai-tools](https://github.com/flurdy/ai-tools/tree/main/claude/artifact-hygiene-gate),
+without copying detectors or report logic.
 
 ## Scope
 
