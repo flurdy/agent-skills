@@ -118,6 +118,60 @@ class ValidateSkillsTest(unittest.TestCase):
     def test_valid_catalog_passes(self) -> None:
         self.assertEqual([], self.errors())
 
+    def test_plain_scalar_mapping_delimiter_fails(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        for value in (
+            "Review handoffs for confirmed archiving: superseded",
+            "Review handoffs:\tsuperseded",
+            "Review handoffs:",
+            'Review "handoffs: superseded"',
+        ):
+            with self.subTest(value=value):
+                path.write_text(
+                    VALID_SKILL.replace("A valid fixture skill.", value),
+                    encoding="utf-8",
+                )
+                self.assert_error_contains(
+                    f"{path}:3: unquoted frontmatter field 'description' contains "
+                    "a YAML mapping delimiter; quote the value or use a block scalar"
+                )
+
+    def test_mapping_delimiter_check_is_not_description_only(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        path.write_text(
+            VALID_SKILL.replace("author: tester", "author: Example: team"),
+            encoding="utf-8",
+        )
+        self.assert_error_contains("unquoted frontmatter field 'author'")
+
+    def test_valid_colon_values_pass(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        for value in (
+            '"Review handoffs: superseded"',
+            "'Review handoffs: superseded'",
+            "https://example.com at 12:30 via tool:*",
+            "A valid fixture skill. # note: comment",
+            *(f"{style}\n  Review handoffs: superseded" for style in (
+                ">", "|", ">-", "|-", ">+", "|+",
+            )),
+        ):
+            with self.subTest(value=value):
+                path.write_text(
+                    VALID_SKILL.replace("A valid fixture skill.", value),
+                    encoding="utf-8",
+                )
+                self.assertEqual([], self.errors())
+
+    def test_flow_collection_mapping_delimiters_pass(self) -> None:
+        path = self.root / "skills" / "alpha" / "SKILL.md"
+        for value in ("{scope: local}", "{scopes: [local, {name: shared}]}"):
+            with self.subTest(value=value):
+                path.write_text(
+                    VALID_SKILL.replace("author: tester", f"author: tester\nmetadata: {value}"),
+                    encoding="utf-8",
+                )
+                self.assertEqual([], self.errors())
+
     def test_cli_returns_nonzero_for_invalid_catalog(self) -> None:
         path = self.root / "skills" / "alpha" / "SKILL.md"
         path.write_text(VALID_SKILL.replace("author: tester\n", ""), encoding="utf-8")

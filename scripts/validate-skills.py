@@ -88,6 +88,14 @@ def parse_frontmatter(path: Path) -> tuple[dict[str, str], list[str], int]:
             fields[key] = " ".join(block)
             continue
 
+        if not raw_value.startswith(('"', "'", "[", "{")):
+            plain_value = re.split(r"(?:^|[ \t]+)#", raw_value, maxsplit=1)[0]
+            if re.search(r":(?:[ \t]|$)", plain_value):
+                errors.append(
+                    f"{path}:{index + 1}: unquoted frontmatter field '{key}' contains "
+                    "a YAML mapping delimiter; quote the value or use a block scalar"
+                )
+
         fields[key] = scalar(raw_value)
         index += 1
 

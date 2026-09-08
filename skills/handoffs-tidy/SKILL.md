@@ -1,6 +1,6 @@
 ---
 name: handoffs-tidy
-description: Review handoffs for confirmed archiving: superseded, done or stale candidates, plus separate assisted review of old/uncertain rows. Age alone never proves completion. Archives files, never deletes or resumes work.
+description: "Review handoffs for confirmed archiving: superseded, done or stale candidates, plus separate assisted review of old/uncertain rows. Age alone never proves completion. Archives files, never deletes or resumes work."
 allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
