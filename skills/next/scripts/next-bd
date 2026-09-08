@@ -8,7 +8,8 @@ usage() {
 Usage: next-bd [OPTIONS]
 
 Options:
-  --in-progress  Include an in-progress work summary
+  --list         Include complete non-selectable in-progress, blocked, deferred tables
+  --in-progress  Include a compact in-progress summary (ignored with --list)
   --avoid-busy   Exclude ready beads whose labels are busy in their store
   --json         Print ranked candidates as JSON
   --type=TYPE    Include only candidates of the given issue type
@@ -16,12 +17,14 @@ Options:
 EOF
 }
 
+FULL_LIST=false
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
 JSON_OUTPUT=false
 TYPE_FILTER=""
 for arg in "$@"; do
   case "$arg" in
+    --list)        FULL_LIST=true ;;
     --in-progress) SHOW_IN_PROGRESS=true ;;
     --avoid-busy)  AVOID_BUSY=true ;;
     --json)        JSON_OUTPUT=true ;;
@@ -38,10 +41,35 @@ if "$JSON_OUTPUT"; then
 fi
 
 jq -r \
+  --arg full_list "$FULL_LIST" \
   --arg show_ip "$SHOW_IN_PROGRESS" \
   --arg avoid_busy "$AVOID_BUSY" \
   --arg json_output "$JSON_OUTPUT" \
   --arg type_filter "$TYPE_FILTER" '
+  def cell: (. // "—") | tostring | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "&#124;");
+  def row: "| " + (map(cell) | join(" | ")) + " |";
+  def blocker_context:
+    if (.blocked_by // [] | length) > 0 then .blocked_by | join(", ")
+    elif (.blocked_by_count // 0) > 0 then "\(.blocked_by_count) blockers"
+    else "—" end;
+  def non_ready_table($title; $rows; $workspace; $extra):
+    ((if $workspace then ["Repo"] else [] end) +
+      ["ID", "Pri", "Type", "Labels", "Title"] +
+      (if $extra == "" then [] else [$extra] end)) as $headers |
+    "\n\n## \($title) (\($rows | length) beads; not selectable)\n" +
+    (if $title == "In Progress" then "\nTracker claims; session activity unverified.\n" else "" end) +
+    (if ($rows | length) == 0 then "\n_None._" else
+      "\n" + ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
+      ($rows | sort_by(.priority, .created_at, (.repository // ""), .id) | map(
+        ((if $workspace then [.repository] else [] end) +
+          [.id, (if .priority == null then "—" else "P\(.priority)" end),
+           .issue_type, (.labels // [] | if length == 0 then "-" else join(", ") end), .title] +
+          (if $extra == "Blocked by" then [blocker_context]
+           elif $extra == "Defer until" then [.defer_until]
+           else [] end)) | row
+      ) | join("\n"))
+    end);
+
   . as $payload |
   ($payload.workspace) as $workspace |
   ($payload.blocked | map("\(.repository // "")\u0000\(.id)")) as $blocked_keys |
@@ -113,7 +141,11 @@ jq -r \
         "| \(.key + 1) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
       end
     ) | join("\n")) +
-    if $show_ip == "true" and ($in_progress | length) > 0 then
+    if $full_list == "true" then
+      non_ready_table("In Progress"; $in_progress; $workspace; "") +
+      non_ready_table("Blocked"; $payload.blocked; $workspace; "Blocked by") +
+      non_ready_table("Deferred"; $payload.deferred; $workspace; "Defer until")
+    elif $show_ip == "true" and ($in_progress | length) > 0 then
       "\n\nTracker status: in progress (session activity unverified):\n" +
       ($in_progress | map(
         if $workspace then
@@ -123,7 +155,7 @@ jq -r \
         end
       ) | join("\n"))
     else "" end +
-    if $workspace and ($diagnostics | length) > 0 then
+    if ($diagnostics | length) > 0 then
       "\n\nSource diagnostics:\n" +
       ($diagnostics | map("- " + .) | join("\n"))
     else "" end

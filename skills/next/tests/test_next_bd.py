@@ -24,7 +24,7 @@ class NextBdTest(WorkspaceFixture):
         result = self.run_next(self.base, "--help")
 
         self.assertIn("Usage: next-bd [OPTIONS]", result.stdout)
-        for option in ("--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
+        for option in ("--list", "--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
             self.assertIn(option, result.stdout)
         self.assertEqual(result.stderr, "")
         self.assertEqual(self.recorded_calls(), [])
@@ -124,6 +124,144 @@ class NextBdTest(WorkspaceFixture):
         )
         self.assertNotIn("other sessions", markdown)
         self.assertIn('[repo-a] `active-a`', markdown)
+
+    def test_full_listing_renders_complete_non_selectable_tables(self) -> None:
+        data = {
+            category: [
+                issue(f"{category}-{index}", 2 if category == "ready" else 4,
+                      "task", "2026-01-01T00:00:00Z", labels=["scope"])
+                for index in range(55)
+            ]
+            for category in ("ready", "in_progress", "blocked", "deferred")
+        }
+        data["blocked"][0]["blocked_by"] = ["dep-a", "dep-b"]
+        data["blocked"][1]["blocked_by_count"] = 3
+        data["deferred"][0]["defer_until"] = "2026-10-01T12:00:00Z"
+        workspace = self.create_workspace(repositories={"repo-a": data})
+        local = self.base / "local"
+        self.create_store(local, **data)
+
+        for directory, owner in ((workspace, "repo-a | "), (local, "")):
+            with self.subTest(workspace=bool(owner)):
+                result = self.run_next(directory, "--list")
+                self.assertEqual(result.stderr, "")
+                self.assertIn("## Ready to Work (55 beads)", result.stdout)
+                for heading in ("In Progress", "Blocked", "Deferred"):
+                    self.assertIn(f"## {heading} (55 beads; not selectable)", result.stdout)
+                self.assertIn("session activity unverified", result.stdout)
+                self.assertIn("| Blocked by |", result.stdout)
+                self.assertIn("| Defer until |", result.stdout)
+                self.assertIn("dep-a, dep-b", result.stdout)
+                self.assertIn("3 blockers", result.stdout)
+                self.assertIn("2026-10-01T12:00:00Z", result.stdout)
+                for category in ("in_progress", "blocked", "deferred"):
+                    for index in range(55):
+                        self.assertIn(f"| {owner}{category}-{index} | P4 |", result.stdout)
+                self.assertIn(f"| {owner}deferred-1 | P4 | task | scope | Title for deferred-1 | — |", result.stdout)
+                self.assertEqual("| Repo |" in result.stdout, bool(owner))
+                self.assertEqual(result.stdout.count("| # |"), 1)
+                self.assertEqual(result.stdout.count("| 1 |"), 1)
+                combined = self.run_next(directory, "--list", "--in-progress").stdout
+                self.assertEqual(combined, result.stdout)
+                candidates = self.run_next(directory, "--json").stdout
+                self.assertEqual(self.run_next(directory, "--list", "--json").stdout, candidates)
+                self.assertEqual(len(json.loads(candidates)), 55)
+
+        calls = self.recorded_calls()
+        self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
+        for call in calls:
+            if call["arguments"][0] == "list":
+                self.assertIn("--limit=0", call["arguments"])
+        self.assertTrue(any("--status=deferred" in call["arguments"] for call in calls))
+
+    def test_full_listing_shows_empty_categories(self) -> None:
+        workspace = self.create_workspace()
+        local = self.base / "local"
+        self.create_store(local)
+        for directory in (workspace, local):
+            with self.subTest(directory=directory):
+                markdown = self.run_next(directory, "--list").stdout
+                self.assertIn("## Ready to Work (0 beads)", markdown)
+                for heading in ("In Progress", "Blocked", "Deferred"):
+                    self.assertIn(f"## {heading} (0 beads; not selectable)", markdown)
+                self.assertEqual(markdown.count("_None._"), 3)
+
+    def test_every_category_failure_discards_source_including_local(self) -> None:
+        categories = ("ready", "blocked", "in_progress", "deferred")
+        for category in categories:
+            for fault in ("error", "invalid-json"):
+                with self.subTest(category=category, fault=fault):
+                    broken = {
+                        key: [issue(f"unsafe-{key}", 0, "bug", "2026-01-01T00:00:00Z")]
+                        for key in categories
+                    }
+                    broken["faults"] = {category: fault}
+                    local = self.base / f"{category}-{fault}"
+                    self.create_store(local, **broken)
+                    result = self.run_next(local, "--list")
+                    self.assertNotIn("unsafe-", result.stdout)
+                    self.assertIn(f"local: {category}:", result.stdout)
+                    result = self.run_next(local, "--json")
+                    self.assertEqual(json.loads(result.stdout), [])
+                    self.assertIn(f"local: {category}:", result.stderr)
+
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("healthy", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={"broken": broken},
+        )
+        for category in categories:
+            for fault in ("error", "invalid-json"):
+                with self.subTest(workspace=True, category=category, fault=fault):
+                    broken["faults"] = {category: fault}
+                    (self.base / "sources/broken/.beads/fixture.json").write_text(json.dumps(broken))
+                    result = self.run_next(workspace, "--list")
+                    self.assertIn("| workspace | healthy |", result.stdout)
+                    self.assertNotIn("unsafe-", result.stdout)
+                    self.assertIn(f"broken: {category}:", result.stdout)
+                    result = self.run_next(workspace, "--json")
+                    self.assertEqual([row["id"] for row in json.loads(result.stdout)], ["healthy"])
+                    self.assertIn(f"broken: {category}:", result.stderr)
+
+    def test_full_listing_preserves_ready_index_resolution(self) -> None:
+        data = {
+            "ready": [
+                issue("task", 2, "task", "2026-01-01T00:00:00Z"),
+                issue("bug", 1, "bug", "2026-01-02T00:00:00Z"),
+            ],
+            "in_progress": [issue("claimed", 0, "bug", "2026-01-01T00:00:00Z")],
+            "blocked": [issue("blocked", 0, "bug", "2026-01-01T00:00:00Z")],
+            "deferred": [issue("deferred", 0, "bug", "2026-01-01T00:00:00Z")],
+        }
+        workspace = self.create_workspace(repositories={"repo-a": data})
+        local = self.base / "local"
+        self.create_store(local, **data)
+        for directory, owner in ((workspace, "repo-a | "), (local, "")):
+            markdown = self.run_next(directory, "--list").stdout
+            for index, issue_id in enumerate(("bug", "task"), 1):
+                with self.subTest(directory=directory, index=index):
+                    self.assertIn(f"| {index} | {owner}{issue_id} |", markdown)
+                    result = self.run_script(
+                        SKILL_DIR / "scripts/next-select", directory,
+                        "resolve", str(index), "--expect-id", issue_id,
+                    )
+                    self.assertEqual(json.loads(result.stdout)["id"], issue_id)
+
+    def test_listing_instructions_require_all_sections(self) -> None:
+        skill = (SKILL_DIR / "SKILL.md").read_text()
+        listing = skill.split("## Listing Mode (default and `list`)", 1)[1].split("## Handling Edge Cases", 1)[0]
+        for required in ("next-bd --list", "all four sections", "in-progress, blocked, and deferred",
+                         "_None._", "non-selectable", "never picker indexes"):
+            self.assertIn(required, listing)
+
+    def test_non_ready_cells_cannot_split_markdown_rows(self) -> None:
+        local = self.base / "local"
+        row = issue("blocked", 2, "task", "2026-01-01T00:00:00Z")
+        row["title"] = "first | second\nthird"
+        row["blocked_by"] = ["dep|one", "dep\ntwo"]
+        self.create_store(local, blocked=[row])
+        markdown = self.run_next(local, "--list").stdout
+        self.assertIn("first &#124; second third", markdown)
+        self.assertIn("dep&#124;one, dep two", markdown)
 
     def test_bug_filter_preserves_global_ranking(self) -> None:
         workspace = self.create_workspace(

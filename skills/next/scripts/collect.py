@@ -311,12 +311,14 @@ def collect(root: Path) -> dict[str, Any]:
         "ready": [],
         "blocked": [],
         "in_progress": [],
+        "deferred": [],
         "diagnostics": [],
     }
     commands = {
-        "ready": ["list", "--ready", "--priority-max=3", "--flat"],
+        "ready": ["list", "--ready", "--priority-max=3", "--flat", "--limit=0"],
         "blocked": ["blocked"],
-        "in_progress": ["list", "--status=in_progress", "--flat"],
+        "in_progress": ["list", "--status=in_progress", "--flat", "--limit=0"],
+        "deferred": ["list", "--status=deferred", "--flat", "--limit=0"],
     }
     for source in sources:
         error = store_error(source)
@@ -327,19 +329,12 @@ def collect(root: Path) -> dict[str, Any]:
         for key, arguments in commands.items():
             issues, error = load_issues(source, arguments)
             if error is not None:
-                if workspace:
-                    payload["diagnostics"].append(f"{source.name}: {key}: {error}")
-                    break
-                continue
-            owned = owned_issues(source, issues, workspace)
-            if workspace:
-                collected[key] = owned
-            else:
-                payload[key].extend(owned)
+                payload["diagnostics"].append(f"{source.name}: {key}: {error}")
+                break
+            collected[key] = owned_issues(source, issues, workspace)
         else:
-            if workspace:
-                for key, issues in collected.items():
-                    payload[key].extend(issues)
+            for key, issues in collected.items():
+                payload[key].extend(issues)
     return payload
 
 

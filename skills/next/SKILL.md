@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.9.0"
+version: "1.10.0"
 author: "flurdy"
 ---
 
@@ -48,7 +48,8 @@ to start editing, invoke a coding skill, or continue to another task.
    - At a valid project-workspace root, collect the root and every registered repository
      with a usable Beads store
    - Exclude `in_progress` beads as tracker claims; session activity remains unverified
-   - Show current in-progress tracker claims with repository identity (for awareness, not selection)
+   - In default/list mode, show complete in-progress, blocked, and deferred tables alongside
+     ready work, including repository identity in workspace mode (for awareness, not selection)
 
 2. **Rank by Suitability**
    - Apply priority ranking algorithm (see below)
@@ -108,14 +109,35 @@ to start editing, invoke a coding skill, or continue to another task.
 | 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV       |
 | 3 | events   | event-ghi  | P2  | task    | auth            | Update dependencies     |
 
-Tracker status: in progress (session activity unverified):
-- [frontend] `web-xyz` (P2 feature) "Implement caching layer"
+## In Progress (1 beads; not selectable)
 
-Which would you like to work on? (1-3, or specify ID, or "task" to auto-pick)
+Tracker claims; session activity unverified.
+
+| Repo | ID | Pri | Type | Labels | Title |
+|---|---|---|---|---|---|
+| frontend | web-xyz | P2 | feature | cache | Implement caching layer |
+
+## Blocked (1 beads; not selectable)
+
+| Repo | ID | Pri | Type | Labels | Title | Blocked by |
+|---|---|---|---|---|---|---|
+| events | event-pqr | P2 | task | auth | Update provider | event-jkl |
+
+## Deferred (1 beads; not selectable)
+
+| Repo | ID | Pri | Type | Labels | Title | Defer until |
+|---|---|---|---|---|---|---|
+| workspace | agents-mno | P3 | task | tooling | Revisit tooling | 2026-10-01T00:00:00Z |
+
+Pick a number from ready work, a ready bead ID, or type task/bug/quick to auto-pick.
 ```
 
 The `Repo` column appears only for validated workspace aggregation. Local single-store
-output keeps the original columns.
+output omits it in every table. Non-ready rows have no `#` column and are never part of
+picker numbering; empty non-ready categories show their heading and `_None._`.
+Non-ready tables include all priorities. Blocker IDs (or count) and `defer_until` are shown
+when available; missing context is `—`. Blocked membership retains `bd blocked` semantics;
+deferred membership comes from an explicit `--status=deferred` read, not a date heuristic.
 
 ## Implementation
 
@@ -128,26 +150,36 @@ When invoked:
    path so the command prefix is stable and allowlistable across harnesses:
 
    ```bash
-   ~/.agents/skills/next/scripts/next-bd --in-progress
+   ~/.agents/skills/next/scripts/next-bd --list
    ```
 
-   For `safe` and `quick` modes, add `--avoid-busy` to exclude beads whose labels overlap
+   For `safe` and `quick` modes, use `--in-progress --avoid-busy` to exclude beads whose labels overlap
    with in-progress beads in the same owning store:
    ```bash
    ~/.agents/skills/next/scripts/next-bd --in-progress --avoid-busy
    ```
 
-   This outputs a globally ranked markdown table with labels, blocked filtering, and
-   owner-qualified in-progress tracker awareness with session activity explicitly unverified.
-   `--json` adds `repository`, `repository_path`,
-   and `selector` to workspace candidates; local JSON remains backward compatible.
+   `--list` outputs the ranked ready table plus complete owner-qualified, non-selectable
+   in-progress, blocked, and deferred tables. `--in-progress` alone retains the compact
+   in-progress bullet summary for existing consumers; `--list` takes precedence if both
+   are passed. Neither flag changes candidate ranking or selection.
+   `--json` always returns only the ranked candidate array, ignoring display flags. It adds
+   `repository`, `repository_path`, and `selector` to workspace candidates; local JSON
+   remains repository-column-free and backward compatible.
 
-   Workspace stores are read independently and read-only. A missing or unusable `.beads`
+   Stores are read independently and read-only. A missing or unusable workspace `.beads`
    directory, command failure, timeout, or malformed response excludes only that source and
-   emits a concise `Source diagnostics` entry; healthy stores remain ranked. A source is
-   included only when its ready, blocked, and in-progress reads all succeed, so partial state
-   cannot make blocked or busy work look selectable. JSON mode writes the same diagnostics to
-   stderr and keeps stdout valid JSON. No listing path synchronizes or merges stores.
+   emits a concise `Source diagnostics` entry; healthy stores remain ranked. In workspace
+   and local mode alike, a source is included only when its ready, blocked, in-progress,
+   and deferred reads all succeed. Never show partial state from a failed source. JSON mode
+   writes the same diagnostics to stderr and keeps stdout valid JSON. No listing path
+   synchronizes or merges stores.
+
+   Runtime requirements: Bash, Python 3.10+, Git, jq, and `bd` supporting
+   `list --ready`, `--status=in_progress`, `--status=deferred`, `--flat`, `--limit=0`,
+   `blocked`, and read-only JSON output. All list reads use `--limit=0` to avoid the default
+   result cap; `bd blocked` has no limit flag. Missing wrapper runtimes fail the command;
+   unavailable or incompatible `bd` reads produce source diagnostics, never partial tables.
 
 2. Parse command argument:
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
@@ -264,10 +296,15 @@ fail closed instead of guessing. Create in the chosen store with `bd -C <directo
 
 When listing:
 
-1. Run the `next-bd` script.
-2. **Reproduce the full ranked table and any source diagnostics in your own markdown reply**, every row, using the columns from the Output Format above. Do not truncate to "top 3" and do not replace the table with a narrative.
-3. *After* the table, you may add a short note (1–2 sentences) on the strongest candidate(s) and any in-progress overlap — but the table comes first and stays complete.
-4. End with the picker prompt: `Pick a number, a bead ID, or type task/bug/quick to auto-pick.`
+1. Run `~/.agents/skills/next/scripts/next-bd --list` for both bare `/next` and `/next list`.
+2. **Reproduce all four sections and any source diagnostics in your own markdown reply**:
+   every ranked ready row and every in-progress, blocked, and deferred row, using the Output
+   Format above. Preserve empty-category headings and `_None._`. Never omit non-ready tables
+   because ready work exists. Do not truncate to "top 3" or replace tables with a narrative.
+3. *After* the tables, you may add a short note (1–2 sentences) on the strongest candidate(s)
+   and any in-progress overlap — but the tables come first and stay complete. Keep non-ready
+   rows unnumbered and explicitly non-selectable; their positions are never picker indexes.
+4. End with the picker prompt: `Pick a number from ready work, a ready bead ID, or type task/bug/quick to auto-pick.`
 5. When the user picks a number, pass that index to `next-select` with the same collector
    options so the selection resolves against the list they saw and keeps its owning store.
 
@@ -275,8 +312,11 @@ Listing mode never marks anything `in_progress`. It only selects work once the u
 
 ## Handling Edge Cases
 
-- **No ready beads (P0-P3)**: Show blocked beads and what's blocking them; mention P4 backlog exists if any, but don't auto-pick
-- **All open beads in progress**: Explain that tracker claims may be active, parked, interrupted, or stale and do not prove session activity; ask whether to show them anyway
+- **No ready beads (P0-P3)**: Still render all non-ready sections and any source diagnostics;
+  don't auto-pick or treat an unavailable source as proof of no work. Mention P4 backlog only
+  if observed, not inferred from an empty ready table.
+- **All open beads in progress**: Show the complete in-progress table. Explain that tracker
+  claims may be active, parked, interrupted, or stale and do not prove session activity
 - **User picks in_progress bead**: Warn that it may be claimed, parked, interrupted, or stale and require explicit confirmation before starting; never infer session activity from Beads status, a branch, a worktree, a handoff, or a clean working copy
 - **Invalid ID**: Show error and list valid options
 - **ID owned by several stores**: `next-select` returns `ambiguous` and writes nothing; ask which `repo:id` to start

@@ -48,6 +48,8 @@ elif '--ready' in arguments:
     key = 'ready'
 elif '--status=in_progress' in arguments:
     key = 'in_progress'
+elif '--status=deferred' in arguments:
+    key = 'deferred'
 else:
     raise SystemExit(2)
 
@@ -62,7 +64,7 @@ delay = payload.get('delays', {}).get(key)
 if delay:
     time.sleep(delay)
 
-issues = [i for k in ('ready', 'blocked', 'in_progress', 'other') for i in payload.get(k, [])]
+issues = [i for k in ('ready', 'blocked', 'in_progress', 'deferred', 'other') for i in payload.get(k, [])]
 if key == 'show':
     selector = arguments[1]
     matches = [
@@ -103,7 +105,10 @@ if key == 'probe':
     issue_id = arguments[arguments.index('--id') + 1]
     print(json.dumps([issue for issue in issues if issue['id'] == issue_id]))
     raise SystemExit(0)
-print(json.dumps(payload[key]))
+rows = payload[key]
+if command == 'list' and '--limit=0' not in arguments:
+    rows = rows[:50]
+print(json.dumps(rows))
 """
 
 
@@ -160,6 +165,7 @@ class WorkspaceFixture(unittest.TestCase):
         ready: list[dict[str, Any]] | None = None,
         blocked: list[dict[str, Any]] | None = None,
         in_progress: list[dict[str, Any]] | None = None,
+        deferred: list[dict[str, Any]] | None = None,
         other: list[dict[str, Any]] | None = None,
         comments: list[dict[str, Any]] | None = None,
         faults: dict[str, str] | None = None,
@@ -179,6 +185,7 @@ class WorkspaceFixture(unittest.TestCase):
                     "ready": ready or [],
                     "blocked": blocked or [],
                     "in_progress": in_progress or [],
+                    "deferred": deferred or [],
                     "other": other or [],
                     "comments": comments or [],
                     "faults": faults or {},
