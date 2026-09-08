@@ -98,36 +98,49 @@ python3 ~/.agents/skills/plan-day/scripts/plan_day.py validate .artifacts/plan-d
 3. **Merge.** `python3 ~/.agents/skills/plan-day/scripts/plan_day.py merge` validates every
    collector file, adds `hours` from the matching `[[clients]]` or `[[projects]]` entry, sorts by
    priority then due date, and lists missing and disabled sources.
-4. **Previous plan.** `python3 ~/.agents/skills/plan-day/scripts/plan_day.py plans` returns
-   today's path, the previous plan file, and stale files beyond `plans.retention_days`. Read the
-   previous plan and carry over any item still present in the merge as slippage.
-5. **Judge.** Assign each item a block from `schedule.blocks`: `hours = work` items go to
-   `work` on a work day inside `schedule.work_hours`, `project-session` items to a concurrent
-   agent session or evening, and anything without capacity to `skip` with a one-line reason.
-   Keep the ranking from the merge unless a due date or a carried-over item justifies moving it.
-6. **Render** the plan below and write it to today's path unless `--dry-run`. Then run
-   `plans --prune` to delete stale files, again unless `--dry-run`.
+4. **Draft.** `python3 ~/.agents/skills/plan-day/scripts/plan_day.py draft` merges, marks items
+   present in the previous plan file as `carried`, proposes a `block` for each item, adds a
+   paste-ready `launch` line, and writes `.artifacts/plan-day/draft.json`. Proposals: `work`
+   hours go to `work` on a work day and `skip` otherwise; `project-session` hours go to
+   `project-session` when delegable and `evening` when not; unmapped repositories go to
+   `evening`; Jira items without a `[[clients]]` entry are skipped. In-progress and carried items
+   sort first. The `context` says whether today is a work day and whether now is inside
+   `schedule.work_hours`.
+5. **Judge.** Read the draft and change only what the proposals get wrong: move an item between
+   blocks, reorder within a block for a due date or a carried-over item, or set `block` to `skip`
+   with a one-line `reason` when there is no capacity. Never invent items, edit titles, or change
+   contract fields. Keep the number of `work` items to what fits `schedule.work_hours` and the
+   number of `project-session` items to what can run concurrently unattended. Write the result
+   back to `.artifacts/plan-day/draft.json`, or leave it untouched when the proposals stand.
+6. **Render.** `python3 ~/.agents/skills/plan-day/scripts/plan_day.py render --dry-run` prints
+   the plan; without `--dry-run` it writes today's file and deletes plans beyond
+   `plans.retention_days`. Pass `--decisions PATH` when the judged file lives elsewhere. Show the
+   rendered plan to the user; it is the deliverable.
 
 ## Plan layout
+
+The renderer owns this layout; do not hand-write plan files.
 
 ```markdown
 # Plan — {Weekday} {YYYY-MM-DD}
 
 ## Work
-| # | Item | Source | Pri | Due | Carried | Launch |
+| # | Item | Source | Pri | Due | Status | Carried | Delegable | Launch |
 
 ## Project sessions
-| # | Item | Source | Pri | Delegable | Launch |
+...
 
 ## Evening
 ...
 
 ## Skipped
-- {item} — {reason}
+- `{id}` {title} — {reason}
 
 ## Sources
-missing: ...  disabled: ...
+missing: ...
+disabled: ...
 ```
 
-`Launch` is a paste-ready `cl <path>` or `pl <path>` line for the item's owning repository, so
-work starts there and not in this workspace. Leave it blank when `repository` is empty.
+`Launch` is a paste-ready `cl <path>` or `pl <path>` line for the item's registered repository
+(`launcher.command` in `pa.toml`, default `cl`), so work starts there and not in this workspace.
+It is blank when the repository is unregistered.

@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stderr
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).parents[1]
@@ -316,3 +316,101 @@ class CollectorTest(WorkspaceCase):
         merged = self.module.merge(self.workspace())
         self.assertNotIn("beads", merged["missing_sources"])
         self.assertEqual(merged["items"][0]["id"], "acme-2")
+
+
+class JudgementTest(WorkspaceCase):
+    def setUp(self) -> None:
+        super().setUp()
+        (self.root / "workspace.json").write_text(
+            json.dumps(
+                {
+                    "version": 1,
+                    "repositories": [
+                        {"name": "acme-workspace", "path": "repos/acme-workspace"},
+                        {"name": "hobby", "path": "repos/hobby"},
+                    ],
+                }
+            )
+        )
+        self.tuesday = datetime(2026, 9, 8, 10, 0)
+        self.sunday = datetime(2026, 9, 13, 10, 0)
+
+    def test_launch_line_resolves_registered_repository_and_root(self) -> None:
+        workspace = self.workspace()
+        self.assertTrue(self.module.launch_line(workspace, "hobby").startswith("cl "))
+        self.assertTrue(self.module.launch_line(workspace, "hobby").endswith("repos/hobby"))
+        self.assertEqual(self.module.launch_line(workspace, "workspace"), f"cl {self.root.resolve()}")
+        self.assertEqual(self.module.launch_line(workspace, "unknown"), "")
+        (self.root / "pa.toml").write_text(PA_TOML + '\n[launcher]\ncommand = "pl"\n')
+        self.assertTrue(self.module.launch_line(self.workspace(), "hobby").startswith("pl "))
+
+    def test_launcher_rejects_unknown_command(self) -> None:
+        (self.root / "pa.toml").write_text(PA_TOML + '\n[launcher]\ncommand = "vim"\n')
+        with self.assertRaises(self.module.PlanDayError):
+            self.module.load_config(self.root)
+
+    def test_propose_block_follows_hours_day_and_delegability(self) -> None:
+        work_day = {"work_day": True}
+        weekend = {"work_day": False}
+        propose = self.module.propose_block
+        self.assertEqual(propose(item(hours="work"), work_day), ("work", ""))
+        self.assertEqual(propose(item(hours="work"), weekend)[0], "skip")
+        self.assertEqual(propose(item(hours="project-session", delegable=True), work_day)[0], "project-session")
+        self.assertEqual(propose(item(hours="project-session", delegable=False), work_day)[0], "evening")
+        self.assertEqual(propose(item(hours=None), work_day), ("evening", ""))
+        self.assertEqual(propose(item(source="jira", hours=None), work_day)[0], "skip")
+
+    def test_draft_carries_over_previous_plan_and_orders_in_progress_first(self) -> None:
+        (self.root / "plans/2026-09-07.md").write_text("| 1 | `acme-old` Slipped | beads |")
+        self.write_collector(
+            "beads",
+            [
+                item(id="acme-old", priority=3),
+                item(id="acme-new", priority=0),
+                item(id="acme-busy", priority=2, status="in_progress"),
+            ],
+        )
+        result = self.module.draft(self.workspace(), self.tuesday)
+        self.assertEqual(result["context"]["weekday"], "Tuesday")
+        self.assertTrue(result["context"]["in_work_hours"])
+        self.assertEqual([i["id"] for i in result["items"]], ["acme-busy", "acme-old", "acme-new"])
+        self.assertTrue(result["items"][1]["carried"])
+        self.assertEqual({i["block"] for i in result["items"]}, {"work"})
+        self.assertTrue(result["plan"]["previous"].endswith("2026-09-07.md"))
+
+    def test_render_writes_plan_prunes_stale_and_respects_dry_run(self) -> None:
+        stale = self.root / "plans/2026-08-01.md"
+        stale.write_text("old")
+        self.write_collector("beads", [item(id="acme-1", repository="hobby", delegable=True), item(id="acme-2")])
+        workspace = self.workspace()
+        decisions = self.module.draft(workspace, self.sunday)
+        decisions["items"][1]["block"] = "skip"
+        decisions["items"][1]["reason"] = "no capacity"
+        path = self.root / ".artifacts/plan-day/draft.json"
+        path.write_text(json.dumps(decisions))
+
+        preview = self.module.render(workspace, path, dry_run=True)
+        self.assertFalse(Path(preview["path"]).exists())
+        self.assertTrue(stale.exists())
+        self.assertIn("# Plan — Sunday 2026-09-13", preview["plan"])
+        self.assertIn("_Not a work day", preview["plan"])
+        self.assertIn("## Project sessions", preview["plan"])
+        self.assertIn("- `acme-2` Do the thing — no capacity", preview["plan"])
+        self.assertIn("missing: jira", preview["plan"])
+
+        written = self.module.render(workspace, path, dry_run=False)
+        self.assertEqual(Path(written["path"]).read_text(), preview["plan"])
+        self.assertEqual(written["pruned"], [str(stale)])
+        self.assertFalse(stale.exists())
+
+    def test_render_rejects_bad_block_or_missing_skip_reason(self) -> None:
+        self.write_collector("beads", [item()])
+        workspace = self.workspace()
+        decisions = self.module.draft(workspace, self.tuesday)
+        path = self.root / ".artifacts/plan-day/draft.json"
+        for block, reason in (("lunch", ""), ("skip", "")):
+            decisions["items"][0]["block"] = block
+            decisions["items"][0]["reason"] = reason
+            path.write_text(json.dumps(decisions))
+            with self.assertRaises(self.module.PlanDayError):
+                self.module.render(workspace, path, dry_run=True)

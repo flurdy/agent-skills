@@ -36,6 +36,12 @@ PLAN_FILE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 ARTIFACT_DIR = Path(".artifacts") / "plan-day"
 NEXT_SCRIPTS = Path.home() / ".agents" / "skills" / "next" / "scripts"
 THOUGHTBOX_SCHEMA = 1
+BLOCK_TITLES = (
+    ("work", "Work"),
+    ("project-session", "Project sessions"),
+    ("evening", "Evening"),
+)
+PLAN_ID = re.compile(r"`([^`\n]+)`")
 
 
 class PlanDayError(Exception):
@@ -117,6 +123,11 @@ def load_config(root: Path) -> dict[str, Any]:
         for label, level in _require(priority, table, dict, "priority").items():
             if not isinstance(level, int) or not 0 <= level <= 4:
                 raise PlanDayError(f"pa.toml: priority.{table}.{label} must be 0-4")
+
+    launcher = config.setdefault("launcher", {})
+    launcher.setdefault("command", "cl")
+    if launcher["command"] not in ("cl", "pl"):
+        raise PlanDayError("pa.toml: launcher.command must be cl or pl")
 
     sources = _require(config, "sources", dict, "root")
     for name, enabled in sources.items():
@@ -433,6 +444,184 @@ def collect(workspace: Workspace, args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def repository_path(workspace: Workspace, repository: str) -> Path | None:
+    if not repository:
+        return None
+    if repository == "workspace":
+        return workspace.root
+    try:
+        manifest = json.loads((workspace.root / "workspace.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    for entry in manifest.get("repositories", []):
+        if entry.get("name") == repository:
+            return (workspace.root / entry["path"]).resolve()
+    return None
+
+
+def launch_line(workspace: Workspace, repository: str) -> str:
+    path = repository_path(workspace, repository)
+    if path is None:
+        return ""
+    home = Path.home()
+    shown = f"~/{path.relative_to(home)}" if path.is_relative_to(home) else str(path)
+    return f"{workspace.config['launcher']['command']} {shown}"
+
+
+def schedule_context(workspace: Workspace, now: datetime) -> dict[str, Any]:
+    schedule = workspace.config["schedule"]
+    weekday = WEEKDAYS[now.weekday()]
+    start, end = schedule["work_hours"].split("-")
+    clock = now.strftime("%H:%M")
+    return {
+        "date": now.date().isoformat(),
+        "weekday": now.strftime("%A"),
+        "work_day": weekday in schedule["work_days"],
+        "in_work_hours": weekday in schedule["work_days"] and start <= clock < end,
+        "work_hours": schedule["work_hours"],
+    }
+
+
+def previous_ids(path: str | None) -> set[str]:
+    if path is None:
+        return set()
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return set()
+    return set(PLAN_ID.findall(text))
+
+
+def propose_block(item: dict[str, Any], context: dict[str, Any]) -> tuple[str, str]:
+    hours = item.get("hours")
+    if hours == "work":
+        if context["work_day"]:
+            return "work", ""
+        return "skip", "outside work days"
+    if hours == "project-session":
+        if item["delegable"]:
+            return "project-session", ""
+        return "evening", "needs a person, not delegable"
+    if item["source"] == "jira":
+        return "skip", "client work without a configured [[clients]] entry"
+    return "evening", ""
+
+
+def draft(workspace: Workspace, now: datetime) -> dict[str, Any]:
+    context = schedule_context(workspace, now)
+    files = plan_files(workspace, now.date())
+    carried = previous_ids(files["previous"])
+    merged = merge(workspace)
+    items = []
+    for item in merged["items"]:
+        block, reason = propose_block(item, context)
+        items.append(
+            {
+                **item,
+                "block": block,
+                "reason": reason,
+                "carried": item["id"] in carried,
+                "launch": launch_line(workspace, item["repository"]),
+            }
+        )
+    items.sort(key=lambda item: (item["status"] != "in_progress", not item["carried"]))
+    return {
+        "context": context,
+        "plan": files,
+        "items": items,
+        "missing_sources": merged["missing_sources"],
+        "disabled_sources": merged["disabled_sources"],
+    }
+
+
+def load_decisions(path: Path, blocks: list[str]) -> dict[str, Any]:
+    try:
+        decisions = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise PlanDayError(f"{path}: {error}") from error
+    if not isinstance(decisions, dict) or not isinstance(decisions.get("items"), list):
+        raise PlanDayError(f"{path}: decisions must be a draft object with an items array")
+    for index, item in enumerate(decisions["items"]):
+        errors = validate_item(
+            {key: item.get(key) for key in CONTRACT_FIELDS}, f"{path}[{index}]"
+        )
+        if errors:
+            raise PlanDayError("\n".join(errors))
+        if item.get("block") not in blocks:
+            raise PlanDayError(f"{path}[{index}]: block must be one of {blocks}")
+        if item["block"] == "skip" and not str(item.get("reason") or "").strip():
+            raise PlanDayError(f"{path}[{index}]: a skipped item needs a reason")
+    return decisions
+
+
+def cell(value: Any) -> str:
+    return str(value if value not in (None, "") else "—").replace("|", "\\|").replace("\n", " ")
+
+
+def render_plan(decisions: dict[str, Any]) -> str:
+    context = decisions["context"]
+    lines = [f"# Plan — {context['weekday']} {context['date']}", ""]
+    if not context["work_day"]:
+        lines += ["_Not a work day; client work is skipped unless you decide otherwise._", ""]
+    items = decisions["items"]
+    for block, title in BLOCK_TITLES:
+        rows = [item for item in items if item["block"] == block]
+        lines += [f"## {title}", ""]
+        if not rows:
+            lines += ["_Nothing planned._", ""]
+            continue
+        lines += [
+            "| # | Item | Source | Pri | Due | Status | Carried | Delegable | Launch |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+        for index, item in enumerate(rows, 1):
+            lines.append(
+                "| "
+                + " | ".join(
+                    (
+                        str(index),
+                        f"`{item['id']}` {cell(item['title'])}",
+                        item["source"],
+                        f"P{item['priority']}",
+                        cell(item["due"]),
+                        cell(item["status"]),
+                        "yes" if item.get("carried") else "—",
+                        "yes" if item["delegable"] else "—",
+                        f"`{item['launch']}`" if item.get("launch") else "—",
+                    )
+                )
+                + " |"
+            )
+        lines.append("")
+    skipped = [item for item in items if item["block"] == "skip"]
+    lines += ["## Skipped", ""]
+    lines += [f"- `{item['id']}` {cell(item['title'])} — {item['reason']}" for item in skipped] or [
+        "_Nothing skipped._"
+    ]
+    lines += [
+        "",
+        "## Sources",
+        "",
+        f"missing: {', '.join(decisions.get('missing_sources') or []) or 'none'}  ",
+        f"disabled: {', '.join(decisions.get('disabled_sources') or []) or 'none'}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def render(workspace: Workspace, decisions_path: Path, dry_run: bool) -> dict[str, Any]:
+    decisions = load_decisions(decisions_path, workspace.config["schedule"]["blocks"])
+    text = render_plan(decisions)
+    target = Path(decisions["plan"]["today"])
+    pruned: list[str] = []
+    if not dry_run:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+        pruned = list(decisions["plan"].get("stale") or [])
+        prune(pruned)
+    return {"path": str(target), "written": not dry_run, "pruned": pruned, "plan": text}
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="plan_day.py", description=__doc__.splitlines()[0])
     parser.add_argument("--workspace", type=Path, help="workspace root (default: search upward)")
@@ -445,6 +634,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     collect.add_argument("--client", help="jira: [[clients]] name owning the input")
     collect.add_argument("--input", type=Path, help="jira: saved MCP search result to normalise")
     commands.add_parser("merge", help="merge validated collector output from .artifacts/plan-day")
+    draft_cmd = commands.add_parser("draft", help="merge, propose blocks and launch lines, write draft.json")
+    draft_cmd.add_argument("--now", type=datetime.fromisoformat, default=None)
+    render_cmd = commands.add_parser("render", help="write plans/YYYY-MM-DD.md from a decisions file")
+    render_cmd.add_argument("--decisions", type=Path, default=None, help="default: .artifacts/plan-day/draft.json")
+    render_cmd.add_argument("--dry-run", action="store_true", help="print the plan without writing or pruning")
     plans = commands.add_parser("plans", help="locate today's, the previous, and stale plan files")
     plans.add_argument("--today", type=date.fromisoformat, default=None)
     plans.add_argument("--prune", action="store_true", help="delete stale plan files")
@@ -468,6 +662,17 @@ def main(argv: list[str]) -> int:
             output = collect(workspace, args)
         elif args.command == "merge":
             output = merge(workspace)
+        elif args.command == "draft":
+            output = draft(workspace, args.now or datetime.now().astimezone())
+            workspace.artifacts_dir.mkdir(parents=True, exist_ok=True)
+            (workspace.artifacts_dir / "draft.json").write_text(
+                json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+        elif args.command == "render":
+            decisions = args.decisions or workspace.artifacts_dir / "draft.json"
+            result = render(workspace, decisions, args.dry_run)
+            print(result.pop("plan"))
+            output = result
         else:
             today = args.today or datetime.now().astimezone().date()
             output = plan_files(workspace, today)
