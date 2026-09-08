@@ -202,7 +202,10 @@ def merge(workspace: Workspace) -> dict[str, Any]:
     enabled = [name for name, on in workspace.config["sources"].items() if on]
     items: list[dict[str, Any]] = []
     present: set[str] = set()
-    for path in sorted(workspace.artifacts_dir.glob("*.json")):
+    for source in SOURCES:
+        path = workspace.artifacts_dir / f"{source}.json"
+        if not path.is_file():
+            continue
         for item in load_items(path):
             present.add(item["source"])
             item = dict(item)

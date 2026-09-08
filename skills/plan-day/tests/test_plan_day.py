@@ -137,6 +137,12 @@ class PlanDayTest(WorkspaceCase):
         self.assertEqual(merged["missing_sources"], ["jira"])
         self.assertIn("trello", merged["disabled_sources"])
 
+    def test_merge_ignores_non_collector_files_in_artifacts(self) -> None:
+        self.write_collector("draft", [{"not": "a collector"}])
+        self.write_collector("beads", [item()])
+        merged = self.module.merge(self.workspace())
+        self.assertEqual([entry["id"] for entry in merged["items"]], ["acme-1"])
+
     def test_merge_fails_closed_on_invalid_collector_output(self) -> None:
         self.write_collector("jira", [item(source="nope")])
         workspace = self.module.load_workspace(self.root)
