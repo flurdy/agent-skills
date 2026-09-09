@@ -108,13 +108,14 @@ ordinary deadline and manual stopping to the runtime and `/watch-stop`.
 ### Claude Code fallback
 
 If `watch_loop` is unavailable, retain the existing Claude Code path below. Do not imitate a
-missing runtime tool. If the required `ScheduleWakeup` or `/loop` capability is also unavailable,
-explain that recurring watches are unsupported and stop.
+missing runtime tool. Both Claude modes start through the `/loop` skill; adaptive mode additionally
+needs `ScheduleWakeup` to pace itself. If `/loop` is unavailable, explain that recurring watches are
+unsupported and stop.
 
 **Session-model guard (adaptive mode only).** Before starting the Claude adaptive path, state which
 model powers this session — your system prompt names it ("You are powered by …"). If it is any
 Fable model, do NOT start the adaptive loop: say why, point at the alternatives below, and end the
-turn without calling `ScheduleWakeup`. This is not a capability judgment you can pass by intending
+turn without starting it. This is not a capability judgment you can pass by intending
 to render first — on wakeup turns Fable-class models emit their main output as the turn's final
 message after tool calls, and `ScheduleWakeup` ends the turn the instant it returns, mechanically
 discarding that message; every tick will be blank regardless of intent. Alternatives: run the
@@ -127,18 +128,22 @@ to name it.)
 
 #### Adaptive mode (default)
 
-Do NOT run `/pr-status` in this turn, and do NOT use the `/loop` skill. Just start the loop:
-call `ScheduleWakeup` (load it via ToolSearch if needed) with `delaySeconds: 60` and this prompt,
-substituting the stop hour — then confirm the loop is started and the first dashboard lands in
-about a minute:
+`ScheduleWakeup` paces a loop runtime that already exists — it is the self-pacing primitive of a
+no-interval `/loop`, not a way to start one. Called standalone it still reports a scheduled wakeup,
+but the call is orphaned: no cron entry is written and no tick ever fires. So adaptive mode starts
+through `/loop` as well, with the interval omitted.
+
+Do NOT run `/pr-status` in this turn, and do NOT call `ScheduleWakeup` yourself. Invoke the `/loop`
+skill with no interval and this prompt, substituting the stop hour:
 
 ```
-When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs claude tick` once; telemetry failure must not block the watch. Then invoke /pr-status — afterwards schedule the next check: ScheduleWakeup(delaySeconds = N from your next-tick line, prompt = this message verbatim), or ScheduleWakeup(stop: true) if that wake would land past {stop_hour}:00
+/loop When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs claude tick` once; telemetry failure must not block the watch. Then invoke the pr-status skill and render its full read-only dashboard. Do not execute suggested actions. Then pace the loop with one trailing ScheduleWakeup(delaySeconds = N from the dashboard's next-tick line, prompt = this message verbatim, noop = false), or ScheduleWakeup(stop: true) if that wake would land past {stop_hour}:00
 ```
 
-Each wakeup is then a plain `/pr-status` run — dashboard first, one `ScheduleWakeup` call at the
-very end. `/pr-status` closes with `next-tick: {hot|warm|cold} (~{N}s) — {reason}`; that `N`
-(hot ~180s / warm ~600s / cold 1200–1800s, 600 if the line is missing) is the next delay.
+Each tick is then a plain `/pr-status` run inside the loop the harness is already running —
+dashboard first, one `ScheduleWakeup` call at the very end. `/pr-status` closes with
+`next-tick: {hot|warm|cold} (~{N}s) — {reason}`; that `N` (hot ~180s / warm ~600s /
+cold 1200–1800s, 600 if the line is missing) is the next delay.
 
 Keep scheduling to that single trailing call — ticks that dwell on scheduling have skipped the
 dashboard, and the dashboard is the whole point.

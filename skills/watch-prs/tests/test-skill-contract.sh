@@ -58,7 +58,9 @@ for invariant in \
     '### Claude Code fallback' \
     'ScheduleWakeup' \
     '/loop {interval} When already permitted' \
+    '/loop When already permitted' \
     'Then invoke the pr-status skill' \
+    'not a way to start one' \
     'Fable'; do
     assert_contains "$invariant"
 done
@@ -73,5 +75,16 @@ guard_line=$(line_of '**Session-model guard (adaptive mode only).**')
 
 assert_not_contains '/skill:pr-status'
 assert_not_contains 'allowIndefinite: true'
+
+# Both Claude modes must start through /loop. A standalone ScheduleWakeup call is
+# accepted by the harness but never fires, so the watcher must never advise one.
+assert_not_contains 'do NOT use the `/loop` skill'
+
+adaptive_line=$(line_of '#### Adaptive mode (default)')
+fixed_line=$(line_of '#### Fixed mode (interval given)')
+[[ -n "$adaptive_line" && -n "$fixed_line" ]] || fail "both Claude modes must exist"
+adaptive_body=$(sed -n "${adaptive_line},${fixed_line}p" "$SKILL")
+grep -Fq -- '/loop When already permitted' <<<"$adaptive_body" \
+    || fail 'adaptive mode must start through a no-interval /loop'
 
 printf '%s\n' 'watch-prs protocol contract tests passed'
