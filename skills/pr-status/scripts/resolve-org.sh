@@ -17,16 +17,24 @@
 #
 # Members need not agree: a workspace can mix orgs, and can hold repos on non-GitHub
 # remotes entirely. Non-GitHub remotes are skipped and the most common org wins.
+#
+# `workspace_repos` exposes the same walk as `org/repo` pairs so list scripts can query
+# member repos directly: `gh search prs` reads GitHub's search index, which can lag a
+# freshly opened PR by minutes, whereas `gh pr list --repo` is authoritative.
 
-org_from_url() {   # $1 = remote URL; prints the org, or fails for non-GitHub remotes
+repo_from_url() {   # $1 = remote URL; prints org/repo, or fails for non-GitHub remotes
   case "$1" in
-    *github.com[:/]*) printf '%s\n' "$1" | sed -E 's#.*github\.com[:/]##; s#/.*##' ;;
+    *github.com[:/]*) printf '%s\n' "$1" | sed -E 's#.*github\.com[:/]##; s#\.git$##; s#/+$##' ;;
     *) return 1 ;;
   esac
 }
 
-workspace_orgs() {   # prints one org per member repo that has a GitHub origin
-  local script root line name url org section
+org_from_url() {   # $1 = remote URL; prints the org, or fails for non-GitHub remotes
+  repo_from_url "$1" | sed 's#/.*##'
+}
+
+workspace_repos() {   # prints org/repo per member repo that has a GitHub origin
+  local script root line name url repo section
   script="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../wrap-up/scripts" 2>/dev/null && pwd)/multirepo.sh"
   [ -x "$script" ] || return 1
   root=""
@@ -44,11 +52,15 @@ workspace_orgs() {   # prints one org per member repo that has a GitHub origin
         name="${line%%|*}"
         url="$(git -C "$root/$name" remote get-url origin 2>/dev/null || true)"
         [ -n "$url" ] || continue
-        org="$(org_from_url "$url")" || continue
-        [ -n "$org" ] && printf '%s\n' "$org"
+        repo="$(repo_from_url "$url")" || continue
+        [ -n "$repo" ] && printf '%s\n' "$repo"
         ;;
     esac
   done < <("$script")
+}
+
+workspace_orgs() {   # prints one org per member repo that has a GitHub origin
+  workspace_repos | sed 's#/.*##'
 }
 
 resolve_org() {   # $1 = optional explicit org
