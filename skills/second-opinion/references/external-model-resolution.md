@@ -56,10 +56,16 @@ Effort is validated only where the selected CLI exposes a verified native contro
 - Claude: `low`, `medium`, `high`, `xhigh`, `max` via `--effort`;
 - Codex: `minimal`, `low`, `medium`, `high`, `xhigh` via `model_reasoning_effort`;
 - Gemini: no supported effort override;
-- OpenRouter: no generic reasoning translation.
+- OpenRouter: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, passed literally
+  as `reasoning.effort` from the route or `--route-effort`. Model-specific support must
+  be checked before use; an API rejection is preserved, never downgraded or retried.
 
 Unsupported values are rejected. Omitted values preserve the native default; the skill never invents
 a universal effort mapping or claims to know an unreported effective default.
+OpenRouter effort is a request setting, not a guaranteed token split. Optional
+OpenRouter `maxOutputTokens` lowers the profile output-token ceiling; both include
+reasoning and visible output, and neither may exceed the compiled 16,000-token cap.
+Omitted effort sends no reasoning setting and omitted cap inherits the profile limit.
 
 ## Cost and consent
 
@@ -80,5 +86,6 @@ can still run approved local routes with honest quorum/consensus degradation.
   <https://developers.openai.com/codex/config-file/config-basic>.
 - Gemini CLI documents `--model` but no portable effort option:
   <https://geminicli.com/docs/cli/configuration/>.
+- OpenRouter reasoning controls and per-model discovery: <https://openrouter.ai/docs/guides/best-practices/reasoning-tokens>.
 - Repository routing policy: [`MODEL_ROUTING.md`](../../../MODEL_ROUTING.md).
 - Panel schema and execution: [review-panels.md](review-panels.md).

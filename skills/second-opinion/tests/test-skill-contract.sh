@@ -40,4 +40,12 @@ grep -Fq 'references/pr-evidence.md' "$SKILL" || fail 'PR context contract must 
 grep -Fq 'All modes, including PR review' "$SKILL" || fail 'Codex must receive the actual packet'
 grep -Fq 'no current PR assessment' "$SKILL" || fail 'stale external claims must not authorize a current assessment'
 grep -Fq 'final revalidation **before** this section' "$SKILL" || fail 'PR stability must gate panel synthesis, not only the final assessment'
+for file in "$SKILL" "$README" "$REFERENCE"; do
+  for setting in 'reasoning.effort' 'maxOutputTokens' '16,000'; do
+    grep -Fq "$setting" "$file" || fail "missing OpenRouter setting $setting in $file"
+  done
+done
+for setting in effectiveMaxOutputTokens effectiveEffort maxOutputTokensTotal; do
+  grep -Fq "$setting" "$SKILL" || fail "consent disclosure omits $setting"
+done
 printf 'second-opinion skill contract tests passed\n'

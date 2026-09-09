@@ -11,7 +11,7 @@ readonly DEFAULT_PANEL="focused"
 readonly HARD_MAX_ROUTES=8
 readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
-readonly HARD_MAX_OUTPUT_TOKENS=2000
+readonly HARD_MAX_OUTPUT_TOKENS=16000
 readonly HARD_MAX_LOCAL_OUTPUT_BYTES=65536
 readonly HARD_MAX_TIMEOUT_SECONDS=1800
 
@@ -35,7 +35,8 @@ Profiles live under version-1 config "profiles". A profile contains either legac
 OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes may
 be disabled; quorum counts enabled routes while optional consensusQuorum counts
 unique providers. Built-in focused is used when absent from config. Local response
-and error capture are bounded while streaming.
+and error capture are bounded while streaming. OpenRouter effort is passed as
+reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 16,000).
 USAGE
 }
 
@@ -198,7 +199,7 @@ normalize_profile() {
           model: .value.model,
           vendor: .value.vendor,
           role: .value.role
-        }],
+        } + (.value | with_entries(select(.key == "effort" or .key == "maxOutputTokens")))],
         limits: .limits
       }
     ' <<< "$RAW_PROFILE")"
@@ -218,6 +219,7 @@ validate_limits_and_routes() {
     --argjson max_prompt "$HARD_MAX_PROMPT_BYTES" \
     --argjson max_output "$HARD_MAX_OUTPUT_TOKENS" \
     --argjson max_timeout "$HARD_MAX_TIMEOUT_SECONDS" '
+    .limits.maxOutputTokensPerModel as $output_ceiling |
     (.routes | type == "array" and length >= 1 and length <= $max_routes) and
     (.limits | type == "object") and
     (.limits.maxParallel | type == "number" and floor == . and . >= 1 and . <= $max_parallel) and
@@ -229,7 +231,8 @@ validate_limits_and_routes() {
       (.role | type == "string" and length > 0) and
       ((has("enabled") | not) or (.enabled | type == "boolean")) and
       (
-        (.kind == "local" and (.agent == "claude" or .agent == "codex" or .agent == "gemini") and
+        (.kind == "local" and (has("maxOutputTokens") | not) and
+          (.agent == "claude" or .agent == "codex" or .agent == "gemini") and
           ((has("model") | not) or (.model | type == "string" and length > 0)) and
           (
             (has("effort") | not) or
@@ -240,7 +243,11 @@ validate_limits_and_routes() {
         (.kind == "openrouter" and
           (.model | type == "string" and test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
           (.vendor | type == "string" and length > 0) and
-          (has("agent") | not) and (has("effort") | not))
+          (has("agent") | not) and
+          ((has("effort") | not) or
+            (.effort | type == "string" and test("^(none|minimal|low|medium|high|xhigh|max)$"))) and
+          ((has("maxOutputTokens") | not) or
+            (.maxOutputTokens | type == "number" and floor == . and . >= 1 and . <= $output_ceiling)))
       )
     ) and
     ([.routes[].id] | unique | length) == (.routes | length) and
@@ -250,6 +257,7 @@ validate_limits_and_routes() {
   fi
 
   PANEL_JSON="$(jq -c --argjson model_policies "$MODEL_POLICIES" '
+    .limits.maxOutputTokensPerModel as $output_ceiling |
     .routes |= map(
       . + {
         enabled: (if has("enabled") then .enabled else true end),
@@ -262,6 +270,8 @@ validate_limits_and_routes() {
       if .kind == "openrouter" then
         ($model_policies[.model] // {metered: true, consent: "ask"}) as $policy |
         . + {
+          effectiveMaxOutputTokens: (.maxOutputTokens // $output_ceiling),
+          outputTokensSource: (if has("maxOutputTokens") then "route" else "profile" end),
           meteredClassification: $policy.metered,
           consentPolicy: $policy.consent,
           consentBasis: (if $policy.consent == "allow" then "configured" else "confirmation-required" end)
@@ -310,12 +320,12 @@ apply_effort_override() {
   local value="${override#*=}"
   [[ -n "$id" && -n "$value" ]] || die "--route-effort requires non-empty ID and EFFORT"
   local agent
-  agent="$(jq -r --arg id "$id" '.routes[] | select(.id == $id) | .agent // empty' <<< "$PANEL_JSON")"
-  [[ -n "$agent" ]] || {
-    jq -e --arg id "$id" 'any(.routes[]; .id == $id)' <<< "$PANEL_JSON" >/dev/null || die "unknown route override id: $id"
-    die "effort is unsupported for OpenRouter routes: $id"
-  }
+  agent="$(jq -r --arg id "$id" '.routes[] | select(.id == $id) | .agent // .kind' <<< "$PANEL_JSON")"
+  [[ -n "$agent" ]] || die "unknown route override id: $id"
   case "$agent" in
+    openrouter)
+      [[ "$value" =~ ^(none|minimal|low|medium|high|xhigh|max)$ ]] || die "unsupported OpenRouter effort for $id: $value"
+      ;;
     claude)
       [[ "$value" =~ ^(low|medium|high|xhigh|max)$ ]] || die "unsupported Claude effort for $id: $value"
       ;;
@@ -479,6 +489,7 @@ check_panel() {
       openrouterRoutes: $openrouter_routes,
       openrouter: {
         requestCount: ($openrouter_routes | length),
+        maxOutputTokensTotal: ([$openrouter_routes[].effectiveMaxOutputTokens] | add // 0),
         completionContractBytes: $completion_contract_bytes,
         auth: (if ($openrouter_routes | length) == 0 then "not-required" else $openrouter_auth end),
         curl: (if ($openrouter_routes | length) == 0 then "not-required" else $openrouter_curl end),
@@ -775,7 +786,8 @@ run_local() {
 openrouter_config() {
   jq -n --argjson subset "$OPENROUTER_JSON" '
     {version: 1, profiles: {selected: {
-      models: [$subset.routes[] | {model, vendor, role}],
+      models: [$subset.routes[] | {model, vendor, role} +
+        with_entries(select(.key == "effort" or .key == "maxOutputTokens"))],
       limits: $subset.limits
     }}}
   '
@@ -830,8 +842,8 @@ run_openrouter() {
         provider: $panel_routes[$i].provider,
         effectiveModel: $panel_routes[$i].model,
         modelSource: "panel",
-        effectiveEffort: "native-default",
-        effortSource: "native-default",
+        effectiveEffort: $panel_routes[$i].effectiveEffort,
+        effortSource: $panel_routes[$i].effortSource,
         meteredClassification: $panel_routes[$i].meteredClassification,
         consentPolicy: $panel_routes[$i].consentPolicy,
         consentBasis: $panel_routes[$i].consentBasis,
@@ -849,8 +861,6 @@ decline_openrouter() {
     error: "OpenRouter subset declined",
     effectiveModel: .model,
     modelSource: "panel",
-    effectiveEffort: "native-default",
-    effortSource: "native-default",
     meteredClassification: .meteredClassification,
     consentPolicy: .consentPolicy,
     consentBasis: .consentBasis,

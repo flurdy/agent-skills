@@ -9,7 +9,7 @@ readonly DEFAULT_PROFILE="extreme"
 readonly HARD_MAX_MODELS=8
 readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
-readonly HARD_MAX_OUTPUT_TOKENS=2000
+readonly HARD_MAX_OUTPUT_TOKENS=16000
 readonly HARD_MAX_RESPONSE_BYTES=1048576
 readonly HARD_MAX_TIMEOUT_SECONDS=1800
 readonly COMPLETION_MARKER='<!-- SECOND_OPINION_COMPLETE -->'
@@ -28,7 +28,7 @@ Usage:
 
 Configuration defaults to ~/.agents/second-opinion/config.json. A profile contains
 1-8 unique OpenRouter models and limits no greater than the compiled safety
-ceilings: 4 concurrent requests, 65,536 prompt bytes, 2,000 output tokens per
+ceilings: 4 concurrent requests, 65,536 prompt bytes, 16,000 output tokens per
 model, a 1,048,576-byte HTTP response transport cap, and 1,800 seconds per request.
 The prompt ceiling includes the fixed completion contract and sanitized user message.
 
@@ -36,7 +36,8 @@ An OpenRouter API key is required only for run. The helper uses
 OPENROUTER_API_KEY when set, otherwise secret-api-key with SECRET_API_KEY_PROJECT.
 The config contains model identities and limits, never credentials. The helper
 adds a fixed completion contract, strips its marker, and returns non-compliant
-transport-success responses as status=incomplete.
+transport-success responses as status=incomplete. Optional model effort is sent
+as reasoning.effort; maxOutputTokens may lower the profile output-token ceiling.
 USAGE
 }
 
@@ -137,6 +138,7 @@ validate_profile() {
   fi
 
   if ! jq -e '
+    .limits.maxOutputTokensPerModel as $output_ceiling |
     (.models | type == "array") and
     (.models | length >= 1) and
     (.models | length <= 8) and
@@ -144,11 +146,15 @@ validate_profile() {
       (.model | type == "string") and
       (.model | test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
       (.vendor | type == "string") and (.vendor | length > 0) and
-      (.role | type == "string") and (.role | length > 0)
+      (.role | type == "string") and (.role | length > 0) and
+      ((has("effort") | not) or
+        (.effort | type == "string" and test("^(none|minimal|low|medium|high|xhigh|max)$"))) and
+      ((has("maxOutputTokens") | not) or
+        (.maxOutputTokens | type == "number" and floor == . and . >= 1 and . <= $output_ceiling))
     )) and
     ([.models[].model] | unique | length) == (.models | length)
   ' <<< "$PROFILE_JSON" >/dev/null 2>&1; then
-    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs; each model must use openrouter/<provider>/<model-id>"
+    PROFILE_ERROR="profile models must contain 1-$HARD_MAX_MODELS unique model IDs in canonical form, valid optional effort, and maxOutputTokens within the profile ceiling"
     return 1
   fi
 
@@ -363,6 +369,7 @@ call_model() {
   local max_output_tokens="$6"
   local work_dir="$7"
   local index="$8"
+  local effort="${9:-}"
   local api_model="${canonical_model#openrouter/}"
   local provider="${api_model%%/*}"
   local request_file
@@ -378,6 +385,7 @@ call_model() {
     --arg model "$api_model" \
     --arg completion_contract "$COMPLETION_CONTRACT" \
     --rawfile prompt "$prompt_file" \
+    --arg effort "$effort" \
     --argjson max_tokens "$max_output_tokens" '
     {
       model: $model,
@@ -387,7 +395,7 @@ call_model() {
       ],
       max_tokens: $max_tokens,
       temperature: 0.2
-    }' > "$request_file"
+    } + (if $effort == "" then {} else {reasoning: {effort: $effort}} end)' > "$request_file"
 
   : > "$response_file"
   local curl_status=0
@@ -478,12 +486,10 @@ run_panel() {
 
   local max_parallel
   local max_prompt_bytes
-  local max_output_tokens
   local timeout_seconds
   local model_count
   max_parallel="$(jq -r '.limits.maxParallel' <<< "$PROFILE_JSON")"
   max_prompt_bytes="$(jq -r '.limits.maxPromptBytes' <<< "$PROFILE_JSON")"
-  max_output_tokens="$(jq -r '.limits.maxOutputTokensPerModel' <<< "$PROFILE_JSON")"
   timeout_seconds="$(jq -r '.limits.defaultTimeoutSeconds' <<< "$PROFILE_JSON")"
   model_count="$(jq -r '.models | length' <<< "$PROFILE_JSON")"
 
@@ -515,13 +521,15 @@ run_panel() {
     while (( index < model_count && launched < max_parallel )); do
       local canonical_model
       local vendor
-      local role
+      local role effort max_output_tokens
       canonical_model="$(jq -r --argjson index "$index" '.models[$index].model' <<< "$PROFILE_JSON")"
       vendor="$(jq -r --argjson index "$index" '.models[$index].vendor' <<< "$PROFILE_JSON")"
       role="$(jq -r --argjson index "$index" '.models[$index].role' <<< "$PROFILE_JSON")"
+      effort="$(jq -r --argjson index "$index" '.models[$index].effort // empty' <<< "$PROFILE_JSON")"
+      max_output_tokens="$(jq -r --argjson index "$index" '.models[$index].maxOutputTokens // .limits.maxOutputTokensPerModel' <<< "$PROFILE_JSON")"
 
       call_model "$canonical_model" "$vendor" "$role" "$prompt_file" "$timeout_seconds" \
-        "$max_output_tokens" "$WORK_DIR" "$index" &
+        "$max_output_tokens" "$WORK_DIR" "$index" "$effort" &
       pids+=("$!")
       index=$((index + 1))
       launched=$((launched + 1))

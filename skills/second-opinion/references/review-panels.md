@@ -118,7 +118,30 @@ when omitted. `effort` is optional and route-specific:
 
 - Claude: `low`, `medium`, `high`, `xhigh`, `max`;
 - Codex: `minimal`, `low`, `medium`, `high`, `xhigh`;
-- Gemini and OpenRouter: unsupported and rejected.
+- OpenRouter: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`;
+- Gemini: unsupported and rejected.
+
+OpenRouter effort is sent literally as `reasoning.effort`. These are gateway values,
+not a promise that every model accepts them or reserves a fixed answer-token budget.
+Check current model support before configuration; provider rejections remain errors,
+never retries or silent downgrades. Omitted effort sends no `reasoning` field.
+
+For OpenRouter only, optional route `maxOutputTokens` may lower
+`limits.maxOutputTokensPerModel`; it cannot exceed that profile ceiling or the
+compiled 16,000-token ceiling. Without it, the route inherits the profile ceiling.
+Both limits must be positive integers. Existing profiles and the built-in default
+remain unchanged at their configured caps (the built-in is 2,000). Local CLI output
+continues to use its separate byte bound.
+
+For example, a profile with a 16,000-token ceiling may give a reasoning route
+`"effort": "high"` and leave its cap inherited, while another OpenRouter route uses
+`"maxOutputTokens": 2000`. The total includes reasoning **and** visible answer tokens.
+Changing the profile ceiling affects every inheriting OpenRouter route; preserve
+unrelated budgets with explicit lower route caps. Legacy `models` entries accept
+these same optional fields. `check`, results, and declines report `effectiveEffort`,
+`effortSource`, `effectiveMaxOutputTokens`, and `outputTokensSource` (`route` or
+`profile`); `check.openrouter.maxOutputTokensTotal` sums enabled OpenRouter caps.
+Both settings are included in the panel, subset, and helper profile digests.
 
 The coordinator derives local providers (`anthropic`, `openai`, `google`) and the OpenRouter provider
 namespace. Route IDs and model identities must be unique. Repeated provider namespaces are allowed
@@ -181,7 +204,8 @@ Panel routes use unambiguous per-route overrides:
 ```
 
 Repeat flags as needed. Unknown route IDs, OpenRouter model overrides, unsupported effort values, and
-Gemini/OpenRouter effort are rejected. Generic `--model` remains for a single direct agent only and
+Gemini effort are rejected. `--route-effort` also supports OpenRouter routes and is
+included in consent binding. Generic `--model` remains for a single direct agent only and
 is invalid with `quorum` or `consensus`.
 
 ## Coordinator protocol

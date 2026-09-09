@@ -31,6 +31,8 @@ CURL_LOG="$TMP_DIR/curl.log"
 ERROR_LOG="$TMP_DIR/error.log"
 WATCHDOG_SLEEP_LOG="$TMP_DIR/watchdog-sleeps.log"
 export AGENT_LOG CURL_LOG WATCHDOG_SLEEP_LOG
+REQUEST_LOG="$TMP_DIR/requests.jsonl"
+export REQUEST_LOG
 
 for agent in claude codex gemini; do
   cat > "$TMP_DIR/bin/$agent" <<'FAKE_AGENT'
@@ -107,6 +109,7 @@ request_file="$(awk -F '"' '/^data-binary = "@/{print $2}' "$config_file")"
 request_file="${request_file#@}"
 response_file="$(awk -F '"' '/^output = "/{print $2}' "$config_file")"
 model="$(jq -r '.model' "$request_file")"
+jq -c '{model, max_tokens, reasoning, hasReasoning:has("reasoning")}' "$request_file" >> "$REQUEST_LOG"
 jq -e '
   (.messages | length) == 2 and
   (.messages[0].role == "system" and
@@ -633,4 +636,105 @@ BOTH_CONFIG="$TMP_DIR/both.json"
 jq '.profiles.mixed.models = .profiles.legacy.models' "$CONFIG" > "$BOTH_CONFIG"
 expect_failure 'exactly one of models or routes' "${RUN_ENV[@]}" "$HELPER" check --config "$BOTH_CONFIG" --panel mixed
 
+jq -se 'all(.[]; .max_tokens == 100 and (.hasReasoning | not))' "$REQUEST_LOG" \
+  >/dev/null || fail "existing requests changed with omitted reasoning settings"
+
+BUDGET_CONFIG="$TMP_DIR/budget.json"
+jq '.profiles.mixed.limits.maxOutputTokensPerModel = 16000 |
+    .profiles.mixed.routes[2].effort = "high" |
+    .profiles.mixed.routes[3].maxOutputTokens = 2000' "$CONFIG" > "$BUDGET_CONFIG"
+budget_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --panel mixed --prompt-file "$PROMPT")"
+jq -e '
+  .openrouter.maxOutputTokensTotal == 18000 and
+  (.routes[] | select(.id == "qwen-a") |
+    .effectiveEffort == "high" and .effortSource == "panel" and
+    .effectiveMaxOutputTokens == 16000 and .outputTokensSource == "profile") and
+  (.routes[] | select(.id == "qwen-b") |
+    .effectiveEffort == "native-default" and .effectiveMaxOutputTokens == 2000 and .outputTokensSource == "route")
+' <<< "$budget_check" >/dev/null || fail "budget/effort check provenance was incorrect"
+budget_panel_sha="$(jq -r '.panelSha256' <<< "$budget_check")"
+budget_subset_sha="$(jq -r '.openrouterSha256' <<< "$budget_check")"
+budget_prompt_sha="$(jq -r '.promptSha256' <<< "$budget_check")"
+BUDGET_ARGS=(--config "$BUDGET_CONFIG" --panel mixed --prompt-file "$PROMPT"
+  --panel-sha256 "$budget_panel_sha" --openrouter-sha256 "$budget_subset_sha" --prompt-sha256 "$budget_prompt_sha")
+: > "$REQUEST_LOG"
+: > "$CURL_LOG"
+"${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed "${BUDGET_ARGS[@]}" > "$TMP_DIR/budget-results.json"
+jq -se '
+  length == 2 and
+  (map(select(.model == "qwen/model-a")) | .[0].max_tokens == 16000 and .[0].reasoning == {effort:"high"}) and
+  (map(select(.model == "QWEN/model-b")) | .[0].max_tokens == 2000 and (.[0].hasReasoning | not))
+' "$REQUEST_LOG" >/dev/null || fail "coordinator dropped approved request settings"
+[[ "$(wc -l < "$CURL_LOG")" -eq 2 ]] || fail "coordinator retried budget routes"
+: > "$CURL_LOG"
+"${RUN_ENV[@]}" "$HELPER" decline-openrouter "${BUDGET_ARGS[@]}" > "$TMP_DIR/budget-declined.json"
+for file in "$TMP_DIR/budget-results.json" "$TMP_DIR/budget-declined.json"; do
+  jq -e '.[0].effectiveEffort == "high" and .[0].effortSource == "panel" and
+    .[0].effectiveMaxOutputTokens == 16000 and .[1].effectiveMaxOutputTokens == 2000' "$file" \
+    >/dev/null || fail "run/decline lost approved effort or budget provenance"
+done
+for mutation in '.profiles.mixed.routes[2].effort = "low"' '.profiles.mixed.routes[3].maxOutputTokens = 1000'; do
+  jq "$mutation" "$BUDGET_CONFIG" > "$TMP_DIR/changed-budget.json"
+  changed_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/changed-budget.json" --panel mixed --prompt-file "$PROMPT")"
+  [[ "$(jq -r '.panelSha256' <<< "$changed_check")" != "$budget_panel_sha" ]] || fail "panel did not bind effort/budget"
+  [[ "$(jq -r '.openrouterSha256' <<< "$changed_check")" != "$budget_subset_sha" ]] || fail "subset did not bind effort/budget"
+  expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed \
+    "${BUDGET_ARGS[@]}" --config "$TMP_DIR/changed-budget.json"
+done
+for value in '0' '-1' '16001' '1.5' '"16000"' 'null' 'true'; do
+  for field in '.profiles.mixed.limits.maxOutputTokensPerModel' '.profiles.mixed.routes[2].maxOutputTokens'; do
+    jq "$field = $value" "$BUDGET_CONFIG" > "$TMP_DIR/invalid-budget.json"
+    expect_failure 'panel routes or limits are invalid' "${RUN_ENV[@]}" "$HELPER" check \
+      --config "$TMP_DIR/invalid-budget.json" --panel mixed
+  done
+done
+jq '.profiles.mixed.routes[2].maxOutputTokens = 101' "$CONFIG" > "$TMP_DIR/invalid-budget.json"
+expect_failure 'panel routes or limits are invalid' "${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --panel mixed
+jq '.profiles.mixed.routes[0].maxOutputTokens = 10' "$CONFIG" > "$TMP_DIR/invalid-budget.json"
+expect_failure 'panel routes or limits are invalid' "${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --panel mixed
+for value in '"ultra"' 'null' '1' '[]' 'false'; do
+  jq ".profiles.mixed.routes[2].effort = $value" "$CONFIG" > "$TMP_DIR/invalid-budget.json"
+  expect_failure 'panel routes or limits are invalid' "${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --panel mixed
+done
+for effort in none minimal low medium high xhigh max; do
+  override_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --panel mixed --route-effort "qwen-a=$effort")"
+  jq -e --arg effort "$effort" '.routes[] | select(.id == "qwen-a") |
+    .effectiveEffort == $effort and .effortSource == "override"' <<< "$override_check" \
+    >/dev/null || fail "OpenRouter effort override provenance lost"
+done
+[[ ! -s "$CURL_LOG" ]] || fail "rejected/declined budget run invoked curl"
+expect_failure 'unsupported OpenRouter effort' "${RUN_ENV[@]}" "$HELPER" check \
+  --config "$BUDGET_CONFIG" --panel mixed --route-effort qwen-a=ultra
+expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed \
+  "${BUDGET_ARGS[@]}" --route-effort qwen-a=low
+: > "$REQUEST_LOG"
+override_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --panel mixed \
+  --prompt-file "$PROMPT" --route-effort qwen-a=low)"
+"${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed --config "$BUDGET_CONFIG" --panel mixed \
+  --prompt-file "$PROMPT" --route-effort qwen-a=low \
+  --panel-sha256 "$(jq -r '.panelSha256' <<< "$override_check")" \
+  --openrouter-sha256 "$(jq -r '.openrouterSha256' <<< "$override_check")" \
+  --prompt-sha256 "$budget_prompt_sha" > "$TMP_DIR/override-budget-results.json"
+jq -se 'map(select(.model == "qwen/model-a")) | length == 1 and
+  .[0].max_tokens == 16000 and .[0].reasoning == {effort:"low"}' "$REQUEST_LOG" \
+  >/dev/null || fail "approved effort override was not sent"
+jq -e '.[0].effectiveEffort == "low" and .[0].effortSource == "override"' \
+  "$TMP_DIR/override-budget-results.json" >/dev/null || fail "override result provenance was reset"
+printf '%s\n' "$override_check" > "$TMP_DIR/override-budget-check.json"
+"$HELPER" evaluate --policy quorum --check-file "$TMP_DIR/override-budget-check.json" \
+  --results-file "$TMP_DIR/override-budget-results.json" > "$TMP_DIR/override-budget-eval.json"
+jq -e '.results[] | select(.id == "qwen-a") | .effectiveEffort == "low" and
+  .effortSource == "override" and .effectiveMaxOutputTokens == 16000' "$TMP_DIR/override-budget-eval.json" \
+  >/dev/null || fail "evaluation lost effort/budget provenance"
+# Legacy entries must survive both normalization and the helper projection.
+jq '.profiles.legacy.models[0] += {effort:"high",maxOutputTokens:80}' "$CONFIG" > "$TMP_DIR/legacy-budget.json"
+legacy_budget_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/legacy-budget.json" --panel legacy --prompt-file "$PROMPT")"
+: > "$REQUEST_LOG"
+"${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed --config "$TMP_DIR/legacy-budget.json" --panel legacy \
+  --prompt-file "$PROMPT" --panel-sha256 "$(jq -r '.panelSha256' <<< "$legacy_budget_check")" \
+  --openrouter-sha256 "$(jq -r '.openrouterSha256' <<< "$legacy_budget_check")" \
+  --prompt-sha256 "$(jq -r '.promptSha256' <<< "$legacy_budget_check")" > "$TMP_DIR/legacy-budget-results.json"
+jq -se 'map(select(.model == "qwen/legacy-a")) | length == 1 and
+  .[0].max_tokens == 80 and .[0].reasoning == {effort:"high"}' "$REQUEST_LOG" \
+  >/dev/null || fail "legacy reasoning/budget was dropped"
 printf '%s\n' 'review-panel tests passed'

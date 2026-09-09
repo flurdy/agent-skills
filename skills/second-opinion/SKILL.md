@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git 
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.3.0"
+version: "3.4.0"
 author: "flurdy"
 ---
 
@@ -91,7 +91,10 @@ For a direct single agent only:
 
 For panels, generic `--model` is invalid. Use repeated `--route-model ID=VALUE` and
 `--route-effort ID=VALUE`. OpenRouter identities cannot be overridden. Unsupported effort is rejected,
-never translated.
+never translated. OpenRouter route effort is sent as `reasoning.effort`; verify model
+support first. Optional route `maxOutputTokens` may lower the profile ceiling (hard maximum
+16,000 tokens including reasoning). Omitted fields retain the profile cap and native effort;
+effort does not guarantee answer headroom. See the panel reference for schema and provenance.
 
 ## 1. Parse arguments
 
@@ -249,7 +252,8 @@ user-local `consent: "allow"` policy: invoke `run-openrouter --configured-consen
 digests and the same profile, prompt, timeout, and overrides. Otherwise, immediately before requests
 use one `AskUserQuestion` that discloses only the OpenRouter routes whose policies remain `ask`:
 exact routes/models/vendors, request count, concurrency, prompt cap (including the displayed fixed
-completion-contract bytes), output-token cap, timeout, variable pricing, and that OpenRouter credits
+completion-contract bytes), each route's `effectiveMaxOutputTokens` and `effectiveEffort`,
+subset `maxOutputTokensTotal`, timeout, variable pricing, and that OpenRouter credits
 will be consumed.
 
 - **Approve** → invoke `run-openrouter --confirmed` with all three digests and the same profile,

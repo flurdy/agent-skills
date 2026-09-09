@@ -34,6 +34,8 @@ mkdir -p "$TMP_DIR/bin" "$TMP_DIR/home"
 FAKE_CURL_LOG="$TMP_DIR/curl.log"
 ERROR_LOG="$TMP_DIR/error.log"
 export FAKE_CURL_LOG
+REQUEST_LOG="$TMP_DIR/requests.jsonl"
+export REQUEST_LOG
 
 cat > "$TMP_DIR/bin/curl" <<'FAKE_CURL'
 #!/usr/bin/env bash
@@ -59,6 +61,7 @@ request_file="$(awk -F '"' '/^data-binary = "@/{print $2}' "$config_file")"
 request_file="${request_file#@}"
 response_file="$(awk -F '"' '/^output = "/{print $2}' "$config_file")"
 model="$(jq -r '.model' "$request_file")"
+jq -c '{model, max_tokens, reasoning, hasReasoning:has("reasoning")}' "$request_file" >> "$REQUEST_LOG"
 jq -e '
   (.messages | length) == 2 and
   (.messages[0].role == "system" and
@@ -449,4 +452,52 @@ jq -e '
 [[ "$(wc -l < "$FAKE_CURL_LOG" | tr -d '[:space:]')" -eq 4 ]] || \
   fail "oversized response run did not preserve all four calls"
 
+jq -se 'all(.[]; .max_tokens == 100 and (.hasReasoning | not))' "$REQUEST_LOG" \
+  >/dev/null || fail "omitted effort or budget changed existing requests"
+
+BUDGET_CONFIG="$TMP_DIR/budget.json"
+jq '.profiles.test.limits.maxOutputTokensPerModel = 16000 |
+    .profiles.test.models[0] += {effort:"high", maxOutputTokens:16000} |
+    .profiles.test.models[1].maxOutputTokens = 2000' "$CONFIG" > "$BUDGET_CONFIG"
+budget_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --profile test)"
+jq -e '.ready and .hard_limits.max_output_tokens_per_model == 16000' \
+  <<< "$budget_check" >/dev/null || fail "16000-token profile was rejected"
+budget_sha="$(jq -r '.profile_sha256' <<< "$budget_check")"
+: > "$REQUEST_LOG"
+: > "$FAKE_CURL_LOG"
+"${RUN_ENV[@]}" "$HELPER" run --confirmed --config "$BUDGET_CONFIG" --profile test \
+  --profile-sha256 "$budget_sha" --prompt-file "$PROMPT" > "$TMP_DIR/budget-results.json"
+jq -se '
+  length == 4 and
+  (map(select(.model == "qwen/test-a")) | .[0].max_tokens == 16000 and .[0].reasoning == {effort:"high"}) and
+  (map(select(.model == "x-ai/test-b")) | .[0].max_tokens == 2000 and (.[0].hasReasoning | not)) and
+  all(.[] | select(.model != "qwen/test-a" and .model != "x-ai/test-b");
+    .max_tokens == 16000 and (.hasReasoning | not))
+' "$REQUEST_LOG" >/dev/null || fail "configured reasoning and per-model caps were not sent"
+[[ "$(wc -l < "$FAKE_CURL_LOG")" -eq 4 ]] || fail "budget run retried a model"
+
+: > "$FAKE_CURL_LOG"
+for mutation in '.profiles.test.models[0].effort = "low"' '.profiles.test.models[0].maxOutputTokens = 8000'; do
+  jq "$mutation" "$BUDGET_CONFIG" > "$TMP_DIR/changed-budget.json"
+  changed_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/changed-budget.json" --profile test)"
+  [[ "$(jq -r '.profile_sha256' <<< "$changed_check")" != "$budget_sha" ]] || fail "budget/effort was not bound"
+  expect_failure 'profile changed since check' "${RUN_ENV[@]}" "$HELPER" run --confirmed \
+    --config "$TMP_DIR/changed-budget.json" --profile test --profile-sha256 "$budget_sha" --prompt-file "$PROMPT"
+done
+for value in '0' '-1' '16001' '1.5' '"16000"' 'null' 'true'; do
+  for field in '.profiles.test.limits.maxOutputTokensPerModel' '.profiles.test.models[0].maxOutputTokens'; do
+    jq "$field = $value" "$BUDGET_CONFIG" > "$TMP_DIR/invalid-budget.json"
+    invalid_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --profile test)"
+    jq -e '.ready == false' <<< "$invalid_check" >/dev/null || fail "invalid budget accepted: $field=$value"
+  done
+done
+jq '.profiles.test.models[0].maxOutputTokens = 101' "$CONFIG" > "$TMP_DIR/invalid-budget.json"
+invalid_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --profile test)"
+jq -e '.ready == false' <<< "$invalid_check" >/dev/null || fail "route cap exceeded profile ceiling"
+for value in '"ultra"' 'null' '1' '[]' 'false'; do
+  jq ".profiles.test.models[0].effort = $value" "$CONFIG" > "$TMP_DIR/invalid-budget.json"
+  invalid_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --profile test)"
+  jq -e '.ready == false' <<< "$invalid_check" >/dev/null || fail "invalid effort accepted: $value"
+done
+assert_no_requests
 printf '%s\n' 'openrouter-panel tests passed'

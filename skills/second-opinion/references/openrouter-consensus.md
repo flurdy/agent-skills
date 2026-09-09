@@ -101,11 +101,16 @@ Local limits may lower but never exceed the compiled ceilings:
 - 8 requests total;
 - 4 concurrent requests;
 - 65,536 combined sanitized-user-prompt and fixed completion-contract bytes;
-- 2,000 output tokens per model;
+- 16,000 output tokens per model (reasoning plus visible output);
 - 1,048,576 response bytes per HTTP transport;
 - 1,800 seconds per request.
 
 The response-byte ceiling is a transport safety bound, not a token conversion or price estimate.
+Existing profile limits do not increase automatically. A route may set `maxOutputTokens`
+to lower its profile ceiling and `effort` to request `reasoning.effort`; omitted fields
+preserve the profile cap and model-native reasoning behavior. Neither effort ratios nor
+a larger cap guarantee a completed answer. See [review-panels.md](review-panels.md) for
+validation, effective budget reporting, and model support requirements.
 
 Models are never selected dynamically, substituted, or added during a run.
 
@@ -150,8 +155,8 @@ immediately before requests, use one `AskUserQuestion`. Disclose:
 - panel name and every OpenRouter route whose policy remains `ask`, with exact model ID, vendor,
   provider, and role;
 - exact number of OpenRouter requests and configured maximum concurrency;
-- prompt-byte cap, including the displayed fixed completion-contract bytes, output-token cap per
-  model, and timeout;
+- prompt-byte cap, including the displayed fixed completion-contract bytes, each route's
+  `effectiveMaxOutputTokens` and `effectiveEffort`, the subset `maxOutputTokensTotal`, and timeout;
 - that only this subset consumes OpenRouter credits and prices can change.
 
 Options:

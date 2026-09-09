@@ -102,6 +102,19 @@ model/effort overrides, and limits.
 OpenRouter panels additionally require `curl` and either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT` in your shell or secret
 manager. Put exact OpenRouter model IDs in the local configuration, never in this shared README.
 
+## OpenRouter reasoning and output budgets
+
+Reasoning and the visible answer share the output-token allowance. A small allowance
+can be exhausted entirely by reasoning, producing no answer. OpenRouter routes can
+set `effort` (sent as `reasoning.effort`) and `maxOutputTokens` to lower the profile's
+`limits.maxOutputTokensPerModel`. The hard ceiling is 16,000 tokens; existing profiles
+keep their configured limits. Omitted effort preserves the model's native behavior.
+
+`check` shows each effective cap/effort and the total OpenRouter token allowance.
+A larger allowance or lower effort does not guarantee completion or answer quality;
+verify model support and measure real responses. See [the panel schema](references/review-panels.md)
+before changing settings. Profile changes and live trials retain their confirmation gates.
+
 ## Cost, privacy, and consent
 
 Local CLI routes are read-only reviewers and may inspect readable files in the current repository.
