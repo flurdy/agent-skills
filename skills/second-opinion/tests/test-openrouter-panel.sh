@@ -117,6 +117,16 @@ elif [[ "$model" == "${FAKE_CURL_LENGTH_MODEL:-}" ]]; then
     }}],
     usage: {prompt_tokens: 10, completion_tokens: 100, total_tokens: 110}
   }' > "$response_file"
+elif [[ "$model" == "${FAKE_CURL_NULL_LENGTH_MODEL:-}" ]]; then
+  jq -n --arg model "$model" '{
+    id: ("gen-" + $model), model: $model, provider: "fake-provider",
+    choices: [{finish_reason: "length", native_finish_reason: "length", message: {
+      content: null,
+      reasoning: "hidden reasoning must not persist"
+    }}],
+    usage: {prompt_tokens: 881, completion_tokens: 2000, total_tokens: 2881,
+      completion_tokens_details: {reasoning_tokens: 2000}}
+  }' > "$response_file"
 elif [[ "$model" == "${FAKE_CURL_LONG_METADATA_MODEL:-}" ]]; then
   jq -n '{
     id: ("i" * 512), model: ("m" * 512), provider: ("p" * 512),
@@ -373,6 +383,23 @@ jq -e '
     .[2].termination.nativeFinishReason == "max_tokens") and
   ([.[] | select(.status == "ok")] | length == 3)
 ' <<< "$result_json" >/dev/null || fail "non-stop termination was accepted as completed"
+
+: > "$FAKE_CURL_LOG"
+result_json="$(FAKE_CURL_NULL_LENGTH_MODEL=qwen/test-a "${RUN_ENV[@]}" "$HELPER" run --confirmed \
+  --config "$CONFIG" --profile test --profile-sha256 "$profile_sha256" \
+  --prompt-file "$PROMPT")"
+jq -e '
+  length == 4 and
+  (.[0].status == "incomplete" and
+    (.[0].error | contains("finish reason: length")) and
+    .[0].response == null and
+    .[0].termination.finishReason == "length" and
+    .[0].termination.nativeFinishReason == "length" and
+    .[0].termination.toolCallCount == 0 and
+    .[0].usage.completion_tokens == 2000 and
+    .[0].usage.completion_tokens_details.reasoning_tokens == 2000) and
+  ([.[] | select(.status == "ok")] | length == 3)
+' <<< "$result_json" >/dev/null || fail "null-response length termination was not preserved as incomplete"
 
 : > "$FAKE_CURL_LOG"
 result_json="$(FAKE_CURL_LONG_METADATA_MODEL=moonshotai/test-d "${RUN_ENV[@]}" "$HELPER" run --confirmed \
