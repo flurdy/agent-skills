@@ -15,7 +15,7 @@
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
 | contract-check | Read-only Pact-lite health authority: content drift, uncommitted pacts, sync gaps, static CI evidence and semantic test gaps |
 | contract-test | Execute existing scoped Pact-lite generation, local sync and provider verification; status delegates to contract-check |
-| create-pr | Create a pull request from the current branch following project conventions, and close the associated bead |
+| create-pr | Audit publication artifacts, then create a separately confirmed pull request following project conventions and close the associated bead |
 | delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
 | develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
@@ -57,7 +57,7 @@
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |
 | today | Read-only same-day or previous-workday activity recap; owns shared rendering, with current-session context in same-day mode |
 | token-dashboard | Read-only current-session and UTC-week token telemetry for Pi, Claude Code, Codex, and optional OpenRouter management analytics; normalized JSON and terminal views without transcript or credential output |
-| total-review | Portable pre-PR gauntlet with revision-bound evidence, explicit manual/missing review coverage, optional independent reviewers, and at most two fix/review passes |
+| total-review | Portable pre-PR gauntlet with revision-bound artifact hygiene and review evidence, explicit missing coverage, optional independent reviewers, and at most two fix/review passes |
 | tracking-sweep | Portfolio-wide drift sweep across Jira, beads, and GitHub PRs — flags status drift, orphan work, parent-moved beads, and stale items. Read-only |
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
 | triage | Create/refine beads from raw requests or Jira, or own explicitly requested blocked human decisions; approved implementation plans go to plan-to-backlog |
@@ -70,7 +70,7 @@
 | watch-review-requests | Watch direct inbound GitHub review requests, run one bounded repository-qualified review at a time, and pause for private, draft-only, deferred, or separately confirmed external dispositions |
 | watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | watch-telemetry | Query opt-in local watcher-execution counters with partial coverage, fixed privacy-safe fields, and bounded active retention; explicitly enable, disable, or prune collection |
-| wrap-up | Report session activity and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |
+| wrap-up | Report session activity, artifact hygiene and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |
 | yesterday | Alias for `/today --previous-workday`: objective previous-workday recap; selects Friday when run on Monday |
 
 ## Model routing

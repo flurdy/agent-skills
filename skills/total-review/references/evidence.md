@@ -78,6 +78,19 @@ the immutable PR metadata, diff, and required head-pinned file context replace l
 provided diff lacks material content (e.g. binary files), acquire head-pinned evidence or mark the gate
 unavailable. Never use similarly named files from an unrelated checkout to fill the gap.
 
+## Artifact-hygiene evidence (G5a)
+
+G5a's authoritative helper has a broader, independent publication scope; record its normalized JSON,
+exit code, audited worktree, target HEAD/policy, coverage and provenance against the ledger revision.
+It does not accept a selected diff or the review's fixed base. The helper's within-run change checks
+are not a reusable final-scope fingerprint; rerun at the final checkpoint as the skill requires.
+
+Never recover raw evidence for an audit finding from a file, commit, scanner output, configuration,
+or captured scope packet. Do not put matched values into reports, Beads or peer prompts. These rules
+override validation-by-inspection and fix offers for G5a findings only; the other review gates retain
+their existing sanitized evidence procedures. Audit findings stay advisory, with their reported
+severities unchanged, and remediation is separately approved outside this run.
+
 ## Refresh after fixes
 
 The comparison base stays fixed, but the packet does not. After every accepted cleanup or user fix,

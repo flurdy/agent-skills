@@ -1,11 +1,11 @@
 ---
 name: total-review
-description: "Portable pre-PR quality gauntlet: cleanup, verification, craft, correctness, security, and optional independent reviews. Binds every gate to the final scope, reports missing coverage, and caps fix/review passes at two."
-allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),Bash(git remote get-url:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * search:*),Bash(bd -C * create:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
+description: "Portable pre-PR quality gauntlet: cleanup, verification, craft, correctness, security, artifact hygiene, and optional independent reviews. Binds every gate to the final scope, reports missing coverage, and caps fix/review passes at two."
+allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),Bash(git remote get-url:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * search:*),Bash(bd -C * create:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
 model-tier: premium
 model: fable
 effort: xhigh
-version: "1.0.2"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -54,7 +54,8 @@ or security reviewers are usable only if their read-only behavior, scope input, 
 known. Otherwise choose the explicit manual route *before launch*. No new reviewer skills or client
 plugins are required. Do not let a composed skill replace the ledger scope with its default branch
 or remote PR diff. Read and apply its review procedure to the supplied packet; if the route cannot
-accept that scope, mark it unavailable rather than reviewing a different change.
+accept that scope, mark it unavailable rather than reviewing a different change. G5a is explicitly a
+repository-wide publication audit alongside the selected review scope, not a substitute diff review.
 Reading a skill does not grant its tools. G6/G7 require authorized composition of `second-opinion`
 with its tools and consent policy; if the harness cannot provide that, record `unavailable`.
 The read-file fallback never authorizes running provider CLIs directly from this skill.
@@ -68,11 +69,12 @@ request; this composer does not restore blanket build-tool grants removed by its
 | G3 Craft/reuse | `pedantic-review` with exact scope | Yes for code | Use its installed review procedure manually; if unreadable, unavailable. |
 | G4 Correctness | Verified read-only host reviewer | Yes | Run the manual correctness checklist in the reference. |
 | G5 Security | Verified read-only host reviewer | Yes | Run the manual security checklist in the reference. |
+| G5a Artifact hygiene | Authoritative `artifact_hygiene.py` helper | Yes, including local-only runs | Record unavailable; no detector or manual fallback. |
 | G6 Independent peer | `second-opinion` ask mode, peer route | Unless skipped | Record unavailable/declined/skipped, never pass. |
 | G7 Premium panel | `second-opinion` ask mode, premium quorum | Opt-in | Record unavailable/declined/skipped, never pass. |
 
 Determine whether G7 is requested at preflight, not after seeing review results; this scope choice
-never authorizes metered routes. Freeze the expected gate set before starting: G1–G5 when applicable, G6 by default (excluded only
+never authorizes metered routes. Freeze the expected gate set before starting: G1–G5 plus G5a when applicable, G6 by default (excluded only
 by `--skip-external`), and G7 only when explicitly requested/accepted. An unrequested G7 is recorded
 `skipped` with reason "not requested", never passed. Cost consent remains separate: a requested
 review whose route is missing or whose metered consent is declined remains expected but incomplete.
@@ -125,6 +127,8 @@ switch branches. Offer a separate user-controlled checkout and fresh run if full
 In diff-only mode G1 and executable tests in G2 are `unavailable`. Requirements can still be reviewed,
 but that does not imply test execution. Run the read-only gates against the qualified packet; return
 `PARTIAL` even if those gates are clean. Do not apply local fixes in diff-only mode.
+Diff-only PR: G5a is `unavailable`; never run the helper against an unrelated local checkout or pass
+it the downloaded diff. Its repository argument is a worktree path, not a PR identity or base ref.
 
 Once a matching local PR checkout receives accepted fixes, the result is a **local candidate derived
 from that PR**, not clearance of the published PR: local fixes are not evidence for the remote PR head.
@@ -183,6 +187,44 @@ validated; do not label it a clean audit. Never send secrets to reviewers or rep
 in evidence, prompts, output, or Beads. Sanitize context before independent review; if sanitizing removes
 material review context, mark that coverage incomplete rather than pretending to review the whole diff.
 
+### G5a — Artifact hygiene
+
+In the proven local repository/worktree for this revision, run the authoritative, local-only,
+read-only helper (Python 3.10+, Git and Gitleaks required):
+
+```bash
+~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py --pretty
+```
+
+Capture stdout and exit status, including nonzero exits. Render **coverage before findings**
+using [artifact-hygiene's Report contract](../artifact-hygiene/SKILL.md#report): exact status/verdict,
+each source's status and safe error codes, normalized redacted findings, and `suppressed` counts
+with clone-local allowances disclosed. Use only normalized evidence; partial is never clean.
+Never recover raw evidence from reported files, commits, scanner output, configuration, or the
+scope packet. Remediation is a separate explicitly approved task. Do not edit artifacts, rewrite
+history, change allowances, install tooling, or copy detectors during this gate.
+
+Bind the report to the ledger revision, audited worktree, `target.head`, `generatedAt`, `provenance`,
+`target.policy`, and `coverage`. Verify `target.head` matches the revision's HEAD and recheck the scope after
+collection. The helper audits the full publishable working tree and its own locally resolved unpublished history,
+not the selected diff or fixed review base. Record that distinct coverage, including its local history
+base and gaps; never filter out findings merely because they are outside selected review paths.
+It does not audit remote PR text. A local PR run covers the proven local candidate only.
+
+Exit `0` alone is not clearance; apply these gate results after validating `artifact-hygiene/v1` JSON:
+
+| Helper result | G5a result / disposition |
+|---|---|
+| Exit 0, `status: complete`, `verdict: clean`, no findings, every required source present and complete | `pass` for this revision only. |
+| Exit 0, complete/findings | `failed`; precautionary publication-risk stop, outcome HALTED. Preserve reported severities without claiming verified security defects. |
+| Exit 2 / partial coverage, missing helper/scanner, missing required sources, or unusable report | `unavailable`; outcome PARTIAL unless another gate halted. Stop later gates; keep available findings visible. |
+| Exit 3 / failed audit, or unexpected execution failure | `failed`; outcome HALTED. |
+| Repository/HEAD/scope mismatch | `stale`; outcome PARTIAL; require a fresh scoped run. |
+
+Excluded from the fix loop and Beads writes: G5a findings remain a redacted advisory report, never
+an invitation to inspect matches or mutate tracked work. Do not forward matched values to G6/G7.
+This gate does not replace G5's broader security review, and `--skip-external` does not skip it.
+
 ### G6 — One independent peer
 
 With `--skip-external`, record `skipped` and continue to the final checkpoint (or the fix decision if
@@ -205,7 +247,7 @@ start a fresh run from G1; no hidden resume bypass exists.
 Offer the fix option only when iteration is still available. For nonblocking findings within that
 budget, offer **Apply selected fixes and re-review** or **Keep findings and finish**; otherwise report
 findings and finish without offering in-run edits. Apply nothing without a concrete selection. If selected and iteration is allowed, record the accepted
-fix paths, increment `pass_count` before returning to G1, refresh the scope, and rerun G1–G6. The cap is
+fix paths, increment `pass_count` before returning to G1, refresh the scope, and rerun G1–G6 including G5a. The cap is
 **2 total passes**, including the first, and never resets inside this run. `--no-iterate` caps it at one.
 No fixes are applied inside this run once the cap is reached; changes made anyway invalidate earlier
 evidence and produce `PARTIAL` pending a new run. Never report stale reviews as completed on new code.
@@ -232,10 +274,16 @@ Recapture scope immediately before reporting. Any unexpected branch/HEAD/content
 provenance, or moved PR identity makes affected evidence `stale`; stop and ask for a fresh scope rather
 than silently expanding it. Expected accepted fixes require their own revision and gate reruns.
 The final ledger—not an early snapshot, phase counter, or saved "looks good"—is authoritative.
+For a local run with no prior stop, rerun G5a after this recapture and before reporting, then recheck
+scope stability and bind its result to the final revision. This also refreshes publication coverage
+outside selected paths and local ref/policy changes. A prior clean audit never clears changed content.
+Keep the previous report as provenance, not current clearance. G5a's disposition applies here too.
+Do not rerun after a halt or use this checkpoint to bypass a required fresh run.
 
 Derive the outcome in this order:
 
-1. **HALTED** — validated halt finding or failed required command; record later gates as `not-run`.
+1. **HALTED** — validated halt finding, G5a publication-risk stop, or failed required command;
+   record later gates as `not-run`. G5a's partial-coverage exit maps to PARTIAL, not command failure.
 2. **PARTIAL** — missing expected gate evidence (unavailable, stale, pending, not-run, failed,
    declined, or skipped), or diff-only execution. If core gates pass but an expected independent
    route is incomplete, say "core gates clear; external coverage incomplete"—never full-gauntlet clearance.
@@ -245,7 +293,7 @@ Derive the outcome in this order:
 
 CLEAR is scoped to the expected gate set: label intentional exclusions explicitly, e.g. "CLEAR —
 local-only; external skipped" or "CLEAR — core + peer; premium panel not requested". Neither claims
-the omitted reviewer ran; only all seven passed gates permit full-gauntlet clearance.
+the omitted reviewer ran; only all eight passed gates permit full-gauntlet clearance.
 
 `PARTIAL` can include actionable findings; neither hides the other. Preserve successful individual
 routes without promoting a partial panel to complete. Never claim merge readiness or clearance of
@@ -261,7 +309,7 @@ Render one compact report from the ledger:
 
 | Gate | Method | Result | Revision | Evidence / finding IDs |
 |---|---|---|---|---|
-| ...all seven gates, including skipped and unavailable ones... |
+| ...all eight gates (including G5a), with skipped and unavailable ones... |
 
 **Accepted fixes:** {paths and reasons, or none}
 **Findings:** {validated severity, source, file:line, open/fixed, bead or inline ID}
@@ -269,6 +317,9 @@ Render one compact report from the ledger:
 ```
 
 ## Findings and tracking
+
+G5a is report-only: its audit findings are excluded from the validation-by-inspection and tracking
+writes below. Preserve only normalized redacted evidence and the separate-remediation handoff.
 
 The ledger owns finding identity and status; Beads are downstream tracking, not a second verdict.
 Validate and deduplicate findings across gates/passes before writes. Recheck a previously reported

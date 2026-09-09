@@ -1,11 +1,11 @@
 ---
 name: wrap-up
-description: Summarise session activity and working-copy risks, then save a resume handoff. Reports tracker/settings drift without repairing it; new files auto-save, overwrites need confirmation. Run before leaving the client.
-allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Read, Write, AskUserQuestion, mcp__jira__jira_get"
+description: Summarise session activity, artifact-hygiene coverage, and working-copy risks, then save a resume handoff. Reports tracker/settings drift without repairing it; new files auto-save, overwrites need confirmation. Run before leaving the client.
+allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*), Read, Write, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.13.0"
+version: "0.14.0"
 author: "flurdy"
 ---
 
@@ -22,7 +22,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 ## What it does
 
 1. Activity roundup for today (commits, PRs created/merged, beads closed).
-2. Working-copy hygiene — flag uncommitted, unpushed, or worktree-only state.
+2. Working-copy hygiene — flag uncommitted, unpushed, worktree-only state, and artifact-hygiene risks.
 3. Settings/tracker drift — report risks and name their separate review workflow; do not repair them.
 4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
 5. Auto-save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` when that file is free; prompt only on collision/overwrite or when choosing a different name.
@@ -48,7 +48,7 @@ It also **cannot rename the session** for you. Only you typing the command trigg
 >
 > **MUST use the dedicated helper scripts.** Never construct ad-hoc `git`/`gh`/`bd` pipelines inline — those bypass the per-script permission allowlist and produce noisy permission prompts. Specifically: §0 must go through `~/.agents/skills/wrap-up/scripts/header.sh`, §1 must go through `~/.agents/skills/wrap-up/scripts/activity.sh`, §3 must go through `~/.agents/skills/landscape/scripts/working-copy.sh` (reused — landscape and wrap-up share the same hygiene probe), and §3b must go through `~/.agents/skills/wrap-up/scripts/multirepo.sh`.
 
-Render the sections below in order. The four helper scripts in §0, §1, §3, and §3b can run in parallel.
+Render the sections below in order. The helper scripts in §0, §1, §3, §3b, and §3d can run in parallel.
 
 ### 0. Header
 
@@ -305,6 +305,38 @@ Render one line per drifting file:
 Add an Open-threads bullet: `{count} worktree-only permission(s) in {worktree} — separately run
 /tidy-settings before pruning`. This is report-only: do not invoke a repair skill or copy settings.
 
+### 3d. 🔐 Artifact hygiene
+
+From the current cwd repo/worktree, run the authoritative local-only, read-only helper
+(Python 3.10+, Git and Gitleaks required):
+
+```bash
+~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py --pretty
+```
+
+Capture stdout and exit status, including nonzero exits. Render **coverage before findings**
+using [artifact-hygiene's Report contract](../artifact-hygiene/SKILL.md#report): exact status/verdict,
+each source's status and safe error codes, normalized redacted findings, and `suppressed` counts
+with clone-local allowances disclosed. Use only normalized evidence; partial is never clean.
+Never recover raw evidence from reported files, commits, scanner output, or configuration.
+Remediation is a separate explicitly approved task; do not edit artifacts, rewrite history, change
+allowances, install tooling, or copy detectors during wrap-up.
+
+Exit `0` alone is not clearance: it covers both complete/clean and complete/findings. Exit `2` is
+partial; exit `3` is failed. Missing tools or malformed output are unavailable, not clean.
+Audit failure never blocks saving the handoff: render available coverage and continue to §§4–5.
+
+Add this separate line to the working-copy risks and the saved resume block, even when clean:
+`Artifact hygiene ({audited-cwd}): {status}/{verdict}; {summary counts including suppressed}`.
+Preserve helper status/verdict exactly; if no valid report exists, write `unavailable — no valid report`
+instead. Keep finding locations/evidence in the visible report, not the saved handoff. For findings or
+incomplete coverage, add an Open-threads bullet for a separately approved review before publication.
+
+The audit covers only this cwd repo, not the whole workspace or the handoff being written afterward.
+Other repositories in §3b remain unaudited unless the helper is separately run with their verified
+worktree path as its repository argument. Label every audited location; never inherit a root's clean
+verdict for members or switch to the main checkout when wrapping a linked worktree.
+
 ### 3a. 🧹 Aged tracker claims (report-only)
 
 Use `---BEADS-STALE-CANDIDATES---` and `---BEADS-STALE-DAYS---`; skip when the tracker is absent
@@ -378,6 +410,10 @@ Then:
 
 **Decisions so far:**
 - {bullet}
+
+**Working-copy risks:**
+- Artifact hygiene ({audited-cwd}): {status}/{verdict}; {summary counts including suppressed}
+- {other preservation risks, if any}
 
 **Open threads:**
 - {bullet}
@@ -512,6 +548,8 @@ Each section is independent — fail soft, don't block the rest.
 - **No `bd` / no `.beads/`**: skip the beads sub-section and §3a silently.
 - **Multi-repo roll-up (§3b) errors or finds nothing**: skip the section silently — single-repo sessions hit this normally; it's additive, not load-bearing.
 - **Settings-drift probe (§3c) empty or `python3` missing**: skip the section silently. `/tidy-settings` run by hand covers the same ground.
+- **Artifact-hygiene audit (§3d) is partial, failed, missing, or malformed**: record the coverage gap
+  in working-copy risks and continue saving the handoff; never infer clean from missing findings.
 - **Handoff save fails (§5)**: keep the resume block visible, print the attempted path and error, and continue to the footer. The generated block is still the recovery artifact even if the durable file write failed.
 
 ## Notes

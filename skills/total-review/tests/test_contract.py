@@ -34,11 +34,44 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertNotIn(absent, SKILL)
 
     def test_capability_rows_have_explicit_unavailable_behavior(self):
-        rows = [line for line in SKILL.splitlines() if re.match(r"\| G[1-7] ", line)]
-        self.assertEqual(7, len(rows))
+        rows = [line for line in SKILL.splitlines() if re.match(r"\| G(?:[1-7]|5a) ", line)]
+        self.assertEqual(8, len(rows))
         for row in rows:
             with self.subTest(row=row):
                 self.assertTrue(any(word in row for word in ("manual", "unavailable")))
+
+    def test_artifact_audit_is_a_required_redacted_gate(self):
+        self.assertIn('Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)', SKILL)
+        self.assertIn('| G5a Artifact hygiene |', SKILL)
+        self.assertIn('G1–G5 plus G5a', SKILL)
+        self.assertIn('all eight', SKILL)
+        audit = SKILL.split('### G5a — Artifact hygiene', 1)[1].split('### G6', 1)[0]
+        self.assertIn('~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py --pretty', audit)
+        self.assertIn('../artifact-hygiene/SKILL.md#report', audit)
+        self.assertIn('coverage before findings', audit)
+        self.assertIn('partial is never clean', audit)
+        self.assertIn('Exit `0` alone is not clearance', audit)
+        self.assertIn('`status: complete`, `verdict: clean`', audit)
+        self.assertIn('complete/findings', audit)
+        self.assertIn('HALTED', audit)
+        self.assertIn('PARTIAL', audit)
+        self.assertIn('Never recover raw evidence', audit)
+        self.assertIn('Remediation is a separate explicitly approved task', audit)
+        self.assertIn('Excluded from the fix loop and Beads writes', audit)
+
+    def test_artifact_audit_is_bound_to_actual_final_checkout(self):
+        self.assertIn('### G5a — Artifact hygiene', SKILL)
+        audit = SKILL.split('### G5a — Artifact hygiene', 1)[1].split('### G6', 1)[0]
+        for field in ('target.head', 'generatedAt', 'provenance', 'coverage', 'revision'):
+            self.assertIn(field, audit)
+        self.assertIn('full publishable working tree and its own locally resolved unpublished history', audit)
+        self.assertIn('not the selected diff or fixed review base', audit)
+        self.assertIn('Diff-only PR: G5a is `unavailable`', SKILL)
+        checkpoint = SKILL.split('## 2. Final checkpoint and verdict', 1)[1]
+        self.assertIn('rerun G5a', checkpoint)
+        self.assertIn('before reporting', checkpoint)
+        self.assertIn('G5a', REFERENCE)
+        self.assertIn('Never recover raw evidence', REFERENCE)
 
     def test_requested_coverage_controls_verdict_without_hiding_omissions(self):
         self.assertIn("Freeze the expected gate set", SKILL)

@@ -1,11 +1,11 @@
 ---
 name: create-pr
-description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
+description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, audits publication artifacts, pushes to origin, and closes the associated bead.
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.1.0"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -98,6 +98,38 @@ future-task lists, no names, no bead IDs.
 Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
 
 
+### 6a. Publication audit
+
+From the same repository/worktree whose branch will be published, run the authoritative,
+local-only, read-only helper (Python 3.10+, Git and Gitleaks required):
+
+```bash
+~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py --pretty
+```
+
+Capture stdout and exit status, including nonzero exits. Render **coverage before findings**
+using [artifact-hygiene's Report contract](../artifact-hygiene/SKILL.md#report): exact status/verdict,
+each source's status and safe error codes, normalized redacted findings, and `suppressed` counts
+with clone-local allowances disclosed. Use only the helper's normalized evidence; partial is never clean.
+Never recover raw evidence from reported files, commits, scanner output, or configuration.
+Remediation is a separate explicitly approved task; do not edit artifacts, rewrite history, change
+allowances, install tooling, or copy detectors as part of this audit step.
+
+Exit `0` alone is not clearance: it includes complete reports with findings. Continue only with
+valid `artifact-hygiene/v1` JSON, exit `0`, `status: complete`, `verdict: clean`, no findings, and every
+required coverage source present and complete. On findings, exit `2` (partial), exit `3` (failed), missing helper/scanner,
+malformed output, or any other incomplete coverage, **stop before push or PR creation**. Render the
+available redacted report or an unavailable diagnostic, never a fabricated clean result.
+
+This audits the full publishable working tree and the helper's locally resolved unpublished history,
+not the PR diff or drafted title/body. Do not pass a PR base or narrow its findings to the selected
+change; the helper has no diff/base option. §6's draft review still applies. An already-published
+branch still needs this audit before PR creation; a result cannot undo prior publication.
+
+Use fresh evidence from this invocation. Any intervening edit, staging change, commit, ref or audit
+policy change invalidates it; rerun before asking for publication approval. A clean audit is not consent:
+§7 and §8 retain their separate immediately-before-action confirmations and standalone commands.
+
 ### 7. Confirm push
 
 Run the shared preflight immediately before deciding whether publication is needed:
@@ -120,7 +152,8 @@ PR creation.
 
 ### 8. Confirm PR creation
 
-First show the user the target, title, and complete body draft. Then use `AskUserQuestion`
+Even if the push phase was skipped, rerun §6a before the PR-creation confirmation. Stop on any
+non-clean or unavailable audit result. Then show the user the target, title, and complete body draft. Use `AskUserQuestion`
 **immediately before** creating the PR. Push approval does not authorize this second remote action.
 If approved, invoke the wrapper as the next tool call, standalone and unchained:
 
