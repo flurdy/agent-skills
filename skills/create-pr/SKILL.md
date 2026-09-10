@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.2.0"
+version: "2.3.0"
 author: "flurdy"
 ---
 
@@ -95,7 +95,27 @@ House style: say what changed in general terms, easy to digest. Keep the why bri
 (Jira/Trello owns it) and details minimal (the commits and diff own them). No test narrative, no
 future-task lists, no names, no bead IDs.
 
-Check for a repo-specific PR template at `.github/pull-request-template.md` or `.github/pull_request_template.md`. If found, use that format. If not, ask user for confirmation on generating the body ourselves.
+Discover a repo-specific PR template with this exact command. Both the separator (`-` vs `_`)
+and the case vary across repos; `-iname` fixes case but NOT the separator, so glob both:
+
+```bash
+find . .github docs -maxdepth 1 \
+  \( -iname 'pull[-_]request[-_]template*' -o -iname 'PULL_REQUEST_TEMPLATE*' \) \
+  2>/dev/null || true
+```
+
+Do not hand-glob a single spelling — that silently finds nothing and falls through to a
+freehand body. If found, follow the template's headings verbatim; the template overrides house
+style wherever the two conflict, because it is the reviewing team's contract rather than ours.
+If not found, ask the user for confirmation on generating the body ourselves.
+
+**The description is frozen the moment the PR leaves draft.** Editing a description after review
+has begun invalidates existing approvals and restarts the flow, so the body must already be final
+then. Resolve every template checkbox to its true final state and carry no item whose value will
+change later: no unticked boxes, no "to be verified" lines, no test plan of intended future steps,
+no deploy or sign-off trackers. Where a checklist item is genuinely not done and will not be done
+before merge, delete the line or state the fact plainly in prose instead of leaving a box that
+someone must tick later.
 
 
 ### 6a. Publication audit
