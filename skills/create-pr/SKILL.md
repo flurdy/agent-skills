@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.3.1"
+version: "2.4.0"
 author: "flurdy"
 ---
 
@@ -109,13 +109,28 @@ freehand body. If found, follow the template's headings verbatim; the template o
 style wherever the two conflict, because it is the reviewing team's contract rather than ours.
 If not found, ask the user for confirmation on generating the body ourselves.
 
+Organisation PR standards can require document fields that repo templates omit. For
+`bluelightcard` repositories, the org `pr-conventions` check requires a `**PRD:**`,
+`**Tech RFC:**` and `**ADR:**` line, each holding a Confluence link or the literal `N/A`; empty
+values and `<…>` placeholders fail. When the body lacks them, append:
+
+```markdown
+## Related documents
+
+- **PRD:** N/A
+- **Tech RFC:** N/A
+- **ADR:** N/A
+```
+
+Use a Confluence link from the Jira ticket where one exists; otherwise `N/A`.
+
 **The description is frozen the moment the PR leaves draft.** Editing a description after review
 has begun invalidates existing approvals and restarts the flow, so the body must already be final
 then: no test plan of intended future steps, no "to be verified" lines, no deploy or sign-off
 trackers.
 
 A template checklist is not a future-task list: it is a static attestation of what is already true
-when the PR is opened, and CI may check that every template checkbox is present. Keep each checkbox
+when the PR is opened. Keep each checkbox
 line verbatim — never delete, reword, or convert one to prose — unless the template itself says to
 remove non-applicable items. Tick them all: completed items are true, and conditional items ("If
 this changes a backend service…") are satisfied when the condition does not apply. If an applicable
