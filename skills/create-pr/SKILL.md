@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.3.0"
+version: "2.3.1"
 author: "flurdy"
 ---
 
@@ -111,11 +111,15 @@ If not found, ask the user for confirmation on generating the body ourselves.
 
 **The description is frozen the moment the PR leaves draft.** Editing a description after review
 has begun invalidates existing approvals and restarts the flow, so the body must already be final
-then. Resolve every template checkbox to its true final state and carry no item whose value will
-change later: no unticked boxes, no "to be verified" lines, no test plan of intended future steps,
-no deploy or sign-off trackers. Where a checklist item is genuinely not done and will not be done
-before merge, delete the line or state the fact plainly in prose instead of leaving a box that
-someone must tick later.
+then: no test plan of intended future steps, no "to be verified" lines, no deploy or sign-off
+trackers.
+
+A template checklist is not a future-task list: it is a static attestation of what is already true
+when the PR is opened, and CI may check that every template checkbox is present. Keep each checkbox
+line verbatim — never delete, reword, or convert one to prose — unless the template itself says to
+remove non-applicable items. Tick them all: completed items are true, and conditional items ("If
+this changes a backend service…") are satisfied when the condition does not apply. If an applicable
+item is genuinely untrue, stop and tell the user rather than ticking or removing it.
 
 
 ### 6a. Publication audit
