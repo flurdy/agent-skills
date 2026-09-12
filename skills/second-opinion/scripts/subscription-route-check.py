@@ -2,6 +2,8 @@
 """Report subscription login classification without credential values."""
 import json
 import os
+import pathlib
+import re
 import subprocess
 import sys
 
@@ -11,10 +13,23 @@ OVERRIDES = {
 }
 
 def main() -> int:
-    if len(sys.argv) != 2 or sys.argv[1] not in OVERRIDES:
-        print("usage: subscription-route-check.py claude|codex", file=sys.stderr)
+    if len(sys.argv) != 3 or sys.argv[1] not in OVERRIDES or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/+:-]{0,127}", sys.argv[2]):
+        print("usage: subscription-route-check.py claude|codex model", file=sys.stderr)
         return 2
-    route = sys.argv[1]
+    route, model = sys.argv[1:]
+    policy_basis = "missing"
+    allowed_models = []
+    try:
+        config = json.loads((pathlib.Path.home() / ".agents/second-opinion/config.json").read_text())
+        routes = config.get("subscriptionRoutes")
+        candidate = routes.get(route) if config.get("version") == 1 and isinstance(routes, dict) else None
+        if isinstance(candidate, list) and 1 <= len(candidate) <= 8 and all(isinstance(item, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/+:-]{0,127}", item) for item in candidate) and len(set(candidate)) == len(candidate):
+            allowed_models = candidate
+            policy_basis = "configured"
+        elif candidate is not None or routes is not None:
+            policy_basis = "invalid"
+    except (OSError, json.JSONDecodeError):
+        pass
     present = [name for name in OVERRIDES[route] if os.environ.get(name)]
     auth = "unavailable"
     subscribed = False
@@ -30,7 +45,8 @@ def main() -> int:
             auth = "ChatGPT" if subscribed else "other"
     except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
         pass
-    output = {"version": 1, "route": route, "subscriptionLogin": subscribed and not present, "auth": auth, "apiOverridesPresent": present}
+    subscription_login = subscribed and not present
+    output = {"route": route, "model": model, "subscriptionLogin": subscription_login, "auth": auth, "apiOverridesPresent": present, "policyBasis": policy_basis, "authorized": subscription_login and policy_basis == "configured" and model in allowed_models}
     print(json.dumps(output, separators=(",", ":")))
     return 0
 

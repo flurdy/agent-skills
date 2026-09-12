@@ -114,7 +114,7 @@ post-exposure identity cannot retroactively authorize the first request.
   ```
 
   Immediately before a declared route, run the bounded
-  `scripts/subscription-route-check.py claude|codex` helper. It verifies the subscription login
+  `scripts/subscription-route-check.py claude|codex <model>` helper. It verifies the subscription login
   without exposing account identifiers: `claude auth status --json` must report a logged-in `claude.ai` first-party route,
   or `codex login status` must report `Logged in using ChatGPT`. The respective API key/token,
   base URL and cloud-provider override variables must be absent. A matching requested model then

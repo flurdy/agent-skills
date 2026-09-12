@@ -178,7 +178,7 @@ an unavailable route is not permission to substitute another provider or cwd.
 
 Without `--model`, use `opus`; `smart` retains the CLI-native default. Pass any other requested
 model literally, and when effort is explicit, pass it through to Claude Code. Immediately before launch, run
-`~/.agents/skills/second-opinion/scripts/subscription-route-check.py claude`; it uses
+`~/.agents/skills/second-opinion/scripts/subscription-route-check.py claude {model}`; it uses
 `claude auth status --json` and returns only non-identifying login classification and API override names. A matching loaded subscription policy requires
 `subscriptionLogin: true`, its declared login classification, the requested model in its allowlist,
 and no `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, or Bedrock/Vertex/Foundry
@@ -199,7 +199,7 @@ codex exec --sandbox read-only {exec_model_flag} "{assembled_prompt}"
 For `codex exec`, `{exec_model_flag}` is `--model <id>` for an explicit resolved model and empty for
 the native default. A loaded subscription policy may supply its first allowed model when `peer`
 selects Codex and the user did not provide one. Immediately before launch, run
-`~/.agents/skills/second-opinion/scripts/subscription-route-check.py codex`; it requires
+`~/.agents/skills/second-opinion/scripts/subscription-route-check.py codex {model}`; it requires
 `Logged in using ChatGPT` from `codex login status`, the requested model in the policy allowlist,
 and no `OPENAI_API_KEY`, `CODEX_API_KEY`, or `CODEX_ACCESS_TOKEN` API override. Otherwise obtain
 current-run confirmation. Never print credential values.
