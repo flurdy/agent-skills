@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.5.0"
+version: "0.5.1"
 author: "flurdy"
 ---
 
@@ -122,7 +122,10 @@ reason, and safe remediation. Policy skips keep coverage complete and do not con
 budget; they do not claim content was inspected. A missing base cannot prove publication. Failed or
 bounded-out reachability checks produce `publication-proof-failed`; scanner failures, history-read
 failures, file changes, timeouts, and other resource limits still deny, even with a blob allowance.
-Reachability uses the existing bounded command output/deadline and 100,000-object cap; size decisions
+Reachability uses one cached, bounded `git log --find-object` proof per distinct blob against the
+remote-backed base commit, with replace refs, grafts, repository log presentation, commit graphs,
+renames, signatures, and path limits disabled. Git 2.31 or newer is required for published-blob
+skips. The shared command output and audit deadline still apply; proof failures deny. Size decisions
 are capped at 2,000, with overflow reported as partial rather than silently omitted.
 
 GitHub pull requests, Jira, comments, attachments, linked pages, other repositories, full-history
@@ -131,7 +134,7 @@ remediation, policy authoring, and enforcement are out of scope.
 ## Requirements
 
 - Python 3.10 or newer
-- Git
+- Git 2.31 or newer
 - Gitleaks; the proof of concept is locally verified with Gitleaks 8.30.1
 
 A missing or failed scanner produces partial coverage rather than a clean result.

@@ -1610,6 +1610,34 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, payload)
         self.assert_size_decision(payload, blob, "skipped-by-policy", "local-blob-allowance")
 
+    def test_publication_proof_does_not_enumerate_base_objects(self) -> None:
+        helper = load_helper_module()
+        blob = self.large_blob()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        real_git = helper.git
+        find_calls = 0
+
+        def bounded_proof(*args, **kwargs):
+            nonlocal find_calls
+            if "--objects" in args:
+                raise helper.AuditError("command-output-limit")
+            if any(
+                isinstance(argument, str) and argument.startswith("--find-object=")
+                for argument in args
+            ):
+                find_calls += 1
+            return real_git(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", bounded_proof):
+            payload, code = helper.scan(
+                self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
+                str(self.fake_gitleaks), time.monotonic() + 20,
+            )
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(find_calls, 1)
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
+
     def test_failed_publication_proof_cannot_be_overridden(self) -> None:
         helper = load_helper_module()
         blob = self.large_blob()
@@ -1618,18 +1646,61 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.run("config", "--local", "artifactHygiene.allowLargeBlobs", blob)
         real_git = helper.git
 
-        def failed_objects(*args, **kwargs):
-            if "--objects" in args:
+        def failed_proof(*args, **kwargs):
+            if any(
+                isinstance(argument, str) and argument.startswith("--find-object=")
+                for argument in args
+            ):
                 raise helper.AuditError("command-output-limit")
             return real_git(*args, **kwargs)
 
-        with mock.patch.object(helper, "git", failed_objects):
+        with mock.patch.object(helper, "git", failed_proof):
             payload, code = helper.scan(
                 self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
                 str(self.fake_gitleaks), time.monotonic() + 20,
             )
         self.assertEqual(code, 2, payload)
         self.assertIn("publication-proof-failed", payload["coverage"][0]["errors"])
+        self.assert_size_decision(payload, blob, "deny", "publication-proof-failed")
+
+    def test_publication_proof_ignores_repository_log_configuration(self) -> None:
+        blob = self.large_blob()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        for key, value in (
+            ("log.showRoot", "false"),
+            ("log.diffMerges", "first-parent"),
+            ("diff.renames", "copies"),
+            ("diff.relative", "true"),
+            ("format.pretty", "medium"),
+            ("color.ui", "always"),
+            ("core.commitGraph", "true"),
+        ):
+            self.repository.run("config", "--local", key, value)
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
+
+    def test_publication_proof_finds_blob_introduced_by_merge(self) -> None:
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("root")
+        self.repository.run("switch", "-c", "side")
+        blob = self.large_blob()
+        self.repository.commit_all("side asset")
+        self.repository.run("switch", "main")
+        self.repository.write("main.txt", "clean\n")
+        self.repository.commit_all("main addition")
+        self.repository.run("merge", "--no-ff", "side", "-m", "merge asset")
+        self.repository.mark_base()
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
+
+    def test_sanitized_environment_disables_git_grafts(self) -> None:
+        helper = load_helper_module()
+        self.assertEqual(helper.sanitized_environment()["GIT_GRAFT_FILE"], os.devnull)
 
     def test_unpublished_merge_large_blob_is_denied(self) -> None:
         self.repository.write("base.txt", "clean\n")

@@ -260,35 +260,63 @@ class SizePolicy:
     object_format: str
     allowed: frozenset[str]
     base: str | None
-    published: set[str] | None = None
-    proof_failed: bool = False
+    proofs: dict[str, bool | None] = field(default_factory=dict)
     decisions: list[dict[str, Any]] = field(default_factory=list)
     seen: set[tuple[str, str, str | None, str]] = field(default_factory=set)
 
+    def is_published(self, object_id: str) -> bool | None:
+        if object_id in self.proofs:
+            return self.proofs[object_id]
+        if self.base is None:
+            self.proofs[object_id] = False
+            return False
+        expected_length = 40 if self.object_format == "sha1" else 64
+        if len(object_id) != expected_length or not OBJECT_ID.fullmatch(object_id):
+            self.proofs[object_id] = None
+            return None
+        try:
+            result = git(
+                self.runner,
+                self.repository,
+                "-c",
+                "core.commitGraph=false",
+                "-c",
+                "log.showRoot=true",
+                "log",
+                "-n",
+                "1",
+                "--format=%H",
+                "--no-patch",
+                "--no-show-signature",
+                "--no-renames",
+                "--no-relative",
+                "--diff-merges=separate",
+                f"--find-object={object_id}",
+                self.base,
+                "--",
+            )
+            lines = decode_text(result.stdout).splitlines()
+            if any(not OBJECT_ID.fullmatch(line) for line in lines) or len(lines) > 1:
+                raise AuditError("publication-proof-failed")
+            published: bool | None = bool(lines)
+        except AuditError:
+            published = None
+        self.proofs[object_id] = published
+        return published
+
     def record(self, blob: LargeBlob, path: str, coverage: Coverage, commit: str | None = None) -> None:
-        if self.published is None:
-            self.published = set()
-            if self.base is not None:
-                try:
-                    output = git(
-                        self.runner, self.repository, "rev-list", "--objects",
-                        "--no-object-names", self.base, "--",
-                    ).stdout
-                    objects = decode_text(output).splitlines()
-                    if len(objects) > MAX_RECORDS or any(not OBJECT_ID.fullmatch(oid) for oid in objects):
-                        raise AuditError("publication-proof-failed")
-                    self.published = set(objects)
-                except AuditError:
-                    self.proof_failed = True
-        if self.proof_failed:
+        published = self.is_published(blob.object_id)
+        if published is None:
             coverage.partial("publication-proof-failed")
-        reason = "unapproved-large-blob"
-        if blob.object_id in self.published:
+            reason = "publication-proof-failed"
+        elif published:
             reason = "published-base-history"
         elif blob.object_id in self.allowed:
             reason = "local-blob-allowance"
-        denied = reason == "unapproved-large-blob"
-        if denied:
+        else:
+            reason = "unapproved-large-blob"
+        denied = reason in {"publication-proof-failed", "unapproved-large-blob"}
+        if reason == "unapproved-large-blob":
             coverage.partial("file-too-large")
         key = (coverage.source, path, commit, blob.object_id)
         if key in self.seen:
@@ -535,6 +563,7 @@ def sanitized_environment() -> dict[str, str]:
             "GIT_ATTR_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": os.devnull,
             "GIT_CONFIG_SYSTEM": os.devnull,
+            "GIT_GRAFT_FILE": os.devnull,
             "GIT_NO_LAZY_FETCH": "1",
             "GIT_NO_REPLACE_OBJECTS": "1",
             "GIT_OPTIONAL_LOCKS": "0",
@@ -1888,7 +1917,7 @@ def scan(
             "beadPrefixSource": bead_prefix_source,
         },
         "provenance": {
-            "helperVersion": "0.5.0-poc",
+            "helperVersion": "0.5.1-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1925,7 +1954,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.5.0-poc",
+            "helperVersion": "0.5.1-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [
