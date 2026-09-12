@@ -10,28 +10,39 @@ settings, agent definitions, or cost policy during a delegation run.
 1. If `pi-subagents` is installed, load its skill and use it for discovery, launch,
    async lifecycle, context modes, one-writer safety, review recipes, and supervisor
    coordination. Do not reproduce its mechanics.
-2. Immediately before every launch, use installed discovery and builtin model
-   reporting (currently `subagent({ action: "list" })` and
-   `subagent({ action: "models" })`). Repeat reporting after any event named by the
-   child-routing policy. Use only executable, non-disabled roles.
-3. Builtin roles inherit by default. Pass `model` only when the child-routing policy's
-   identity and classification requirements are satisfied. Do not read or merge
-   model-tier-router files to manufacture evidence.
-4. Without a verified mapping, omit `model`, disclose inherited/no-downshift behavior,
-   classify billing as unknown, and apply the consent gate. If declined, continue
-   serially.
-5. Launch asynchronously by default. If the turn must finish the delegated work, call
+2. Immediately before each launch, use installed discovery and builtin model
+   reporting: `subagent({ action: "list", capabilities: true })`, then
+   `subagent({ action: "models", agent: "<agent>" })`. Use only executable,
+   non-disabled **native Pi agents only** for configured-consent handling. External CLI
+   and job adapters keep their own route policy.
+3. Retain every exact primary and every fallback model reported for that agent. An
+   unresolved, bare or ambiguous identity is unknown. Call `model_policy_evidence`
+   once with the complete ordered exact set. Do not read, parse or merge router files
+   yourself. Missing tool, unsupported evidence version, non-`loaded` source, stale
+   revision, unmatched row, `unknown`, `invalid`, `conflict`, `missing`, `unavailable`
+   or metered/`ask` evidence requires bounded current-run confirmation.
+4. Skip only the billing prompt when every row is unmetered/`not-needed` or exact
+   metered/`allow`. Report source owner, revision and each policy basis. Keep execution
+   and fanout authorization separate; pass the exact primary model from the trusted
+   report to the launch and set `fast: false`; this prevents an unreviewed priority
+   service tier. The current adapter has no atomic check-and-launch primitive, so
+   repeat model reporting and the policy query immediately before each launch and
+   recheck after every route/configuration event named by the child policy.
+5. If any required fact is unavailable, disclose inherited/no-downshift or fallback
+   behavior, classify billing as unknown, and apply the consent gate. If declined,
+   continue serially.
+6. Launch asynchronously by default. If the turn must finish the delegated work, call
    `wait()` when no independent parent work remains; do not poll or end the turn with
    required children still live.
-6. For prose-only review with no acceptance ledger, current `pi-subagents` requires an
+7. For prose-only review with no acceptance ledger, current `pi-subagents` requires an
    explicit reason, for example
    `acceptance: { level: "none", reason: "Read-only prose review" }`. The string
    shorthand `"none"` does not lower an inferred stronger gate. Otherwise require the
    appropriate structured acceptance evidence.
-7. Prefer each role's default context. If a forked role cannot start because the parent
+8. Prefer each role's default context. If a forked role cannot start because the parent
    session is not persisted, retry with `context: "fresh"` only when the judgment
    packet is self-contained. Otherwise continue in the parent.
-8. Use `context-builder`/`researcher` for bounded read-only work, `worker` for writes,
+9. Use `context-builder`/`researcher` for bounded read-only work, `worker` for writes,
    a fresh `reviewer` for independent review, and `oracle` only for strong advisory
    judgment. The parent integrates and validates.
 

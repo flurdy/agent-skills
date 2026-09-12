@@ -1,7 +1,8 @@
 # Trusted billing evidence — prototype v1
 
-**Status:** launch-free policy evidence and producer fixtures only. No consumer prompt bypass
-is enabled. Existing direct-review, child-routing and named-panel consent gates remain in force.
+**Status:** Pi policy evidence is available through a read-only extension tool and the native
+`delegate-work` adapter may use it under the bounded procedure below. No direct-review prompt bypass
+is enabled; Claude CLI and named-panel consent gates remain in force.
 This reference owns the shared consumption boundary; the Pi router owns its policy parser and
 producer API. Do not copy policy parsing into skill prose or invent a second billing file.
 
@@ -25,7 +26,9 @@ active user's billing authority.
 
 The optional `@flurdy/pi-skill-model-router/policy` export provides
 `queryModelPolicies(agentDir, models)`. `agentDir` must come from the trusted Pi host.
-`/model-tier policy provider/model ...` obtains that directory from Pi itself. This query:
+`model_policy_evidence` and `/model-tier policy provider/model ...` obtain that directory
+from Pi itself. The tool is the model-facing adapter surface; the command is human-readable
+diagnostics. This query:
 
 - reads global policy afresh using the router's existing parser and precedence;
 - returns 1–32 ordered literal model-key rows; does not fuzzy-match or resolve aliases;
@@ -66,10 +69,11 @@ re-query immediately before exposure and compare the actual launch identity and 
 A separate check followed by a later launch is not atomic. No check-and-launch enforcement is
 provided by this prototype.
 
-## Target adapter decision contract
+## Adapter decision contract
 
-These are acceptance requirements for the later adapters, **not permission to use the policy
-projection alone to skip today's prompts**:
+The Pi adapter may skip only a repeated billing prompt after following the complete native
+procedure in `delegate-work/references/runtime-adapters.md`. The policy projection alone never
+satisfies that procedure:
 
 | Complete current evidence | Billing decision, within separately authorized execution |
 |---|---|
@@ -84,14 +88,17 @@ model exactly. Conversely, naming the parent model does not prove a configured c
 Unknown policy must never become unmetered. Stop further launches on an observed route mismatch;
 post-exposure identity cannot retroactively authorize the first request.
 
-## Adapter prerequisites still outstanding
+## Adapter status and remaining limitations
 
-- **Native Pi:** compose the public `pi-subagents/preflight` resolver with the live host registry,
-  parent identity and effective child settings. Project settings still affect child identity.
-  Resolve all `modelCandidates`, nested inheritance and scope. The assessed preflight does not
-  expose effective `fast` in its public projection; a digest alone does not reveal this service
-  tier. Missing facts remain unknown, not permission to guess or patch installed dependencies.
-  Separately installed Pi packages are not automatically Node dependencies of each other.
+- **Native Pi:** the current workflow composes trusted `subagent` capability/model reporting
+  with `model_policy_evidence`, re-runs both immediately before each launch, checks the primary
+  and every reported fallback, passes the exact primary model and explicitly sets `fast: false`.
+  This avoids depending on a separately installed package import and covers the ordinary native
+  role path. It is procedural, not an atomic runtime gate: project agent settings can change
+  between report and launch, and nested children require their own immediate check. Post-launch
+  mismatch stops later fanout but cannot retroactively authorize the first request. Keep unknown
+  or unsupported conditions on the current-run confirmation path. A future subagent-owned,
+  digest-bound launch preflight would be stronger, but is not required to use this bounded adapter.
 - **Claude CLI:** demonstrate a supported pre-request identity/billing-route boundary. A Max
   login, a floating `opus` alias, or a literal `--model` flag does not prove every effective
   request. Managed settings can replace startup models; internal auxiliary model usage can
@@ -120,5 +127,6 @@ MODEL_POLICY_PACKAGE=/absolute/router/package make test-billing-evidence
 Requires Python 3.10+, Node.js compatible with the router, and that package's installed dependencies.
 The target fails when no package is selected. Ordinary `make test-second-opinion` runs local
 contract checks and explicitly skips only the cross-repository producer check when it is absent.
-These fixtures do not prove native launch binding, Claude identity, real billing, or fanout gates;
-those remain required before the full feature is complete.
+These fixtures prove the policy producer and static native procedure contract. They do not prove
+atomic native launch binding, Claude identity, real billing or fanout authorization; runtime UAT
+and the remaining Claude work stay separate.

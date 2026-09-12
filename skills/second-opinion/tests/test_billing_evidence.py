@@ -21,7 +21,7 @@ class BillingEvidenceContractTests(unittest.TestCase):
         text = CONTRACT.read_text()
         for boundary in (
             "not launch authorization",
-            "No consumer prompt bypass",
+            "No direct-review prompt bypass",
             "effective identity",
             "fallback",
             "fast",
@@ -42,6 +42,25 @@ class BillingEvidenceContractTests(unittest.TestCase):
         ):
             with self.subTest(file=relative):
                 self.assertTrue("billing-evidence.md" in (root / relative).read_text(), relative)
+
+    def test_native_adapter_is_bounded_to_fully_resolved_policy(self):
+        root = SKILL.parents[1]
+        delegate = (root / "skills/delegate-work/references/runtime-adapters.md").read_text()
+        child_policy = (root / "skills/delegate-work/references/child-routing-policy.md").read_text()
+        for required in (
+            'subagent({ action: "models", agent: "<agent>" })',
+            "model_policy_evidence",
+            "native Pi agents only",
+            "every fallback model",
+            '`fast: false`',
+            "immediately before each launch",
+            "pass the exact primary model",
+            "current-run confirmation",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, delegate)
+        self.assertIn('`consent: "allow"`', child_policy)
+        self.assertIn("does not authorize fanout", child_policy)
 
     @unittest.skipUnless(PACKAGE, "MODEL_POLICY_PACKAGE required for cross-repository producer checks")
     def test_router_public_export_matches_shared_fixtures(self):

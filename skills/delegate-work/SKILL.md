@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:
 model-tier: premium
 model: opus
 effort: high
-version: "2.1.2"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -162,11 +162,12 @@ Before any child launch:
 2. Detect the active runtime, then read and follow
    [`references/runtime-adapters.md`](references/runtime-adapters.md).
 
-The compact invariant is: launch without another cost prompt only when trusted
-evidence resolves the effective child identity before launch and classifies it as
-unmetered. Metered, inherited, or unknown routes require current-run consent. Parent
-route approval never authorizes child fanout; mismatches stop further launches; ad hoc
-consent is never persisted.
+The compact invariant is: launch without another **billing** prompt only when trusted
+evidence resolves every effective child route before launch and classifies each as
+unmetered or exact metered with user-configured `consent: "allow"`. Metered/ask,
+unresolved inheritance, stale, conflicting or unknown routes require current-run
+consent. Parent route approval never authorizes child fanout; mismatches stop further
+launches; ad hoc consent is never persisted.
 
 Do not parse or merge model-tier-router configuration, change canonical agent
 settings, infer billing, or invent a mapping. The references own route policy and

@@ -38,7 +38,7 @@ Runtime configuration owns:
 - whether a candidate is metered;
 - confirmation and token/usage controls.
 
-Shared metadata must not infer billing from provider, model name, or authentication type. In Pi, the locally configured candidate's explicit `metered` value is the spend authority. Metered candidates require the router's confirmation; absent skill policy strings cannot waive it.
+Shared metadata must not infer billing from provider, model name, or authentication type. In Pi, the user-scoped router's exact model policy is the spend authority. Unmetered routes need no billing confirmation; metered routes require confirmation unless that exact policy sets `consent: "allow"`. Absent skill policy strings cannot waive it.
 
 A skill that directly launches an external model must implement fresh consent at the point of exposure when that route is metered or unknown. Parent routing approval never authorizes child fanout or an external panel. Keep those rules in the launching skill or runtime adapter, where they can be enforced.
 
@@ -72,11 +72,11 @@ launches. Non-interactive Claude Code can bill usage credits without an interact
 
 ## Parent and child routing
 
-The [billing evidence prototype](skills/second-opinion/references/billing-evidence.md)
-records a shared policy projection and the remaining launch-adapter requirements. It does
-not yet replace the direct-review or child consent rules below.
+The [billing evidence contract](skills/second-opinion/references/billing-evidence.md)
+defines the Pi policy projection and bounded native delegation adapter. It does not replace
+direct-review consent or authorize execution/fanout.
 
-Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered or unknown child routes require fresh current-run consent; otherwise inherit the parent route or continue serially. Runtime-specific child discovery and evidence rules belong in `/delegate-work` and its adapter references.
+Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered/ask or unknown child routes require fresh current-run consent; a separately resolved exact metered/allow policy can waive only the repeated billing prompt. Runtime-specific child discovery and evidence rules belong in `/delegate-work` and its adapter references.
 
 ## Client behavior
 

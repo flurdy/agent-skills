@@ -6,15 +6,15 @@ constraint on delegated work, not the delegation workflow itself.
 
 ## Launch invariant
 
-The shared [billing evidence prototype](../../second-opinion/references/billing-evidence.md)
-adds a launch-free policy projection, not a verified child adapter. Keep this launch gate
-unchanged until effective identity, freshness and complete exposure can be established.
+The shared [billing evidence contract](../../second-opinion/references/billing-evidence.md)
+defines the user-scoped Pi projection and the bounded native adapter. The adapter must still
+establish effective identity, freshness and complete exposure under this launch gate.
 
 A child route is verified only when both are available before launch:
 
 1. Trusted runtime/resolver evidence identifies the effective child route or model.
 2. Trusted metadata or user-approved local policy classifies it as
-   `metered: true|false`.
+   `metered: true|false` and, for metered routes, resolves consent to `ask|allow`.
 
 Confirm the launched identity afterward when the runtime exposes it. If identity can
 be discovered only after exposure, classify the route as unknown and obtain consent
@@ -25,14 +25,16 @@ or the parent route. Parent-route approval never authorizes child fanout.
 
 | Child classification | Action |
 |---|---|
-| Verified identity + `metered: false` | Launch within the approved task scope. |
-| Verified identity + `metered: true` | Confirm the disclosed child or bounded panel for this run. |
-| Inherited route or unknown classification | Disclose inherited/no-downshift behavior and confirm for this run. |
+| Verified identity + `metered: false` | Launch within the separately approved task/fanout scope; report `not-needed` policy provenance. |
+| Verified identity + `metered: true`, exact user policy `consent: "allow"` | Launch without another **billing** prompt; report configured policy provenance. |
+| Verified identity + `metered: true`, consent absent or `ask` | Confirm the disclosed child or bounded panel for this run. |
+| Inherited but unresolved identity, stale evidence, unknown classification or policy conflict | Disclose the uncertainty and confirm for this run. |
 | Confirmation declined | Continue serially without claiming independent delegation. |
 
-One confirmation may cover a clearly disclosed bounded panel. Ask again before
-expanding its models, count, scope, or metered exposure. Never add an automatic
-metered fallback.
+Configured billing consent does not authorize fanout, a wider model set, more child
+runs, broader task scope, mutation, publication or destructive action. One current-run
+confirmation may cover a clearly disclosed bounded panel. Ask again before expanding
+its models, count, scope or metered exposure. Never add an automatic metered fallback.
 
 ## Route changes and mismatches
 
@@ -60,14 +62,17 @@ delegate-work-child-policy:
     <route>:
       identity: <effective-model-identity>
       metered: true | false
+      consent: ask | allow
 ```
 
 Use the runtime's own instruction mechanism rather than inventing a shared settings
 file:
 
-- **Pi:** user instructions in `~/.pi/agent/AGENTS.md`. Child overrides may come from
-  user `~/.pi/agent/settings.json` or an explicitly approved project
-  `.pi/settings.json`, but routing configuration alone does not prove billing.
+- **Pi:** prefer the user-scoped router projection defined by
+  [`billing-evidence.md`](../../second-opinion/references/billing-evidence.md). It owns exact
+  classification and `consent: "allow"`; the runtime adapter must separately prove the
+  effective child identity. The instruction declaration remains a backward-compatible
+  fallback only when it was supplied to the active session.
 - **Claude Code:** user instructions in `~/.claude/CLAUDE.md`. A personal, gitignored
   `CLAUDE.local.md` may carry an approved project-scoped declaration; checked-in
   project instructions alone do not qualify. Verify that the active session loaded
