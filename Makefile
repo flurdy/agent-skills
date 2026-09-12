@@ -153,6 +153,7 @@ test-billing-evidence:
 
 test-second-opinion:
 	@python3 -m unittest discover -s skills/second-opinion/tests -p 'test_billing_evidence.py'
+	@python3 -m unittest discover -s skills/second-opinion/tests -p 'test_direct_route.py'
 	@skills/second-opinion/tests/test-skill-contract.sh
 	@skills/second-opinion/tests/test-review-panel.sh
 	@skills/second-opinion/tests/test-openrouter-panel.sh

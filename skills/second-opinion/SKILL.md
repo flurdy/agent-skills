@@ -1,11 +1,11 @@
 ---
 name: second-opinion
 description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/direct-route.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.4.1"
+version: "3.5.0"
 author: "flurdy"
 ---
 
@@ -47,6 +47,8 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 ## Requirements
 
 - Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
+  Direct Claude configured consent uses `scripts/direct-route.py` and optional root
+  `directPolicies` in `~/.agents/second-opinion/config.json`.
 - Panel orchestration: `jq` plus `scripts/review-panel.sh`.
 - OpenRouter subset only: `curl`, plus either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT`, and a configured panel/profile in
   `~/.agents/second-opinion/config.json`. Optional exact-model `modelPolicies` in that user-local
@@ -77,7 +79,10 @@ A second opinion should come from a different vendor than the model that produce
 `claude`, `codex`, and `gemini` remain supported.
 
 Prefer subscription/OAuth routes for one peer. Treat API-key/BYOK and unknown-cost direct routes as
-metered and obtain current-run consent before invocation. A named panel does not infer billing from a
+metered and obtain current-run consent before invocation. For direct Claude only, a matching
+user-owned **invocation-route** policy may set metered `consent: "allow"`; this explicitly accepts
+floating-model substitution, auxiliary models and usage credits within its declared patterns. It
+is not proof that subscription allowance covers the request. A named panel does not infer billing from a
 provider name. Its configured local routes are the approved local subset; every OpenRouter route is a
 separately metered subset unless an exact user-local `modelPolicies` entry explicitly sets
 `consent: "allow"`.
@@ -172,14 +177,31 @@ an unavailable route is not permission to substitute another provider or cwd.
 
 ### Claude
 
+Resolve `{model}` as before (`opus` by default; `smart` means the native default) and `{effort}`
+as the literal requested level or `native-default`; the helper will pass it through to Claude Code. Put the sanitized prompt in a private `600`
+file, never argv. Check the exact invocation immediately before exposure:
+
 ```bash
-claude -p "{assembled_prompt}" --tools "Read,Grep,Glob" --model {resolved_model} --effort {resolved_effort}
+~/.agents/skills/second-opinion/scripts/direct-route.py check \
+  --model {model} --effort {effort}
 ```
 
-Without `--model`, resolve `{resolved_model}` to `opus`; `--model smart` instead omits the flag and
-retains the Claude CLI-native default. Pass every other resolved model as `--model <id>`. When
-`--effort` is supplied, pass it through to Claude Code; when omitted, preserve the CLI-native
-setting and report `native-default`.
+Report requested model/effort, CLI path/version, bounded auth classification, override-name
+presence, policy basis, allowed actual-model patterns, route digest, and whether consent is
+required. No account identifiers or credential values are returned. A configured allow requires
+an exact user policy matching the CLI path/version and auth tuple, no known API/token/base/cloud
+environment override, and `metered: true, consent: "allow"`. This is an explicitly weaker
+invocation-route approval: aliases, managed substitution, auxiliary model use and usage credits
+remain possible.
+
+If confirmation is required, ask immediately before the request. Then call `direct-route.py run`
+with the same model/effort, prompt path/hash and route hash, using exactly one of
+`--configured-consent` or `--confirmed`. The helper rechecks all evidence, invokes Claude in
+restricted safe mode with read-only tools and no MCP/session persistence, passes the prompt on
+stdin, and returns bounded output plus actual `modelUsage`. Delete the prompt file afterward.
+A stale digest fails before launch. If `modelUsageAllowed` is false or actual usage is absent,
+preserve the result as mismatch evidence, make no current assessment, and require a new decision
+before another Claude invocation. Never retry or substitute.
 
 ### Codex
 

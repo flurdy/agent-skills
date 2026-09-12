@@ -29,6 +29,10 @@ class BillingEvidenceContractTests(unittest.TestCase):
             "revision",
             "fanout",
             "unknown",
+            "directPolicies",
+            "allowedModelUsage",
+            "cliPath",
+            "cliVersion",
         ):
             with self.subTest(boundary=boundary):
                 self.assertIn(boundary, text)

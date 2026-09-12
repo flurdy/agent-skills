@@ -2,7 +2,8 @@
 
 **Status:** Pi policy evidence is available through a read-only extension tool and the native
 `delegate-work` adapter may use it under the bounded procedure below. No direct-review prompt bypass
-is enabled; Claude CLI and named-panel consent gates remain in force.
+is enabled unless an exact user-owned Claude invocation-route policy matches the bounded helper;
+named-panel consent gates remain in force.
 This reference owns the shared consumption boundary; the Pi router owns its policy parser and
 producer API. Do not copy policy parsing into skill prose or invent a second billing file.
 
@@ -99,12 +100,42 @@ post-exposure identity cannot retroactively authorize the first request.
   mismatch stops later fanout but cannot retroactively authorize the first request. Keep unknown
   or unsupported conditions on the current-run confirmation path. A future subagent-owned,
   digest-bound launch preflight would be stronger, but is not required to use this bounded adapter.
-- **Claude CLI:** demonstrate a supported pre-request identity/billing-route boundary. A Max
-  login, a floating `opus` alias, or a literal `--model` flag does not prove every effective
-  request. Managed settings can replace startup models; internal auxiliary model usage can
-  occur. Subscription allowance, enabled usage credits, API-key/helper precedence and third-party
-  providers remain separate. Do not scrape credentials, run inference probes, or create policy
-  bindings automatically to fill this gap.
+- **Claude CLI:** the user explicitly chose a weaker invocation-route approval because Claude
+  exposes no proven no-inference exact effective-model preflight. `direct-route.py` owns the check
+  and restricted execution. Optional version-1 `directPolicies` in the existing user-local
+  `~/.agents/second-opinion/config.json` use this exact shape (placeholder values must be replaced
+  deliberately; the workflow never writes them):
+
+  ```json
+  {
+    "directPolicies": {
+      "local/claude/opus/native-default": {
+        "metered": true,
+        "consent": "allow",
+        "cliPath": "/absolute/path/to/claude",
+        "cliVersion": "reviewed-version",
+        "auth": {
+          "authMethod": "claude.ai",
+          "apiProvider": "firstParty",
+          "subscriptionType": "max"
+        },
+        "allowedModelUsage": ["claude-opus-*", "claude-haiku-*"]
+      }
+    }
+  }
+  ```
+
+  The key binds requested model and effort (`native-default` when omitted). The helper requires
+  `metered: true`, matching `cliPath`, `cliVersion` and bounded auth tuple, and 1–16 nonempty
+  `claude-` model-usage patterns. Known API key/token/base URL and Bedrock/Vertex/Foundry override
+  variables must all be absent; output reports names only. Check and run are bound by a route
+  digest and prompt SHA-256; run rechecks before exposure, passes the prompt on stdin, and uses
+  restricted/safe/no-MCP/no-session read-only Claude flags. Actual `modelUsage` is returned and
+  configured runs fail as `model-mismatch` when absent or outside `allowedModelUsage`.
+  A current-run `--confirmed` call may proceed under disclosed uncertainty but never persists
+  approval. Max login, floating aliases and literal flags still do not prove included allowance;
+  managed substitution, auxiliary models and usage credits are intentionally accepted only by
+  this explicit invocation-route policy. Never infer or install it automatically.
 - **Existing panels:** preserve exact OpenRouter policies, prompt/panel/subset digests and named
   local-panel authorization. This prototype does not reinterpret those contracts.
 

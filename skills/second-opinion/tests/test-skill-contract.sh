@@ -48,4 +48,7 @@ done
 for setting in effectiveMaxOutputTokens effectiveEffort maxOutputTokensTotal; do
   grep -Fq "$setting" "$SKILL" || fail "consent disclosure omits $setting"
 done
+for invariant in 'direct-route.py check' 'direct-route.py run' '--configured-consent' 'modelUsageAllowed' 'invocation-route' 'usage credits'; do
+  grep -Fq -- "$invariant" "$SKILL" || fail "missing direct Claude invocation-route invariant: $invariant"
+done
 printf 'second-opinion skill contract tests passed\n'
