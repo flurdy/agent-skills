@@ -20,7 +20,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 from time import monotonic
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v1"
@@ -245,6 +245,70 @@ class Coverage:
         if self.base is not None:
             result["base"] = self.base
         return result
+
+
+@dataclass(frozen=True)
+class LargeBlob:
+    object_id: str
+    size: int
+
+
+@dataclass
+class SizePolicy:
+    runner: BoundedRunner
+    repository: Path
+    object_format: str
+    allowed: frozenset[str]
+    base: str | None
+    published: set[str] | None = None
+    proof_failed: bool = False
+    decisions: list[dict[str, Any]] = field(default_factory=list)
+    seen: set[tuple[str, str, str | None, str]] = field(default_factory=set)
+
+    def record(self, blob: LargeBlob, path: str, coverage: Coverage, commit: str | None = None) -> None:
+        if self.published is None:
+            self.published = set()
+            if self.base is not None:
+                try:
+                    output = git(
+                        self.runner, self.repository, "rev-list", "--objects",
+                        "--no-object-names", self.base, "--",
+                    ).stdout
+                    objects = decode_text(output).splitlines()
+                    if len(objects) > MAX_RECORDS or any(not OBJECT_ID.fullmatch(oid) for oid in objects):
+                        raise AuditError("publication-proof-failed")
+                    self.published = set(objects)
+                except AuditError:
+                    self.proof_failed = True
+        if self.proof_failed:
+            coverage.partial("publication-proof-failed")
+        reason = "unapproved-large-blob"
+        if blob.object_id in self.published:
+            reason = "published-base-history"
+        elif blob.object_id in self.allowed:
+            reason = "local-blob-allowance"
+        denied = reason == "unapproved-large-blob"
+        if denied:
+            coverage.partial("file-too-large")
+        key = (coverage.source, path, commit, blob.object_id)
+        if key in self.seen:
+            return
+        if len(self.decisions) >= MAX_FINDINGS:
+            coverage.limited("size-decision-limit")
+            return
+        self.seen.add(key)
+        self.decisions.append({
+            "location": {"source": coverage.source, "path": path, "commit": commit},
+            "blobId": blob.object_id,
+            "size": blob.size,
+            "decision": "deny" if denied else "skipped-by-policy",
+            "reason": reason,
+            "remediation": (
+                "Review this unscanned blob before explicitly allowing it with: "
+                "git config --local --add artifactHygiene.allowLargeBlobs " + blob.object_id
+                if denied else "Size-only skip; content was not scanned."
+            ),
+        })
 
 
 @dataclass
@@ -708,7 +772,9 @@ def repository_state(
     return head, status, refs
 
 
-def read_candidate(repository: Path, relative: str) -> bytes | None:
+def read_candidate(
+    repository: Path, relative: str, size_policy: SizePolicy
+) -> bytes | LargeBlob | None:
     target = repository / relative
     try:
         initial = target.lstat()
@@ -730,23 +796,39 @@ def read_candidate(repository: Path, relative: str) -> bytes | None:
             return None
         if (initial.st_dev, initial.st_ino) != (before.st_dev, before.st_ino):
             raise AuditError("file-changed")
-        if before.st_size > MAX_FILE_BYTES:
-            raise AuditError("file-too-large")
+        large = before.st_size > MAX_FILE_BYTES
         with os.fdopen(descriptor, "rb", closefd=False) as handle:
-            data = handle.read(MAX_FILE_BYTES + 1)
+            if large:
+                digest = hashlib.new(size_policy.object_format, usedforsecurity=False)
+                digest.update(f"blob {before.st_size}\0".encode("ascii"))
+                count = 0
+                while chunk := handle.read(65_536):
+                    if monotonic() >= size_policy.runner.deadline:
+                        raise AuditError("command-timeout")
+                    count += len(chunk)
+                    if count > before.st_size:
+                        raise AuditError("file-changed")
+                    digest.update(chunk)
+                if count != before.st_size:
+                    raise AuditError("file-changed")
+                data: bytes | LargeBlob = LargeBlob(digest.hexdigest(), count)
+            else:
+                data = handle.read(MAX_FILE_BYTES + 1)
+                if len(data) > MAX_FILE_BYTES:
+                    raise AuditError("file-changed")
         after = os.fstat(descriptor)
-        if len(data) > MAX_FILE_BYTES:
-            raise AuditError("file-too-large")
         if (
             before.st_dev,
             before.st_ino,
             before.st_size,
             before.st_mtime_ns,
+            before.st_ctime_ns,
         ) != (
             after.st_dev,
             after.st_ino,
             after.st_size,
             after.st_mtime_ns,
+            after.st_ctime_ns,
         ):
             raise AuditError("file-changed")
         return data
@@ -758,6 +840,7 @@ def collect_candidates(
     runner: BoundedRunner,
     repository: Path,
     coverage: Coverage,
+    size_policy: SizePolicy,
 ) -> list[Candidate]:
     result = git(
         runner,
@@ -782,9 +865,12 @@ def collect_candidates(
             coverage.partial("unsafe-path")
             continue
         try:
-            data = read_candidate(repository, relative)
+            data = read_candidate(repository, relative, size_policy)
         except AuditError as error:
             coverage.partial(error.code)
+            continue
+        if isinstance(data, LargeBlob):
+            size_policy.record(data, relative, coverage)
             continue
         if data is None or b"\0" in data:
             continue
@@ -827,7 +913,7 @@ def collect_candidates(
             size_result = git(runner, repository, "cat-file", "-s", object_text)
             size = int(decode_text(size_result.stdout))
             if size > MAX_FILE_BYTES:
-                coverage.partial("file-too-large")
+                size_policy.record(LargeBlob(object_text, size), relative, coverage)
                 continue
             blob = git(runner, repository, "cat-file", "blob", object_text).stdout
         except (AuditError, ValueError):
@@ -1044,6 +1130,30 @@ def detector_policy(
     if allowed_secret_fingerprints:
         policy += "+allow-secret-fingerprints"
     return allowed_categories, allowed_secret_fingerprints, policy
+
+
+def large_blob_policy(
+    runner: BoundedRunner, repository: Path, history: Coverage
+) -> SizePolicy:
+    object_format = decode_text(git(runner, repository, "rev-parse", "--show-object-format").stdout)
+    if object_format not in {"sha1", "sha256"}:
+        raise AuditError("unsupported-object-format")
+    configured = git(
+        runner, repository, "config", "--local", "--no-includes", "--get-all",
+        "artifactHygiene.allowLargeBlobs", allowed_returncodes=(0, 1),
+    )
+    length = 40 if object_format == "sha1" else 64
+    allowed = frozenset(
+        value for line in decode_text(configured.stdout).splitlines()
+        for value in (part.strip() for part in line.split(","))
+        if len(value) == length and OBJECT_ID.fullmatch(value)
+    )
+    base = None
+    if history.base and history.base.startswith("refs/remotes/origin/"):
+        base = decode_text(git(runner, repository, "rev-parse", "--verify", f"{history.base}^{{commit}}").stdout)
+        if not OBJECT_ID.fullmatch(base):
+            raise AuditError("publication-proof-failed")
+    return SizePolicy(runner, repository, object_format, allowed, base)
 
 
 def read_bounded(path: Path) -> bytes:
@@ -1284,7 +1394,7 @@ def resolve_history_range(
         allowed_returncodes=(0, 1),
     )
     symbolic_ref = safe_ref(decode_text(symbolic.stdout))
-    if symbolic_ref:
+    if symbolic_ref and symbolic_ref.startswith("refs/remotes/origin/"):
         candidates.append(symbolic_ref)
     candidates.extend(
         [
@@ -1295,6 +1405,12 @@ def resolve_history_range(
 
     base_ref: str | None = None
     for candidate in dict.fromkeys(candidates):
+        resolved_ref = decode_text(git(
+            runner, repository, "rev-parse", "--symbolic-full-name", candidate,
+            allowed_returncodes=(0, 1, 128),
+        ).stdout)
+        if not resolved_ref.startswith("refs/remotes/origin/"):
+            continue
         verified = git(
             runner,
             repository,
@@ -1367,36 +1483,48 @@ def commit_message(
     return parts[1] if len(parts) == 2 else b""
 
 
-def commit_paths(
+def commit_changes(
     runner: BoundedRunner,
     repository: Path,
     commit: str,
     coverage: Coverage,
-) -> list[str]:
+) -> list[tuple[str, str, str, str]]:
     output = git(
         runner,
         repository,
         "diff-tree",
         "--root",
         "--no-commit-id",
-        "--name-only",
+        "--raw",
+        "--no-abbrev",
+        "--no-renames",
         "-z",
         "-r",
         "-m",
         commit,
     ).stdout
-    paths: list[str] = []
-    for raw_path in dict.fromkeys(filter(None, output.split(b"\0"))):
-        decoded = os.fsdecode(raw_path)
+    records = output.split(b"\0")
+    if records[-1] != b"" or len(records) % 2 != 1:
+        raise AuditError("history-read-failed")
+    changes: list[tuple[str, str, str, str]] = []
+    for index in range(0, len(records) - 1, 2):
+        metadata = records[index].split()
+        if len(metadata) != 5 or not metadata[0].startswith(b":"):
+            raise AuditError("history-read-failed")
+        _, new_mode, old_id, new_id, _ = metadata
+        old, new = old_id.decode("ascii"), new_id.decode("ascii")
+        if not OBJECT_ID.fullmatch(old) or not OBJECT_ID.fullmatch(new):
+            raise AuditError("history-read-failed")
+        decoded = os.fsdecode(records[index + 1])
         path = safe_path(decoded)
         if path is None or path != decoded:
             coverage.partial("unsafe-path")
             continue
-        paths.append(path)
-        if len(paths) >= MAX_RECORDS:
+        changes.append((path, old, new, new_mode.decode("ascii")))
+        if len(changes) >= MAX_RECORDS:
             coverage.partial("record-limit")
             break
-    return paths
+    return list(dict.fromkeys(changes))
 
 
 def commit_patch(
@@ -1408,8 +1536,10 @@ def commit_patch(
     return git(
         runner,
         repository,
+        "--literal-pathspecs",
         "show",
         "-m",
+        "--text",
         "--format=",
         "--no-ext-diff",
         "--no-textconv",
@@ -1430,6 +1560,37 @@ def added_patch_content(patch: bytes) -> bytes:
     )
 
 
+def history_content(
+    runner: BoundedRunner, repository: Path, commit: str,
+    changes: list[tuple[str, str, str, str]], coverage: Coverage, size_policy: SizePolicy,
+) -> Iterator[tuple[str, bytes]]:
+    # Group merge-parent changes before generating a combined per-path patch.
+    by_path: dict[str, list[tuple[str, str, str]]] = {}
+    for path, old, new, mode in changes:
+        by_path.setdefault(path, []).append((old, new, mode))
+    for path, entries in by_path.items():
+        _, new, mode = entries[0]
+        if mode not in {"100644", "100755", "120000"}:
+            continue
+        size = int(decode_text(git(runner, repository, "cat-file", "-s", new).stdout))
+        if size > MAX_FILE_BYTES:
+            size_policy.record(LargeBlob(new, size), path, coverage, commit)
+            continue
+        old_large = False
+        for old, _, _ in entries:
+            if set(old) != {"0"}:
+                old_size = int(decode_text(git(runner, repository, "cat-file", "-s", old).stdout))
+                old_large |= old_size > MAX_FILE_BYTES
+        if old_large:
+            content = git(runner, repository, "cat-file", "blob", new).stdout
+            if len(content) != size:
+                raise AuditError("history-read-failed")
+        else:
+            content = added_patch_content(commit_patch(runner, repository, commit, path))
+        if b"\0" not in content:
+            yield path, content
+
+
 def scan_history_records(
     runner: BoundedRunner,
     repository: Path,
@@ -1441,6 +1602,7 @@ def scan_history_records(
     coverage: Coverage,
     collector: FindingCollector,
     allowed_categories: frozenset[str],
+    size_policy: SizePolicy,
     detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS,
 ) -> None:
     total_bytes = 0
@@ -1498,18 +1660,21 @@ def scan_history_records(
             break
 
         try:
-            paths = commit_paths(runner, repository, commit, coverage)
-        except AuditError:
-            coverage.partial("history-read-failed")
-            break
-        for path in paths:
-            path_records += 1
+            changes = commit_changes(runner, repository, commit, coverage)
+            path_records += len(changes)
             if path_records > MAX_RECORDS:
                 coverage.partial("record-limit")
                 break
+            contents = history_content(runner, repository, commit, changes, coverage, size_policy)
+        except AuditError:
+            coverage.partial("history-read-failed")
+            break
+        while True:
             try:
-                patch = added_patch_content(commit_patch(runner, repository, commit, path))
-            except AuditError:
+                path, patch = next(contents)
+            except StopIteration:
+                break
+            except (AuditError, ValueError):
                 coverage.partial("history-read-failed")
                 break
             if total_bytes + len(patch) > MAX_TOTAL_BYTES:
@@ -1555,7 +1720,7 @@ def scan_history_records(
                     else "scanner-failed"
                 )
                 break
-        if coverage.status == "partial":
+        if any(error not in {"file-too-large", "base-fallback-all-reachable"} for error in coverage.errors):
             break
     coverage.bytes = total_bytes
 
@@ -1587,7 +1752,16 @@ def scan(
     prefixes, bead_prefix_source = bead_prefixes(runner, repository)
     detectors = active_detectors(build_bead_detector(prefixes))
     custom_detectors = custom_detector_coverage(deadline, detectors)
-    candidates = collect_candidates(runner, repository, working)
+    try:
+        log_options = resolve_history_range(runner, repository, history)
+        commits = history_commits(runner, repository, log_options, history) if log_options else []
+    except AuditError:
+        history.partial("history-read-failed")
+        commits = []
+    size_policy = large_blob_policy(runner, repository, history)
+    if size_policy.allowed:
+        policy += "+allow-large-blobs"
+    candidates = collect_candidates(runner, repository, working, size_policy)
     collector = FindingCollector(allowed_secret_fingerprints)
     for candidate in candidates:
         if not collector.add(
@@ -1665,58 +1839,21 @@ def scan(
                     )
                     break
 
-            try:
-                log_options = resolve_history_range(runner, repository, history)
-                commits = (
-                    history_commits(runner, repository, log_options, history)
-                    if log_options is not None
-                    else []
+            if commits:
+                scan_history_records(
+                    runner,
+                    repository,
+                    commits,
+                    executable,
+                    ignore_path,
+                    deadline,
+                    scanner_environment,
+                    history,
+                    collector,
+                    allowed_categories,
+                    size_policy,
+                    detectors,
                 )
-            except AuditError:
-                history.partial("history-read-failed")
-                commits = []
-                log_options = None
-
-            if log_options is not None and commits:
-                try:
-                    arguments = scanner_arguments(
-                        executable, "git", ignore_path, deadline
-                    )
-                    arguments.extend(["--log-opts", log_options, "."])
-                    result = runner.run(
-                        arguments,
-                        cwd=repository,
-                        allowed_returncodes=(0, 1),
-                        environment_overrides=scanner_environment,
-                    )
-                    collector.add(
-                        parse_scanner_findings(
-                            result.stdout,
-                            source="branch-history",
-                            fallback_path=None,
-                        ),
-                        history,
-                    )
-                except AuditError as error:
-                    history.partial(
-                        "scanner-invalid-output"
-                        if error.code == "scanner-invalid-output"
-                        else "scanner-failed"
-                    )
-                if history.status == "complete":
-                    scan_history_records(
-                        runner,
-                        repository,
-                        commits,
-                        executable,
-                        ignore_path,
-                        deadline,
-                        scanner_environment,
-                        history,
-                        collector,
-                        allowed_categories,
-                        detectors,
-                    )
 
     try:
         if repository_state(runner, repository) != state_before:
@@ -1751,7 +1888,7 @@ def scan(
             "beadPrefixSource": bead_prefix_source,
         },
         "provenance": {
-            "helperVersion": "0.4.0-poc",
+            "helperVersion": "0.5.0-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1762,6 +1899,7 @@ def scan(
             },
         },
         "coverage": [item.as_dict() for item in coverages],
+        "sizeDecisions": size_policy.decisions,
         "findings": ordered_findings,
         "suppressed": sorted(
             collector.suppressed,
@@ -1787,7 +1925,7 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.3.3-poc",
+            "helperVersion": "0.5.0-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [
@@ -1800,6 +1938,7 @@ def failed_payload(code: str) -> dict[str, Any]:
                 "errors": [code],
             }
         ],
+        "sizeDecisions": [],
         "findings": [],
         "suppressed": [],
         "summary": {

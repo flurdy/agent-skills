@@ -29,6 +29,10 @@ for required in \
   'artifactHygiene.allowBeadReferences' \
   'ARTIFACT_HYGIENE_ALLOW_BEAD_REFERENCES' \
   'artifactHygiene.allowSecretFingerprints' \
+  'artifactHygiene.allowLargeBlobs' \
+  '`sizeDecisions`' \
+  'skipped-by-policy' \
+  'publication-proof-failed' \
   '`suppressed`' \
   'dependency lockfiles' \
   'reserved example domains' \

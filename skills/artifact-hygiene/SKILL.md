@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.4.2"
+version: "0.5.0"
 author: "flurdy"
 ---
 
@@ -38,6 +38,12 @@ The proof of concept scans:
 - unpublished branch commit messages and per-path patches relative to a locally available
   default-branch ref, without fetching. If no remote-backed base is available, it scans all commits
   reachable from `HEAD` rather than treating the current local branch as published.
+
+History is scanned through bounded per-record stdin calls, not an unrestricted scanner Git walk.
+Blob sizes are checked before generating patches; deletions introduce no content. When a large
+predecessor becomes a small file, the full new file is scanned conservatively instead of building a
+huge deletion patch. Such findings can include unchanged lines. Repository diff attributes cannot hide
+text, and paths are treated literally.
 
 It uses an audit-owned Gitleaks configuration and empty ignore file, scrubs scanner configuration from
 the environment, ignores inline scanner allow-comments, and never passes a baseline. Repository
@@ -88,6 +94,37 @@ Only valid IDs from clone-local Git configuration are honored; repository files,
 global Git configuration, paths, and scanner rule names cannot grant this allowance. The helper hashes
 the scanner match in private process memory and never emits the raw value.
 
+## Oversized blobs
+
+Files over 1,000,000 bytes (including binary files) are not scanned. The helper hashes working-tree
+bytes incrementally using Git's raw blob format, without running filters or writing objects. Index
+and history entries use their exact Git blob IDs. SHA-1 and SHA-256 repositories are supported.
+
+- A blob reachable anywhere in the locally available remote-backed default base's history is
+  `skipped-by-policy` with reason `published-base-history`, including renamed or reintroduced blobs.
+  This proves local remote-tracking reachability, not live remote state; the helper never fetches.
+- An unpublished blob remains partial (`file-too-large`) and denies publication, with its path,
+  blob ID, and required manual override in `sizeDecisions`.
+- After independently reviewing the unscanned content, a clone may allow exactly that blob:
+
+  ```bash
+  git config --local --add artifactHygiene.allowLargeBlobs <full-blob-id>
+  ```
+
+  Only lowercase, full-length IDs matching the repository object format are accepted (multi-valued
+  or comma-separated). Changed bytes require another allowance. Only direct clone-local Git
+  configuration is honored: checked-in files, Git config includes, environment variables, and global
+  configuration cannot grant it. Active allowances appear as `+allow-large-blobs` in `target.policy`;
+  applied skips have reason `local-blob-allowance`.
+
+`sizeDecisions` records each skipped or denied source/path/commit/blob combination, the byte size,
+reason, and safe remediation. Policy skips keep coverage complete and do not consume the scanned-byte
+budget; they do not claim content was inspected. A missing base cannot prove publication. Failed or
+bounded-out reachability checks produce `publication-proof-failed`; scanner failures, history-read
+failures, file changes, timeouts, and other resource limits still deny, even with a blob allowance.
+Reachability uses the existing bounded command output/deadline and 100,000-object cap; size decisions
+are capped at 2,000, with overflow reported as partial rather than silently omitted.
+
 GitHub pull requests, Jira, comments, attachments, linked pages, other repositories, full-history
 remediation, policy authoring, and enforcement are out of scope.
 
@@ -126,7 +163,10 @@ Render coverage before findings:
    remediation supplied by the helper.
 4. Report any `suppressed` count and state that clone-local fingerprint allowances were applied; use
    only normalized fields and never attempt to recover the matched value.
-5. If status is partial or failed, name the unavailable coverage and stop short of publication
+5. Render `sizeDecisions`, including every `skipped-by-policy` entry and its reason/blob ID. For
+   denied entries, name the file and show the exact clone-local override supplied by the helper;
+   never apply it automatically or describe skipped content as scanned.
+6. If status is partial or failed, name the unavailable coverage and stop short of publication
    assurance.
 
 Never recover raw evidence by reading a reported file, commit, scanner output, temporary file, or

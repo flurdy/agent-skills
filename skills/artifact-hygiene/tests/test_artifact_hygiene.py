@@ -24,10 +24,10 @@ SHARE_LINK = "https://chatgpt.com/" + "share/"
 
 
 class RepositoryFixture:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, object_format: str = "sha1") -> None:
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
-        self.run("init", "-b", "main")
+        self.run("init", "-b", "main", f"--object-format={object_format}")
         self.run("config", "user.email", "test@example.com")
         self.run("config", "user.name", "Test User")
 
@@ -127,11 +127,12 @@ if command == "stdin" and mode == "sleep-scan":
     with open(os.path.join(root, "child-pid"), "w", encoding="utf-8") as handle:
         handle.write(str(os.getpid()))
     time.sleep(60)
-if command == "git" and mode == "fail-history":
+payload = sys.stdin.buffer.read() if command == "stdin" else b""
+with open(log_path, "a", encoding="utf-8") as handle:
+    handle.write(json.dumps({"argv": ["payload-size"], "bytes": len(payload)}) + "\\n")
+if mode == "fail-history" and payload == b"history\\n":
     print("RAW_CHILD_ERROR", file=sys.stderr)
     raise SystemExit(2)
-
-payload = sys.stdin.buffer.read() if command == "stdin" else b"HISTORY_FINDING_MARKER"
 if b"FINDING_MARKER" not in payload and b"AKIA" not in payload:
     print("[]")
     raise SystemExit(0)
@@ -378,10 +379,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             scanner_temp = Path(invocation["tempDir"])
             self.assertFalse(scanner_temp.is_relative_to(self.repository.root))
             self.assertFalse(scanner_temp.exists())
-        history_arguments = next(item["argv"] for item in scan_invocations if item["argv"][0] == "git")
-        log_options = history_arguments[history_arguments.index("--log-opts") + 1]
-        self.assertIn("--no-ext-diff", log_options)
-        self.assertIn("--no-textconv", log_options)
+        self.assertTrue(all(item["argv"][0] == "stdin" for item in scan_invocations))
 
     def test_runner_reaps_child_across_setup_failures(self) -> None:
         helper = load_helper_module()
@@ -1406,6 +1404,292 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertTrue(
             all("scanner-unavailable" in entry["errors"] for entry in scanner_coverage)
         )
+
+    def large_blob(self, path: str = "large.txt", content: str = "x\n") -> str:
+        self.repository.write(path, content * 600_000)
+        return self.repository.run("hash-object", "--no-filters", "--", path).strip()
+
+    def assert_size_decision(self, payload, blob, decision, reason):
+        self.assertIn("sizeDecisions", payload)
+        entries = [item for item in payload["sizeDecisions"] if item["blobId"] == blob]
+        self.assertTrue(entries, payload)
+        for item in entries:
+            self.assertEqual(item["decision"], decision)
+            self.assertEqual(item["reason"], reason)
+            self.assertGreater(item["size"], 1_000_000)
+            self.assertEqual(item["location"]["path"], "large.txt")
+        return entries
+
+    def test_large_published_blob_is_visibly_skipped(self) -> None:
+        blob = self.large_blob()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        before = self.repository.state()
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["verdict"], "clean")
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
+        self.assertEqual(self.repository.state(), before)
+        invocations = [json.loads(line) for line in self.invocation_log.read_text().splitlines()]
+        self.assertFalse(any(item["argv"][0] == "git" for item in invocations))
+        self.assertTrue(all(item.get("bytes", 0) <= 1_000_000 for item in invocations))
+
+    def test_large_blob_in_older_remote_history_is_skipped_after_rename(self) -> None:
+        blob = self.large_blob("old.txt")
+        self.repository.commit_all("original asset")
+        (self.repository.root / "old.txt").unlink()
+        self.repository.commit_all("remove asset")
+        self.repository.mark_base()
+        self.large_blob()
+        self.repository.commit_all("reintroduce asset")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        entries = self.assert_size_decision(
+            payload, blob, "skipped-by-policy", "published-base-history"
+        )
+        self.assertIn("branch-history", {item["location"]["source"] for item in entries})
+
+    def test_new_large_blob_denies_and_exact_local_allowance_skips(self) -> None:
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        blob = self.large_blob()
+        for stage in ("untracked", "staged", "committed"):
+            with self.subTest(stage=stage):
+                if stage == "staged":
+                    self.repository.run("add", "large.txt")
+                elif stage == "committed":
+                    self.repository.run("commit", "-m", "add asset")
+                completed = self.run_audit()
+                payload = json.loads(completed.stdout)
+                self.assertEqual(completed.returncode, 2, payload)
+                entries = self.assert_size_decision(payload, blob, "deny", "unapproved-large-blob")
+                for item in entries:
+                    self.assertIn("artifactHygiene.allowLargeBlobs", item["remediation"])
+                    self.assertIn(blob, item["remediation"])
+        self.repository.run("config", "--local", "--add", "artifactHygiene.allowLargeBlobs", blob)
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertIn("allow-large-blobs", payload["target"]["policy"])
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "local-blob-allowance")
+        changed = self.large_blob(content="y\n")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2, payload)
+        self.assert_size_decision(payload, changed, "deny", "unapproved-large-blob")
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "local-blob-allowance")
+
+    def test_modified_published_large_blob_does_not_inherit_exemption(self) -> None:
+        original = self.large_blob()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        changed = self.large_blob(content="y\n")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2, payload)
+        self.assert_size_decision(payload, changed, "deny", "unapproved-large-blob")
+        self.assert_size_decision(payload, original, "skipped-by-policy", "published-base-history")
+
+    def test_large_blob_allowance_rejects_environment_global_and_included_config(self) -> None:
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        blob = self.large_blob()
+        config = self.repository.write(
+            "allowance.config", f"[artifactHygiene]\nallowLargeBlobs = {blob}\n"
+        )
+        self.repository.run("config", "--local", "include.path", str(config))
+        for value in ("*", "large.txt", "0" * 64):
+            self.repository.run("config", "--local", "--add", "artifactHygiene.allowLargeBlobs", value)
+        completed = self.run_audit(extra_environment={
+            "ARTIFACT_HYGIENE_ALLOW_LARGE_BLOBS": blob,
+            "GIT_CONFIG_GLOBAL": str(config),
+            "GIT_CONFIG_COUNT": "1",
+            "GIT_CONFIG_KEY_0": "artifactHygiene.allowLargeBlobs",
+            "GIT_CONFIG_VALUE_0": blob,
+        })
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2, payload)
+        self.assertNotIn("allow-large-blobs", payload["target"]["policy"])
+        self.assert_size_decision(payload, blob, "deny", "unapproved-large-blob")
+
+    def test_missing_base_or_local_symbolic_target_cannot_prove_publication(self) -> None:
+        blob = self.large_blob()
+        self.repository.commit_all("asset")
+        for target in (None, "refs/heads/main"):
+            with self.subTest(target=target):
+                if target:
+                    self.repository.run("symbolic-ref", "refs/remotes/origin/HEAD", target)
+                completed = self.run_audit()
+                payload = json.loads(completed.stdout)
+                self.assertEqual(completed.returncode, 2, payload)
+                self.assert_size_decision(payload, blob, "deny", "unapproved-large-blob")
+
+    def test_large_predecessor_deletion_and_shrink_do_not_build_huge_patches(self) -> None:
+        self.large_blob(content="x" * 100 + "\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.write("large.txt", "small\n")
+        self.repository.commit_all("shrink asset")
+        (self.repository.root / "large.txt").unlink()
+        self.repository.commit_all("delete asset")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["verdict"], "clean")
+
+    def test_oversized_history_remains_denied_after_local_deletion(self) -> None:
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        blob = self.large_blob()
+        self.repository.commit_all("asset")
+        (self.repository.root / "large.txt").unlink()
+        self.repository.commit_all("remove asset")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2, payload)
+        entries = self.assert_size_decision(payload, blob, "deny", "unapproved-large-blob")
+        self.assertEqual({item["location"]["source"] for item in entries}, {"branch-history"})
+
+    def test_large_skip_never_suppresses_scanner_or_history_read_failure(self) -> None:
+        helper = load_helper_module()
+        blob = self.large_blob()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.write("small.txt", "clean\n")
+        self.repository.commit_all("local addition")
+        real_run = helper.BoundedRunner.run
+
+        def fail_scan(runner, args, **kwargs):
+            if kwargs.get("input_bytes") == b"clean\n":
+                raise helper.AuditError("command-failed")
+            return real_run(runner, args, **kwargs)
+
+        for failing in ("scanner", "history"):
+            with self.subTest(failing=failing):
+                if failing == "scanner":
+                    patch = mock.patch.object(helper.BoundedRunner, "run", fail_scan)
+                else:
+                    patch = mock.patch.object(
+                        helper, "commit_message", side_effect=helper.AuditError("command-failed")
+                    )
+                with patch:
+                    payload, code = helper.scan(
+                        self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
+                        str(self.fake_gitleaks), time.monotonic() + 20,
+                    )
+                self.assertEqual(code, 2, payload)
+                errors = {error for item in payload["coverage"] for error in item["errors"]}
+                self.assertIn("scanner-failed" if failing == "scanner" else "history-read-failed", errors)
+                self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
+
+    def test_large_published_binary_above_total_budget_is_skipped(self) -> None:
+        target = self.repository.root / "large.txt"
+        with target.open("wb") as handle:
+            handle.truncate(51_000_000)
+        blob = self.repository.run("hash-object", "--no-filters", "--", "large.txt").strip()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
+        self.assertEqual(payload["verdict"], "clean")
+
+    def test_large_sha256_blob_allows_exact_repo_format_id(self) -> None:
+        self.repository = RepositoryFixture(self.repository.root.parent / "sha256", "sha256")
+        blob = self.large_blob()
+        self.assertEqual(len(blob), 64)
+        self.repository.run("config", "--local", "artifactHygiene.allowLargeBlobs", blob)
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assert_size_decision(payload, blob, "skipped-by-policy", "local-blob-allowance")
+
+    def test_failed_publication_proof_cannot_be_overridden(self) -> None:
+        helper = load_helper_module()
+        blob = self.large_blob()
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.allowLargeBlobs", blob)
+        real_git = helper.git
+
+        def failed_objects(*args, **kwargs):
+            if "--objects" in args:
+                raise helper.AuditError("command-output-limit")
+            return real_git(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", failed_objects):
+            payload, code = helper.scan(
+                self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
+                str(self.fake_gitleaks), time.monotonic() + 20,
+            )
+        self.assertEqual(code, 2, payload)
+        self.assertIn("publication-proof-failed", payload["coverage"][0]["errors"])
+
+    def test_unpublished_merge_large_blob_is_denied(self) -> None:
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("switch", "-c", "side")
+        blob = self.large_blob()
+        self.repository.commit_all("asset")
+        self.repository.run("switch", "main")
+        self.repository.write("main.txt", "clean\n")
+        self.repository.commit_all("main addition")
+        self.repository.run("merge", "--no-ff", "side", "-m", "merge asset")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2, payload)
+        entries = self.assert_size_decision(payload, blob, "deny", "unapproved-large-blob")
+        self.assertEqual(len([item for item in entries if item["location"]["source"] == "branch-history"]), 2)
+
+    def test_history_attributes_and_literal_path_cannot_hide_small_content(self) -> None:
+        self.repository.write(".gitattributes", "* -diff\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.write(":(exclude)hidden.txt", "FINDING_MARKER\n")
+        self.repository.commit_all("add content")
+        (self.repository.root / ":(exclude)hidden.txt").unlink()
+        self.repository.commit_all("remove content")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertTrue(any(
+            item["category"] == "secret" and item["location"]["path"] == ":(exclude)hidden.txt"
+            for item in payload["findings"]
+        ), payload)
+
+    def test_large_hash_rejects_replaced_path_and_expired_deadline(self) -> None:
+        helper = load_helper_module()
+        self.large_blob()
+        policy = helper.SizePolicy(
+            helper.BoundedRunner(time.monotonic() + 20), self.repository.root,
+            "sha1", frozenset(), None,
+        )
+        real_fstat = helper.os.fstat
+        calls = 0
+
+        def replace_path(descriptor):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                (self.repository.root / "large.txt").unlink()
+                self.large_blob(content="y\n")
+            return real_fstat(descriptor)
+
+        with mock.patch.object(helper.os, "fstat", replace_path):
+            with self.assertRaises(helper.AuditError) as caught:
+                helper.read_candidate(self.repository.root, "large.txt", policy)
+            self.assertEqual(caught.exception.code, "file-changed")
+        policy.runner.deadline = time.monotonic() - 1
+        with self.assertRaises(helper.AuditError) as caught:
+            helper.read_candidate(self.repository.root, "large.txt", policy)
+        self.assertEqual(caught.exception.code, "command-timeout")
 
     def test_history_scanner_failure_is_partial_and_never_leaks_child_error(self) -> None:
         self.prepare_coverage_repository()
