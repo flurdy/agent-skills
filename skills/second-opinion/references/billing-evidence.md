@@ -1,9 +1,8 @@
 # Trusted billing evidence — prototype v1
 
 **Status:** Pi policy evidence is available through a read-only extension tool and the native
-`delegate-work` adapter may use it under the bounded procedure below. No direct-review prompt bypass
-is enabled unless an exact user-owned Claude invocation-route policy matches the bounded helper;
-named-panel consent gates remain in force.
+`delegate-work` adapter may use it under the bounded procedure below. Direct local reviews may use
+a stable loaded user-owned subscription preference; API/BYOK and named-panel gates remain in force.
 This reference owns the shared consumption boundary; the Pi router owns its policy parser and
 producer API. Do not copy policy parsing into skill prose or invent a second billing file.
 
@@ -100,42 +99,29 @@ post-exposure identity cannot retroactively authorize the first request.
   mismatch stops later fanout but cannot retroactively authorize the first request. Keep unknown
   or unsupported conditions on the current-run confirmation path. A future subagent-owned,
   digest-bound launch preflight would be stronger, but is not required to use this bounded adapter.
-- **Claude CLI:** the user explicitly chose a weaker invocation-route approval because Claude
-  exposes no proven no-inference exact effective-model preflight. `direct-route.py` owns the check
-  and restricted execution. Optional version-1 `directPolicies` in the existing user-local
-  `~/.agents/second-opinion/config.json` use this exact shape (placeholder values must be replaced
-  deliberately; the workflow never writes them):
+- **Subscription CLI routes:** a user-owned declaration loaded through the runtime's normal
+  user instructions is sufficient because this is a durable billing preference, not an executable
+  attestation. Keep it stable and human-readable:
 
-  ```json
-  {
-    "directPolicies": {
-      "local/claude/opus/native-default": {
-        "metered": true,
-        "consent": "allow",
-        "cliPath": "/absolute/path/to/claude",
-        "cliVersion": "reviewed-version",
-        "auth": {
-          "authMethod": "claude.ai",
-          "apiProvider": "firstParty",
-          "subscriptionType": "max"
-        },
-        "allowedModelUsage": ["claude-opus-*", "claude-haiku-*"]
-      }
-    }
-  }
+  ```yaml
+  review-subscription-policy:
+    claude:
+      login: claude.ai
+      models: [opus, fable]
+    codex:
+      login: ChatGPT
+      models: [gpt-5.6-sol, gpt-6-astra]
   ```
 
-  The key binds requested model and effort (`native-default` when omitted). The helper requires
-  `metered: true`, matching `cliPath`, `cliVersion` and bounded auth tuple, and 1–16 nonempty
-  `claude-` model-usage patterns. Known API key/token/base URL and Bedrock/Vertex/Foundry override
-  variables must all be absent; output reports names only. Check and run are bound by a route
-  digest and prompt SHA-256; run rechecks before exposure, passes the prompt on stdin, and uses
-  restricted/safe/no-MCP/no-session read-only Claude flags. Actual `modelUsage` is returned and
-  configured runs fail as `model-mismatch` when absent or outside `allowedModelUsage`.
-  A current-run `--confirmed` call may proceed under disclosed uncertainty but never persists
-  approval. Max login, floating aliases and literal flags still do not prove included allowance;
-  managed substitution, auxiliary models and usage credits are intentionally accepted only by
-  this explicit invocation-route policy. Never infer or install it automatically.
+  Immediately before a declared route, run the bounded
+  `scripts/subscription-route-check.py claude|codex` helper. It verifies the subscription login
+  without exposing account identifiers: `claude auth status --json` must report a logged-in `claude.ai` first-party route,
+  or `codex login status` must report `Logged in using ChatGPT`. The respective API key/token,
+  base URL and cloud-provider override variables must be absent. A matching requested model then
+  runs without another billing prompt. Missing/mismatched evidence still asks once for the current
+  run. Model aliases, CLI upgrades, and internal helper models do not invalidate this preference.
+  This declaration accepts normal subscription-route behavior but does not prove zero incremental
+  cost, authorize API/BYOK routes, or expand execution/fanout. Never infer or persist it automatically.
 - **Existing panels:** preserve exact OpenRouter policies, prompt/panel/subset digests and named
   local-panel authorization. This prototype does not reinterpret those contracts.
 

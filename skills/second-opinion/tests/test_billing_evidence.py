@@ -21,7 +21,7 @@ class BillingEvidenceContractTests(unittest.TestCase):
         text = CONTRACT.read_text()
         for boundary in (
             "not launch authorization",
-            "No direct-review prompt bypass",
+            "Direct local reviews",
             "effective identity",
             "fallback",
             "fast",
@@ -29,10 +29,8 @@ class BillingEvidenceContractTests(unittest.TestCase):
             "revision",
             "fanout",
             "unknown",
-            "directPolicies",
-            "allowedModelUsage",
-            "cliPath",
-            "cliVersion",
+            "review-subscription-policy",
+            "subscription login",
         ):
             with self.subTest(boundary=boundary):
                 self.assertIn(boundary, text)
@@ -65,6 +63,11 @@ class BillingEvidenceContractTests(unittest.TestCase):
                 self.assertIn(required, delegate)
         self.assertIn('`consent: "allow"`', child_policy)
         self.assertIn("does not authorize fanout", child_policy)
+
+    def test_subscription_policy_avoids_brittle_runtime_pins(self):
+        text = CONTRACT.read_text()
+        for rejected in ("cliPath", "cliVersion", "allowedModelUsage", "directPolicies"):
+            self.assertNotIn(rejected, text)
 
     @unittest.skipUnless(PACKAGE, "MODEL_POLICY_PACKAGE required for cross-repository producer checks")
     def test_router_public_export_matches_shared_fixtures(self):

@@ -69,13 +69,12 @@ Omitted effort sends no reasoning setting and omitted cap inherits the profile l
 
 ## Cost and consent
 
-Single routes remain subscription/OAuth-first under the parent skill's policy. Direct Codex/Gemini
-and unconfigured Claude routes retain current-run disclosure for metered or unknown cost. Direct
-Claude may instead use the user-owned invocation-route policy and bounded check/run helper defined
-in [`billing-evidence.md`](billing-evidence.md). It binds requested model/effort, CLI path/version,
-a non-identifying auth tuple, override absence, and allowed post-run model-usage patterns. This is
-explicit acceptance of substitution, auxiliary-model and usage-credit uncertainty—not proof of
-included subscription allowance or an exact effective model. Panel configuration does not infer billing from
+Single routes remain subscription/OAuth-first under the parent skill's policy. A loaded user-owned
+`review-subscription-policy` may name stable Claude or Codex model choices that need no repeated
+billing prompt when the CLI confirms the declared subscription login and no API/BYOK override is
+active. See [`billing-evidence.md`](billing-evidence.md). This preference intentionally survives CLI
+updates and ignores internal helper models; it is not proof of zero incremental cost. Undeclared,
+mismatched and API-backed routes retain current-run disclosure. Panel configuration does not infer billing from
 a provider or model name.
 
 Every OpenRouter subset is metered. By default, the panel coordinator binds its exact identities and

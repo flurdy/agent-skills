@@ -24,11 +24,6 @@ defaults to the smaller of `quorum` and the enabled unique-provider count. Each 
 its own unit. Routes from the same provider count separately toward quorum but remain
 same-provider corroboration for consensus interpretation.
 
-The same version-1 user file may contain root `directPolicies` for direct Claude
-invocation-route consent. Those entries are not panel routes and never affect quorum or
-OpenRouter. See [`billing-evidence.md`](billing-evidence.md) for their deliberately weaker,
-exact invocation schema and helper checks.
-
 Optional `enabled` defaults to `true` on profiles and routes. Selecting a disabled profile fails
 without fallback. Disabled routes remain visible in check/evaluation output with status `disabled`,
 but are never invoked and never count toward a threshold. The optional root-level `modelPolicies`

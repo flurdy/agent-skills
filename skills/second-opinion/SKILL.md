@@ -1,11 +1,11 @@
 ---
 name: second-opinion
 description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/direct-route.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.5.0"
+version: "3.6.0"
 author: "flurdy"
 ---
 
@@ -47,8 +47,6 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 ## Requirements
 
 - Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
-  Direct Claude configured consent uses `scripts/direct-route.py` and optional root
-  `directPolicies` in `~/.agents/second-opinion/config.json`.
 - Panel orchestration: `jq` plus `scripts/review-panel.sh`.
 - OpenRouter subset only: `curl`, plus either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT`, and a configured panel/profile in
   `~/.agents/second-opinion/config.json`. Optional exact-model `modelPolicies` in that user-local
@@ -65,9 +63,9 @@ Model/effort precedence is in
 
 ## Model independence and cost
 
-The [billing evidence prototype](references/billing-evidence.md) defines the shared
-launch-free policy projection and outstanding adapter proofs. It does not enable a
-direct-route prompt bypass or replace the consent gates below.
+The [billing evidence contract](references/billing-evidence.md) defines native Pi evidence
+and the stable user-owned subscription preference. Neither authorizes execution, fanout, API/BYOK
+routes, or named-panel spend.
 
 A second opinion should come from a different vendor than the model that produced the work:
 
@@ -79,10 +77,11 @@ A second opinion should come from a different vendor than the model that produce
 `claude`, `codex`, and `gemini` remain supported.
 
 Prefer subscription/OAuth routes for one peer. Treat API-key/BYOK and unknown-cost direct routes as
-metered and obtain current-run consent before invocation. For direct Claude only, a matching
-user-owned **invocation-route** policy may set metered `consent: "allow"`; this explicitly accepts
-floating-model substitution, auxiliary models and usage credits within its declared patterns. It
-is not proof that subscription allowance covers the request. A named panel does not infer billing from a
+metered and obtain current-run consent before invocation. A loaded user-owned
+`review-subscription-policy` may allow named Claude or Codex models without another billing prompt
+when the CLI reports the declared subscription login and no API override is present. This is the
+user's durable billing preference, not proof of zero incremental cost; it never authorizes execution
+scope or fanout. A named panel does not infer billing from a
 provider name. Its configured local routes are the approved local subset; every OpenRouter route is a
 separately metered subset unless an exact user-local `modelPolicies` entry explicitly sets
 `consent: "allow"`.
@@ -177,31 +176,17 @@ an unavailable route is not permission to substitute another provider or cwd.
 
 ### Claude
 
-Resolve `{model}` as before (`opus` by default; `smart` means the native default) and `{effort}`
-as the literal requested level or `native-default`; the helper will pass it through to Claude Code. Put the sanitized prompt in a private `600`
-file, never argv. Check the exact invocation immediately before exposure:
-
-```bash
-~/.agents/skills/second-opinion/scripts/direct-route.py check \
-  --model {model} --effort {effort}
-```
-
-Report requested model/effort, CLI path/version, bounded auth classification, override-name
-presence, policy basis, allowed actual-model patterns, route digest, and whether consent is
-required. No account identifiers or credential values are returned. A configured allow requires
-an exact user policy matching the CLI path/version and auth tuple, no known API/token/base/cloud
-environment override, and `metered: true, consent: "allow"`. This is an explicitly weaker
-invocation-route approval: aliases, managed substitution, auxiliary model use and usage credits
-remain possible.
-
-If confirmation is required, ask immediately before the request. Then call `direct-route.py run`
-with the same model/effort, prompt path/hash and route hash, using exactly one of
-`--configured-consent` or `--confirmed`. The helper rechecks all evidence, invokes Claude in
-restricted safe mode with read-only tools and no MCP/session persistence, passes the prompt on
-stdin, and returns bounded output plus actual `modelUsage`. Delete the prompt file afterward.
-A stale digest fails before launch. If `modelUsageAllowed` is false or actual usage is absent,
-preserve the result as mismatch evidence, make no current assessment, and require a new decision
-before another Claude invocation. Never retry or substitute.
+Without `--model`, use `opus`; `smart` retains the CLI-native default. Pass any other requested
+model literally, and when effort is explicit, pass it through to Claude Code. Immediately before launch, run
+`~/.agents/skills/second-opinion/scripts/subscription-route-check.py claude`; it uses
+`claude auth status --json` and returns only non-identifying login classification and API override names. A matching loaded subscription policy requires
+`subscriptionLogin: true`, its declared login classification, the requested model in its allowlist,
+and no `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, or Bedrock/Vertex/Foundry
+API override. Report the route and policy provenance, never credential values. If any check fails,
+obtain current-run confirmation. Otherwise make the existing read-only `claude -p` call without a
+billing prompt. Model aliases and internal helper models are deliberately outside this stable user
+preference; Claude remains responsible for its subscription behavior. Preserve and report actual
+model usage when available, but do not turn it into another approval list.
 
 ### Codex
 
@@ -212,7 +197,12 @@ codex exec --sandbox read-only {exec_model_flag} "{assembled_prompt}"
 ```
 
 For `codex exec`, `{exec_model_flag}` is `--model <id>` for an explicit resolved model and empty for
-the native default.
+the native default. A loaded subscription policy may supply its first allowed model when `peer`
+selects Codex and the user did not provide one. Immediately before launch, run
+`~/.agents/skills/second-opinion/scripts/subscription-route-check.py codex`; it requires
+`Logged in using ChatGPT` from `codex login status`, the requested model in the policy allowlist,
+and no `OPENAI_API_KEY`, `CODEX_API_KEY`, or `CODEX_ACCESS_TOKEN` API override. Otherwise obtain
+current-run confirmation. Never print credential values.
 
 ### Gemini
 

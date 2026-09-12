@@ -48,7 +48,10 @@ done
 for setting in effectiveMaxOutputTokens effectiveEffort maxOutputTokensTotal; do
   grep -Fq "$setting" "$SKILL" || fail "consent disclosure omits $setting"
 done
-for invariant in 'direct-route.py check' 'direct-route.py run' '--configured-consent' 'modelUsageAllowed' 'invocation-route' 'usage credits'; do
-  grep -Fq -- "$invariant" "$SKILL" || fail "missing direct Claude invocation-route invariant: $invariant"
+for invariant in 'review-subscription-policy' 'claude auth status --json' 'Logged in using ChatGPT' 'API override' 'billing prompt'; do
+  grep -Fq -- "$invariant" "$SKILL" || fail "missing stable subscription policy invariant: $invariant"
+done
+for brittle in 'direct-route.py' 'cliPath' 'cliVersion' 'allowedModelUsage'; do
+  ! grep -Fq -- "$brittle" "$SKILL" || fail "skill retains brittle route binding: $brittle"
 done
 printf 'second-opinion skill contract tests passed\n'

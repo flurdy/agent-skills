@@ -36,8 +36,9 @@ You can choose a direct route explicitly with `--agent claude`, `--agent codex`,
 CLI's model defaults. An explicit `--model <id>` overrides this; use `--model smart` to retain the
 Claude CLI-native default. Direct Claude routes accept `--effort low|medium|high|xhigh|max`; omitted
 effort retains the Claude CLI-native setting. Codex and Gemini do not accept this direct flag.
-Claude checks and runs through the bounded `direct-route.py` helper. Without a matching
-user-owned invocation-route policy it still asks for current-run consent.
+A loaded user-owned subscription policy can allow Claude `opus`/`fable` or Codex
+`sol`/`astra` choices without repeated billing prompts after the CLI confirms its subscription
+login and no API override is present.
 
 Examples:
 
@@ -96,9 +97,9 @@ OpenRouter routes live in:
 
 The configuration contains route identities, `quorum`/`consensusQuorum` thresholds, optional
 profile/route `enabled` switches, limits, and optional user-local consent policies—not credentials.
-OpenRouter uses exact-model `modelPolicies`. Direct Claude may use the explicitly weaker
-`directPolicies` invocation-route contract in
-[billing-evidence.md](references/billing-evidence.md); the skill never creates it. Disabled profiles fail when selected; disabled routes remain visible but are not run or
+OpenRouter uses exact-model `modelPolicies`. Stable local subscription preferences belong in
+loaded user instructions under `review-subscription-policy`; see
+[billing-evidence.md](references/billing-evidence.md). The skill never creates that declaration. Disabled profiles fail when selected; disabled routes remain visible but are not run or
 counted. See
 [review-panels.md](references/review-panels.md) for the supported schema, built-ins, per-route
 model/effort overrides, and limits.
@@ -139,9 +140,8 @@ spend. Every other route in a selected subset still requires approval. Declining
 results and records the OpenRouter routes as declined.
 
 The skill never silently retries failed routes, substitutes models, expands a panel, or treats an
-unknown model as pre-authorized. A configured direct Claude invocation route explicitly accepts
-its declared model-usage patterns and usage-credit uncertainty; unexpected post-run models stop
-further calls and invalidate the current assessment. See [openrouter-consensus.md](references/openrouter-consensus.md)
+unknown model as pre-authorized. A declared subscription route accepts the normal CLI's model selection and possible usage-credit
+behavior; it does not authorize API/BYOK credentials or a broader task. See [openrouter-consensus.md](references/openrouter-consensus.md)
 for the full safety boundary.
 
 ## Reading the result
