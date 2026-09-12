@@ -6,6 +6,10 @@ constraint on delegated work, not the delegation workflow itself.
 
 ## Launch invariant
 
+The shared [billing evidence prototype](../../second-opinion/references/billing-evidence.md)
+adds a launch-free policy projection, not a verified child adapter. Keep this launch gate
+unchanged until effective identity, freshness and complete exposure can be established.
+
 A child route is verified only when both are available before launch:
 
 1. Trusted runtime/resolver evidence identifies the effective child route or model.

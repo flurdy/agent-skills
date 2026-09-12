@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(git 
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.4.0"
+version: "3.4.1"
 author: "flurdy"
 ---
 
@@ -62,6 +62,10 @@ Model/effort precedence is in
 [references/external-model-resolution.md](references/external-model-resolution.md).
 
 ## Model independence and cost
+
+The [billing evidence prototype](references/billing-evidence.md) defines the shared
+launch-free policy projection and outstanding adapter proofs. It does not enable a
+direct-route prompt bypass or replace the consent gates below.
 
 A second opinion should come from a different vendor than the model that produced the work:
 

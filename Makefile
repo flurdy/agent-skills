@@ -145,7 +145,14 @@ test-artifact-hygiene:
 	@skills/artifact-hygiene/tests/test-skill-contract.sh
 	@python3 -m unittest discover -s skills/artifact-hygiene/tests -p 'test_artifact_hygiene.py'
 
+.PHONY: test-billing-evidence
+# Optional cross-repository producer check; requires an explicitly selected package.
+test-billing-evidence:
+	@test -n "$(MODEL_POLICY_PACKAGE)" || { echo "MODEL_POLICY_PACKAGE is required" >&2; exit 2; }
+	@MODEL_POLICY_PACKAGE="$(MODEL_POLICY_PACKAGE)" python3 -m unittest discover -s skills/second-opinion/tests -p 'test_billing_evidence.py'
+
 test-second-opinion:
+	@python3 -m unittest discover -s skills/second-opinion/tests -p 'test_billing_evidence.py'
 	@skills/second-opinion/tests/test-skill-contract.sh
 	@skills/second-opinion/tests/test-review-panel.sh
 	@skills/second-opinion/tests/test-openrouter-panel.sh

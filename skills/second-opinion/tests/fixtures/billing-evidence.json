@@ -1,0 +1,63 @@
+[
+  {
+    "name": "exact-unmetered",
+    "configuration": {"modelPolicies": {"provider/included": {"metered": false}}, "private": "fixture-private-value"},
+    "models": ["provider/included"],
+    "policies": [{"model": "provider/included", "meteredClassification": false, "consentPolicy": "not-needed", "basis": "explicit"}]
+  },
+  {
+    "name": "metered-allow-and-ask",
+    "configuration": {"modelPolicies": {"provider/allowed": {"metered": true, "consent": "allow"}, "provider/ask": {"metered": true}}},
+    "models": ["provider/allowed", "provider/ask"],
+    "policies": [
+      {"model": "provider/allowed", "meteredClassification": true, "consentPolicy": "allow", "basis": "explicit"},
+      {"model": "provider/ask", "meteredClassification": true, "consentPolicy": "ask", "basis": "explicit"}
+    ]
+  },
+  {
+    "name": "identity-mismatch-no-fuzzy-match",
+    "configuration": {"modelPolicies": {"provider/model-1": {"metered": false}}},
+    "models": ["provider/model", "different/model-1"],
+    "policies": [
+      {"model": "provider/model", "meteredClassification": "unknown", "consentPolicy": "ask", "basis": "missing"},
+      {"model": "different/model-1", "meteredClassification": "unknown", "consentPolicy": "ask", "basis": "missing"}
+    ]
+  },
+  {
+    "name": "legacy-conflict",
+    "configuration": {"tiers": {
+      "a": {"rank": 10, "thinking": "high", "candidates": [{"model": "provider/shared", "metered": false}]},
+      "b": {"rank": 20, "thinking": "high", "candidates": [{"model": "provider/shared", "metered": true}]}
+    }},
+    "models": ["provider/shared"],
+    "policies": [{"model": "provider/shared", "meteredClassification": true, "consentPolicy": "ask", "basis": "conflict"}]
+  },
+  {
+    "name": "explicit-override-is-resolved",
+    "configuration": {
+      "tiers": {"a": {"rank": 10, "thinking": "high", "candidates": [{"model": "provider/m", "metered": true}]}},
+      "modelPolicies": {"provider/m": {"metered": false}}
+    },
+    "models": ["provider/m"],
+    "policies": [{"model": "provider/m", "meteredClassification": false, "consentPolicy": "not-needed", "basis": "explicit-override"}]
+  },
+  {
+    "name": "invalid-declaration-is-local-to-model",
+    "configuration": {
+      "tiers": {"a": {"rank": 10, "thinking": "high", "candidates": [{"model": "provider/bad", "metered": false}]}},
+      "modelPolicies": {"provider/bad": {"consent": "allow"}, "provider/good": {"metered": true, "consent": "allow"}}
+    },
+    "models": ["provider/bad", "provider/good"],
+    "policies": [
+      {"model": "provider/bad", "meteredClassification": "unknown", "consentPolicy": "ask", "basis": "invalid"},
+      {"model": "provider/good", "meteredClassification": true, "consentPolicy": "allow", "basis": "explicit"}
+    ]
+  },
+  {
+    "name": "invalid-map-is-unavailable",
+    "configuration": {"modelPolicies": []},
+    "models": ["provider/m"],
+    "status": "invalid",
+    "policies": [{"model": "provider/m", "meteredClassification": "unknown", "consentPolicy": "ask", "basis": "unavailable"}]
+  }
+]

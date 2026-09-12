@@ -72,6 +72,10 @@ launches. Non-interactive Claude Code can bill usage credits without an interact
 
 ## Parent and child routing
 
+The [billing evidence prototype](skills/second-opinion/references/billing-evidence.md)
+records a shared policy projection and the remaining launch-adapter requirements. It does
+not yet replace the direct-review or child consent rules below.
+
 Skill metadata routes the current parent only. It does not classify or authorize child launches. Metered or unknown child routes require fresh current-run consent; otherwise inherit the parent route or continue serially. Runtime-specific child discovery and evidence rules belong in `/delegate-work` and its adapter references.
 
 ## Client behavior
