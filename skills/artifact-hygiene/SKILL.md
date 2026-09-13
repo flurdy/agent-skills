@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.5.1"
+version: "0.5.2"
 author: "flurdy"
 ---
 
@@ -148,7 +148,10 @@ From the repository to inspect:
 ```
 
 The helper always emits `artifact-hygiene/v1` JSON to stdout and emits no candidate or child-process
-text to stderr.
+text to stderr. The audit has one 600-second deadline, configurable for manual runs with `--timeout`
+from 1 to 600 seconds. A deadline expiry is reported only as `deadline-exceeded` on affected coverage
+sources; it remains partial and denies publication. `summary.truncated` states whether reported finding
+counts are incomplete because the deadline or report-size cap stopped collection.
 
 Exit codes:
 
@@ -161,7 +164,8 @@ Exit codes:
 Render coverage before findings:
 
 1. State the overall `status` and `verdict` exactly.
-2. List each source and its `complete`, `partial`, or `failed` status plus safe error codes.
+2. List each source and its `complete`, `partial`, or `failed` status plus safe error codes. If
+   `summary.truncated` is true, state explicitly that finding counts are incomplete.
 3. Group findings by severity and category, using only the normalized location, evidence token, and
    remediation supplied by the helper.
 4. Report any `suppressed` count and state that clone-local fingerprint allowances were applied; use

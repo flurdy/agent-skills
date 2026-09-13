@@ -1334,8 +1334,8 @@ class ArtifactHygieneCliTests(unittest.TestCase):
 
         self.assertEqual(len(findings), 1)
         self.assertEqual(coverage.status, "partial")
-        self.assertIn("custom-detector-timeout", coverage.errors)
-        self.assertIn("custom-detector-timeout", coverage.limits)
+        self.assertIn("deadline-exceeded", coverage.errors)
+        self.assertIn("deadline-exceeded", coverage.limits)
 
     def test_custom_detector_preserves_line_attribution(self) -> None:
         sentinel = "LINE_RAW_VALUE"
@@ -1761,6 +1761,88 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         with self.assertRaises(helper.AuditError) as caught:
             helper.read_candidate(self.repository.root, "large.txt", policy)
         self.assertEqual(caught.exception.code, "command-timeout")
+
+    def assert_deadline_payload(self, payload, code):
+        self.assertEqual(code, 2, payload)
+        self.assertEqual(payload["status"], "partial")
+        self.assertEqual(payload["verdict"], "partial")
+        errors = {
+            entry["source"]: set(entry["errors"])
+            for entry in payload["coverage"]
+        }
+        for source in ("working-tree", "branch-history"):
+            self.assertIn("deadline-exceeded", errors[source])
+        misleading = {
+            "command-timeout", "scanner-failed", "history-read-failed",
+            "state-recheck-failed", "index-read-failed", "publication-proof-failed",
+        }
+        self.assertFalse(misleading & set().union(*errors.values()), errors)
+        self.assertIs(payload["summary"]["truncated"], True)
+
+    def test_scanner_deadline_is_not_relabelled(self) -> None:
+        helper = load_helper_module()
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        real_run = helper.BoundedRunner.run
+
+        def expire_scanner(runner, args, **kwargs):
+            if kwargs.get("input_bytes") == b"clean\n":
+                runner.deadline = time.monotonic() - 1
+                raise helper.AuditError("command-timeout")
+            return real_run(runner, args, **kwargs)
+
+        with mock.patch.object(helper.BoundedRunner, "run", expire_scanner):
+            payload, code = helper.scan(
+                self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
+                str(self.fake_gitleaks), time.monotonic() + 20,
+            )
+        self.assert_deadline_payload(payload, code)
+
+    def test_history_deadline_is_not_relabelled(self) -> None:
+        helper = load_helper_module()
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.write("feature.txt", "clean feature\n")
+        self.repository.commit_all("feature deadline sentinel")
+
+        def expire_history(runner, repository, commit):
+            runner.deadline = time.monotonic() - 1
+            raise helper.AuditError("command-timeout")
+
+        with mock.patch.object(helper, "commit_message", expire_history):
+            payload, code = helper.scan(
+                self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
+                str(self.fake_gitleaks), time.monotonic() + 20,
+            )
+        self.assert_deadline_payload(payload, code)
+
+    def test_state_recheck_deadline_is_not_relabelled(self) -> None:
+        helper = load_helper_module()
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        real_state = helper.repository_state
+        calls = 0
+
+        def expire_recheck(runner, repository):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise helper.AuditError("command-timeout")
+            return real_state(runner, repository)
+
+        with mock.patch.object(helper, "repository_state", expire_recheck):
+            payload, code = helper.scan(
+                self.repository.root, self.repository.run("rev-parse", "HEAD").strip(),
+                str(self.fake_gitleaks), time.monotonic() + 20,
+            )
+        self.assert_deadline_payload(payload, code)
+
+    def test_default_deadline_supports_large_repositories(self) -> None:
+        helper = load_helper_module()
+        self.assertEqual(helper.DEFAULT_TIMEOUT_SECONDS, 600.0)
 
     def test_history_scanner_failure_is_partial_and_never_leaks_child_error(self) -> None:
         self.prepare_coverage_repository()

@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
 import os
 import re
 import secrets
@@ -27,7 +28,7 @@ SCHEMA_VERSION = "artifact-hygiene/v1"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
-DEFAULT_TIMEOUT_SECONDS = 120.0
+DEFAULT_TIMEOUT_SECONDS = 600.0
 MAX_COMMAND_OUTPUT_BYTES = 4_000_000
 MAX_REPORT_OUTPUT_BYTES = 4_000_000
 MAX_FILE_BYTES = 1_000_000
@@ -201,6 +202,10 @@ class AuditError(RuntimeError):
         self.code = code
 
 
+def deadline_error(error: AuditError, fallback: str) -> str:
+    return "deadline-exceeded" if error.code == "command-timeout" else fallback
+
+
 @dataclass(frozen=True)
 class CommandResult:
     stdout: bytes
@@ -260,11 +265,11 @@ class SizePolicy:
     object_format: str
     allowed: frozenset[str]
     base: str | None
-    proofs: dict[str, bool | None] = field(default_factory=dict)
+    proofs: dict[str, bool | str] = field(default_factory=dict)
     decisions: list[dict[str, Any]] = field(default_factory=list)
     seen: set[tuple[str, str, str | None, str]] = field(default_factory=set)
 
-    def is_published(self, object_id: str) -> bool | None:
+    def is_published(self, object_id: str) -> bool | str:
         if object_id in self.proofs:
             return self.proofs[object_id]
         if self.base is None:
@@ -298,24 +303,26 @@ class SizePolicy:
             lines = decode_text(result.stdout).splitlines()
             if any(not OBJECT_ID.fullmatch(line) for line in lines) or len(lines) > 1:
                 raise AuditError("publication-proof-failed")
-            published: bool | None = bool(lines)
-        except AuditError:
-            published = None
+            published: bool | str = bool(lines)
+        except AuditError as error:
+            published = deadline_error(error, "publication-proof-failed")
         self.proofs[object_id] = published
         return published
 
     def record(self, blob: LargeBlob, path: str, coverage: Coverage, commit: str | None = None) -> None:
         published = self.is_published(blob.object_id)
-        if published is None:
-            coverage.partial("publication-proof-failed")
-            reason = "publication-proof-failed"
+        if isinstance(published, str):
+            coverage.partial(published)
+            reason = published
         elif published:
             reason = "published-base-history"
         elif blob.object_id in self.allowed:
             reason = "local-blob-allowance"
         else:
             reason = "unapproved-large-blob"
-        denied = reason in {"publication-proof-failed", "unapproved-large-blob"}
+        denied = reason in {
+            "deadline-exceeded", "publication-proof-failed", "unapproved-large-blob"
+        }
         if reason == "unapproved-large-blob":
             coverage.partial("file-too-large")
         key = (coverage.source, path, commit, blob.object_id)
@@ -724,6 +731,8 @@ def resolve_repository(runner: BoundedRunner, target: Path) -> tuple[Path, str |
     try:
         root_result = git(runner, target, "rev-parse", "--show-toplevel")
     except AuditError as error:
+        if error.code == "command-timeout":
+            raise
         raise AuditError("not-git-repository") from error
     root_text = decode_text(root_result.stdout)
     if not root_text:
@@ -896,7 +905,9 @@ def collect_candidates(
         try:
             data = read_candidate(repository, relative, size_policy)
         except AuditError as error:
-            coverage.partial(error.code)
+            coverage.partial(deadline_error(error, error.code))
+            if error.code == "command-timeout":
+                break
             continue
         if isinstance(data, LargeBlob):
             size_policy.record(data, relative, coverage)
@@ -945,7 +956,12 @@ def collect_candidates(
                 size_policy.record(LargeBlob(object_text, size), relative, coverage)
                 continue
             blob = git(runner, repository, "cat-file", "blob", object_text).stdout
-        except (AuditError, ValueError):
+        except AuditError as error:
+            coverage.partial(deadline_error(error, "index-read-failed"))
+            if error.code == "command-timeout":
+                break
+            continue
+        except ValueError:
             coverage.partial("index-read-failed")
             continue
         if len(blob) != size:
@@ -989,7 +1005,9 @@ def scanner_version(
 ) -> str | None:
     try:
         result = runner.run([executable, "version"], cwd=repository)
-    except AuditError:
+    except AuditError as error:
+        if error.code == "command-timeout":
+            raise
         return None
     match = re.search(rb"\b([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)\b", result.stdout)
     return match.group(1).decode("ascii") if match else "unknown"
@@ -1001,7 +1019,7 @@ def scanner_arguments(
     ignore_path: Path,
     deadline: float,
 ) -> list[str]:
-    timeout = max(1, int(deadline - monotonic()))
+    timeout = max(1, math.ceil(deadline - monotonic()) + 1)
     return [
         executable,
         mode,
@@ -1105,7 +1123,9 @@ def scanner_capability_probe(
             source="capability-probe",
             fallback_path="[capability-probe]",
         )
-    except AuditError:
+    except AuditError as error:
+        if error.code == "command-timeout":
+            raise
         return False
     return (
         result.returncode == 1
@@ -1347,7 +1367,7 @@ def detect_non_secret(
                 ):
                     continue
             if monotonic() >= deadline:
-                coverage.limited("custom-detector-timeout")
+                coverage.limited("deadline-exceeded")
                 return False
             if len(results) >= MAX_CUSTOM_FINDINGS_PER_RECORD:
                 coverage.limited("custom-finding-limit")
@@ -1368,12 +1388,12 @@ def detect_non_secret(
                 )
             )
         if monotonic() >= deadline:
-            coverage.limited("custom-detector-timeout")
+            coverage.limited("deadline-exceeded")
             return False
         return True
 
     if monotonic() >= deadline:
-        coverage.limited("custom-detector-timeout")
+        coverage.limited("deadline-exceeded")
         return results
     for detector in detectors:
         if not append_matches(detector):
@@ -1639,7 +1659,10 @@ def scan_history_records(
     for commit in commits:
         try:
             message = commit_message(runner, repository, commit)
-        except (AuditError, ValueError):
+        except AuditError as error:
+            coverage.partial(deadline_error(error, "history-read-failed"))
+            break
+        except ValueError:
             coverage.partial("history-read-failed")
             break
         if total_bytes + len(message) > MAX_TOTAL_BYTES:
@@ -1681,11 +1704,12 @@ def scan_history_records(
             ):
                 break
         except AuditError as error:
-            coverage.partial(
+            coverage.partial(deadline_error(
+                error,
                 "scanner-invalid-output"
                 if error.code == "scanner-invalid-output"
-                else "scanner-failed"
-            )
+                else "scanner-failed",
+            ))
             break
 
         try:
@@ -1695,15 +1719,18 @@ def scan_history_records(
                 coverage.partial("record-limit")
                 break
             contents = history_content(runner, repository, commit, changes, coverage, size_policy)
-        except AuditError:
-            coverage.partial("history-read-failed")
+        except AuditError as error:
+            coverage.partial(deadline_error(error, "history-read-failed"))
             break
         while True:
             try:
                 path, patch = next(contents)
             except StopIteration:
                 break
-            except (AuditError, ValueError):
+            except AuditError as error:
+                coverage.partial(deadline_error(error, "history-read-failed"))
+                break
+            except ValueError:
                 coverage.partial("history-read-failed")
                 break
             if total_bytes + len(patch) > MAX_TOTAL_BYTES:
@@ -1743,11 +1770,12 @@ def scan_history_records(
                 ):
                     break
             except AuditError as error:
-                coverage.partial(
+                coverage.partial(deadline_error(
+                    error,
                     "scanner-invalid-output"
                     if error.code == "scanner-invalid-output"
-                    else "scanner-failed"
-                )
+                    else "scanner-failed",
+                ))
                 break
         if any(error not in {"file-too-large", "base-fallback-all-reachable"} for error in coverage.errors):
             break
@@ -1755,12 +1783,13 @@ def scan_history_records(
 
 
 def summarize_findings(
-    findings: list[dict[str, Any]], suppressed_count: int = 0
-) -> dict[str, int]:
+    findings: list[dict[str, Any]], suppressed_count: int = 0, *, truncated: bool = False
+) -> dict[str, int | bool]:
     summary = {level: 0 for level in ("critical", "high", "medium", "low", "info")}
     for item in findings:
         summary[item["severity"]] += 1
     summary["suppressed"] = suppressed_count
+    summary["truncated"] = truncated
     return summary
 
 
@@ -1784,8 +1813,8 @@ def scan(
     try:
         log_options = resolve_history_range(runner, repository, history)
         commits = history_commits(runner, repository, log_options, history) if log_options else []
-    except AuditError:
-        history.partial("history-read-failed")
+    except AuditError as error:
+        history.partial(deadline_error(error, "history-read-failed"))
         commits = []
     size_policy = large_blob_policy(runner, repository, history)
     if size_policy.allowed:
@@ -1806,7 +1835,7 @@ def scan(
             working,
         ):
             break
-        if "custom-detector-timeout" in working.errors:
+        if "deadline-exceeded" in working.errors:
             break
 
     scanner_version_value = scanner_version(runner, repository, executable)
@@ -1861,11 +1890,12 @@ def scan(
                     ):
                         break
                 except AuditError as error:
-                    working.partial(
+                    working.partial(deadline_error(
+                        error,
                         "scanner-invalid-output"
                         if error.code == "scanner-invalid-output"
-                        else "scanner-failed"
-                    )
+                        else "scanner-failed",
+                    ))
                     break
 
             if commits:
@@ -1888,9 +1918,10 @@ def scan(
         if repository_state(runner, repository) != state_before:
             working.partial("repository-changed")
             history.partial("repository-changed")
-    except AuditError:
-        working.partial("state-recheck-failed")
-        history.partial("state-recheck-failed")
+    except AuditError as error:
+        code = deadline_error(error, "state-recheck-failed")
+        working.partial(code)
+        history.partial(code)
 
     ordered_findings = sorted(
         collector.items,
@@ -1917,7 +1948,7 @@ def scan(
             "beadPrefixSource": bead_prefix_source,
         },
         "provenance": {
-            "helperVersion": "0.5.1-poc",
+            "helperVersion": "0.5.2-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1940,32 +1971,42 @@ def scan(
             ),
         ),
         "summary": summarize_findings(
-            ordered_findings, suppressed_count=len(collector.suppressed)
+            ordered_findings,
+            suppressed_count=len(collector.suppressed),
+            truncated=any(
+                "deadline-exceeded" in coverage.errors for coverage in coverages
+            ),
         ),
     }
     return payload, 0 if complete else 2
 
 
 def failed_payload(code: str) -> dict[str, Any]:
+    deadline = code == "deadline-exceeded"
+    coverage_sources = (
+        ("working-tree", "branch-history", "custom-detectors")
+        if deadline else ("repository",)
+    )
     return {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
-        "status": "failed",
-        "verdict": "failed",
+        "status": "partial" if deadline else "failed",
+        "verdict": "partial" if deadline else "failed",
         "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
         "provenance": {
-            "helperVersion": "0.5.1-poc",
+            "helperVersion": "0.5.2-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [
             {
-                "source": "repository",
-                "status": "failed",
+                "source": source,
+                "status": "partial" if deadline else "failed",
                 "records": 0,
                 "bytes": 0,
                 "limits": [],
                 "errors": [code],
             }
+            for source in coverage_sources
         ],
         "sizeDecisions": [],
         "findings": [],
@@ -1977,6 +2018,7 @@ def failed_payload(code: str) -> dict[str, Any]:
             "low": 0,
             "info": 0,
             "suppressed": 0,
+            "truncated": code == "deadline-exceeded",
         },
     }
 
@@ -2012,7 +2054,7 @@ def render_payload(
         count = (low + high) // 2
         payload["findings"] = original_findings[:count]
         payload["summary"] = summarize_findings(
-            payload["findings"], len(payload["suppressed"])
+            payload["findings"], len(payload["suppressed"]), truncated=True
         )
         candidate = serialize_payload(payload, pretty)
         if len(candidate.encode("utf-8")) + 1 <= MAX_REPORT_OUTPUT_BYTES:
@@ -2026,7 +2068,7 @@ def render_payload(
         return failed, 3
     payload["findings"] = original_findings[:best_count]
     payload["summary"] = summarize_findings(
-        payload["findings"], len(payload["suppressed"])
+        payload["findings"], len(payload["suppressed"]), truncated=True
     )
     return serialize_payload(payload, pretty), 2
 
@@ -2072,8 +2114,9 @@ def main() -> int:
                 deadline,
             )
         except AuditError as error:
-            payload = failed_payload(error.code)
-            exit_code = 3
+            code = deadline_error(error, error.code)
+            payload = failed_payload(code)
+            exit_code = 2 if code == "deadline-exceeded" else 3
         except Exception:
             payload = failed_payload("internal-error")
             exit_code = 3
