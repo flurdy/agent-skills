@@ -1,11 +1,11 @@
 ---
 name: wrap-up
 description: Summarise session activity, artifact-hygiene coverage, and working-copy risks, then save a resume handoff. Reports tracker/settings drift without repairing it; new files auto-save, overwrites need confirmation. Run before leaving the client.
-allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/handoff-path.sh:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*), Read, Write, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/save-handoff.py:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.14.1"
+version: "0.15.0"
 author: "flurdy"
 ---
 
@@ -25,7 +25,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 2. Working-copy hygiene — flag uncommitted, unpushed, worktree-only state, and artifact-hygiene risks.
 3. Settings/tracker drift — report risks and name their separate review workflow; do not repair them.
 4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
-5. Auto-save the resume block to `~/.claude/handoffs/YYYY-MM-DD-{slug}.md` when that file is free; prompt only on collision/overwrite or when choosing a different name.
+5. Atomically save and read-back verify the resume block at `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`; prompt only on collision/overwrite or when choosing a different name.
 6. Optionally point to `/handoffs-tidy` for a separately requested archive review; do not invoke it.
 7. Reminder to leave the client manually with its own command — the skill cannot exit for you.
 
@@ -250,7 +250,7 @@ Then exactly one of the warnings below (pick the first matching rule):
 
 1. **Uncommitted changes** → `⚠️ Uncommitted work — the resume block does not preserve file diffs. Review in a separate preservation task before removing this checkout.`
 2. **Unpushed commits** → `⚠️ {N} unpushed commit(s) remain local. A handoff does not publish them or authorize a push.`
-3. **Linked worktree, clean, no unpushed, no stashes** → `ℹ️ Linked worktree with no code to preserve. If you prune this worktree (`git worktree remove`), only the conversation context is lost — the auto-saved resume block below is your durable recovery path.`
+3. **Linked worktree, clean, no unpushed, no stashes** → `ℹ️ Linked worktree with no code to preserve. Conversation recovery still depends on a verified handoff save — check the save result below before leaving or pruning.`
 4. **Main checkout, clean** → no warning.
 
 Also surface **other worktrees with unsaved work** from `---OTHER-WORKTREES-UNSAFE---` as a footnote if any exist — easy to forget those after closing the session.
@@ -458,54 +458,66 @@ If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)`
 - Prefer **paths and IDs** over prose summaries — they're greppable next session.
 - If the session was admin-only (no code), the resume block is *more* valuable, not less. Capture the Jira/bead context exchanged in chat — those header fields stay populated even when no code changed.
 
-### 5. 💾 Save the resume block (auto-save unless collision)
+### 5. 💾 Save and verify the resume block (auto-save unless collision)
 
-Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `pl` consume the file under `~/.claude/handoffs/`. Do **not** require an extra confirmation for the normal new-file case.
+Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `cl` and `pl` consume files under `~/.claude/handoffs/`. The deterministic helper owns path construction, no-clobber creation, writing, and read-back verification. The skill requests only this narrow save command, not a general file-write pre-approval. Frontmatter is not a portable permission sandbox; each client's actual permission policy still applies.
 
-First compute the canonical target path and the next-free path:
-
-- `{target-path}` = the expanded absolute path `$HOME/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` (display it as `~/.claude/...` if you like, but compare/write the absolute path)
-- `{chosen-path}` comes from the helper:
+Stream only the exact unfenced resume summary already rendered in §4, never raw transcripts,
+credentials, `.env` contents, or unrelated session text. Content sanitization remains the model's
+responsibility; this helper is not a secret scanner. When a shell heredoc is the only stdin mechanism, use a quoted delimiter absent from the block so backticks, `$()`, backslashes, and other content are not expanded:
 
 ```bash
-~/.agents/skills/wrap-up/scripts/handoff-path.sh {YYYY-MM-DD} {slug}
+~/.agents/skills/wrap-up/scripts/save-handoff.py {YYYY-MM-DD} {HH:MM} {slug} <<'WRAP_UP_HANDOFF_EOF'
+# Resume: {slug} — {YYYY-MM-DD} {HH:MM}
+...
+WRAP_UP_HANDOFF_EOF
 ```
 
-The helper `mkdir -p`s the handoffs dir and prints an absolute `{target-path}` when that file does not exist; otherwise it prints the first free collision suffix (`…-2.md`, `…-3.md`, …).
+The helper requires Python 3.10+, accepts at most 64 KiB of UTF-8, and returns one JSON object with `schemaVersion: "wrap-up-save/v1"`. It rejects malformed identity arguments, empty input, missing/out-of-order/empty required fields, NUL bytes, a mismatching first-line header, symlink/non-regular targets, and stale overwrite approval. Structure checks catch common truncation, not semantically incomplete prose; byte verification binds the submitted block, not the conversation transcript. It writes mode `0600` through a same-directory temporary file, installs a new target without clobbering, then reopens it without following symlinks and verifies the exact bytes and file identity. The target path is always `$HOME/.claude/handoffs/{date}-{slug}.md`; do not supply or substitute another path.
 
-#### No collision — auto-save
+#### Verified new save
 
-If `{chosen-path}` is exactly `{target-path}`, write the resume block to `{target-path}` immediately with `Write` and print:
+The normal no-collision call needs no user prompt. Treat it as saved only when that same invocation exits `0` and returns valid v1 JSON containing all of:
+
+- `"status": "saved"`
+- the exact expected absolute `path`
+- `mode: "new"`
+- a lowercase 64-character `sha256`
+- a positive `bytes` count
+
+Only after those postconditions pass may you print:
 
 ```markdown
-Saved to `{target-path}`.
+Saved to `{path}` (verified `{sha256-prefix}`).
 ```
 
-Do not ask **Save / Don't save** in this case — Pi users can miss the prompt and accidentally leave only a transient chat/clipboard note.
+Never print `Saved to`, a `cat` command, or an equivalent persistence claim based on path selection, an earlier file, a malformed response, or intended tool use. If you omit the helper call, report unsaved rather than infer success. This is an instruction to the model, not host-enforced output validation: the helper cannot prevent an uncalled or disobeyed workflow from inventing a success claim. Client-side output guards are outside this skill's scope.
 
-#### Collision — prompt before writing
+#### Collision — prompt before replacement
 
-If `{chosen-path}` differs from `{target-path}`, then `{target-path}` already exists. Prompt with `AskUserQuestion` (or plain text if needed):
+A regular file already at the target returns exit `3`, `status: "collision"`, its `existingSha256`, and a first-free `suggestedSlug`; it never counts as saved, even if its contents look valid. Prompt:
 
 > `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` already exists. Save this handoff how?
 
 Options:
 
-- **Save with different name** — ask for a replacement slug (default suggestion: `{slug}-2` or a more specific topic slug), then run the helper again with that slug and write to exactly the path it prints.
-- **Overwrite** — write to `{target-path}` only after the user explicitly chooses overwrite.
-- **Don't save** — leave no file; keep the resume block visible in the transcript.
+- **Save with different name** — use the suggested or user-selected replacement slug, update both the visible block's title and first-line header, then make a fresh normal helper call.
+- **Overwrite** — only after explicit approval, stream the same complete block with `--overwrite-sha256 {existingSha256}`. Success still requires the verified-save response above with `mode: "overwrite"`. The hash binds approval to the file inspected before the prompt; a changed, missing, symlinked, or non-regular target fails.
+- **Don't save** — leave no new file; keep the complete resume block visible.
 
-The `-N` collision suffix is a first-class convention `/handoffs` understands: `list.sh` uses each file's `# Resume:` time for normal same-day ordering, then uses the suffix only to order an established collision family. If the user chooses a different name, still use the helper so uniqueness is mechanical.
+The `-N` collision suffix remains a first-class convention: `list.sh` uses header time for normal same-day ordering, then the suffix to order an established collision family.
 
-#### Save failure
+#### Unsaved or failed
 
-If writing fails for any reason, do **not** lose the handoff. Print the resume block again, followed by:
+Any non-collision error, invalid/missing response, unexpected path/mode, or failed postcondition means the save is **not verified**. Do not assume the file is absent: an I/O or concurrent-change failure may leave data needing recovery. Re-render the complete resume block, then report the attempted path plus only the helper's bounded reason/detail:
 
 ```markdown
-⚠️ Failed to save handoff to `{attempted-path}`: {error}
+⚠️ Failed to save handoff to `{attempted-path}`: {reason} — {bounded-detail}
 ```
 
-The directory naming convention (`~/.claude/handoffs/YYYY-MM-DD-slug.md`) means `ls ~/.claude/handoffs/` is a chronological log of session topics — easy to grep for "what was I doing about X last week."
+Omit `Saved to` and every `cat` command. On overwrite verification or directory-sync failure, the helper attempts to restore the hash-approved prior file only when it is safe to replace the failed write. If rollback is unsafe or fails, `backupPath` identifies the retained recovery copy: show that path and stop rather than deleting it or retrying blindly. Temporary recovery copies are not launcher handoffs. Overwrite confirmation is still a user decision; a hash is not proof of consent. The helper targets a user-owned local directory, not transactional isolation against hostile concurrent writers.
+
+Missing Python, denied execution, or unsupported filesystem operations also mean unverified. Do not broaden permissions, change the user's handoff directory, or fall back to an unchecked write. The visible resume block remains the manual recovery path.
 
 ### 5a. 🗂️ Tidy superseded handoffs → `/handoffs-tidy`
 
@@ -538,7 +550,7 @@ Select exactly one footer using the client selection from **Important — client
 **Next:** close this session manually — Pi: `/quit`; Claude Code: `/exit`. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
 ```
 
-If no handoff file was saved, drop the `cat` half and keep just the paste reminder.
+Include the `cat` half only for the exact path returned by a valid `status: "saved"` response in this wrap-up run. Otherwise drop it and keep just the paste reminder.
 
 ## Failure modes
 
@@ -553,7 +565,21 @@ Each section is independent — fail soft, don't block the rest.
 - **Settings-drift probe (§3c) empty or `python3` missing**: skip the section silently. `/tidy-settings` run by hand covers the same ground.
 - **Artifact-hygiene audit (§3d) is partial, failed, missing, or malformed**: record the coverage gap
   in working-copy risks and continue saving the handoff; never infer clean from missing findings.
-- **Handoff save fails (§5)**: keep the resume block visible, print the attempted path and error, and continue to the footer. The generated block is still the recovery artifact even if the durable file write failed.
+- **Handoff save fails (§5)**: re-render the complete resume block, print the attempted path and bounded helper reason/detail, omit every success claim and `cat` command, and continue to the footer. The generated block is still the recovery artifact even if durable verification failed.
+
+## Verification
+
+Run `make test-wrap-up test-session-boundaries` in the owning repository. To include both external
+launcher discovery paths without starting either client, explicitly select the shared ai-tools
+collector:
+
+```bash
+HANDOFF_CONTEXT_GATHER=/absolute/ai-tools/shared/launcher/context-gather make test-wrap-up
+```
+
+That integration test uses synthetic handoffs, an isolated HOME, and a stubbed GitHub CLI. Without
+the explicit path it is reported as skipped, not assumed covered. These tests do not establish
+client permission pre-approval or enforce model output.
 
 ## Notes
 

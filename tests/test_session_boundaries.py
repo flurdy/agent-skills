@@ -27,12 +27,12 @@ class SessionBoundaries(unittest.TestCase):
 
     def test_wrap_up_writes_handoffs_not_tracker_or_settings(self):
         text = skill("wrap-up")
-        self.assertIn("Write", grants("wrap-up"))
-        for forbidden in ("Bash(bd update", "Skill(", "archive.sh"):
+        self.assertIn("Bash(~/.agents/skills/wrap-up/scripts/save-handoff.py:*)", grants("wrap-up"))
+        for forbidden in ("Write", "handoff-path.sh", "Bash(bd update", "Skill(", "archive.sh"):
             self.assertNotIn(forbidden, grants("wrap-up"))
         for obsolete in ("bd update {id}", "--status=ready", "invoke the `tidy-settings` skill", "Run /tidy-settings** →", "After any demotions"):
             self.assertNotIn(obsolete, text)
-        for required in ("session activity is unverified", "does not change tracker status", "report-only", "auto-save", "collision"):
+        for required in ("session activity is unverified", "does not change tracker status", "report-only", "auto-save", "collision", "wrap-up-save/v1"):
             self.assertIn(required, text)
 
     def test_wrap_up_does_not_prescribe_cleanup_or_drop_known_context(self):

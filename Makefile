@@ -268,7 +268,7 @@ test-yesterday:
 
 test-wrap-up:
 	@bash skills/wrap-up/tests/test-activity.sh
-	@bash skills/wrap-up/tests/test-handoff-path.sh
+	@python3 -m unittest discover -s skills/wrap-up/tests -p 'test_*.py'
 	@bash skills/wrap-up/tests/test-skill-contract.sh
 
 test-watch-pr-feedback:
