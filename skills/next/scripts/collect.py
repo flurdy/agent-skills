@@ -28,6 +28,8 @@ class Source:
     name: str
     relative_path: str
     directory: Path
+    store: str = "local"
+    declaration_error: str | None = None
 
 
 def is_nested(path: Path, parent: Path) -> bool:
@@ -214,7 +216,12 @@ def registered_sources(root: Path, manifest: dict[str, Any]) -> list[Source] | N
             if collection == "repositories":
                 if not is_git_root(target):
                     return None
-                repositories.append(Source(name, relative_path, link))
+                store = entry.get("beadsStore", "local")
+                error = None
+                if store not in ("local", "workspace"):
+                    error = "invalid beadsStore declaration: expected local or workspace"
+                    store = "local"
+                repositories.append(Source(name, relative_path, link, store, error))
 
         if any(
             child.name != ".gitkeep" and child not in expected_links
@@ -253,7 +260,13 @@ def diagnostic_text(result: subprocess.CompletedProcess[str]) -> str:
 
 
 def store_error(source: Source) -> str | None:
+    if source.declaration_error is not None:
+        return source.declaration_error
     beads = source.directory / ".beads"
+    if source.store == "workspace":
+        if os.path.lexists(beads):
+            return "unexpected .beads store for workspace-owned repository"
+        return None
     if beads.is_symlink():
         return "unusable .beads store: symlink"
     if not beads.exists():
@@ -324,6 +337,8 @@ def collect(root: Path) -> dict[str, Any]:
         error = store_error(source)
         if workspace and error is not None:
             payload["diagnostics"].append(f"{source.name}: {error}")
+            continue
+        if source.store == "workspace":
             continue
         collected: dict[str, list[dict[str, Any]]] = {}
         for key, arguments in commands.items():

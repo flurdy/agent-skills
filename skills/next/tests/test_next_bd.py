@@ -435,6 +435,74 @@ class NextBdTest(WorkspaceFixture):
             payload["diagnostics"], ["slow: ready: timed out after 5 seconds"]
         )
 
+    def test_declared_workspace_store_is_not_queried_or_duplicated(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={
+                "delegated": {}, "missing": {},
+                "healthy": {"ready": [issue("member-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            },
+        )
+        self.declare_tracking(workspace, delegated="workspace", missing="local", healthy="local")
+        for name in ("delegated", "missing"):
+            shutil.rmtree(self.base / "sources" / name / ".beads")
+        result = self.run_next(workspace, "--json")
+        candidates = json.loads(result.stdout)
+        self.assertEqual(
+            {(row["repository"], row["id"]) for row in candidates},
+            {("workspace", "root-task"), ("healthy", "member-task")},
+        )
+        self.assertEqual(len(candidates), 2)
+        self.assertIn("missing: missing .beads store", result.stderr)
+        self.assertNotIn("delegated", result.stderr)
+        calls = self.recorded_calls()
+        self.assertEqual(sum(Path(call["directory"]) == workspace.resolve() for call in calls), 4)
+        self.assertEqual(len(calls), 8)
+        self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
+
+    def test_invalid_ownership_does_not_fall_back_to_root_local_mode(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={"invalid": {}},
+        )
+        for value in (None, True, [], {}, "", "WORKSPACE", "central"):
+            with self.subTest(value=value):
+                self.declare_tracking(workspace, invalid=value)
+                result = self.run_next(workspace, "--json")
+                self.assertEqual(json.loads(result.stdout)[0]["repository"], "workspace")
+                self.assertIn("invalid: invalid beadsStore declaration", result.stderr)
+        self.assertTrue(all(Path(call["directory"]) == workspace.resolve() for call in self.recorded_calls()))
+
+    def test_workspace_ownership_conflicts_remain_visible_without_queries(self) -> None:
+        workspace = self.create_workspace(repositories={"delegated": {}})
+        self.declare_tracking(workspace, delegated="workspace")
+        beads = self.base / "sources" / "delegated" / ".beads"
+        for kind in ("directory", "file", "symlink"):
+            with self.subTest(kind=kind):
+                if kind == "file":
+                    shutil.rmtree(beads)
+                    beads.write_text("not a store", encoding="utf-8")
+                elif kind == "symlink":
+                    beads.unlink()
+                    beads.symlink_to(self.base / "absent-target")
+                result = self.run_next(workspace, "--list")
+                self.assertIn("delegated: unexpected .beads store for workspace-owned repository", result.stdout)
+        self.assertTrue(all(Path(call["directory"]) == workspace.resolve() for call in self.recorded_calls()))
+
+    def test_explicit_local_stores_preserve_error_diagnostics(self) -> None:
+        workspace = self.create_workspace(repositories={
+            "malformed": {"faults": {"ready": "invalid-json"}},
+            "missing": {}, "symlinked": {},
+        })
+        self.declare_tracking(workspace, malformed="local", missing="local", symlinked="local")
+        for name in ("missing", "symlinked"):
+            shutil.rmtree(self.base / "sources" / name / ".beads")
+        (self.base / "sources" / "symlinked" / ".beads").symlink_to(self.base / "absent")
+        result = self.run_next(workspace, "--list")
+        self.assertIn("malformed: ready: invalid bd JSON", result.stdout)
+        self.assertIn("missing: missing .beads store", result.stdout)
+        self.assertIn("symlinked: unusable .beads store: symlink", result.stdout)
+
     def test_single_store_output_remains_compatible(self) -> None:
         local = self.base / "local"
         self.create_store(

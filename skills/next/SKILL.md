@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.10.0"
+version: "1.11.0"
 author: "flurdy"
 ---
 
@@ -167,8 +167,10 @@ When invoked:
    `repository`, `repository_path`, and `selector` to workspace candidates; local JSON
    remains repository-column-free and backward compatible.
 
-   Stores are read independently and read-only. A missing or unusable workspace `.beads`
-   directory, command failure, timeout, or malformed response excludes only that source and
+   Independent stores are read separately and read-only. Repositories explicitly declared
+   workspace-owned are not independent sources (see **Workspace tracking ownership** below).
+   A missing or unusable local `.beads` directory, command failure, timeout, or malformed
+   response excludes only that source and
    emits a concise `Source diagnostics` entry; healthy stores remain ranked. In workspace
    and local mode alike, a source is included only when its ready, blocked, in-progress,
    and deferred reads all succeed. Never show partial state from a failed source. JSON mode
@@ -265,8 +267,10 @@ Resolution prints JSON and never writes:
   the absolute `directory` of the owning store. `handoff` and `start` reuse that store.
 - `{"status":"ambiguous", ...}` (exit 3) means the bare ID exists in several stores. **Do
   not mutate anything.** Show the `matches[].selector` values and ask which one to start.
-- `{"status":"not-found", ...}` (exit 4) means every queried store answered and none owns
-  that selector. Show the ranked table again rather than guessing.
+- `{"status":"not-found", ...}` (exit 4) means no queried store owns that selector. A qualifier
+  naming a workspace-owned member instead returns `owner: "workspace"` and `owner_selector`
+  without querying or redirecting. The hint is not proof the issue exists: resolve the canonical
+  workspace selector before any action. Otherwise show the ranked table again rather than guessing.
 - `{"status":"unavailable", ...}` (exit 5) means ownership could not be proven because a
   relevant store probe failed, timed out, or returned malformed data. **Do not mutate.** Show
   `failures`, and prefer a repository-qualified selector when the intended healthy owner is
@@ -288,7 +292,45 @@ Read-only; prints `{"workspace": bool, "stores": [...]}`. Each store carries `re
 `repository_path`, an absolute `directory`, `usable`, and `error`. In local mode the single
 entry is `local`. At a validated workspace root the first entry is `workspace` followed by
 every registered repository; an unusable store is listed with its `error` so a consumer can
-fail closed instead of guessing. Create in the chosen store with `bd -C <directory>`.
+fail closed instead of guessing. `usable` is a directory preflight, not a live database health
+check. Workspace-owned members additionally carry `owner: "workspace"` and an absolute
+`repository_directory`; their `directory` points to the workspace store, not the member checkout.
+Local rows retain their existing fields. Create in the chosen usable store with `bd -C <directory>`.
+
+## Workspace tracking ownership
+
+This `/next` contract is an additive extension to validated `workspace.json` version 1. A repository
+entry may declare `"beadsStore": "local"` or `"beadsStore": "workspace"`:
+
+```json
+{"name":"component","path":"repos/component","role":"service","beadsStore":"workspace"}
+```
+
+| Declaration | Store authority and behaviour |
+|---|---|
+| Omitted, or `local` | Independent member store. Missing, symlinked, malformed or failing storage remains diagnostic. |
+| `workspace` | Root store, queried once under the canonical `workspace` identity. The member is not queried independently or duplicated in issue lists. |
+| Invalid value, including `null` | Member is unavailable with a declaration diagnostic; never silently treated as local mode or redirected. |
+| `workspace` with any member `.beads` entry | Ownership conflict, including dangling symlinks. Fail that source closed; never hide, remove or merge potential local work. |
+
+Use `workspace:<id>` for existing root-owned work. A member-qualified selector is only an owner hint,
+not an alias granting authority over all workspace issues. Bare selectors still report ambiguity
+between real stores and remain unavailable when any relevant source cannot be checked. `stores`
+exposes the declared owner for routing new work without inventing per-component issue ownership.
+
+Declarations apply only when invoked from a validated workspace root. Inside a member or unrelated
+checkout, local-mode behaviour is unchanged: return to the workspace to use its declaration. This
+field neither grants filesystem write authority nor initializes, migrates, merges or synchronizes
+Beads data. Confirm tracking policy before declaring ownership; never infer it from missing files,
+repository names or free-form instructions.
+
+**Compatibility:** missing fields retain the old independent-store default. Existing
+`project-workspace` registration preserves unknown entry fields and validates README topology
+without rendering this field. Add/re-register and dry-run therefore preserve a manually declared
+value; customized-workspace `init` may refuse rather than overwrite it. There is no new topology
+CLI flag or update command. Install a supporting `/next` before setting the field: older consumers
+may ignore it and continue reporting missing local storage. Other workspace collectors are not
+changed by this `/next` extension.
 
 ## Listing Mode (default and `list`)
 

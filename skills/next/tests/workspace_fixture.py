@@ -252,6 +252,14 @@ class WorkspaceFixture(unittest.TestCase):
         )
         return root
 
+    def declare_tracking(self, workspace: Path, **owners: Any) -> None:
+        path = workspace / "workspace.json"
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        for entry in manifest["repositories"]:
+            if entry["name"] in owners:
+                entry["beadsStore"] = owners[entry["name"]]
+        path.write_text(json.dumps(manifest), encoding="utf-8")
+
     def run_script(
         self, script: Path, directory: Path, *arguments: str, check: bool = True
     ) -> subprocess.CompletedProcess[str]:

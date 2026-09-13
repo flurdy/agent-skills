@@ -118,15 +118,20 @@ def store_listing(collector: Any) -> dict[str, Any]:
     stores = []
     for source in sources:
         error = collector.store_error(source)
-        stores.append(
-            {
-                "repository": source.name,
-                "repository_path": source.relative_path,
-                "directory": str(source.directory.resolve()),
-                "usable": error is None,
-                "error": error,
-            }
-        )
+        row = {
+            "repository": source.name,
+            "repository_path": source.relative_path,
+            "directory": str(source.directory.resolve()),
+            "usable": error is None,
+            "error": error,
+        }
+        if source.store == "workspace":
+            row.update(
+                owner="workspace",
+                directory=str(sources[0].directory.resolve()),
+                repository_directory=str(source.directory.resolve()),
+            )
+        stores.append(row)
     return {"workspace": workspace, "stores": stores}
 
 
@@ -199,6 +204,11 @@ def resolve_id(
         source = source_by_name(sources, qualifier)
         if source is None:
             return {"status": "not-found", "selector": selector}, NOT_FOUND_EXIT
+        if source.store == "workspace" and collector.store_error(source) is None:
+            return {
+                "status": "not-found", "selector": selector,
+                "owner": "workspace", "owner_selector": f"workspace:{issue_id}",
+            }, NOT_FOUND_EXIT
         owned, error = probe_issue(collector, source, issue_id)
         if error is not None:
             return {
@@ -214,6 +224,8 @@ def resolve_id(
     owners = []
     failures = []
     for source in sources:
+        if source.store == "workspace" and collector.store_error(source) is None:
+            continue
         owned, error = probe_issue(collector, source, issue_id)
         if error is not None:
             failures.append(source_failure(source, error))

@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.2.1"
+version: "0.2.2"
 author: "flurdy"
 ---
 
@@ -57,6 +57,12 @@ For new durable work, choose ownership by outcome:
 
 A workspace store and its member stores remain independent. Do not merge or synchronize them as
 a side effect of resolving ownership.
+
+Repositories declared `beadsStore: "workspace"` in validated workspace topology have no independent
+store: route their new work to the root directory reported by `next-select stores`. Run discovery
+from that workspace root and use `workspace:<id>` for existing root-owned work; do not treat a
+member qualifier or an owner hint as proof that the root owns a particular issue. See
+[next's ownership contract](../next/SKILL.md#workspace-tracking-ownership).
 
 ## Durable tracking versus execution checklists
 

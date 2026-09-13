@@ -431,6 +431,100 @@ class NextSelectTest(WorkspaceFixture):
         )
         self.assertEqual(self.recorded_calls(), [])
 
+    def delegated_workspace(self, **root_data) -> Path:
+        workspace = self.create_workspace(
+            root_data=root_data or {"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={"delegated": {}, "independent": {}},
+        )
+        self.declare_tracking(workspace, delegated="workspace")
+        shutil.rmtree(self.base / "sources" / "delegated" / ".beads")
+        return workspace
+
+    def test_stores_exposes_workspace_owner_without_changing_local_rows(self) -> None:
+        workspace = self.delegated_workspace()
+        listing = json.loads(self.run_select(workspace, "stores").stdout)
+        stores = {row["repository"]: row for row in listing["stores"]}
+        delegated = stores["delegated"]
+        self.assertEqual(delegated["owner"], "workspace")
+        self.assertEqual(delegated["directory"], str(workspace.resolve()))
+        self.assertEqual(delegated["repository_directory"], str((self.base / "sources" / "delegated").resolve()))
+        self.assertTrue(delegated["usable"])
+        self.assertIsNone(delegated["error"])
+        self.assertEqual(set(stores["independent"]), {"repository", "repository_path", "directory", "usable", "error"})
+        self.assertEqual(self.recorded_calls(), [])
+
+    def test_bare_root_id_probes_store_once_and_starts_only_in_root(self) -> None:
+        workspace = self.delegated_workspace()
+        result = self.run_select(workspace, "resolve", "root-task")
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["repository"], "workspace")
+        calls = self.recorded_calls()
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(sum(Path(call["directory"]) == workspace.resolve() for call in calls), 1)
+        started = self.run_select(workspace, "start", "workspace:root-task")
+        self.assertEqual(started.returncode, 0)
+        self.assertEqual([call["directory"] for call in self.update_calls()], [str(workspace.resolve())])
+        self.assertFalse(any(Path(call["directory"]).name == "delegated" for call in self.recorded_calls()))
+
+    def test_qualified_workspace_member_returns_owner_hint_without_redirecting(self) -> None:
+        workspace = self.delegated_workspace()
+        for command in ("resolve", "start"):
+            result = self.run_select(workspace, command, "delegated:root-task")
+            self.assertEqual(result.returncode, 4)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "not-found")
+            self.assertEqual(payload["owner"], "workspace")
+            self.assertEqual(payload["owner_selector"], "workspace:root-task")
+        self.assertEqual(self.recorded_calls(), [])
+
+    def test_malformed_declaration_is_unavailable_before_mutation(self) -> None:
+        workspace = self.delegated_workspace()
+        self.declare_tracking(workspace, delegated=None)
+        for selector in ("root-task", "delegated:root-task"):
+            result = self.run_select(workspace, "start", selector)
+            self.assertEqual(result.returncode, 5)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "unavailable")
+            self.assertEqual(payload["failures"][0]["repository"], "delegated")
+            self.assertIn("invalid beadsStore declaration", payload["failures"][0]["error"])
+        listing = json.loads(self.run_select(workspace, "stores").stdout)
+        self.assertFalse(listing["stores"][1]["usable"])
+        self.assertEqual(self.update_calls(), [])
+
+    def test_conflicting_workspace_member_keeps_bare_resolution_unavailable(self) -> None:
+        workspace = self.delegated_workspace()
+        (self.base / "sources" / "delegated" / ".beads").mkdir()
+        for selector in ("root-task", "delegated:root-task"):
+            result = self.run_select(workspace, "start", selector)
+            self.assertEqual(result.returncode, 5)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "unavailable")
+            self.assertIn("unexpected .beads", payload["failures"][0]["error"])
+        self.assertEqual(self.update_calls(), [])
+        self.assertFalse(any(Path(call["directory"]).name == "delegated" for call in self.recorded_calls()))
+
+    def test_real_duplicate_ids_remain_ambiguous_without_component_aliases(self) -> None:
+        duplicate = issue("duplicate", 2, "task", "2026-01-01T00:00:00Z")
+        workspace = self.delegated_workspace(ready=[duplicate])
+        fixture = self.base / "sources" / "independent" / ".beads" / "fixture.json"
+        data = json.loads(fixture.read_text(encoding="utf-8"))
+        data["ready"] = [duplicate]
+        fixture.write_text(json.dumps(data), encoding="utf-8")
+        result = self.run_select(workspace, "start", "duplicate")
+        self.assertEqual(result.returncode, 3)
+        self.assertEqual(
+            {row["selector"] for row in json.loads(result.stdout)["matches"]},
+            {"workspace:duplicate", "independent:duplicate"},
+        )
+        self.assertEqual(self.update_calls(), [])
+
+    def test_workspace_probe_failure_is_not_reported_as_absence(self) -> None:
+        workspace = self.delegated_workspace(faults={"probe": "invalid-json"})
+        result = self.run_select(workspace, "start", "root-task")
+        self.assertEqual(result.returncode, 5)
+        self.assertEqual(json.loads(result.stdout)["failures"][0]["repository"], "workspace")
+        self.assertEqual(self.update_calls(), [])
+
     def test_stores_in_local_mode_reports_only_the_current_store(self) -> None:
         local = self.base / "local"
         self.create_store(local)
