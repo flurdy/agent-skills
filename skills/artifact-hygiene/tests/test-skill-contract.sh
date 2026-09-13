@@ -33,6 +33,11 @@ for required in \
   '`sizeDecisions`' \
   'skipped-by-policy' \
   'publication-proof-failed' \
+  'artifact-hygiene/v2' \
+  'artifactHygiene.remoteVisibility' \
+  '`advisory`' \
+  '`block`' \
+  '`policy.grade`' \
   '`suppressed`' \
   'dependency lockfiles' \
   'reserved example domains' \

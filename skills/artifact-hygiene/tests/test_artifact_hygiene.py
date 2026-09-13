@@ -304,9 +304,9 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stderr, "")
         payload = json.loads(completed.stdout)
-        self.assertEqual(payload["schemaVersion"], "artifact-hygiene/v1")
+        self.assertEqual(payload["schemaVersion"], "artifact-hygiene/v2")
         self.assertEqual(payload["status"], "complete")
-        self.assertEqual(payload["verdict"], "findings")
+        self.assertEqual(payload["verdict"], "block")
         coverage = {entry["source"]: entry for entry in payload["coverage"]}
         self.assertEqual(coverage["working-tree"]["status"], "complete")
         self.assertEqual(coverage["branch-history"]["status"], "complete")
@@ -674,7 +674,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.stderr, "")
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
-        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["verdict"], "block")
         working = next(
             item for item in payload["coverage"] if item["source"] == "working-tree"
         )
@@ -706,7 +706,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             with self.subTest(pretty=pretty):
                 payload = helper.failed_payload("unused")
                 payload["status"] = "complete"
-                payload["verdict"] = "findings"
+                payload["verdict"] = "block"
                 payload["coverage"] = [
                     helper.Coverage("working-tree").as_dict(),
                     helper.Coverage("branch-history").as_dict(),
@@ -721,7 +721,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                     len((rendered + "\n").encode()), helper.MAX_REPORT_OUTPUT_BYTES
                 )
                 self.assertEqual(payload["status"], "partial")
-                self.assertEqual(payload["verdict"], "partial")
+                self.assertEqual(payload["verdict"], "block")
                 self.assertLess(len(payload["findings"]), helper.MAX_FINDINGS)
                 for entry in payload["coverage"]:
                     self.assertEqual(entry["status"], "partial")
@@ -1093,7 +1093,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2, completed.stdout)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
-        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["verdict"], "block")
         self.assertEqual(payload["suppressed"], [])
         scanner_coverage = [
             item
@@ -1373,7 +1373,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
-        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["verdict"], "block")
         scanner_coverage = [
             entry
             for entry in payload["coverage"]
@@ -1394,7 +1394,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.stderr, "")
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
-        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["verdict"], "block")
         scanner_coverage = [
             entry
             for entry in payload["coverage"]
@@ -1635,14 +1635,15 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                 str(self.fake_gitleaks), time.monotonic() + 20,
             )
         self.assertEqual(code, 0, payload)
-        self.assertEqual(find_calls, 1)
+        self.assertEqual(find_calls, 0)
         self.assert_size_decision(payload, blob, "skipped-by-policy", "published-base-history")
 
     def test_failed_publication_proof_cannot_be_overridden(self) -> None:
         helper = load_helper_module()
-        blob = self.large_blob()
+        self.repository.write("base.txt", "clean\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
+        blob = self.large_blob()
         self.repository.run("config", "--local", "artifactHygiene.allowLargeBlobs", blob)
         real_git = helper.git
 
@@ -1765,7 +1766,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def assert_deadline_payload(self, payload, code):
         self.assertEqual(code, 2, payload)
         self.assertEqual(payload["status"], "partial")
-        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["verdict"], "block")
         errors = {
             entry["source"]: set(entry["errors"])
             for entry in payload["coverage"]
@@ -1844,6 +1845,222 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         helper = load_helper_module()
         self.assertEqual(helper.DEFAULT_TIMEOUT_SECONDS, 600.0)
 
+    def test_grading_tip_lookup_is_cached_and_fails_closed(self) -> None:
+        helper = load_helper_module()
+        self.repository.write("first.txt", "FIRST_FINDING_MARKER\n")
+        self.repository.write("second.txt", "SECOND_FINDING_MARKER\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
+        real_git = helper.git
+        tip_calls = 0
+
+        def count_tip(*args, **kwargs):
+            nonlocal tip_calls
+            if "ls-tree" in args:
+                tip_calls += 1
+            if any(isinstance(arg, str) and arg.startswith("--find-object=") for arg in args):
+                raise helper.AuditError("unexpected-history-walk")
+            return real_git(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", count_tip):
+            payload, code = helper.scan(self.repository.root, None, str(self.fake_gitleaks), time.monotonic() + 20)
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["verdict"], "advisory")
+        self.assertEqual(tip_calls, 1)
+
+        def fail_tip(*args, **kwargs):
+            if "ls-tree" in args:
+                raise helper.AuditError("command-output-limit")
+            return real_git(*args, **kwargs)
+
+        with mock.patch.object(helper, "git", fail_tip):
+            payload, code = helper.scan(self.repository.root, None, str(self.fake_gitleaks), time.monotonic() + 20)
+        self.assertEqual(code, 2, payload)
+        self.assertEqual(payload["verdict"], "block")
+        self.assertTrue(all(item["policy"]["grade"] == "block" for item in payload["findings"]))
+        self.assertTrue(all(item["location"]["publication"] == "unknown" for item in payload["findings"]))
+
+    def test_grading_historical_blob_reintroduced_at_new_path(self) -> None:
+        self.repository.write("old.txt", "FINDING_MARKER\n")
+        self.repository.commit_all("original")
+        (self.repository.root / "old.txt").unlink()
+        self.repository.commit_all("remove original")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
+        self.repository.write("new.txt", "FINDING_MARKER\n")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["verdict"], "advisory")
+        self.assertEqual(len(payload["findings"]), 1)
+        self.assertEqual(payload["findings"][0]["location"]["publication"], "already-published")
+        self.repository.commit_all("reintroduce content")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["verdict"], "block")
+        self.assertTrue(any(item["location"]["publication"] == "branch-history" and item["policy"]["grade"] == "block"
+                            for item in payload["findings"]))
+
+    def test_grading_unknown_object_identity_cannot_use_allowance(self) -> None:
+        helper = load_helper_module()
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        base = self.repository.run("rev-parse", "HEAD").strip()
+        invalid = "b" * 64
+        policy = helper.SizePolicy(helper.BoundedRunner(time.monotonic() + 20), self.repository.root,
+                                   "sha1", frozenset({invalid}), base)
+        coverage = helper.Coverage("working-tree")
+        policy.record(helper.LargeBlob(invalid, 2_000_000), "large.txt", coverage)
+        self.assertEqual(coverage.errors, ["publication-proof-failed"])
+        self.assertEqual(policy.decisions[0]["decision"], "deny")
+
+    def test_grading_full_local_history_has_no_spurious_coverage_errors(self) -> None:
+        self.repository.write("file.txt", "clean\n")
+        self.repository.commit_all("root")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["verdict"], "clean")
+        history = next(item for item in payload["coverage"] if item["source"] == "branch-history")
+        self.assertEqual(history["base"], "all-reachable")
+        self.assertEqual(history["errors"], [])
+
+    def test_grading_matrix_preserves_publication_floor(self) -> None:
+        helper = load_helper_module()
+        self.assertTrue(callable(getattr(helper, "finding_grade", None)))
+        benign = {"bead-reference", "ai-attribution", "suppression-attempt"}
+        for category in ("secret", "session-link", "personal-data", *sorted(benign)):
+            for publication in ("working-tree", "branch-history", "already-published"):
+                for visibility in ("private", "public", "unknown"):
+                    for confidence in ("high", "medium", "low"):
+                        with self.subTest(category=category, publication=publication,
+                                          visibility=visibility, confidence=confidence):
+                            item = helper.finding(
+                                category=category, detector="fixture.rule", severity="high",
+                                confidence=confidence, source="working-tree", path="file.txt",
+                            )
+                            item["location"]["publication"] = publication
+                            expected = "block"
+                            if publication == "already-published" and (visibility == "private" or category in benign):
+                                expected = "advisory"
+                            self.assertEqual(helper.finding_grade(item, visibility), expected)
+                            item["severity"] = "critical"
+                            self.assertEqual(helper.finding_grade(item, visibility), "block")
+        item = helper.finding(
+            category="suppression-attempt", detector="scanner.inline-allow", severity="info",
+            confidence="high", source="working-tree", path="file.txt",
+        )
+        self.assertEqual(helper.finding_grade(item, "unknown"), "advisory")
+        for field, value in (("category", "future-category"), ("severity", "invalid"), ("confidence", "invalid")):
+            invalid = {**item, field: value}
+            self.assertEqual(helper.finding_grade(invalid, "private"), "block")
+        self.assertEqual(helper.finding_grade(item, "invalid"), "block")
+        item["location"]["publication"] = "unknown"
+        self.assertEqual(helper.finding_grade(item, "private"), "block")
+
+    def test_graded_private_published_secret_is_visible_advisory(self) -> None:
+        self.repository.write("key.txt", "FINDING_MARKER\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
+        before = self.repository.state()
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["schemaVersion"], "artifact-hygiene/v2")
+        self.assertEqual(payload["verdict"], "advisory")
+        self.assertEqual(payload["target"]["remoteVisibility"], "private")
+        self.assertIn("remote-visibility-private", payload["target"]["policy"])
+        self.assertEqual(len(payload["findings"]), 1)
+        item = payload["findings"][0]
+        self.assertEqual(item["policy"]["grade"], "advisory")
+        self.assertNotIn("decision", item["policy"])
+        self.assertEqual(item["severity"], "high")
+        self.assertEqual(item["location"]["publication"], "already-published")
+        self.assertEqual(item["location"]["blobId"], self.repository.run("rev-parse", "HEAD:key.txt").strip())
+        self.assertEqual(self.repository.state(), before)
+        self.assertNotIn("FINDING_MARKER", completed.stdout)
+
+    def test_graded_new_and_index_only_secrets_still_block_private(self) -> None:
+        self.repository.write("key.txt", "OLD_FINDING_MARKER\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
+        self.repository.write("key.txt", "NEW_FINDING_MARKER\n")
+        self.repository.run("add", "key.txt")
+        self.repository.write("key.txt", "OLD_FINDING_MARKER\n")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["verdict"], "block")
+        self.assertEqual({item["policy"]["grade"] for item in payload["findings"]}, {"advisory", "block"})
+        self.assertEqual({item["location"]["publication"] for item in payload["findings"]}, {"already-published", "working-tree"})
+        self.repository.run("commit", "-m", "local key")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(payload["verdict"], "block")
+        historical = [item for item in payload["findings"] if item["location"]["source"] == "branch-history"]
+        self.assertTrue(historical)
+        self.assertTrue(all(item["policy"]["grade"] == "block" for item in historical))
+
+    def test_grading_does_not_deduplicate_new_index_content_against_published_file(self) -> None:
+        self.repository.write("link.txt", SHARE_LINK + "original\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
+        self.repository.write("link.txt", SHARE_LINK + "new\n")
+        self.repository.run("add", "link.txt")
+        self.repository.write("link.txt", SHARE_LINK + "original\n")
+        completed = self.run_audit()
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0, payload)
+        self.assertEqual(payload["verdict"], "block")
+        links = [item for item in payload["findings"] if item["category"] == "session-link"]
+        self.assertEqual(len(links), 2)
+        self.assertEqual({item["policy"]["grade"] for item in links}, {"advisory", "block"})
+        self.assertEqual(len({item["occurrenceId"] for item in links}), 2)
+
+    def test_graded_visibility_is_clone_local_only(self) -> None:
+        self.repository.write("key.txt", "FINDING_MARKER\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        config = self.repository.write("visibility.config", "[artifactHygiene]\nremoteVisibility = private\n")
+        self.repository.run("config", "--local", "include.path", str(config))
+        for visibility in (None, "public", "invalid", "private"):
+            with self.subTest(visibility=visibility):
+                if visibility:
+                    self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", visibility)
+                completed = self.run_audit(extra_environment={
+                    "ARTIFACT_HYGIENE_REMOTE_VISIBILITY": "private",
+                    "GIT_CONFIG_GLOBAL": str(config), "GIT_CONFIG_COUNT": "1",
+                    "GIT_CONFIG_KEY_0": "artifactHygiene.remoteVisibility", "GIT_CONFIG_VALUE_0": "private",
+                })
+                payload = json.loads(completed.stdout)
+                self.assertEqual(completed.returncode, 0, payload)
+                expected = "private" if visibility == "private" else "public" if visibility == "public" else "unknown"
+                self.assertEqual(payload["target"]["remoteVisibility"], expected)
+                self.assertEqual(payload["verdict"], "advisory" if expected == "private" else "block")
+
+    def test_graded_incomplete_sources_override_advisory(self) -> None:
+        helper = load_helper_module()
+        self.assertTrue(callable(getattr(helper, "graded_verdict", None)))
+        advisory = [{"policy": {"grade": "advisory"}}]
+        for status in ("partial", "failed", "unknown"):
+            self.assertEqual(helper.graded_verdict(advisory, status), "block")
+            self.assertEqual(helper.graded_verdict([], status), "block")
+        self.assertEqual(helper.graded_verdict([], "complete"), "clean")
+        self.assertEqual(helper.graded_verdict(advisory, "complete"), "advisory")
+        self.assertEqual(helper.graded_verdict([{"policy": {"grade": "block"}}], "complete"), "block")
+        self.repository.write("key.txt", "FINDING_MARKER\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
+        completed = self.run_audit(scanner=self.noop_gitleaks)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2, payload)
+        self.assertEqual(payload["verdict"], "block")
+
     def test_history_scanner_failure_is_partial_and_never_leaks_child_error(self) -> None:
         self.prepare_coverage_repository()
 
@@ -1853,7 +2070,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(completed.stderr, "")
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["status"], "partial")
-        self.assertEqual(payload["verdict"], "partial")
+        self.assertEqual(payload["verdict"], "block")
         history = next(item for item in payload["coverage"] if item["source"] == "branch-history")
         self.assertEqual(history["status"], "partial")
         self.assertIn("scanner-failed", history["errors"])
@@ -1887,7 +2104,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         history = next(item for item in payload["coverage"] if item["source"] == "branch-history")
         self.assertEqual(history["status"], "complete")
         self.assertEqual(history["base"], "all-reachable")
-        self.assertIn("base-fallback-all-reachable", history["errors"])
+        self.assertEqual(history["errors"], [])
         self.assertEqual(history["records"], 4)
         history_findings = [
             item for item in payload["findings"] if item["location"]["source"] == "branch-history"

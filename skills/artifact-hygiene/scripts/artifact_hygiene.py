@@ -24,7 +24,7 @@ from time import monotonic
 from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
-SCHEMA_VERSION = "artifact-hygiene/v1"
+SCHEMA_VERSION = "artifact-hygiene/v2"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -216,6 +216,7 @@ class CommandResult:
 class Candidate:
     path: str
     data: bytes
+    object_id: str
 
 
 @dataclass
@@ -266,6 +267,7 @@ class SizePolicy:
     allowed: frozenset[str]
     base: str | None
     proofs: dict[str, bool | str] = field(default_factory=dict)
+    tip_blobs: set[str] | str | None = None
     decisions: list[dict[str, Any]] = field(default_factory=list)
     seen: set[tuple[str, str, str | None, str]] = field(default_factory=set)
 
@@ -277,8 +279,34 @@ class SizePolicy:
             return False
         expected_length = 40 if self.object_format == "sha1" else 64
         if len(object_id) != expected_length or not OBJECT_ID.fullmatch(object_id):
-            self.proofs[object_id] = None
-            return None
+            self.proofs[object_id] = "publication-proof-failed"
+            return "publication-proof-failed"
+        if self.tip_blobs is None:
+            try:
+                output = git(self.runner, self.repository, "ls-tree", "-r", "-z", self.base).stdout
+                records = list(filter(None, output.split(b"\0")))
+                if len(records) > MAX_RECORDS:
+                    raise AuditError("publication-proof-failed")
+                blobs: set[str] = set()
+                for record in records:
+                    metadata = record.split(b"\t", 1)[0].split(b" ")
+                    if len(metadata) != 3:
+                        raise AuditError("publication-proof-failed")
+                    _, kind, raw_oid = metadata
+                    oid = raw_oid.decode("ascii", "replace")
+                    if not OBJECT_ID.fullmatch(oid):
+                        raise AuditError("publication-proof-failed")
+                    if kind == b"blob":
+                        blobs.add(oid)
+                self.tip_blobs = blobs
+            except AuditError as error:
+                self.tip_blobs = deadline_error(error, "publication-proof-failed")
+        if isinstance(self.tip_blobs, str):
+            self.proofs[object_id] = self.tip_blobs
+            return self.tip_blobs
+        if object_id in self.tip_blobs:
+            self.proofs[object_id] = True
+            return True
         try:
             result = git(
                 self.runner,
@@ -364,7 +392,6 @@ class FindingCollector:
             if item.get("allowId") in self.allowed_secret_fingerprints:
                 item["policy"] = {
                     **item["policy"],
-                    "decision": "allow",
                     "override": "local-secret-fingerprint",
                 }
                 self.suppressed.append(item)
@@ -696,7 +723,6 @@ def finding(
         "personal-data": "Remove or replace the personal data before publication.",
         "ai-attribution": "Remove the AI attribution boilerplate before publication.",
     }
-    decision = "review" if category == "suppression-attempt" else "deny"
     result = {
         "occurrenceId": occurrence_id(
             category, source, path, line, commit, detector, allow_id
@@ -711,18 +737,84 @@ def finding(
         "confidence": confidence,
         "location": {
             "source": source,
+            "publication": source,
             "path": path,
             "commit": commit,
             "field": field_name,
             "line": line,
         },
         "evidence": {"token": evidence_tokens[category]},
-        "policy": {"rule": detector, "decision": decision, "override": None},
+        "policy": {"rule": detector, "override": None},
         "remediation": remediation[category],
     }
     if allow_id is not None:
         result["allowId"] = allow_id
     return result
+
+
+def finding_grade(item: dict[str, Any], visibility: str) -> str:
+    category = item["category"]
+    severity = item["severity"]
+    publication = item["location"]["publication"]
+    if (
+        category not in {"secret", "session-link", "personal-data", "bead-reference",
+                         "ai-attribution", "suppression-attempt"}
+        or severity not in {"critical", "high", "medium", "low", "info"}
+        or item["confidence"] not in {"high", "medium", "low"}
+        or publication not in {"working-tree", "branch-history", "already-published"}
+        or visibility not in {"private", "public", "unknown"}
+        or severity == "critical"
+    ):
+        return "block"
+    if category == "suppression-attempt" and severity == "info":
+        return "advisory"
+    if publication != "already-published":
+        return "block"
+    if visibility == "private" or category in {"bead-reference", "ai-attribution", "suppression-attempt"}:
+        return "advisory"
+    return "block"
+
+
+def graded_verdict(findings: list[dict[str, Any]], status: str) -> str:
+    if status != "complete" or any(item["policy"].get("grade") != "advisory" for item in findings):
+        return "block"
+    return "advisory" if findings else "clean"
+
+
+def remote_visibility(runner: BoundedRunner, repository: Path) -> str:
+    result = git(
+        runner, repository, "config", "--local", "--no-includes", "--get-all",
+        "artifactHygiene.remoteVisibility", allowed_returncodes=(0, 1),
+    )
+    values = decode_text(result.stdout).splitlines()
+    return values[0] if len(values) == 1 and values[0] in {"public", "private"} else "unknown"
+
+
+def blob_object_id(data: bytes, object_format: str) -> str:
+    digest = hashlib.new(object_format, usedforsecurity=False)
+    digest.update(f"blob {len(data)}\0".encode("ascii"))
+    digest.update(data)
+    return digest.hexdigest()
+
+
+def add_candidate_findings(
+    collector: FindingCollector, additions: list[dict[str, Any]], candidate: Candidate,
+    coverage: Coverage, size_policy: SizePolicy,
+) -> bool:
+    if additions:
+        published = size_policy.is_published(candidate.object_id)
+        publication = "already-published" if published is True else "working-tree"
+        if isinstance(published, str):
+            coverage.partial(published)
+            publication = "unknown"
+        for item in additions:
+            location = item["location"]
+            location.update(publication=publication, blobId=candidate.object_id)
+            item["occurrenceId"] = occurrence_id(
+                item["category"], location["source"], location["path"], location["line"],
+                location["commit"], item["detector"], candidate.object_id + ":" + item.get("allowId", ""),
+            )
+    return collector.add(additions, coverage)
 
 
 def resolve_repository(runner: BoundedRunner, target: Path) -> tuple[Path, str | None]:
@@ -918,7 +1010,7 @@ def collect_candidates(
             coverage.partial("byte-limit")
             break
         total_bytes += len(data)
-        candidates.append(Candidate(relative, data))
+        candidates.append(Candidate(relative, data, blob_object_id(data, size_policy.object_format)))
     indexed = git(runner, repository, "ls-files", "--stage", "-z")
     index_records = list(filter(None, indexed.stdout.split(b"\0")))
     if len(index_records) > MAX_RECORDS:
@@ -977,7 +1069,7 @@ def collect_candidates(
             break
         seen.add(key)
         total_bytes += len(blob)
-        candidates.append(Candidate(relative, blob))
+        candidates.append(Candidate(relative, blob, object_text))
 
     coverage.records = len(candidates)
     coverage.bytes = total_bytes
@@ -1477,8 +1569,6 @@ def resolve_history_range(
 
     if base_ref is None:
         coverage.base = "all-reachable"
-        if "base-fallback-all-reachable" not in coverage.errors:
-            coverage.errors.append("base-fallback-all-reachable")
         return "HEAD --no-ext-diff --no-textconv"
 
     merge_base = git(
@@ -1492,8 +1582,6 @@ def resolve_history_range(
     merge = decode_text(merge_base.stdout)
     if not OBJECT_ID.fullmatch(merge):
         coverage.base = "all-reachable"
-        if "base-fallback-all-reachable" not in coverage.errors:
-            coverage.errors.append("base-fallback-all-reachable")
         return "HEAD --no-ext-diff --no-textconv"
     coverage.base = base_ref
     return f"{merge}..HEAD --no-ext-diff --no-textconv"
@@ -1777,7 +1865,7 @@ def scan_history_records(
                     else "scanner-failed",
                 ))
                 break
-        if any(error not in {"file-too-large", "base-fallback-all-reachable"} for error in coverage.errors):
+        if any(error != "file-too-large" for error in coverage.errors):
             break
     coverage.bytes = total_bytes
 
@@ -1804,6 +1892,9 @@ def scan(
     allowed_categories, allowed_secret_fingerprints, policy = detector_policy(
         runner, repository
     )
+    visibility = remote_visibility(runner, repository)
+    if visibility != "unknown":
+        policy += "+remote-visibility-" + visibility
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
@@ -1822,7 +1913,8 @@ def scan(
     candidates = collect_candidates(runner, repository, working, size_policy)
     collector = FindingCollector(allowed_secret_fingerprints)
     for candidate in candidates:
-        if not collector.add(
+        if not add_candidate_findings(
+            collector,
             detect_non_secret(
                 candidate.data,
                 source="working-tree",
@@ -1832,7 +1924,9 @@ def scan(
                 allowed_categories=allowed_categories,
                 detectors=detectors,
             ),
+            candidate,
             working,
+            size_policy,
         ):
             break
         if "deadline-exceeded" in working.errors:
@@ -1880,13 +1974,16 @@ def scan(
                         allowed_returncodes=(0, 1),
                         environment_overrides=scanner_environment,
                     )
-                    if not collector.add(
+                    if not add_candidate_findings(
+                        collector,
                         parse_scanner_findings(
                             result.stdout,
                             source="working-tree",
                             fallback_path=candidate.path,
                         ),
+                        candidate,
                         working,
+                        size_policy,
                     ):
                         break
                 except AuditError as error:
@@ -1935,7 +2032,9 @@ def scan(
     coverages = [working, history, custom_detectors]
     complete = all(item.status == "complete" for item in coverages)
     status = "complete" if complete else "partial"
-    verdict = ("findings" if ordered_findings else "clean") if complete else "partial"
+    for item in ordered_findings:
+        item["policy"]["grade"] = finding_grade(item, visibility)
+    verdict = graded_verdict(ordered_findings, status)
     payload = {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -1946,9 +2045,10 @@ def scan(
             "head": head,
             "policy": policy,
             "beadPrefixSource": bead_prefix_source,
+            "remoteVisibility": visibility,
         },
         "provenance": {
-            "helperVersion": "0.5.2-poc",
+            "helperVersion": "0.6.0-poc",
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -1991,10 +2091,13 @@ def failed_payload(code: str) -> dict[str, Any]:
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": dt.datetime.now(dt.timezone.utc).isoformat().replace("+00:00", "Z"),
         "status": "partial" if deadline else "failed",
-        "verdict": "partial" if deadline else "failed",
-        "target": {"repository": "unavailable", "head": None, "policy": "defaults"},
+        "verdict": "block",
+        "target": {
+            "repository": "unavailable", "head": None, "policy": "defaults",
+            "remoteVisibility": "unknown",
+        },
         "provenance": {
-            "helperVersion": "0.5.2-poc",
+            "helperVersion": "0.6.0-poc",
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [
@@ -2045,7 +2148,7 @@ def render_payload(
             if "report-output-limit" not in entry[field_name]:
                 entry[field_name].append("report-output-limit")
     payload["status"] = "partial"
-    payload["verdict"] = "partial"
+    payload["verdict"] = "block"
     original_findings = payload["findings"]
     best_count: int | None = None
     low = 0

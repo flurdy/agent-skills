@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.4.0"
+version: "2.4.1"
 author: "flurdy"
 ---
 
@@ -154,11 +154,14 @@ Never recover raw evidence from reported files, commits, scanner output, or conf
 Remediation is a separate explicitly approved task; do not edit artifacts, rewrite history, change
 allowances, install tooling, or copy detectors as part of this audit step.
 
-Exit `0` alone is not clearance: it includes complete reports with findings. Continue only with
-valid `artifact-hygiene/v1` JSON, exit `0`, `status: complete`, `verdict: clean`, no findings, and every
-required coverage source present and complete. On findings, exit `2` (partial), exit `3` (failed), missing helper/scanner,
-malformed output, or any other incomplete coverage, **stop before push or PR creation**. Render the
-available redacted report or an unavailable diagnostic, never a fabricated clean result.
+Exit `0` alone is not clearance: it includes complete reports with blocking findings. Continue only
+with valid `artifact-hygiene/v2` JSON, exit `0`, `status: complete`, `verdict: clean` and no findings,
+or `verdict: advisory` with every finding carrying `policy.grade: advisory`. Every required coverage
+source must be present and complete, with no limits or errors. Show all advisories; do not call them
+clean or verified harmless. On `block`, inconsistent grades/verdict, exit `2` (partial), exit `3`
+(failed), missing helper/scanner, malformed output, or any other incomplete coverage,
+**stop before push or PR creation**. Render the available redacted report or an unavailable diagnostic,
+never a fabricated clean result.
 
 This audits the full publishable working tree and the helper's locally resolved unpublished history,
 not the PR diff or drafted title/body. Do not pass a PR base or narrow its findings to the selected

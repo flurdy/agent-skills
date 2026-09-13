@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.14.0"
+version: "0.14.1"
 author: "flurdy"
 ---
 
@@ -322,8 +322,11 @@ Never recover raw evidence from reported files, commits, scanner output, or conf
 Remediation is a separate explicitly approved task; do not edit artifacts, rewrite history, change
 allowances, install tooling, or copy detectors during wrap-up.
 
-Exit `0` alone is not clearance: it covers both complete/clean and complete/findings. Exit `2` is
-partial; exit `3` is failed. Missing tools or malformed output are unavailable, not clean.
+Validate `artifact-hygiene/v2`. Exit `0` alone is not clearance: complete reports may have verdict
+`clean`, `advisory`, or `block`. Show advisory findings without describing them as harmless. Exit `2`
+is partial and exit `3` is failed; both grade `block`. Missing tools or malformed output are
+unavailable, not clean. Check the verdict against the findings' `policy.grade` values and coverage;
+inconsistent reports are unavailable rather than recorded as valid grades.
 Audit failure never blocks saving the handoff: render available coverage and continue to §§4–5.
 
 Add this separate line to the working-copy risks and the saved resume block, even when clean:

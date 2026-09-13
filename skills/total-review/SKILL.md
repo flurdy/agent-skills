@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Ba
 model-tier: premium
 model: fable
 effort: xhigh
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -211,12 +211,15 @@ not the selected diff or fixed review base. Record that distinct coverage, inclu
 base and gaps; never filter out findings merely because they are outside selected review paths.
 It does not audit remote PR text. A local PR run covers the proven local candidate only.
 
-Exit `0` alone is not clearance; apply these gate results after validating `artifact-hygiene/v1` JSON:
+Exit `0` alone is not clearance; apply these gate results after validating `artifact-hygiene/v2` JSON.
+Check the verdict against each finding's `policy.grade`; inconsistencies are unusable reports.
+Passing coverage requires every source complete with no errors or limits:
 
 | Helper result | G5a result / disposition |
 |---|---|
 | Exit 0, `status: complete`, `verdict: clean`, no findings, every required source present and complete | `pass` for this revision only. |
-| Exit 0, complete/findings | `failed`; precautionary publication-risk stop, outcome HALTED. Preserve reported severities without claiming verified security defects. |
+| Exit 0, complete/advisory, every finding grade advisory, every required source present and complete | `pass` with advisories visible for this revision only; not clean or verified harmless. |
+| Exit 0, complete/block | `failed`; precautionary publication-risk stop, outcome HALTED. Preserve reported severities without claiming verified security defects. |
 | Exit 2 / partial coverage, missing helper/scanner, missing required sources, or unusable report | `unavailable`; outcome PARTIAL unless another gate halted. Stop later gates; keep available findings visible. |
 | Exit 3 / failed audit, or unexpected execution failure | `failed`; outcome HALTED. |
 | Repository/HEAD/scope mismatch | `stale`; outcome PARTIAL; require a fresh scoped run. |

@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.5.2"
+version: "0.6.0"
 author: "flurdy"
 ---
 
@@ -122,7 +122,8 @@ reason, and safe remediation. Policy skips keep coverage complete and do not con
 budget; they do not claim content was inspected. A missing base cannot prove publication. Failed or
 bounded-out reachability checks produce `publication-proof-failed`; scanner failures, history-read
 failures, file changes, timeouts, and other resource limits still deny, even with a blob allowance.
-Reachability uses one cached, bounded `git log --find-object` proof per distinct blob against the
+Reachability first reads one bounded base-tip tree, then uses a cached, bounded
+`git log --find-object` proof for each distinct blob absent from that tree. Checks use the
 remote-backed base commit, with replace refs, grafts, repository log presentation, commit graphs,
 renames, signatures, and path limits disabled. Git 2.31 or newer is required for published-blob
 skips. The shared command output and audit deadline still apply; proof failures deny. Size decisions
@@ -130,6 +131,56 @@ are capped at 2,000, with overflow reported as partial rather than silently omit
 
 GitHub pull requests, Jira, comments, attachments, linked pages, other repositories, full-history
 remediation, policy authoring, and enforcement are out of scope.
+
+## Graded publication policy
+
+The v2 report separates coverage `status` from publication `verdict`: `clean`, `advisory`, or `block`.
+`policy.grade` is the single finding-grade authority. Severity and confidence remain visible; grading
+never relabels a secret match as a verified false positive or a confirmed live credential.
+
+| Condition (first matching row) | Grade |
+| --- | --- |
+| Partial/failed coverage, unknown category/severity/confidence/location, or failed publication proof | `block` |
+| Critical severity | `block` |
+| Informational scanner-control finding | `advisory` |
+| New working-tree/index or branch-history finding | `block` |
+| Already-published, private repository, non-critical finding | `advisory` |
+| Already-published Bead reference, AI attribution, or scanner-control finding | `advisory` |
+| Already-published secret, session link, or personal data in public/unknown repository | `block` |
+
+Known confidence levels (`high`, `medium`, `low`) are recorded and validated; lower confidence alone
+never permits a new finding. Unknown and future categories fail closed. Complete reports with no
+unsuppressed findings are `clean`; any blocking finding yields `block`; otherwise they are `advisory`.
+Suppressed exact fingerprint matches remain separately visible and do not count toward the verdict.
+
+`location.publication` distinguishes `working-tree`, `branch-history`, and `already-published`.
+Working-tree includes staged/index candidates: each occurrence is bound to its containing `blobId`,
+so a published file cannot mask different staged bytes at the same path and line. Only proof that the
+exact blob is reachable from the remote-backed default base permits `already-published`. Hashes use
+raw bytes without Git filters; CRLF conversion, LFS, or other filters can therefore conservatively
+leave a working-tree finding blocking even when its index copy is published. Branch history remains conservatively blocking even if a commit was pushed to a feature branch: the scan
+range is relative to the default base, not a claim that all those commits are unpushed. Full local
+history fallback is reported as `coverage.base: all-reachable`, not as a coverage error when that
+scan completes. The informational scanner-control row is the explicit exception to new-content
+blocking; repository controls still cannot suppress the scan.
+
+Visibility is an owner assertion, not inferred from a URL, host, or authentication. No network lookup
+is performed. The default is `unknown`, which uses the public-safe policy. Only one valid direct
+clone-local Git config value is accepted, with includes disabled:
+
+```bash
+git config --local artifactHygiene.remoteVisibility private  # or public
+```
+
+The result is reported in `target.remoteVisibility` and `target.policy`. Checked-in files, included or
+global Git config, and environment variables cannot supply visibility or grading rules. Do not set it
+automatically. A private assertion is not proof of the audience of a future push; recheck it when the
+repository destination or visibility changes. Advisory findings still deserve review, not rotation
+or suppression based solely on the scanner result.
+
+Consumers must validate `artifact-hygiene/v2`, complete coverage, and the verdict's consistency with
+finding grades. A v1/v2 mismatch denies; deploy the helper and gate contracts together. Advisory
+output never authorizes a push by itself. Grading rules live only in this installed helper.
 
 ## Requirements
 
@@ -147,7 +198,7 @@ From the repository to inspect:
 ~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py --pretty
 ```
 
-The helper always emits `artifact-hygiene/v1` JSON to stdout and emits no candidate or child-process
+The helper always emits `artifact-hygiene/v2` JSON to stdout and emits no candidate or child-process
 text to stderr. The audit has one 600-second deadline, configurable for manual runs with `--timeout`
 from 1 to 600 seconds. A deadline expiry is reported only as `deadline-exceeded` on affected coverage
 sources; it remains partial and denies publication. `summary.truncated` states whether reported finding
@@ -155,9 +206,9 @@ counts are incomplete because the deadline or report-size cap stopped collection
 
 Exit codes:
 
-- `0` — every required local source completed; inspect `verdict` for `clean` or `findings`.
-- `2` — coverage is `partial`; never describe this result as clean.
-- `3` — the audit failed before it could establish usable coverage.
+- `0` — every required local source completed; `verdict` may be `clean`, `advisory`, or `block`.
+- `2` — coverage is `partial`; verdict is `block`, never clean.
+- `3` — the audit failed before it could establish usable coverage; verdict is `block`.
 
 ## Report
 
@@ -166,8 +217,9 @@ Render coverage before findings:
 1. State the overall `status` and `verdict` exactly.
 2. List each source and its `complete`, `partial`, or `failed` status plus safe error codes. If
    `summary.truncated` is true, state explicitly that finding counts are incomplete.
-3. Group findings by severity and category, using only the normalized location, evidence token, and
-   remediation supplied by the helper.
+3. Group findings by grade, severity, and category, using only the normalized location, evidence
+   token, and remediation supplied by the helper. Show `location.publication` and the asserted or
+   unknown visibility. An advisory does not mean the content was verified harmless.
 4. Report any `suppressed` count and state that clone-local fingerprint allowances were applied; use
    only normalized fields and never attempt to recover the matched value.
 5. Render `sizeDecisions`, including every `skipped-by-policy` entry and its reason/blob ID. For
