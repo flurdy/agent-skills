@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.2.2"
+version: "0.2.3"
 author: "flurdy"
 ---
 
@@ -63,6 +63,21 @@ store: route their new work to the root directory reported by `next-select store
 from that workspace root and use `workspace:<id>` for existing root-owned work; do not treat a
 member qualifier or an owner hint as proof that the root owns a particular issue. See
 [next's ownership contract](../next/SKILL.md#workspace-tracking-ownership).
+
+## Local issue mutations versus source authority
+
+Local means a mutation in the resolver-proven owning store, not only the invoking cwd.
+A guarded plan-mode session may use `bd -C <proven directory>` for ordinary comments, creates,
+updates and closes in another repository without `/implement` or a source worktree lease.
+User intent and repository-specific tracker rules still govern the operation; ambiguous,
+unavailable or not-found resolution writes nothing. Beads writes never acquire a source lease
+or authorize source, Git, package or system changes.
+
+A configured Dolt remote alone does not turn a local comment into synchronization.
+Verify effective export, backup and synchronization settings and actual side effects when
+classifying an operation, rather than relying on command syntax or commented config examples.
+Side effects beyond local tracking need their own applicable authority. Follow the remote and
+destructive safety rules separately; `/implement` alone does not authorize remote or destructive actions.
 
 ## Durable tracking versus execution checklists
 

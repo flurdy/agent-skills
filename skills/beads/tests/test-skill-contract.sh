@@ -40,6 +40,12 @@ assert_contains "$SKILL" 'Never infer the owning store from an issue ID, label, 
 assert_contains "$SKILL" '.agents/skills/next/scripts/next-select resolve <selector>'
 assert_contains "$SKILL" 'Every later `bd` call uses `bd -C <directory>`.'
 assert_contains "$SKILL" 'Cross-project work belongs in the validated workspace root store.'
+assert_contains "$SKILL" 'Local means a mutation in the resolver-proven owning store, not only the invoking cwd.'
+assert_contains "$SKILL" 'without `/implement` or a source worktree lease'
+assert_contains "$SKILL" 'Beads writes never acquire a source lease'
+assert_contains "$SKILL" 'configured Dolt remote alone does not turn a local comment into synchronization'
+assert_contains "$SKILL" 'Verify effective export, backup and synchronization settings and actual side effects'
+assert_contains "$SKILL" '`/implement` alone does not authorize remote or destructive actions.'
 
 assert_contains "$SKILL" 'Use `todo` only as an ephemeral execution checklist for the active tracked item.'
 assert_contains "$SKILL" 'Never duplicate a durable backlog item into `todo`.'
