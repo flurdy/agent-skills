@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.11.0"
+version: "1.12.0"
 author: "flurdy"
 ---
 
@@ -273,9 +273,9 @@ Resolution prints JSON and never writes:
   workspace selector before any action. Otherwise show the ranked table again rather than guessing.
 - `{"status":"unavailable", ...}` (exit 5) means ownership could not be proven because a
   relevant store probe failed, timed out, or returned malformed data. **Do not mutate.** Show
-  `failures`, and prefer a repository-qualified selector when the intended healthy owner is
-  known. A bare ID never treats probe failure as “not owned,” because that could hide a
-  duplicate ID in the failed store.
+  `failures`, including any advisory `failures[].hint`, and prefer a confirmed
+  `matches[].selector` when the intended healthy owner is known. A bare ID never treats
+  probe failure as “not owned,” because that could hide a duplicate ID in the failed store.
 - `{"status":"stale", ...}` (exit 6) means the index no longer points at `--expect-id`.
   Re-render the table and ask again; nothing was written.
 
@@ -317,6 +317,15 @@ Use `workspace:<id>` for existing root-owned work. A member-qualified selector i
 not an alias granting authority over all workspace issues. Bare selectors still report ambiguity
 between real stores and remain unavailable when any relevant source cannot be checked. `stores`
 exposes the declared owner for routing new work without inventing per-component issue ownership.
+
+When a registered member omits `beadsStore` and has no `.beads` entry, resolver failure rows
+include an advisory `hint`: confirm tracking policy, then declare `"beadsStore": "workspace"`
+only if that member is workspace-owned; otherwise restore its local store. Resolution still
+returns `unavailable` (exit 5), even with a sole workspace-store match, or `ambiguous` (exit 3)
+when multiple owners are confirmed. The hint proves no ownership and authorizes no configuration
+change, initialization, redirection, or claim. Explicit `local` declarations, unusable entries,
+invalid declarations, ownership conflicts, and other probe failures retain their existing strict
+diagnostics without this hint. Listing diagnostics and `stores` output are unchanged.
 
 Declarations apply only when invoked from a validated workspace root. Inside a member or unrelated
 checkout, local-mode behaviour is unchanged: return to the workspace to use its declaration. This

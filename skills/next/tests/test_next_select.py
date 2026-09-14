@@ -306,7 +306,128 @@ class NextSelectTest(WorkspaceFixture):
         self.assertEqual(unavailable["matches"][0]["selector"], "healthy:healthy-only")
         self.assertEqual(unavailable["failures"][0]["repository"], "broken")
         self.assertIn("simulated probe failure", unavailable["failures"][0]["error"])
+        self.assertNotIn("hint", unavailable["failures"][0])
         self.assertEqual(self.update_calls(), [])
+
+    def test_storeless_member_hint_preserves_unavailable_and_does_not_write(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={"storeless": {}},
+        )
+        member = self.base / "sources" / "storeless"
+        shutil.rmtree(member / ".beads")
+        manifest = workspace / "workspace.json"
+        original_manifest = manifest.read_bytes()
+        fixture = workspace / ".beads" / "fixture.json"
+        original_fixture = fixture.read_bytes()
+
+        for command in ("resolve", "handoff", "start"):
+            for selector in ("root-task", "storeless:root-task"):
+                with self.subTest(command=command, selector=selector):
+                    result = self.run_select(workspace, command, selector)
+                    self.assertEqual(result.returncode, 5)
+                    payload = json.loads(result.stdout)
+                    self.assertEqual(payload["status"], "unavailable")
+                    self.assertEqual(payload["selector"], selector)
+                    if selector == "root-task":
+                        self.assertEqual(payload["matches"], [{
+                            "repository": "workspace", "repository_path": ".",
+                            "selector": "workspace:root-task",
+                        }])
+                    failure = payload["failures"][0]
+                    self.assertEqual(failure["repository"], "storeless")
+                    self.assertEqual(failure["error"], "missing .beads store")
+                    self.assertIn("hint", failure)
+                    self.assertIn("beadsStore is omitted", failure["hint"])
+                    self.assertIn('"beadsStore": "workspace"', failure["hint"])
+                    self.assertIn("Confirm tracking policy", failure["hint"])
+                    self.assertIn("restore its local store", failure["hint"])
+                    self.assertIn("does not prove ownership", failure["hint"])
+                    self.assertNotIn("owner", payload)
+                    self.assertNotIn("owner_selector", payload)
+
+        qualified = self.run_select(workspace, "resolve", "workspace:root-task")
+        self.assertEqual(qualified.returncode, 0)
+        self.assertEqual(json.loads(qualified.stdout)["directory"], str(workspace.resolve()))
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+        self.assertFalse(any(Path(call["directory"]) == member.resolve() for call in self.recorded_calls()))
+        self.assertEqual(manifest.read_bytes(), original_manifest)
+        self.assertEqual(fixture.read_bytes(), original_fixture)
+        self.assertFalse((member / ".beads").exists())
+
+    def test_explicit_local_missing_store_gets_no_workspace_ownership_hint(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={"independent": {}},
+        )
+        self.declare_tracking(workspace, independent="local")
+        shutil.rmtree(self.base / "sources" / "independent" / ".beads")
+
+        result = self.run_select(workspace, "start", "root-task")
+
+        self.assertEqual(result.returncode, 5)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["matches"][0]["selector"], "workspace:root-task")
+        self.assertEqual(payload["failures"], [{
+            "repository": "independent", "repository_path": "repos/independent",
+            "error": "missing .beads store",
+        }])
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+
+    def test_unusable_store_entries_get_no_ownership_hint(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={"broken": {}},
+        )
+        beads = self.base / "sources" / "broken" / ".beads"
+        shutil.rmtree(beads)
+        for kind in ("file", "dangling-symlink"):
+            with self.subTest(kind=kind):
+                if kind == "file":
+                    beads.write_text("not a store", encoding="utf-8")
+                else:
+                    beads.symlink_to(self.base / "absent")
+                result = self.run_select(workspace, "start", "root-task")
+                self.assertEqual(result.returncode, 5)
+                failure = json.loads(result.stdout)["failures"][0]
+                self.assertIn("unusable .beads store", failure["error"])
+                self.assertNotIn("hint", failure)
+                beads.unlink()
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+
+    def test_storeless_hint_does_not_override_known_ambiguity(self) -> None:
+        duplicate = issue("dup-1", 2, "task", "2026-01-01T00:00:00Z")
+        workspace = self.create_workspace(
+            root_data={"ready": [duplicate]},
+            repositories={"independent": {"ready": [duplicate]}, "storeless": {}},
+        )
+        shutil.rmtree(self.base / "sources" / "storeless" / ".beads")
+
+        result = self.run_select(workspace, "start", "dup-1")
+
+        self.assertEqual(result.returncode, 3)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "ambiguous")
+        self.assertEqual({row["selector"] for row in payload["matches"]}, {"workspace:dup-1", "independent:dup-1"})
+        self.assertIn("hint", payload["failures"][0])
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+
+    def test_local_missing_store_gets_no_workspace_hint(self) -> None:
+        local = self.base / "local"
+        self.create_store(local)
+        shutil.rmtree(local / ".beads")
+
+        result = self.run_select(local, "resolve", "local:root-task")
+
+        self.assertEqual(result.returncode, 5)
+        self.assertEqual(json.loads(result.stdout)["failures"], [{
+            "repository": "local", "repository_path": ".", "error": "missing .beads store",
+        }])
+        self.assertEqual(self.recorded_calls(), [])
 
     def test_qualified_and_index_selection_keep_healthy_source_usable(self) -> None:
         workspace = self.create_workspace(
@@ -425,6 +546,7 @@ class NextSelectTest(WorkspaceFixture):
             ],
         )
         self.assertEqual(listing["stores"][2]["error"], "missing .beads store")
+        self.assertNotIn("hint", listing["stores"][2])
         self.assertEqual(
             Path(listing["stores"][1]["directory"]),
             (self.base / "sources" / "repo-a").resolve(),
@@ -487,6 +609,7 @@ class NextSelectTest(WorkspaceFixture):
             self.assertEqual(payload["status"], "unavailable")
             self.assertEqual(payload["failures"][0]["repository"], "delegated")
             self.assertIn("invalid beadsStore declaration", payload["failures"][0]["error"])
+            self.assertNotIn("hint", payload["failures"][0])
         listing = json.loads(self.run_select(workspace, "stores").stdout)
         self.assertFalse(listing["stores"][1]["usable"])
         self.assertEqual(self.update_calls(), [])
@@ -500,6 +623,7 @@ class NextSelectTest(WorkspaceFixture):
             payload = json.loads(result.stdout)
             self.assertEqual(payload["status"], "unavailable")
             self.assertIn("unexpected .beads", payload["failures"][0]["error"])
+            self.assertNotIn("hint", payload["failures"][0])
         self.assertEqual(self.update_calls(), [])
         self.assertFalse(any(Path(call["directory"]).name == "delegated" for call in self.recorded_calls()))
 

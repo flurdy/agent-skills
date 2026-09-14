@@ -166,12 +166,26 @@ def owner_match(source: Any, issue_id: str) -> dict[str, str]:
     }
 
 
-def source_failure(source: Any, error: str) -> dict[str, str]:
-    return {
+def source_failure(collector: Any, source: Any, error: str) -> dict[str, str]:
+    failure = {
         "repository": source.name,
         "repository_path": source.relative_path,
         "error": error,
     }
+    if (
+        source.relative_path != "."
+        and not source.store_declared
+        and error == collector.MISSING_STORE_ERROR
+        and not os.path.lexists(source.directory / ".beads")
+    ):
+        failure["hint"] = (
+            "beadsStore is omitted (defaults to local) and .beads is absent. "
+            "Confirm tracking policy: if workspace-owned, declare "
+            '"beadsStore": "workspace" for this member in workspace.json; '
+            "otherwise restore its local store. This hint does not prove ownership "
+            "or authorize configuration changes."
+        )
+    return failure
 
 
 def resolve_index(
@@ -215,7 +229,7 @@ def resolve_id(
                 "status": "unavailable",
                 "selector": selector,
                 "id": issue_id,
-                "failures": [source_failure(source, error)],
+                "failures": [source_failure(collector, source, error)],
             }, UNAVAILABLE_EXIT
         if not owned:
             return {"status": "not-found", "selector": selector}, NOT_FOUND_EXIT
@@ -228,7 +242,7 @@ def resolve_id(
             continue
         owned, error = probe_issue(collector, source, issue_id)
         if error is not None:
-            failures.append(source_failure(source, error))
+            failures.append(source_failure(collector, source, error))
         elif owned:
             owners.append(source)
     matches = [owner_match(source, issue_id) for source in owners]

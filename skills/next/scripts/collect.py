@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 COMMAND_TIMEOUT_SECONDS = 5
+MISSING_STORE_ERROR = "missing .beads store"
 REGISTRATION_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MANAGED_DIRECTORIES = (
     "docs",
@@ -30,6 +31,7 @@ class Source:
     directory: Path
     store: str = "local"
     declaration_error: str | None = None
+    store_declared: bool = False
 
 
 def is_nested(path: Path, parent: Path) -> bool:
@@ -221,7 +223,10 @@ def registered_sources(root: Path, manifest: dict[str, Any]) -> list[Source] | N
                 if store not in ("local", "workspace"):
                     error = "invalid beadsStore declaration: expected local or workspace"
                     store = "local"
-                repositories.append(Source(name, relative_path, link, store, error))
+                repositories.append(Source(
+                    name, relative_path, link, store, error,
+                    store_declared="beadsStore" in entry,
+                ))
 
         if any(
             child.name != ".gitkeep" and child not in expected_links
@@ -270,7 +275,7 @@ def store_error(source: Source) -> str | None:
     if beads.is_symlink():
         return "unusable .beads store: symlink"
     if not beads.exists():
-        return "missing .beads store"
+        return MISSING_STORE_ERROR
     if not beads.is_dir():
         return "unusable .beads store: not a directory"
     return None
