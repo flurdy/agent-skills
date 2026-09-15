@@ -28,9 +28,11 @@ Do not initialize Beads merely because this skill loaded. If the repository has 
 store, follow its declared Jira, Trello, or other tracking policy. If no tracker is declared, ask
 before introducing one.
 
-Never edit generated Beads integration blocks manually. In particular, content between
-`<!-- BEGIN BEADS INTEGRATION -->` and `<!-- END BEADS INTEGRATION -->` is owned by `bd` and may
-be regenerated. Put human-maintained policy outside those markers.
+Never edit generated Beads integration blocks manually during ordinary work. This includes the
+legacy `<!-- BEGIN BEADS INTEGRATION -->` marker and metadata-bearing variants through
+`<!-- END BEADS INTEGRATION -->`. The only exception is the explicit cleanup-only, marker-bounded native edit in [integration-cleanup.md](references/integration-cleanup.md), after its exact preview, ownership
+checks, recovery evidence and fresh confirmation. `bd` may regenerate removed blocks; put
+human-maintained policy outside its markers.
 
 ## Explicit integration cleanup
 

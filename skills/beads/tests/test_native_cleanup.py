@@ -67,8 +67,12 @@ class NativeCleanupTests(unittest.TestCase):
         spec.loader.exec_module(helper)
         self.assertTrue(helper.bd_probe()["supported"])
         self.bd("setup", "codex")
-        for name, expected in helper.TEMPLATE_HASHES.items():
+        for name, expected in helper.GENERATED_CODEX_HASHES.items():
             self.assertEqual(hashlib.sha256((self.repo / name).read_bytes()).hexdigest(), expected)
+        agents = (self.repo / "AGENTS.md").read_text()
+        start = agents.index(CODEX_BEGIN)
+        end = agents.index(CODEX_END, start) + len(CODEX_END)
+        self.assertEqual(hashlib.sha256(agents[start:end].encode()).hexdigest(), helper.GENERATED_CODEX_BLOCK_SHA256)
 
     def test_claude_removes_only_block_and_exact_hook_commands(self):
         self.put("CLAUDE.md", "before\n" + self.block() + "after\n")

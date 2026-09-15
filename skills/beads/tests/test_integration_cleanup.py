@@ -76,7 +76,7 @@ class InventoryTests(unittest.TestCase):
         self.assertIn("--global=false", action["argv"])
         self.assertIn(str(self.repo), action["argv"])
         self.assertEqual({e["path"] for e in action["effects"]}, {"CLAUDE.md", ".claude/settings.json"})
-        self.assertTrue(any(r["path"] == "AGENTS.md" for r in report["residuals"]))
+        self.assertEqual(self.action(report, "agents-blocks")["status"], "ready")
         self.assertNotIn("DO_NOT_PRINT_ME", json.dumps(report))
         self.assertEqual(before, self.snapshot())
 
@@ -124,19 +124,64 @@ class InventoryTests(unittest.TestCase):
     def test_codex_refuses_shared_flags_and_mixed_command_entries(self):
         self.put("AGENTS.md", CODEX)
         self.put(".codex/config.toml", "[features]\nhooks=true\n")
-        self.assertEqual(self.action(self.inspect(), "codex")["status"], "blocked")
+        self.assertEqual(self.action(self.inspect(), "codex-native")["status"], "blocked")
         (self.repo / ".codex/config.toml").unlink()
         self.put(".codex/hooks.json", json.dumps({"hooks": {"SessionStart": [{"hooks": [
             {"type": "command", "command": "bd codex-hook SessionStart"},
             {"type": "command", "command": "project-check"},
         ]}]}}))
-        self.assertEqual(self.action(self.inspect(), "codex")["status"], "blocked")
+        self.assertEqual(self.action(self.inspect(), "codex-native")["status"], "blocked")
+
+    def test_exact_generated_codex_tree_is_ready_for_bounded_deletion(self):
+        files = {
+            ".codex/config.toml": b"generated config",
+            ".codex/hooks.json": b"generated hooks",
+            ".agents/skills/beads/SKILL.md": b"generated skill",
+            ".agents/skills/beads/agents/openai.yaml": b"generated metadata",
+        }
+        self.put("AGENTS.md", "authored\n")
+        for path, content in files.items():
+            target = self.repo / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        hashes = {path: self.helper.digest(content) for path, content in files.items()}
+        with patch.object(self.helper, "GENERATED_CODEX_HASHES", hashes):
+            report = self.inspect()
+            action = self.action(report, "codex-generated")
+            self.assertEqual(action["status"], "ready")
+            self.assertEqual({effect["path"] for effect in action["effects"]}, set(files))
+            self.put(".codex/authored.toml", "keep")
+            self.assertEqual(self.action(self.inspect(), "codex-generated")["status"], "blocked")
+
+    def test_agent_blocks_are_ready_for_exact_marker_bounded_edit(self):
+        self.put("AGENTS.md", "before\n" + BLOCK + "\n" + CODEX + "after\n")
+        action = self.action(self.inspect(), "agents-blocks")
+        self.assertEqual(action["status"], "ready")
+        self.assertEqual([effect["operation"] for effect in action["effects"]], [
+            "remove exact general managed block", "remove exact Codex managed block",
+        ])
+
+    def test_interactions_requires_ignore_edit_and_index_only_removal(self):
+        self.put(".gitignore", "# project\n")
+        interactions = self.put(".beads/interactions.jsonl", "")
+        subprocess.run(["git", "-C", str(self.repo), "add", ".gitignore", ".beads/interactions.jsonl"], check=True)
+        action = self.action(self.inspect(), "interactions-ignore")
+        self.assertEqual(action["status"], "ready")
+        self.assertEqual(action["ignoreRule"], "/.beads/interactions.jsonl")
+        self.assertTrue(interactions.exists())
+        tracked = subprocess.run(["git", "-C", str(self.repo), "ls-files", ".beads/interactions.jsonl"], capture_output=True, text=True, check=True).stdout.strip()
+        self.assertEqual(tracked, ".beads/interactions.jsonl")
+
+    def test_interactions_already_untracked_and_ignored_is_clean(self):
+        self.put(".gitignore", "/.beads/interactions.jsonl\n")
+        self.put(".beads/interactions.jsonl", "local\n")
+        self.assertEqual(self.action(self.inspect(), "interactions-ignore")["status"], "clean")
 
     def test_codex_ready_only_without_shared_config_or_unproven_skill_ownership(self):
         self.put("AGENTS.md", "authored\n" + CODEX)
-        self.assertEqual(self.action(self.inspect(), "codex")["status"], "ready")
+        self.assertEqual(self.action(self.inspect(), "codex-native")["status"], "ready")
         self.put(".agents/skills/beads/SKILL.md", "authored skill")
-        self.assertEqual(self.action(self.inspect(), "codex")["status"], "blocked")
+        self.assertEqual(self.action(self.inspect(), "codex-native")["status"], "blocked")
 
     def test_hooks_preserve_default_path_logic_but_refuse_shared_path_checks(self):
         self.put(".git/hooks/pre-commit", "#!/bin/sh\n" + HOOK + "\nproject-check\n")
@@ -196,7 +241,7 @@ class InventoryTests(unittest.TestCase):
         with patch("sys.argv", [str(HELPER), "--repo", str(self.repo), "--expect", "stale"]), redirect_stdout(io.StringIO()) as out:
             self.assertEqual(self.helper.main(), 2)
         self.assertIn("stale", out.getvalue())
-        with patch("sys.argv", [str(HELPER), "--repo", str(self.repo), "--action", "codex"]), redirect_stdout(io.StringIO()):
+        with patch("sys.argv", [str(HELPER), "--repo", str(self.repo), "--action", "codex-native"]), redirect_stdout(io.StringIO()):
             self.assertEqual(self.helper.main(), 2)
         self.assertEqual(before, self.snapshot())
 
