@@ -28,10 +28,18 @@ Inspect the actual before/after Git state and any init-created commit. Do not as
 bd version always creates the same files. Existing `AGENTS.md`, `CLAUDE.md`, client settings and
 ignore files remain owned by their repository, not by this skill.
 
-Propose only concrete unwanted additions or conflicts introduced by the selected migration. Use
-focused follow-up edits under the repository's normal coding workflow. Never rewrite Git history
-or undo an entire init commit as a shortcut; no reset, amend, or blanket revert recipe. Inspect
-staged paths before any separately requested commit, and never stage unrelated work.
+After the migration-evidence and selection gates above, use the shared
+[integration cleanup procedure](../../beads/references/integration-cleanup.md) for repository-scoped
+inspection and separately confirmed native removal. That procedure also works standalone, but
+its output never establishes migration completion or permits backup/registry cleanup here.
+It preserves linked instructions and refuses unsafe shared hook/settings removal; unsupported
+managed blocks remain reported rather than hand-edited.
+
+Propose only concrete unwanted additions or conflicts introduced by the selected migration.
+Non-integration conflicts still require focused follow-up work under the repository's normal
+coding workflow. Never rewrite Git history or undo an entire init commit as a shortcut; no reset,
+amend, or blanket revert recipe. Inspect staged paths before any separately requested commit,
+and never stage unrelated work.
 
 ### Hook integration, including Husky
 

@@ -190,6 +190,7 @@ test-thoughtbox:
 	@python3 -m unittest discover -s skills/thoughtbox/tests -p 'test_*.py'
 
 test-beads:
+	@python3 -m unittest discover -s skills/beads/tests -p 'test_*cleanup.py'
 	@bash skills/beads/tests/test-skill-contract.sh
 	@bash skills/beads/tests/test-consumer-routing.sh
 	@python3 -m unittest discover -s skills/next/tests -p 'test_next_select.py'

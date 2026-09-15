@@ -4,11 +4,11 @@ description: >
   Shared Beads workflow baseline. Use whenever an agent uses `bd`,
   manages durable tasks, blockers, or handoffs, resolves work ownership, or decides between an
   ephemeral checklist and durable tracking. Covers store authority and remote Dolt safety.
-allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),AskUserQuestion"
+allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cleanup.py:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.3.0"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -31,6 +31,15 @@ before introducing one.
 Never edit generated Beads integration blocks manually. In particular, content between
 `<!-- BEGIN BEADS INTEGRATION -->` and `<!-- END BEADS INTEGRATION -->` is owned by `bd` and may
 be regenerated. Put human-maintained policy outside those markers.
+
+## Explicit integration cleanup
+
+For `/beads cleanup /absolute/repository` (or `cleanup --inspect` for preview only), read
+[integration-cleanup.md](references/integration-cleanup.md). It owns standalone post-init
+inspection and separately confirmed native removal, including linked instruction files and
+shared hooks. It never runs merely because this baseline loaded and never mutates issue data.
+For a separately authorized future initialization, help-check `--skip-agents --skip-hooks`;
+these prevent integrations, not other init effects, and never remove existing setup.
 
 ## Resolve the owning store
 

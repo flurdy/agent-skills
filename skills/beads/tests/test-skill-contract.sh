@@ -97,4 +97,16 @@ assert_contains "$CATALOG" 'owning store'
 assert_contains "$CATALOG" 'ephemeral checklists'
 assert_contains "$MAKEFILE" 'test-beads:'
 
+CLEANUP="$ROOT_DIR/skills/beads/references/integration-cleanup.md"
+assert_contains "$SKILL" 'references/integration-cleanup.md'
+assert_contains "$CLEANUP" '--skip-agents --skip-hooks'
+assert_contains "$CLEANUP" 'Never rerun init as cleanup'
+assert_contains "$CLEANUP" '--expect'
+assert_contains "$CLEANUP" 'immediately before each destructive command'
+assert_contains "$CLEANUP" 'No automatic rollback'
+assert_contains "$CLEANUP" 'ignored and untracked'
+assert_contains "$CLEANUP" 'symlink'
+assert_contains "$CLEANUP" 'unsupported residual'
+assert_contains "$ROOT_DIR/skills/beads-migrate-to-dolt/references/aftercare.md" '../../beads/references/integration-cleanup.md'
+
 printf '%s\n' 'beads skill contract tests passed'
