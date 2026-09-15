@@ -38,6 +38,28 @@ Direct eligibility does not exempt artifact-producing context collectors such as
 workflow. If required context cannot be collected within current authority, report that context
 boundary as blocked; do not skip PR identity checks or redirect the review to another checkout.
 
+### Current compatibility baseline — 2026-09-15
+
+This baseline is evidence for Pi 0.85.1 only. It records one machine's runtime results rather than
+promising future authentication, model availability, pricing or compatibility.
+
+| Route | Plan policy | Executable / auth evidence | Billing evidence | Launch evidence |
+|---|---|---|---|---|
+| `peer` resolved to direct Claude Opus | eligible; parent vendor was OpenAI | Claude Code 2.1.267; `claude.ai` subscription login; no API override | exact `opus` policy allowed | passed through actual Pi guarded Bash; explicit alias accepted and terminal marker returned; text mode did not report canonical model |
+| Direct Fable | eligible | same Claude executable/auth evidence | exact `fable` policy allowed | passed through actual Pi guarded Bash; explicit alias accepted and terminal marker returned; text mode did not report canonical model |
+| Direct Codex | eligible | Codex CLI 0.154.0; ChatGPT login; no API override | exact `gpt-6-astra` policy allowed | passed through actual Pi guarded Bash; reported model `gpt-6-astra`, sandbox `read-only`, approval `never`, terminal marker returned; configured user hooks ran |
+| Direct Gemini | policy-eligible only | executable present; auth not established | unknown; no consent requested | skipped; not passing |
+| External `claude-code` child | eligible only after current discovery/preflight | pi-subagents 0.67.0; Claude Code 2.1.267; existing CLI auth | native model identity cannot be prebound; user gave one-run subscription/usage-credit consent | passed: canonical model `claude-opus-5`, inherited cwd, async run complete, external exit 0, runner terminal observed, plan permission, tools none, strict empty MCP, persistence false |
+| External `codex-exec` child | discovery-eligible; inherited cwd only | executable and current definition available | native child model not prebound | not run; direct Codex does not prove child launch |
+| External `cursor-agent` child | discovery contract eligible | executable unavailable | not evaluated | unavailable; not passing |
+| Named panels | unsupported by design | helper availability is irrelevant in guarded states | no panel consent requested | current-Pi scripted provider passed pre-dispatch denial: helper marker absent, temp contents unchanged, no source lease; not a provider success |
+
+The direct smoke commands used fresh isolated Pi `--plan` processes and returned successful Bash tool
+results. The external-child smoke used a separate live Pi `--plan` RPC process so its async completion
+watcher could observe the runner process terminal; the no-tools child itself made no file changes.
+The first detached print-mode probe completed its child but exited before terminal observation and is
+not counted as the passing process-terminal smoke. No Gemini or OpenRouter prompt was exposed.
+
 ## Why no private-artifact exception
 
 The panel coordinator already owns private internal temporary files, but its multi-stage protocol
