@@ -54,4 +54,17 @@ done
 for brittle in 'direct-route.py' 'cliPath' 'cliVersion' 'allowedModelUsage'; do
   ! grep -Fq -- "$brittle" "$SKILL" || fail "skill retains brittle route binding: $brittle"
 done
+PLAN_CONTRACT="$ROOT/skills/second-opinion/references/guarded-plan.md"
+[[ -f "$PLAN_CONTRACT" ]] || fail 'missing guarded-plan support matrix'
+for invariant in 'unsupported' 'file-only' 'before creating' 'Do not emulate' 'inherited cwd' 'async-only' 'billing' 'incomplete' '0.85.1' '0.67.0'; do
+  grep -Fq -- "$invariant" "$PLAN_CONTRACT" || fail "missing guarded-plan invariant: $invariant"
+done
+python3 - "$SKILL" <<'PY'
+import pathlib
+import sys
+text = pathlib.Path(sys.argv[1]).read_text()
+preflight = text.index('## Guarded-session preflight')
+assert preflight < text.index('## 2. Gather and sanitize context')
+assert 'references/guarded-plan.md' in text[preflight:text.index('## 2. Gather and sanitize context')]
+PY
 printf 'second-opinion skill contract tests passed\n'

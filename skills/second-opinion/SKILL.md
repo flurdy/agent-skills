@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.a
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.6.0"
+version: "3.7.0"
 author: "flurdy"
 ---
 
@@ -129,6 +129,15 @@ Defaults and validation:
 If no mode is supplied, ask what to review. `consensus` must always be explicitly named; never infer
 it from task risk, panel size, or an API key.
 
+## Guarded-session preflight
+
+Before gathering artifact-producing context or executing any route in Pi, read
+[guarded-plan.md](references/guarded-plan.md) when the session is guarded or its authority is unclear.
+Named panels are unsupported in guarded plan and file-only sessions: stop before artifacts,
+helper execution or panel billing consent. Do not emulate a panel, silently select a direct peer,
+or acquire source-write authority solely for a supported read-only consultation. Direct routes
+remain subject to their own read-only, context, availability and billing checks.
+
 ## 2. Gather and sanitize context
 
 ### review-pr
@@ -215,7 +224,8 @@ independent direct route; never retry or substitute silently.
 
 ## 4. Execute a named panel
 
-Use the same exact sanitized user prompt for every route. The OpenRouter helper adds only its fixed
+The guarded-session preflight must have passed before this step. Use the same exact sanitized
+user prompt for every route. The OpenRouter helper adds only its fixed
 completion contract as a system message. Create a private file with `mktemp`, set mode `600`, and write
 the prompt with `Write`. Do not put panel prompt text in shell argv.
 

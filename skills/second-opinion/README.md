@@ -21,6 +21,8 @@ quick-start and deliberately links to the detailed policy rather than reproducin
 
 Use one peer for ordinary decisions. Use a panel when different provider perspectives are
 material enough to justify the extra time, review effort, and—where configured—cost.
+In guarded Pi plan/file-only sessions, direct read-only routes remain eligible but named panels
+are unsupported. See the [support matrix and diagnostics](references/guarded-plan.md).
 
 ## Direct peer review
 
