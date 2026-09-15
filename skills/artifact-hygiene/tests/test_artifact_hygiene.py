@@ -1299,8 +1299,8 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def test_known_prefix_beads_repository_name_is_not_a_bead_reference(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("branch-history")
-        detector = helper.build_bead_detector(("letterbox",))
-        data = b"flurdy/letterbox-beads.git\nletterbox" + b"-shy\nletterbox" + b"-beads7\n"
+        detector = helper.build_bead_detector(("sample",))
+        data = b"flurdy/sample-beads.git\nsample" + b"-shy\nsample" + b"-beads7\n"
 
         findings = helper.detect_non_secret(
             data,
