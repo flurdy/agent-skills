@@ -85,7 +85,11 @@ assert_not_contains "$SKILL" 'bd create --title='
 assert_not_contains "$SKILL" 'bd close <id>'
 
 assert_contains "$SKILL" 'A local commit never authorizes remote Beads synchronization.'
-assert_contains "$SKILL" 'Ask for explicit confirmation immediately before every `bd dolt push`.'
+assert_contains "$SKILL" 'Ask for explicit confirmation immediately before every raw `bd dolt push`.'
+assert_contains "$SKILL" 'user-enrolled routine sync through `sync_beads_store`'
+assert_contains "$SKILL" 'canonical store, exact remote URL and Dolt branch'
+assert_contains "$SKILL" 'does not acquire a source worktree lease or switch session mode'
+assert_contains "$SKILL" 'Never invoke synchronization during a read-only list, resolver probe or local triage operation.'
 assert_contains "$SKILL" 'Run each remote or destructive Beads action as its own visible tool call.'
 
 assert_contains "$CATALOG" '| beads |'

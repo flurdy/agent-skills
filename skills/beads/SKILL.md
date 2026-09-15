@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.2.3"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -177,10 +177,24 @@ A local commit never authorizes remote Beads synchronization. Treat Dolt pull, p
 remote migration, and other remote synchronization as separate actions from local issue updates
 and Git commits.
 
-Ask for explicit confirmation immediately before every `bd dolt push`. Obtain fresh confirmation
-for other remote synchronization that can publish data or replace local state, and explain the
-scope first. Approval from an earlier task or session does not carry forward.
+Ask for explicit confirmation immediately before every raw `bd dolt push`. Obtain fresh
+confirmation for raw remote synchronization that can publish data or replace local state, and
+explain the scope first. Approval from an earlier task or session does not carry forward.
 
-Run each remote or destructive Beads action as its own visible tool call. Never hide it in a
-command chain, script, completion step, or unrelated Git operation. If local policy is stricter,
-follow it.
+The bounded exception is user-enrolled routine sync through `sync_beads_store`, when that trusted
+Pi tool is available. Enrollment binds the canonical store, exact remote URL and Dolt branch
+through a TUI-only confirmation, including connection and executable identities.
+A direct tool call may then fetch, safely pull or
+non-force push that binding without another prompt, including in guarded plan mode and for an
+owner-resolved store outside cwd. The tool revalidates the binding and safety state, refuses changed
+or unknown destinations, pending work, schema drift, unsafe divergence and prospective conflicts,
+and does not acquire a source worktree lease or switch session mode. It never authorizes force,
+reset, migration, bootstrap, remote configuration, backup publication, Git push or production
+changes. If the tool or enrollment is unavailable, use the confirmed raw-command path instead;
+never imitate the tool with a shell wrapper.
+
+Permission is not an instruction to sync.
+Never invoke synchronization during a read-only list, resolver probe or local triage operation.
+Run each remote or destructive Beads action as its own visible tool call.
+Never hide it in a command chain, script, completion step, or unrelated Git operation.
+If local policy is stricter, follow it.
