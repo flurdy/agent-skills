@@ -112,6 +112,7 @@ assert_contains "$CLEANUP" '`codex-generated`'
 assert_contains "$CLEANUP" '`interactions-ignore`'
 assert_contains "$CLEANUP" 'sole reviewed exception'
 assert_contains "$CLEANUP" 'git rm --cached'
+assert_contains "$CLEANUP" 'env --chdir=/absolute/repository'
 assert_contains "$CLEANUP" 'check-ignore -v --no-index'
 assert_contains "$ROOT_DIR/skills/beads-migrate-to-dolt/references/aftercare.md" '../../beads/references/integration-cleanup.md'
 

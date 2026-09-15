@@ -61,10 +61,14 @@ class NativeCleanupTests(unittest.TestCase):
     def block(self):
         return BEGIN + "\nfixture generated content\n" + END + "\n"
 
-    def test_probe_recognizes_the_checked_cli_and_generated_templates(self):
+    def helper(self):
         spec = importlib.util.spec_from_file_location("integration_cleanup", ROOT / "skills/beads/scripts/integration_cleanup.py")
         helper = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(helper)
+        return helper
+
+    def test_probe_recognizes_the_checked_cli_and_generated_templates(self):
+        helper = self.helper()
         self.assertTrue(helper.bd_probe()["supported"])
         self.bd("setup", "codex")
         for name, expected in helper.GENERATED_CODEX_HASHES.items():
@@ -73,6 +77,23 @@ class NativeCleanupTests(unittest.TestCase):
         start = agents.index(CODEX_BEGIN)
         end = agents.index(CODEX_END, start) + len(CODEX_END)
         self.assertEqual(hashlib.sha256(agents[start:end].encode()).hexdigest(), helper.GENERATED_CODEX_BLOCK_SHA256)
+
+    def test_proposed_native_command_binds_cwd_when_launched_elsewhere(self):
+        helper = self.helper()
+        self.put("CLAUDE.md", "before\n" + self.block() + "after\n")
+        self.put(".claude/settings.json", json.dumps({"hooks": {"SessionStart": [{"hooks": [
+            {"type": "command", "command": "bd prime --hook-json"},
+        ]}]}}))
+        outside = ROOT / "CLAUDE.md"
+        outside_before = outside.read_bytes() if outside.exists() else None
+        report = helper.inspect_repository(str(self.repo))
+        action = next(item for item in report["actions"] if item["id"] == "claude")
+        self.assertEqual(action["argv"][1], "--chdir=" + str(self.repo))
+        subprocess.run(action["argv"], cwd=ROOT, env=self.env, text=True, capture_output=True, timeout=20, check=True)
+        self.assertEqual((self.repo / "CLAUDE.md").read_text(), "before\nafter\n")
+        self.assertEqual(json.loads((self.repo / ".claude/settings.json").read_text()), {"hooks": {}})
+        outside_after = outside.read_bytes() if outside.exists() else None
+        self.assertEqual(outside_after, outside_before)
 
     def test_claude_removes_only_block_and_exact_hook_commands(self):
         self.put("CLAUDE.md", "before\n" + self.block() + "after\n")

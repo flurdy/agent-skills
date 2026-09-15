@@ -131,8 +131,11 @@ Selection is not execution authority. Before a ready action:
    is not an approval token or a lock. The preflight-to-command race is a cooperative limitation.
 5. Ask for fresh explicit confirmation **immediately before each destructive command or native
    edit**, showing one exact operation. Execute it once, separately, with no command chains or
-   retries. Native bd actions keep the helper's `-C`, `--sandbox`, `--global=false` and metrics
-   suppression intact. Never select `--global`, an unlisted recipe, or a different executable.
+   retries. Native bd actions keep both the helper's process-cwd binding
+   (`env --chdir=/absolute/repository`) and bd `-C`, plus `--sandbox`, `--global=false` and metrics
+   suppression. bd 1.2.2 setup resolves project files from process cwd despite accepting `-C`;
+   omitting either binding is unsupported. Never select `--global`, an unlisted recipe, or a
+   different executable.
    `agents-blocks` uses one exact native Edit, then re-inventory. `codex-generated` deletes each
    proven file by exact path in one visible command and prunes only empty known directories with
    non-recursive `rmdir`. `interactions-ignore` performs the `.gitignore` native edit first,

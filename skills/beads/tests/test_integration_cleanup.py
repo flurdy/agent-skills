@@ -75,6 +75,7 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(action["status"], "ready")
         self.assertIn("--global=false", action["argv"])
         self.assertIn(str(self.repo), action["argv"])
+        self.assertEqual(action["argv"][1], "--chdir=" + str(self.repo))
         self.assertEqual({e["path"] for e in action["effects"]}, {"CLAUDE.md", ".claude/settings.json"})
         self.assertEqual(self.action(report, "agents-blocks")["status"], "ready")
         self.assertNotIn("DO_NOT_PRINT_ME", json.dumps(report))

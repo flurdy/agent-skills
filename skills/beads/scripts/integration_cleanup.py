@@ -64,12 +64,16 @@ def bd_probe():
         ]:
             help_text = execute([binary, *command])
             supported = supported and all(token in help_text for token in tokens)
+        env_binary = shutil.which("env")
+        if not env_binary or "--chdir" not in execute([env_binary, "--help"]):
+            supported = False
         with open(binary, "rb") as stream:
             hasher = hashlib.sha256()
             for chunk in iter(lambda: stream.read(65536), b""):
                 hasher.update(chunk)
         return {"executable": binary, "version": version_match[1] if version_match else "unknown",
-                "sha256": hasher.hexdigest(), "supported": supported}
+                "sha256": hasher.hexdigest(), "envExecutable": str(Path(env_binary).resolve()) if env_binary else None,
+                "supported": supported}
     except (OSError, ValueError, subprocess.SubprocessError):
         return {"executable": binary, "supported": False, "reason": "bd version/help probe unavailable"}
 
@@ -237,8 +241,13 @@ def inspect_repository(repository):
             if row.get("problem"):
                 reasons.append(filename + ": " + row["problem"])
         reasons = list(dict.fromkeys([*issues, *reasons]))
+        env_binary = tool.get("envExecutable") or shutil.which("env")
+        if not env_binary:
+            reasons.append("env executable with --chdir support is unavailable")
         status = "blocked" if reasons else "ready" if needed else "clean"
-        argv = ["env", "BD_DISABLE_METRICS=1", "BD_DISABLE_EVENT_FLUSH=1", tool.get("executable", "bd"), "-C", str(root), "--sandbox"]
+        argv = [str(Path(env_binary).resolve()) if env_binary else "env", "--chdir=" + str(root),
+                "BD_DISABLE_METRICS=1", "BD_DISABLE_EVENT_FLUSH=1", tool.get("executable", "bd"),
+                "-C", str(root), "--sandbox"]
         recipe = name.removesuffix("-native")
         argv += ["hooks", "uninstall"] if recipe == "hooks" else ["setup", recipe, "--remove", "--global=false"]
         actions.append({"id": name, "mechanism": "bd-native", "status": status, "argv": argv if status == "ready" else None,
