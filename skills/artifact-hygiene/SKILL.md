@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.6.0"
+version: "0.6.1"
 author: "flurdy"
 ---
 
@@ -67,8 +67,10 @@ optional `.N` children, plus a generic digit-bearing shape so a checked-in file 
 detection. Known prefixes come from clone-local `artifactHygiene.beadPrefixes` (multi-valued or
 comma-separated), `ARTIFACT_HYGIENE_BEAD_PREFIXES`, and the repository's own `.beads/config.yaml`
 `issue-prefix` and `.beads/issues.jsonl` IDs; `target.beadPrefixSource` reports which. Plain
-hyphenated words such as `dry-run` are not reported. Email matches immediately followed by `:` are
-treated as scp-style Git URLs, personal-name matches stop at identifier boundaries, and paths under
+hyphenated words such as `dry-run` are not reported, nor are `<prefix>-beads` Dolt remote repository
+names. Email matches immediately followed by `:` are treated as scp-style Git URLs and matches
+immediately preceded by `://` as URL userinfo (`git+ssh://git@host/…`); personal-name matches stop
+at identifier boundaries, and paths under
 an `artifact-hygiene/` directory are exempt from the non-secret detectors because the audit's own
 source and fixtures necessarily contain canary shapes; secret scanning still covers them.
 

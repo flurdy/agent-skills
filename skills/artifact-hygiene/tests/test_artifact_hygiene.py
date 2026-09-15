@@ -1278,6 +1278,48 @@ class ArtifactHygieneCliTests(unittest.TestCase):
 
         self.assertEqual([(i["detector"], i["location"]["line"]) for i in findings], [("pii.email", 2)])
 
+    def test_email_detector_skips_url_userinfo(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        data = (
+            b'remote: "git+ssh://git@github.com/owner/repo.git"\n'
+            b"contact: mailto:maintainer@" + b"acme.dev\n"
+        )
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path=".beads/config.yaml",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+        )
+
+        self.assertEqual([(i["detector"], i["location"]["line"]) for i in findings], [("pii.email", 2)])
+
+    def test_known_prefix_beads_repository_name_is_not_a_bead_reference(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        detector = helper.build_bead_detector(("letterbox",))
+        data = b"flurdy/letterbox-beads.git\nletterbox" + b"-shy\nletterbox" + b"-beads7\n"
+
+        findings = helper.detect_non_secret(
+            data,
+            source="branch-history",
+            path=".beads/config.yaml",
+            deadline=helper.monotonic() + 5,
+            coverage=coverage,
+            detectors=helper.active_detectors(detector),
+        )
+
+        self.assertEqual(
+            [i["location"]["line"] for i in findings if i["detector"] == "beads.reference"], [2, 3]
+        )
+        self.assertTrue(
+            helper.custom_detector_capability_probe(
+                helper.monotonic() + 5, helper.active_detectors(detector)
+            )
+        )
+
     def test_name_detector_ignores_camel_case_identifiers(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("branch-history")

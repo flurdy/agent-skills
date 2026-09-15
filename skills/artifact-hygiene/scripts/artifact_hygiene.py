@@ -176,7 +176,7 @@ def build_bead_detector(prefixes: tuple[str, ...]) -> CustomDetector:
         alternation = b"|".join(
             re.escape(prefix.encode()) for prefix in sorted(prefixes, key=len, reverse=True)
         )
-        shapes.insert(0, b"(?:" + alternation + b")-" + BEAD_SUFFIX)
+        shapes.insert(0, b"(?:" + alternation + b")-(?!beads(?![A-Za-z0-9-]))" + BEAD_SUFFIX)
         canary = prefixes[0].encode() + b"-shy"
     return CustomDetector(
         category="bead-reference",
@@ -1452,6 +1452,8 @@ def detect_non_secret(
                 if match.span() in beads_email_spans:
                     continue
                 if data[match.end() : match.end() + 1] == b":":
+                    continue
+                if match.group(0).startswith(b"//") and data[match.start() - 1 : match.start()] == b":":
                     continue
                 domain = match.group(0).lower().rsplit(b"@", 1)[-1]
                 if domain in PLACEHOLDER_EMAIL_DOMAINS or domain.endswith(
