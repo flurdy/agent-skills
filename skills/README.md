@@ -8,6 +8,7 @@
 | beads | Shared Beads workflow baseline for resolving the owning store, separating ephemeral checklists from durable tracking, routing focused operations, and confirming remote Dolt actions |
 | beads-check-dolt-migration | Detect whether beads needs classic-to-Dolt migration or an in-place Dolt schema upgrade |
 | beads-migrate-to-dolt | Back up and verify classic conversion or Dolt schema upgrades; preserve remote history and keep repository aftercare separately opt-in |
+| beads-setup | Preview and separately confirm a fresh repository Beads store with a private GitHub Dolt remote; refuse existing state and verify each initialization/publication boundary |
 | browser-screenshot | Take a screenshot of the running web application for visual verification of UI/CSS changes |
 | circleci-status | Check CircleCI build status and failed job logs for the current GitHub repository |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |

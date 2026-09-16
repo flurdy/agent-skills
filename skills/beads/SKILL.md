@@ -4,11 +4,11 @@ description: >
   Shared Beads workflow baseline. Use whenever an agent uses `bd`,
   manages durable tasks, blockers, or handoffs, resolves work ownership, or decides between an
   ephemeral checklist and durable tracking. Covers store authority and remote Dolt safety.
-allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cleanup.py:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),AskUserQuestion"
+allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cleanup.py:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),Skill(beads-setup),AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.4.0"
+version: "0.5.0"
 author: "flurdy"
 ---
 
@@ -33,6 +33,14 @@ legacy `<!-- BEGIN BEADS INTEGRATION -->` marker and metadata-bearing variants t
 `<!-- END BEADS INTEGRATION -->`. The only exception is the explicit cleanup-only, marker-bounded native edit in [integration-cleanup.md](references/integration-cleanup.md), after its exact preview, ownership
 checks, recovery evidence and fresh confirmation. `bd` may regenerate removed blocks; put
 human-maintained policy outside its markers.
+
+## Explicit fresh-store setup
+
+For an explicitly requested fresh repository store with a private GitHub Dolt remote, use
+[beads-setup](../beads-setup/SKILL.md). Its preview grants no initialization or publication
+permission. It refuses existing/ancestor/workspace-owned stores and owns the checked bd 1.2.2
+fresh-init exception: bind process cwd but omit `-C` until the store exists. All later commands
+retain owning-store qualification. Never initialize merely to satisfy another workflow's discovery.
 
 ## Explicit integration cleanup
 
@@ -117,6 +125,7 @@ Dispatch to the focused skill instead of reproducing its procedure.
 | Audit backlog quality, priority, labels, lifecycle, or duplicates | `/backlog-groom` |
 | Reconcile Jira, Beads, and pull-request drift | `/tracking-sweep` |
 | Bridge a Trello-managed project and Beads | `/trello-beads` |
+| Set up an explicitly selected fresh store with a private GitHub remote | `/beads-setup` |
 | Detect storage or schema migration state | `/beads-check-dolt-migration` |
 | Perform a confirmed storage or schema migration | `/beads-migrate-to-dolt` |
 
