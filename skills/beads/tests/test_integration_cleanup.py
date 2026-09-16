@@ -155,12 +155,14 @@ class InventoryTests(unittest.TestCase):
             self.assertEqual(self.action(self.inspect(), "codex-generated")["status"], "blocked")
 
     def test_agent_blocks_are_ready_for_exact_marker_bounded_edit(self):
-        self.put("AGENTS.md", "before\n" + BLOCK + "\n" + CODEX + "after\n")
+        self.put("AGENTS.md", "before\n\n" + BLOCK + "\n" + CODEX + "after\n")
         action = self.action(self.inspect(), "agents-blocks")
         self.assertEqual(action["status"], "ready")
         self.assertEqual([effect["operation"] for effect in action["effects"]], [
             "remove exact general managed block", "remove exact Codex managed block",
         ])
+        lines = action["effects"][0]["lines"][0]
+        self.assertEqual(lines["cleanupStartLine"], lines["startLine"] - 1)
 
     def test_interactions_requires_ignore_edit_and_index_only_removal(self):
         self.put(".gitignore", "# project\n")

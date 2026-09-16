@@ -88,8 +88,15 @@ def block_ranges(text, kind):
     if len(begins) != 1 or len(ends) != 1 or text.count(prefix) != 1 or begins[0].end() >= ends[0].start():
         return [], "malformed, duplicate or unsupported " + kind + " markers"
     start, finish = begins[0].start(), ends[0].end()
-    return [{"startLine": text.count("\n", 0, start) + 1, "endLine": text.count("\n", 0, finish) + 1,
-             "start": start, "end": finish}], None
+    cleanup_start = start
+    if start > 0 and text[start - 1] == "\n":
+        previous_line_start = text.rfind("\n", 0, start - 1) + 1
+        if not text[previous_line_start:start - 1].strip():
+            cleanup_start = previous_line_start
+    return [{"startLine": text.count("\n", 0, start) + 1,
+             "cleanupStartLine": text.count("\n", 0, cleanup_start) + 1,
+             "endLine": text.count("\n", 0, finish) + 1,
+             "start": start, "cleanupStart": cleanup_start, "end": finish}], None
 
 
 def unique_object(pairs):
