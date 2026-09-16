@@ -40,9 +40,6 @@
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
 | ready-to-release | Shared read-only release authority — collects evidence, evaluates gates, and renders one service's verdict |
 | rebase | Rebase onto updated main, an updated stacked parent, or main after the parent merged — proves the child-only range before rewriting; explicit dirty-tree, test, force-push, and retarget gates |
-| rebase-main | Alias for `/rebase main` |
-| rebase-merged-parent | Alias for `/rebase merged {old-parent}` |
-| rebase-parent | Alias for `/rebase parent {parent-branch}` |
 | release-maintenance | Explicitly invoked, separately confirmed manifest reconciliation, config synchronization, restart, or rollout acknowledgement; never runs inside a watch tick |
 | release-manager | Attended push gatekeeper consuming shared readiness verdicts; current-command confirmation, CI tracking, rollout observation, and cadence |
 | release-status | Read-only dashboard consuming the shared release authority, including blockers and separate activation follow-ups |
@@ -71,7 +68,6 @@
 | watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | watch-telemetry | Query opt-in local watcher-execution counters with partial coverage, fixed privacy-safe fields, and bounded active retention; explicitly enable, disable, or prune collection |
 | wrap-up | Report session activity, artifact hygiene and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |
-| yesterday | Alias for `/today --previous-workday`: objective previous-workday recap; selects Friday when run on Monday |
 
 ## Model routing
 

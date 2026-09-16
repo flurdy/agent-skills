@@ -24,8 +24,7 @@ prints, verbatim.
 /rebase merged {old-parent} [--old-tip {sha}]   # Parent PR merged; move onto main, child commits only
 ```
 
-`/rebase-main`, `/rebase-parent`, and `/rebase-merged-parent` remain as aliases for the three
-explicit forms.
+Use these explicit forms directly; the former target-specific alias skills are retired.
 
 ## Requirements
 

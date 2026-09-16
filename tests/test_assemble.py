@@ -165,6 +165,86 @@ class AssembleTest(unittest.TestCase):
         self.assertFalse((self.codex / "alpha").exists())
         self.assertFalse((self.codex / "alpha").is_symlink())
 
+    def test_retired_skills_migrate_to_yesterday_prompt_without_losing_overlays(self) -> None:
+        prompt = REPOSITORY / "prompts" / "yesterday.md"
+        self.assertTrue(prompt.is_file(), "missing yesterday prompt")
+        shutil.copyfile(prompt, self.shared / "prompts" / "yesterday.md")
+        for name in ("today", "rebase"):
+            target = self.shared / "skills" / name
+            target.mkdir()
+            shutil.copyfile(REPOSITORY / "skills" / name / "SKILL.md", target / "SKILL.md")
+        retired = ("rebase-main", "rebase-parent", "rebase-merged-parent", "yesterday")
+        stale = []
+        for destination in (self.canonical, self.claude, self.codex):
+            destination.mkdir(parents=True)
+            for name in retired:
+                link = destination / name
+                target = (self.canonical if destination == self.claude else self.shared / "skills") / name
+                link.symlink_to(target)
+                stale.append((link, str(target)))
+        private = self.skill(self.private / "skills", "alpha", "private override")
+        personal = self.canonical / "personal"
+        personal.mkdir()
+        sentinel = personal / "SKILL.md"
+        sentinel.write_text("user-owned", encoding="utf-8")
+        external = self.root / "external-skill"
+        external.mkdir()
+        (external / "SKILL.md").write_text("third-party", encoding="utf-8")
+        bookmark_skill = self.canonical / "bookmark"
+        bookmark_skill.symlink_to(external, target_is_directory=True)
+        bookmark_alias = self.claude / "bookmark"
+        bookmark_alias.symlink_to(bookmark_skill, target_is_directory=True)
+        self.pi_prompts.mkdir(parents=True)
+        bookmark = self.pi_prompts / "personal.md"
+        bookmark.symlink_to(sentinel)
+        before = sorted(self.home.rglob("*"))
+
+        dry_run = self.run_assembler("apply", "--dry-run")
+
+        self.assertEqual(before, sorted(self.home.rglob("*")))
+        for link, target in stale:
+            self.assert_link(link, Path(target))
+            self.assertIn(f"DRY: rm '{link}'", dry_run.stderr)
+        self.assertIn(str(self.pi_prompts / "yesterday.md"), dry_run.stdout)
+        self.assertIn(str(self.claude_commands / "yesterday.md"), dry_run.stdout)
+
+        self.run_assembler("apply")
+        self.run_assembler("doctor")
+
+        for link, _ in stale:
+            self.assertFalse(link.exists() or link.is_symlink(), f"retired alias remains: {link}")
+        self.assert_link(self.prompts / "yesterday.md", self.shared / "prompts" / "yesterday.md")
+        self.assert_link(self.pi_prompts / "yesterday.md", self.prompts / "yesterday.md")
+        self.assert_link(self.claude_commands / "yesterday.md", self.prompts / "yesterday.md")
+        self.assertEqual(prompt.read_bytes(), (self.pi_prompts / "yesterday.md").read_bytes())
+        self.assert_link(self.canonical / "alpha", private)
+        self.assert_link(self.claude / "alpha", self.canonical / "alpha")
+        self.assertEqual("user-owned", sentinel.read_text(encoding="utf-8"))
+        self.assert_link(bookmark_skill, external)
+        self.assert_link(bookmark_alias, bookmark_skill)
+        self.assert_link(bookmark, sentinel)
+        for name in ("today", "rebase"):
+            self.assert_link(self.canonical / name, self.shared / "skills" / name)
+        self.assertFalse((self.codex.parent / "prompts").exists())
+
+    def test_yesterday_command_collision_preserves_existing_installation(self) -> None:
+        self.run_assembler("apply")
+        prompt = REPOSITORY / "prompts" / "yesterday.md"
+        self.assertTrue(prompt.is_file(), "missing yesterday prompt")
+        shutil.copyfile(prompt, self.shared / "prompts" / "yesterday.md")
+        existing = self.claude_commands / "yesterday.md"
+        existing.write_text("user-owned command", encoding="utf-8")
+
+        result = self.run_assembler("apply", check=False)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Collision", result.stderr)
+        self.assertIn(str(existing), result.stderr)
+        self.assertEqual("user-owned command", existing.read_text(encoding="utf-8"))
+        self.assert_link(self.canonical / "alpha", self.shared / "skills" / "alpha")
+        self.assertFalse((self.prompts / "yesterday.md").is_symlink())
+        self.assertFalse((self.pi_prompts / "yesterday.md").is_symlink())
+
     def test_layer_overrides_are_shared_by_canonical_and_claude_paths(self) -> None:
         private = self.skill(self.private / "skills", "alpha", "private")
         machine = self.skill(
@@ -271,14 +351,46 @@ class AssembleTest(unittest.TestCase):
         self.codex.mkdir(parents=True, exist_ok=True)
         codex_alias = self.codex / "personal-alpha"
         codex_alias.symlink_to(self.canonical / "alpha")
+        directory_alias = self.claude / "personal"
+        directory_alias.symlink_to(personal)
+        bookmark_alias = self.claude / "bookmark"
+        bookmark_alias.symlink_to(bookmark)
         self.run_assembler("clean")
 
+        self.assert_link(directory_alias, personal)
+        self.assert_link(bookmark_alias, bookmark)
         self.assertTrue(bookmark.is_symlink())
         self.assertEqual(str(personal), os.readlink(bookmark))
         self.assertTrue(codex_alias.is_symlink())
         self.assertEqual(str(self.canonical / "alpha"), os.readlink(codex_alias))
         self.assertTrue(prompt_link.is_symlink())
         self.assertEqual(str(private_prompt), os.readlink(prompt_link))
+
+    def test_missing_canonical_target_does_not_prove_claude_alias_ownership(self) -> None:
+        self.run_assembler("apply")
+        canonical = self.canonical / "alpha"
+        canonical.unlink()
+        wanted_alias = self.claude / "alpha"
+        unknown_alias = self.claude / "unknown"
+        unknown_alias.symlink_to(self.canonical / "unknown")
+
+        result = self.run_assembler("apply", check=False)
+
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("Collision", result.stderr)
+        self.assertIn(str(wanted_alias), result.stderr)
+        self.assertFalse(canonical.exists() or canonical.is_symlink())
+        for name in ("alpha", "unknown"):
+            self.assert_link(self.claude / name, self.canonical / name)
+        doctor = self.run_assembler("doctor", check=False)
+        self.assertNotEqual(0, doctor.returncode)
+        self.assertIn(f"Missing managed link: {wanted_alias}", doctor.stdout)
+
+        self.run_assembler("clean")
+
+        for name in ("alpha", "unknown"):
+            self.assert_link(self.claude / name, self.canonical / name)
+        self.assertFalse((self.prompts / "about.md").is_symlink())
 
     def test_all_links_stage_before_existing_installation_is_replaced(self) -> None:
         self.run_assembler("apply")

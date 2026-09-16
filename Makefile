@@ -109,7 +109,7 @@ TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-
   test-architect test-pedantic-review test-verify-task test-plan-to-backlog test-beads test-beads-migrate test-next test-handoffs \
   test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
-  test-today test-yesterday test-wrap-up test-watch-protocols test-watch-telemetry
+  test-today test-wrap-up test-watch-protocols test-watch-telemetry
 
 test: $(TEST_TARGETS)
 
@@ -263,9 +263,10 @@ test-release-status:
 
 test-today:
 	@bash skills/today/tests/test-skill-contract.sh
+	@bash skills/today/tests/test-yesterday-prompt.sh
 
 test-yesterday:
-	@bash skills/yesterday/tests/test-skill-contract.sh
+	@bash skills/today/tests/test-yesterday-prompt.sh
 
 test-wrap-up:
 	@bash skills/wrap-up/tests/test-activity.sh

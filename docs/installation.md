@@ -146,6 +146,12 @@ The assembler is designed to preserve user-owned content:
 - Destination roots must be real directories; the assembler refuses to traverse or
   replace a user-managed root symlink.
 
+A Claude alias into the canonical skills root is managed only when its target is itself a
+repository-managed symlink. Third-party and user-owned targets are preserved. If that canonical
+link is missing, ownership is unproven: `clean` leaves the alias alone, and `apply` refuses a
+collision with a desired skill. `doctor` reports missing desired managed links, not ownership of
+unrecognised aliases; inspect and resolve those manually before retrying.
+
 After `make apply`, a typical installation looks like:
 
 ```text

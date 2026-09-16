@@ -5,14 +5,14 @@ allowed-tools: "Read,Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*),mcp__j
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 
 # Today — Activity recap
 
-The single collection-and-rendering procedure for `/today` and its `/yesterday` alias. The
-existing `/wrap-up` activity helper owns collection; this skill owns report layout and mode rules.
+The single collection-and-rendering procedure for `/today` and the `/yesterday` prompt. The existing
+`/wrap-up` activity helper owns collection; this skill owns report layout and mode rules.
 Use it for a catch-up or stand-up recap without ending the session or creating a handoff.
 
 ## Usage and mode
@@ -20,12 +20,14 @@ Use it for a catch-up or stand-up recap without ending the session or creating a
 ```text
 /today                         # Same-day catch-up with current-session context
 /today --previous-workday       # Objective previous-workday recap
-/yesterday                     # Retained alias for the previous-workday mode
+/yesterday                     # Pi/Claude prompt for previous-workday mode
 ```
 
 Accept no arguments (same-day mode) or exactly `--previous-workday`.
 Reject unknown arguments and repeated flags before collecting.
-The alias fixes the mode; do not infer it from conversation text.
+The `/yesterday` prompt prepends `--previous-workday` and forwards any supplied arguments unchanged
+for this validation; never infer the mode from conversation text. Codex uses
+`/today --previous-workday` because this repository does not install prompt templates there.
 
 ## Read-only boundary
 

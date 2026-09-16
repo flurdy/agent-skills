@@ -67,17 +67,15 @@ assert_contains "$REBASE" 'PR base: unchanged'
 assert_contains "$REBASE" 'gh-pr-edit-base.sh {target-branch}'
 assert_order "$REBASE" 'Working tree gate' 'Resolve the child-only range' '### 5. Rebase' 'Verify with tests' 'Force-push gate' 'PR retarget gate' '### 10. Report'
 
-# Retained entry points delegate and never rebase on their own.
-for alias in rebase-main:main rebase-parent:parent rebase-merged-parent:merged; do
-    name=${alias%%:*}
-    mode=${alias##*:}
-    file="$ROOT/skills/$name/SKILL.md"
-    assert_contains "$file" "Alias for \`/rebase $mode"
-    assert_contains "$file" "the arguments \`$mode {args}\`"
-    assert_contains "$file" 'agents/skills/rebase/SKILL.md'
-    assert_not_contains "$file" 'git rebase'
-    assert_not_contains "$file" 'git push'
-    assert_not_contains "$file" 'Bash('
+# Retired aliases have no source, catalog entry, prompt replacement, or usage promise.
+for name in rebase-main rebase-parent rebase-merged-parent; do
+    [[ ! -e "$ROOT/skills/$name" && ! -L "$ROOT/skills/$name" ]] || fail "retired skill remains: $name"
+    [[ ! -e "$ROOT/prompts/$name.md" && ! -L "$ROOT/prompts/$name.md" ]] || fail "unexpected replacement prompt: $name"
+    assert_not_contains "$ROOT/skills/README.md" "| $name |"
+    assert_not_contains "$REBASE" "/$name"
+done
+for usage in '/rebase main' '/rebase parent {parent-branch}' '/rebase merged {old-parent} [--old-tip {sha}]'; do
+    assert_contains "$REBASE" "$usage"
 done
 
 # Callers point at the consolidated entry point.

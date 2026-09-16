@@ -126,8 +126,11 @@ is_repo_managed_symlink() {
 
 is_claude_compat_symlink() {
   local link="$1"
+  local target
   [[ -L "$link" ]] || return 1
-  path_is_lexically_within "$(symlink_target_path "$link")" "$SKILLS_DIR"
+  target="$(symlink_target_path "$link")"
+  path_is_lexically_within "$target" "$SKILLS_DIR" || return 1
+  is_repo_managed_symlink "$target"
 }
 
 is_prompt_managed_symlink() {
@@ -581,12 +584,13 @@ install_desired_units() {
     [[ -n "$claude_commands_stage" ]] && commit_staged_units "$CLAUDE_COMMANDS_DIR" prompt-alias "$claude_commands_stage"
   fi
 
-  removed="$(remove_stale_managed_links "$SKILLS_DIR" repo DESIRED_SKILLS "$dry_run")"
-  log "Removed $removed stale managed skill link(s) from $SKILLS_DIR"
+  # Check compatibility aliases while their canonical targets still prove repository ownership.
   if ! same_path "$CLAUDE_SKILLS_DIR" "$SKILLS_DIR"; then
     removed="$(remove_stale_managed_links "$CLAUDE_SKILLS_DIR" claude DESIRED_SKILLS "$dry_run")"
     log "Removed $removed stale managed Claude alias(es) from $CLAUDE_SKILLS_DIR"
   fi
+  removed="$(remove_stale_managed_links "$SKILLS_DIR" repo DESIRED_SKILLS "$dry_run")"
+  log "Removed $removed stale managed skill link(s) from $SKILLS_DIR"
   if [[ "$SKIP_AGENTS" -eq 0 ]]; then
     removed="$(remove_stale_managed_links "$AGENTS_DIR" repo DESIRED_AGENTS "$dry_run")"
     log "Removed $removed stale managed agent link(s) from $AGENTS_DIR"
