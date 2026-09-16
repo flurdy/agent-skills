@@ -6,13 +6,23 @@ templates in one source so workflows can be authored once and used across client
 
 ## Related repositories
 
-These independently usable repositories are installed and versioned separately, but complement
-the workflows here:
+These companion repositories are installed and versioned independently; `make apply` does not
+install them:
 
-- [AI Tools](https://github.com/flurdy/ai-tools) — runtime tools and configuration glue for
-  Pi, Claude Code, and Codex.
-- [Pi Skill Model Router](https://github.com/flurdy/pi-skill-model-router) — an optional Pi
-  extension that maps this repository's portable routing metadata to locally configured models.
+- [AI Tools](https://github.com/flurdy/ai-tools) — launchers, statusline, and cross-client runtime
+  glue for Pi, Claude Code, and Codex.
+- [Pi Skill Model Router](https://github.com/flurdy/pi-skill-model-router) — maps this repository's
+  portable routing metadata to exact models while keeping model, fallback, and spend policy local.
+- [Pi Watch Loop](https://github.com/flurdy/pi-watch-loop) — owns generic bounded scheduling and
+  protocol mechanics; watcher cadence and workflow policy remain in this repository's skills.
+- [Pi Session Mode](https://github.com/flurdy/pi-session-mode) — provides guarded plan/implement
+  modes and scoped writer leases as an accidental-change guard, not a sandbox.
+
+Optional upstream runtime:
+
+- [pi-subagents](https://github.com/nicobailon/pi-subagents) — an independently maintained Pi
+  delegation runtime used by `delegate-work` for lifecycle and mechanics when installed; it is not
+  bundled with or owned by this project.
 
 ## What you get
 
