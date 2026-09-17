@@ -47,6 +47,7 @@
 | reply-comments | Publish prepared PR-feedback outcomes through separate confirmed push, reply, and inline-thread resolution gates with race and duplicate protection |
 | review-comments | Select and independently validate PR feedback, make focused verified local fixes, reopen its bead after a committed fix, and commit locally without publishing remote actions |
 | review-pr | Review a pull request against the linked Jira ticket requirements |
+| sanity-check | Explicit read-only mid-session direction checkpoint with bounded evidence, labelled self-assessment and optional one-shot peer review; never acts on its recommendation |
 | second-opinion | Independent advisory claims from one peer or a configured panel; PR evidence uses pinned snapshots and explicit stale-safety checks |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
 | stack-branch | Create a new branch stacked on another PR |

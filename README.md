@@ -35,6 +35,12 @@ Optional upstream runtime:
 
 Browse the [skills catalog](skills/README.md) for the complete list.
 
+For a mid-session direction checkpoint, invoke `/skill:sanity-check` in Pi or
+`/sanity-check` in Claude Code. It labels its self-assessment, reports one next step,
+and stops without acting. Optional `peer` mode requests one bounded opinion under
+[the sanity-check contract](skills/sanity-check/SKILL.md); it is not verification or
+completion approval. This skill is explicit-only, not automatically model-invoked.
+
 ## Quick start
 
 ```bash
