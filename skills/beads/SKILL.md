@@ -151,6 +151,13 @@ Discovery does not authorize mutation. Do not claim, update, or close a bead mer
 was found; mutate only when user intent and repository lifecycle rules justify the change, and
 close only when the tracked outcome is actually complete.
 
+Do not infer assignment, a claim or session activity from the issue `owner`. Owner identifies the
+accountable human and may be set while `assignee` is empty; the same owner can have work handled by
+several machines or sessions. Check `assignee`, status, `started_at` and claim-attribution evidence
+separately. Even a recorded claim attributes a transition and does not prove that its session is live.
+When an operation requires an unassigned issue, verify `assignee` is empty rather than treating an
+owner value as an assignment.
+
 Every agent-driven transition to `in_progress` records one claim-attribution comment containing
 the available harness session ID, a UTC timestamp, and the proven owning store. The comment must
 say that session activity is unverified: it attributes the claim but is not liveness evidence.
