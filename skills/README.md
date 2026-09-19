@@ -51,6 +51,7 @@
 | sanity-check | Explicit read-only mid-session direction checkpoint with bounded evidence, labelled self-assessment and optional one-shot peer review; never acts on its recommendation |
 | second-opinion | Independent advisory claims from one peer or a configured panel; PR evidence uses pinned snapshots and explicit stale-safety checks |
 | setup-multirepo-git | Multi-repo git workflow rules and setup with mgit wrapper |
+| skills-review | Explicit read-only collection review with bounded content sampling, conservative evidence-backed recommendations and selected-pattern handoff to triage |
 | stack-branch | Create a new branch stacked on another PR |
 | start-ticket | Initialize work on a Jira ticket with a conventionally-named branch |
 | thoughtbox | Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to `/triage`, and render separately confirmed scoped resolution commands without executing either workflow |

@@ -41,6 +41,11 @@ and stops without acting. Optional `peer` mode requests one bounded opinion unde
 [the sanity-check contract](skills/sanity-check/SKILL.md); it is not verification or
 completion approval. This skill is explicit-only, not automatically model-invoked.
 
+For occasional collection maintenance, explicitly invoke `/skill:skills-review` in Pi
+or `/skills-review` in Claude Code (Codex: request the skill by name). It screens a
+declared source catalog and reviews a bounded content sample; it does not rewrite,
+retire or install skills. See [the review contract](skills/skills-review/SKILL.md).
+
 ## Quick start
 
 ```bash
