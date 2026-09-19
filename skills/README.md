@@ -4,7 +4,7 @@
 |-------|-------------|
 | architect | Read-only architecture and implementation planning with evidence-backed research, acceptance slices, and explicit tracking handoffs; never writes code or tracker records |
 | artifact-hygiene | Run a local-only, read-only advisory audit of publishable files and unpublished branch history with isolated Gitleaks and redaction-safe findings |
-| backlog-groom | Per-bead quality audit over the open backlog — flags vague descriptions, missing acceptance criteria, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Read-only sweep; mutations apply only on approval, destructive ones confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello) |
+| backlog-groom | Per-bead quality audit over the open backlog — flags unclear or incomplete descriptions, label drift, stale YAGNIs, mis-prioritised nice-to-haves, obvious splits/epics, and duplicates. Read-only sweep; mutations apply only on approval, destructive ones confirmed one at a time. Delegates splitting to /triage and cross-system linking to /tracking-sweep (Jira) or /trello-beads (Trello) |
 | beads | Shared Beads workflow baseline for resolving the owning store, separating ephemeral checklists from durable tracking, routing focused operations, and confirming remote Dolt actions |
 | beads-check-dolt-migration | Detect whether beads needs classic-to-Dolt migration or an in-place Dolt schema upgrade |
 | beads-migrate-to-dolt | Back up and verify classic conversion or Dolt schema upgrades; preserve remote history and keep repository aftercare separately opt-in |
