@@ -20,6 +20,7 @@
 | delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
 | develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
+| do-i-need-this | Explicit read-only necessity check for one idea or task; weighs doing nothing and smaller alternatives, labels insufficient evidence, and stops after advice |
 | eas-build-error | Show the status and errors from the latest EAS build |
 | handoffs | Browse/load current-repo and workspace-member handoffs, with optional confirmed archiving and checkout recovery; never executes saved work merely by loading |
 | handoffs-tidy | Review completion/staleness candidates and separate uncertain/aged groups; archive explicit selections, never delete or resume work |
