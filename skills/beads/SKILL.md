@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cle
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.5.0"
+version: "0.6.0"
 author: "flurdy"
 ---
 
@@ -208,20 +208,23 @@ Ask for explicit confirmation immediately before every raw `bd dolt push`. Obtai
 confirmation for raw remote synchronization that can publish data or replace local state, and
 explain the scope first. Approval from an earlier task or session does not carry forward.
 
-The bounded exception is user-enrolled routine sync through `sync_beads_store`, when that trusted
-Pi tool is available. Enrollment binds the canonical store, exact remote URL and Dolt branch
-through a TUI-only confirmation, including connection and executable identities.
-A direct tool call may then fetch, safely pull or
-non-force push that binding without another prompt, including in guarded plan mode and for an
-owner-resolved store outside cwd. The tool revalidates the binding and safety state, refuses changed
-or unknown destinations, pending work, schema drift, unsafe divergence and prospective conflicts,
-and does not acquire a source worktree lease or switch session mode. It never authorizes force,
-reset, migration, bootstrap, remote configuration, backup publication, Git push or production
-changes. If the tool or enrollment is unavailable, use the confirmed raw-command path instead;
-never imitate the tool with a shell wrapper.
+In a validated project-workspace providing `make beads-sync`, use that target for routine
+workspace synchronization instead of assembling an ad hoc command loop. First show the unique
+store set with `make beads-sync-check`; it previews intended actions without contacting remotes
+and does not prove remote freshness. Obtain fresh explicit confirmation for the complete
+`make beads-sync` invocation, then run it as one visible command. That bounded approval covers
+the target's sequential per-store pull and non-force push; it never authorizes force, reset,
+conflict resolution, migration, bootstrap, remote configuration, backup publication or Git push.
+Report per-store failures and the overall non-zero result, not workspace success. A failed pull
+may leave merge state requiring separately reviewed recovery; do not retry automatically.
+
+Outside that workspace workflow, keep raw remote commands separately confirmed and owner-qualified.
+Stricter repository policy still wins; approval of a wrapper never bypasses a requirement to approve
+each underlying action.
 
 Permission is not an instruction to sync.
 Never invoke synchronization during a read-only list, resolver probe or local triage operation.
 Run each remote or destructive Beads action as its own visible tool call.
-Never hide it in a command chain, script, completion step, or unrelated Git operation.
+The explicitly confirmed workspace target above is the only grouped workflow described here;
+never hide other remote actions in a command chain, script, completion step or unrelated Git operation.
 If local policy is stricter, follow it.

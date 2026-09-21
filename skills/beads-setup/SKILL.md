@@ -226,7 +226,7 @@ Report created versus verified steps, actual storage mode/branch/head, retained 
 partial failure. There is no automatic retry and no automatic rollback. A created remote or local
 store may remain after failure; report exact known identities and unavailable evidence without
 secrets, then ask for a separately scoped recovery decision. Never delete, force, reinitialize,
-change visibility, publish source Git, or enroll routine synchronization as a completion step.
+change visibility, publish source Git, or run routine synchronization as a completion step.
 
 [Integration cleanup](../beads/references/integration-cleanup.md) owns post-init integration and
 `.beads/interactions.jsonl` hygiene. [Migration](../beads-migrate-to-dolt/SKILL.md) owns existing
