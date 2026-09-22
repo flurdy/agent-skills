@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-upda
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 

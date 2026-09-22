@@ -170,7 +170,7 @@ cat > "$CONFIG" <<'JSON'
         {"model": "openrouter/qwen/test-a", "vendor": "Qwen", "role": "reasoning"},
         {"model": "openrouter/x-ai/test-b", "vendor": "xAI", "role": "critique"},
         {"model": "openrouter/deepseek/test-c", "vendor": "DeepSeek", "role": "verification"},
-        {"model": "openrouter/moonshotai/test-d", "vendor": "Moonshot", "role": "context"}
+        {"model": "openrouter/~moonshotai/test-d", "vendor": "Moonshot", "role": "context"}
       ],
       "limits": {
         "maxParallel": 4,
@@ -192,6 +192,7 @@ jq -e '
   .ready == false and
   .auth == "missing" and
   (.models | length == 4) and
+  (.models[3].model == "openrouter/~moonshotai/test-d" and .models[3].provider == "moonshotai") and
   (.profile_sha256 | test("^[a-f0-9]{64}$")) and
   .hard_limits.max_response_bytes == 1048576 and
   .hard_limits.max_timeout_seconds == 1800 and
@@ -222,6 +223,18 @@ jq -e '
   (.models | length == 0) and
   any(.problems[]; contains("unique model IDs"))
 ' <<< "$invalid_json" >/dev/null || fail "duplicate model IDs were accepted"
+assert_no_requests
+
+INVALID_ALIAS_CONFIG="$TMP_DIR/invalid-alias.json"
+jq '.profiles.test.models[3].model = "openrouter/~~moonshotai/test-d"' "$CONFIG" \
+  > "$INVALID_ALIAS_CONFIG"
+invalid_json="$("${CHECK_ENV[@]}" "$HELPER" check \
+  --config "$INVALID_ALIAS_CONFIG" --profile test)"
+jq -e '
+  .ready == false and
+  (.models | length == 0) and
+  any(.problems[]; contains("canonical form"))
+' <<< "$invalid_json" >/dev/null || fail "a malformed alias model ID was accepted"
 assert_no_requests
 
 REPEATED_PROVIDER_CONFIG="$TMP_DIR/repeated-provider.json"
@@ -405,7 +418,7 @@ jq -e '
 ' <<< "$result_json" >/dev/null || fail "null-response length termination was not preserved as incomplete"
 
 : > "$FAKE_CURL_LOG"
-result_json="$(FAKE_CURL_LONG_METADATA_MODEL=moonshotai/test-d "${RUN_ENV[@]}" "$HELPER" run --confirmed \
+result_json="$(FAKE_CURL_LONG_METADATA_MODEL=~moonshotai/test-d "${RUN_ENV[@]}" "$HELPER" run --confirmed \
   --config "$CONFIG" --profile test --profile-sha256 "$profile_sha256" \
   --prompt-file "$PROMPT")"
 jq -e '

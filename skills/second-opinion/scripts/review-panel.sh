@@ -138,7 +138,7 @@ load_raw_profile() {
     jq -e '
       (type == "object") and
       all(to_entries[];
-        (.key | test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
+        (.key | test("^openrouter/~?[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
         (.value | type == "object" and .metered == true and (.consent == "ask" or .consent == "allow"))
       )
     ' <<< "$MODEL_POLICIES" >/dev/null 2>&1 || \
@@ -180,7 +180,7 @@ normalize_profile() {
     if ! jq -e '
       (.models | length >= 1 and length <= 8) and
       all(.models[];
-        (.model | type == "string" and test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
+        (.model | type == "string" and test("^openrouter/~?[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
         (.vendor | type == "string" and length > 0) and
         (.role | type == "string" and length > 0)
       )
@@ -241,7 +241,7 @@ validate_limits_and_routes() {
           ))
         or
         (.kind == "openrouter" and
-          (.model | type == "string" and test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
+          (.model | type == "string" and test("^openrouter/~?[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
           (.vendor | type == "string" and length > 0) and
           (has("agent") | not) and
           ((has("effort") | not) or
@@ -261,7 +261,7 @@ validate_limits_and_routes() {
     .routes |= map(
       . + {
         enabled: (if has("enabled") then .enabled else true end),
-        provider: (if .kind == "local" then ({claude:"anthropic",codex:"openai",gemini:"google"}[.agent]) else (.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase) end),
+        provider: (if .kind == "local" then ({claude:"anthropic",codex:"openai",gemini:"google"}[.agent]) else (.model | sub("^openrouter/~?"; "") | split("/")[0] | ascii_downcase) end),
         effectiveModel: (.model // "native-default"),
         modelSource: (if has("model") then "panel" else "native-default" end),
         effectiveEffort: (.effort // "native-default"),

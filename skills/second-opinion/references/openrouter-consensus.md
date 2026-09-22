@@ -92,8 +92,10 @@ routes make no request and are excluded from consent.
 
 A panel may contain 1–8 unique model identities. Repeated provider namespaces count as separate
 routes toward quorum but only once toward the consensus provider threshold. `vendor` is display-only;
-the helper derives provider identity from canonical `openrouter/<provider>/<model-id>` values. Each policy must use the exact
-canonical OpenRouter model ID, declare `metered: true`, and set `consent` to `ask` or `allow`.
+the helper derives provider identity from exact `openrouter/<provider>/<model-id>` values. OpenRouter's
+single leading `~` provider alias is accepted and removed only for provider-diversity accounting; the
+model ID sent to OpenRouter and matched against policy remains unchanged. Each policy must use the
+exact OpenRouter model ID, declare `metered: true`, and set `consent` to `ask` or `allow`.
 `allow` does not apply to a provider, panel, renamed model, or unlisted model.
 
 Local limits may lower but never exceed the compiled ceilings:

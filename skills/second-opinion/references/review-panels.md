@@ -112,8 +112,11 @@ does not accept `enabled`.
 }
 ```
 
-Replace every `<configured-model-id>` locally with a current canonical OpenRouter identity. Exact IDs
-stay out of the shared skill. `model` is optional for local routes and means the CLI-native default
+Replace every `<configured-model-id>` locally with a current exact OpenRouter identity. Provider
+namespaces may use OpenRouter's single leading `~` alias form, such as
+`openrouter/~google/gemini-flash-latest`; provider-diversity accounting normalizes that namespace to
+`google`, while model identity and consent matching remain exact. Exact IDs stay out of the shared
+skill. `model` is optional for local routes and means the CLI-native default
 when omitted. `effort` is optional and route-specific:
 
 - Claude: `low`, `medium`, `high`, `xhigh`, `max`;
@@ -144,7 +147,7 @@ these same optional fields. `check`, results, and declines report `effectiveEffo
 Both settings are included in the panel, subset, and helper profile digests.
 
 The coordinator derives local providers (`anthropic`, `openai`, `google`) and the OpenRouter provider
-namespace. Route IDs and model identities must be unique. Repeated provider namespaces are allowed
+namespace, without a leading OpenRouter alias `~`. Route IDs and model identities must be unique. Repeated provider namespaces are allowed
 but cannot inflate either threshold. `peer` remains a direct-route convenience selected from the
 current session provider; panel configuration intentionally uses explicit `claude`, `codex`, or
 `gemini` local routes.

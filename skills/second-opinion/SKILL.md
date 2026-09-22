@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.a
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.7.0"
+version: "3.7.1"
 author: "flurdy"
 ---
 

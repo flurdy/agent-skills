@@ -144,7 +144,7 @@ validate_profile() {
     (.models | length <= 8) and
     (all(.models[];
       (.model | type == "string") and
-      (.model | test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
+      (.model | test("^openrouter/~?[A-Za-z0-9][A-Za-z0-9._-]*/.+$")) and
       (.vendor | type == "string") and (.vendor | length > 0) and
       (.role | type == "string") and (.role | length > 0) and
       ((has("effort") | not) or
@@ -235,7 +235,7 @@ check_configuration() {
       config: $config,
       profile: $profile,
       profile_sha256: $profile_sha256,
-      models: ($profile_data.models | map(. + {provider: (.model | sub("^openrouter/"; "") | split("/")[0])})),
+      models: ($profile_data.models | map(. + {provider: (.model | sub("^openrouter/~?"; "") | split("/")[0])})),
       profile_limits: $profile_data.limits,
       hard_limits: {
         max_models: $hard_max_models,
@@ -372,6 +372,7 @@ call_model() {
   local effort="${9:-}"
   local api_model="${canonical_model#openrouter/}"
   local provider="${api_model%%/*}"
+  provider="${provider#\~}"
   local request_file
   local response_file
   local result_file

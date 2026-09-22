@@ -33,6 +33,7 @@ anthropic     claude-sonnet-5       1M       128K     yes       yes
 openai-codex  gpt-5.6-terra         372K     128K     yes       yes
 google        gemini-3.5-flash      1M       64K      yes       yes
 openrouter    qwen/current-reasoner 262K     32K      yes       no
+openrouter    ~google/gemini-flash-latest 1M 64K      yes       yes
 MODELS
     ;;
   *)
@@ -97,6 +98,11 @@ cat > "$TMP_DIR/models-dev.json" <<'JSON'
         "name": "Current xAI Critic",
         "release_date": "2026-07-08",
         "reasoning": true
+      },
+      "~google/gemini-flash-latest": {
+        "name": "Gemini Flash Latest",
+        "release_date": "2026-04-27",
+        "reasoning": true
       }
     }
   }
@@ -133,7 +139,8 @@ case "$url" in
     cat > "$output" <<'JSON'
 {"data":[
   {"id":"qwen/current-reasoner","name":"Current Qwen","created":1,"context_length":262144,"pricing":{},"expiration_date":null},
-  {"id":"x-ai/current-critic","name":"Current xAI","created":2,"context_length":500000,"pricing":{},"expiration_date":null}
+  {"id":"x-ai/current-critic","name":"Current xAI","created":2,"context_length":500000,"pricing":{},"expiration_date":null},
+  {"id":"~google/gemini-flash-latest","name":"Gemini Flash Latest","created":3,"context_length":1048576,"pricing":{},"expiration_date":null}
 ]}
 JSON
     ;;
@@ -161,6 +168,7 @@ cat > "$ROUTER_CONFIG" <<'JSON'
     "economy": {
       "candidates": [
         {"model": "google/gemini-3.5-flash", "metered": true},
+        {"model": "openrouter/~google/gemini-flash-latest", "metered": true},
         {"model": "custom/example-model", "metered": true}
       ]
     }
@@ -187,17 +195,19 @@ cat > "$CONSENSUS_CONFIG" <<'JSON'
     },
     "hybrid": {
       "quorum": 3,
+      "consensusQuorum": 4,
       "routes": [
         {"id": "claude", "kind": "local", "agent": "claude", "model": "fable", "effort": "high", "role": "reasoning"},
         {"id": "codex", "kind": "local", "agent": "codex", "role": "critique"},
-        {"id": "qwen", "kind": "openrouter", "model": "openrouter/qwen/current-reasoner", "vendor": "Qwen", "role": "verification"},
-        {"id": "xai", "kind": "openrouter", "model": "openrouter/x-ai/current-critic", "vendor": "xAI", "role": "adversarial review"}
+        {"id": "qwen", "kind": "openrouter", "model": "openrouter/qwen/current-reasoner", "vendor": "Qwen", "role": "verification", "effort": "high"},
+        {"id": "xai", "kind": "openrouter", "model": "openrouter/x-ai/current-critic", "vendor": "xAI", "role": "adversarial review", "maxOutputTokens": 2000},
+        {"id": "gemini", "kind": "openrouter", "model": "openrouter/~google/gemini-flash-latest", "vendor": "Google", "role": "fast critique"}
       ],
       "limits": {
         "maxParallel": 4,
-        "maxPromptBytes": 1024,
-        "maxOutputTokensPerModel": 100,
-        "defaultTimeoutSeconds": 5
+        "maxPromptBytes": 65536,
+        "maxOutputTokensPerModel": 16000,
+        "defaultTimeoutSeconds": 1800
       }
     }
   }
@@ -228,7 +238,7 @@ jq -e '
   .piUpdateAvailable == true and
   .piNpmUpdateAvailable == true and
   .piHomebrewUpdateAvailable == true and
-  (.configuredModels | length == 8) and
+  (.configuredModels | length == 10) and
   any(.configuredModels[];
     .model == "openai-codex/gpt-5.6-terra" and
     .catalogProvider == "openai" and .piAvailable == true and .liveFound == true) and
@@ -244,11 +254,17 @@ jq -e '
   any(.configuredModels[];
     .usage == "hybrid" and .model == "openrouter/x-ai/current-critic" and
     .piAvailable == false and .liveFound == true and .openRouterFound == true) and
+  any(.configuredModels[];
+    .model == "openrouter/~google/gemini-flash-latest" and
+    .catalogModel == "~google/gemini-flash-latest" and
+    .piAvailable == true and .liveFound == true and .openRouterFound == true) and
   all(.configuredModels[]; .model != "fable" and .model != "native-default") and
   any(.findings[]; .kind == "pi-update" and .manager == "homebrew") and
   any(.findings[]; .kind == "pi-unavailable" and .model == "openrouter/x-ai/current-critic") and
   any(.findings[]; .kind == "live-missing" and .model == "openrouter/qwen/current-reasoner") and
-  (.recentOpenRouterByNamespace.qwen[0].model == "qwen/new-reasoner")
+  all(.findings[]; .kind != "openrouter-missing" or .model != "openrouter/~google/gemini-flash-latest") and
+  (.recentOpenRouterByNamespace.qwen[0].model == "qwen/new-reasoner") and
+  (.recentOpenRouterByNamespace | has("google") and (has("~google") | not))
 ' <<< "$result_json" >/dev/null || fail "hybrid audit output was incorrect"
 [[ "$(wc -l < "$CURL_LOG" | tr -d '[:space:]')" -eq 3 ]] || \
   fail "hybrid mode did not make exactly three public metadata requests"
@@ -289,7 +305,7 @@ result_json="$("${RUN_ENV[@]}" "$HELPER" --offline \
   --router-config "$INVALID_ROUTER" --consensus-config "$CONSENSUS_CONFIG")"
 jq -e '
   .sources.routerConfig.status == "invalid" and
-  (.configuredModels | length == 4) and
+  (.configuredModels | length == 5) and
   any(.findings[]; .kind == "config" and .source == "model-tier-router")
 ' <<< "$result_json" >/dev/null || fail "invalid config did not degrade independently"
 
@@ -302,7 +318,7 @@ assert_invalid_panel() {
   jq -e '
     .sources.routerConfig.status == "ok" and
     .sources.consensusConfig.status == "invalid" and
-    (.configuredModels | length == 4) and
+    (.configuredModels | length == 5) and
     any(.findings[]; .kind == "config" and .source == "second-opinion" and
       .message == "panel config is invalid")
   ' <<< "$result_json" >/dev/null || fail "$label did not degrade independently"
@@ -323,7 +339,7 @@ jq '.profiles.hybrid.routes[2].model = "openrouter//missing-provider"' \
 assert_invalid_panel "$INVALID_OPENROUTER_ID" "malformed OpenRouter identity"
 
 INVALID_QUORUM="$TMP_DIR/invalid-quorum.json"
-jq '.profiles.hybrid.quorum = 5' "$CONSENSUS_CONFIG" > "$INVALID_QUORUM"
-assert_invalid_panel "$INVALID_QUORUM" "quorum above provider count"
+jq '.profiles.hybrid.quorum = 6' "$CONSENSUS_CONFIG" > "$INVALID_QUORUM"
+assert_invalid_panel "$INVALID_QUORUM" "quorum above enabled route count"
 
 printf '%s\n' 'model-update-check tests passed'

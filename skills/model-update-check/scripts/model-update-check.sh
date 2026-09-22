@@ -122,26 +122,35 @@ elif ! jq -e \
   --argjson max_routes 8 \
   --argjson max_parallel 4 \
   --argjson max_prompt 65536 \
-  --argjson max_output 2000 \
-  --argjson max_timeout 600 '
+  --argjson max_output 16000 \
+  --argjson max_timeout 1800 '
   def canonical_openrouter:
-    type == "string" and test("^openrouter/[A-Za-z0-9][A-Za-z0-9._-]*/.+$");
+    type == "string" and test("^openrouter/~?[A-Za-z0-9][A-Za-z0-9._-]*/.+$");
   def valid_limits:
     type == "object" and
     (.maxParallel | type == "number" and floor == . and . >= 1 and . <= $max_parallel) and
     (.maxPromptBytes | type == "number" and floor == . and . >= 1 and . <= $max_prompt) and
     (.maxOutputTokensPerModel | type == "number" and floor == . and . >= 1 and . <= $max_output) and
     (.defaultTimeoutSeconds | type == "number" and floor == . and . >= 1 and . <= $max_timeout);
-  def valid_quorum($providers):
-    type == "number" and floor == . and . >= 1 and . <= $providers;
+  def valid_quorum($maximum):
+    type == "number" and floor == . and . >= 1 and . <= $maximum;
   def route_provider:
     if .kind == "local" then ({claude:"anthropic",codex:"openai",gemini:"google"}[.agent])
-    else (.model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase)
+    else (.model | sub("^openrouter/~?"; "") | split("/")[0] | ascii_downcase)
     end;
-  def valid_route:
+  def valid_optional_enabled:
+    (has("enabled") | not) or (.enabled | type == "boolean");
+  def valid_openrouter_options($output_ceiling):
+    ((has("effort") | not) or
+      (.effort | type == "string" and test("^(none|minimal|low|medium|high|xhigh|max)$"))) and
+    ((has("maxOutputTokens") | not) or
+      (.maxOutputTokens | type == "number" and floor == . and . >= 1 and . <= $output_ceiling));
+  def valid_route($output_ceiling):
     (.id | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._-]*$")) and
     (.role | type == "string" and length > 0) and
+    valid_optional_enabled and
     ((.kind == "local" and
+      (has("maxOutputTokens") | not) and
       (.agent == "claude" or .agent == "codex" or .agent == "gemini") and
       ((has("model") | not) or (.model | type == "string" and length > 0)) and
       ((has("effort") | not) or
@@ -150,24 +159,33 @@ elif ! jq -e \
      (.kind == "openrouter" and
       (.model | canonical_openrouter) and
       (.vendor | type == "string" and length > 0) and
-      (has("agent") | not) and (has("effort") | not)));
+      (has("agent") | not) and valid_openrouter_options($output_ceiling)));
   def valid_legacy:
+    (.limits.maxOutputTokensPerModel) as $output_ceiling |
     (.models | length >= 1 and length <= $max_routes) and
     all(.models[];
       (.model | canonical_openrouter) and
       (.vendor | type == "string" and length > 0) and
-      (.role | type == "string" and length > 0)) and
+      (.role | type == "string" and length > 0) and
+      valid_openrouter_options($output_ceiling)) and
     ([.models[].model] | unique | length) == (.models | length) and
-    (([.models[].model | sub("^openrouter/"; "") | split("/")[0] | ascii_downcase] | unique | length) as $providers |
-      ((.quorum // ([2, $providers] | min)) | valid_quorum($providers)));
+    (.models | length) as $route_count |
+    ([.models[].model | sub("^openrouter/~?"; "") | split("/")[0] | ascii_downcase] | unique | length) as $provider_count |
+    ((.quorum // ([2, $route_count] | min)) | valid_quorum($route_count)) and
+    ((.consensusQuorum // ([((.quorum // ([2, $route_count] | min))), $provider_count] | min)) | valid_quorum($provider_count));
   def valid_routes:
+    (.limits.maxOutputTokensPerModel) as $output_ceiling |
     (.routes | length >= 1 and length <= $max_routes) and
-    all(.routes[]; valid_route) and
+    all(.routes[]; valid_route($output_ceiling)) and
     ([.routes[].id] | unique | length) == (.routes | length) and
     ([.routes[] | if .kind == "local" then ("local/" + .agent + "/" + (.model // "native-default")) else .model end] | unique | length) == (.routes | length) and
-    (([.routes[] | route_provider] | unique | length) as $providers |
-      (.quorum | valid_quorum($providers)));
+    ([.routes[] | select(.enabled != false)]) as $enabled_routes |
+    ($enabled_routes | length) as $route_count |
+    ([$enabled_routes[] | route_provider] | unique | length) as $provider_count |
+    (.quorum | valid_quorum($route_count)) and
+    ((.consensusQuorum // ([.quorum, $provider_count] | min)) | valid_quorum($provider_count));
   def valid_profile:
+    valid_optional_enabled and
     ((((.models | type) == "array") and (has("routes") | not)) or
      (((.routes | type) == "array") and (has("models") | not))) and
     (.limits | valid_limits) and
@@ -181,10 +199,11 @@ else
   jq -c --arg config "$consensus_config" '
     [
       .profiles | to_entries[] as $profile |
+      select($profile.value.enabled != false) |
       (if $profile.value | has("models") then
         $profile.value.models[]
       else
-        $profile.value.routes[] | select(.kind == "openrouter")
+        $profile.value.routes[] | select(.kind == "openrouter" and .enabled != false)
       end) as $entry |
       {
         source: "second-opinion",
@@ -388,7 +407,7 @@ jq -n \
   )) as $audited |
   ($audited | map(.catalogProvider) | unique) as $providers |
   ($audited | map(select(.catalogProvider == "openrouter") |
-    .catalogModel | split("/")[0]) | unique) as $openrouter_namespaces |
+    .catalogModel | split("/")[0] | ltrimstr("~")) | unique) as $openrouter_namespaces |
   (($pi_version != "" and $latest_pi_version != "") and
     (($latest_pi_version | version_parts) > ($pi_version | version_parts))) as $npm_update_available |
   (if $brew_status == "ok" then $brew_update_available else $npm_update_available end) as $pi_update_available |
@@ -420,7 +439,9 @@ jq -n \
     )),
     recentOpenRouterByNamespace: (reduce $openrouter_namespaces[] as $namespace ({};
       .[$namespace] = recent(
-        ($live.openrouter.models // {} | with_entries(select(.key | startswith($namespace + "/"))));
+        ($live.openrouter.models // {} | with_entries(select(
+          .key | startswith($namespace + "/") or startswith("~" + $namespace + "/")
+        )));
         8
       )
     )),

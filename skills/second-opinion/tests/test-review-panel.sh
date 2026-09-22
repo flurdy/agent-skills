@@ -146,7 +146,7 @@ cat > "$CONFIG" <<'JSON'
 {
   "version": 1,
   "modelPolicies": {
-    "openrouter/moonshotai/allowed": {"metered": true, "consent": "allow"}
+    "openrouter/~moonshotai/allowed": {"metered": true, "consent": "allow"}
   },
   "profiles": {
     "legacy": {
@@ -158,7 +158,7 @@ cat > "$CONFIG" <<'JSON'
     },
     "allowed": {
       "models": [
-        {"model":"openrouter/moonshotai/allowed","vendor":"Moonshot AI","role":"authorized review"}
+        {"model":"openrouter/~moonshotai/allowed","vendor":"Moonshot AI","role":"authorized review"}
       ],
       "limits":{"maxParallel":1,"maxPromptBytes":4096,"maxOutputTokensPerModel":100,"defaultTimeoutSeconds":5}
     },
@@ -280,22 +280,41 @@ jq -e '
   .openrouter.consentRequired == false and
   .openrouter.runnable and
   (.routes[0] | .availability == "configured-allow" and .meteredClassification == true and
-    .consentPolicy == "allow" and .consentBasis == "configured")
+    .consentPolicy == "allow" and .consentBasis == "configured" and .provider == "moonshotai")
 ' <<< "$allowed_json" >/dev/null || fail "configured OpenRouter consent was not normalized"
+ALIAS_PROVIDER_CONFIG="$TMP_DIR/alias-provider.json"
+jq '.profiles.allowed |= (del(.models) | .routes = [
+      {id:"alias",kind:"openrouter",model:"openrouter/~moonshotai/allowed",vendor:"Moonshot AI",role:"alias"},
+      {id:"pinned",kind:"openrouter",model:"openrouter/moonshotai/pinned",vendor:"Moonshot AI",role:"pinned"}
+    ] | .quorum = 2 | .consensusQuorum = 2)' \
+  "$CONFIG" > "$ALIAS_PROVIDER_CONFIG"
+expect_failure 'consensusQuorum must be an integer between 1 and the enabled unique provider count (1)' \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$ALIAS_PROVIDER_CONFIG" --panel allowed --prompt-file "$PROMPT"
+
+for invalid_alias in 'openrouter/~/x' 'openrouter/~~moonshotai/x' 'openrouter/moon~shotai/x'; do
+  INVALID_ALIAS_CONFIG="$TMP_DIR/invalid-alias.json"
+  jq --arg model "$invalid_alias" '.profiles.allowed.models[0].model = $model' "$CONFIG" > "$INVALID_ALIAS_CONFIG"
+  expect_failure 'legacy models must contain 1-8 canonical OpenRouter entries' "${RUN_ENV[@]}" "$HELPER" check \
+    --config "$INVALID_ALIAS_CONFIG" --panel allowed --prompt-file "$PROMPT"
+done
+
 allowed_panel_sha="$(jq -r '.panelSha256' <<< "$allowed_json")"
 allowed_openrouter_sha="$(jq -r '.openrouterSha256' <<< "$allowed_json")"
 allowed_prompt_sha="$(jq -r '.promptSha256' <<< "$allowed_json")"
 : > "$CURL_LOG"
+: > "$REQUEST_LOG"
 "${RUN_ENV[@]}" "$HELPER" run-openrouter --configured-consent --config "$CONFIG" --panel allowed \
   --prompt-file "$PROMPT" --panel-sha256 "$allowed_panel_sha" \
   --openrouter-sha256 "$allowed_openrouter_sha" --prompt-sha256 "$allowed_prompt_sha" \
   > "$TMP_DIR/allowed-results.json"
 jq -e 'length == 1 and .[0].status == "ok" and .[0].consentPolicy == "allow" and .[0].consentBasis == "configured"' \
   "$TMP_DIR/allowed-results.json" >/dev/null || fail "configured consent result provenance was missing"
+jq -se 'length == 1 and .[0].model == "~moonshotai/allowed"' "$REQUEST_LOG" >/dev/null || \
+  fail "OpenRouter alias identity was not preserved on the request"
 [[ "$(wc -l < "$CURL_LOG" | tr -d '[:space:]')" -eq 1 ]] || fail "configured consent did not run its one authorized request"
 
 MUTATED_ALLOWED_POLICY_CONFIG="$TMP_DIR/mutated-allowed-policy.json"
-jq '.modelPolicies["openrouter/moonshotai/allowed"].consent = "ask"' "$CONFIG" > "$MUTATED_ALLOWED_POLICY_CONFIG"
+jq '.modelPolicies["openrouter/~moonshotai/allowed"].consent = "ask"' "$CONFIG" > "$MUTATED_ALLOWED_POLICY_CONFIG"
 : > "$CURL_LOG"
 expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-openrouter --configured-consent \
   --config "$MUTATED_ALLOWED_POLICY_CONFIG" --panel allowed --prompt-file "$PROMPT" \
@@ -304,7 +323,7 @@ expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-openrou
 [[ ! -s "$CURL_LOG" ]] || fail "policy digest mismatch invoked curl"
 
 INVALID_POLICY_CONFIG="$TMP_DIR/invalid-policy.json"
-jq '.modelPolicies["openrouter/moonshotai/allowed"].metered = false' "$CONFIG" > "$INVALID_POLICY_CONFIG"
+jq '.modelPolicies["openrouter/~moonshotai/allowed"].metered = false' "$CONFIG" > "$INVALID_POLICY_CONFIG"
 expect_failure 'modelPolicies must map exact OpenRouter model IDs' "${RUN_ENV[@]}" "$HELPER" check \
   --config "$INVALID_POLICY_CONFIG" --panel allowed --prompt-file "$PROMPT"
 
