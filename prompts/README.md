@@ -10,6 +10,7 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 - [`/ask-quorum <question>`](ask-quorum.md) — ask the default multi-provider quorum for a repository-grounded second opinion
 - [`/ask-sol <question>`](ask-sol.md) — ask Codex Sol for a repository-grounded second opinion
 - [`/discuss <question>`](discuss.md) — inspect and research without changing files or external state
+- [`/plain <topic-or-text>`](plain.md) — explain a topic clearly for a smart non-specialist
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
 - [`/trim-comments [file-or-PR]`](trim-comments.md) — remove redundant inline comments and docblocks
 - [`/watch-landscape [minutes]`](watch-landscape.md) — refresh `/landscape quick` on a fixed cadence until end of day
