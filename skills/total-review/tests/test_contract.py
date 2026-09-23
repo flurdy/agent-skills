@@ -101,6 +101,19 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(dimension, REFERENCE)
         self.assertIn("self-review, not independent review", REFERENCE)
 
+    def test_security_fallback_requires_boundary_evidence_and_safe_validation(self):
+        security = REFERENCE.split("### Security fallback", 1)[1]
+        self.assertIn("lower-trust actor", security)
+        self.assertIn("affected principal or resource", security)
+        self.assertIn("rejected", security)
+        self.assertIn("needs validation", security)
+        self.assertIn("approval", security)
+        self.assertIn("MCP", security)
+        self.assertIn("Do not probe live", security)
+        self.assertIn("OS-enforced sandbox", security)
+        self.assertIn("cloudflare/security-audit-skill", security)
+        self.assertIn("uncertain material exposure remains incomplete evidence", " ".join(security.split()))
+
     def test_final_revision_not_initial_head_drives_evidence(self):
         self.assertIn("fixed comparison base", SKILL)
         self.assertIn("Rebuild the scope after every accepted fix", SKILL)

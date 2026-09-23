@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Ba
 model-tier: premium
 model: fable
 effort: xhigh
-version: "1.1.1"
+version: "1.1.2"
 author: "flurdy"
 ---
 
