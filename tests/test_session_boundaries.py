@@ -28,6 +28,8 @@ class SessionBoundaries(unittest.TestCase):
     def test_wrap_up_writes_handoffs_not_tracker_or_settings(self):
         text = skill("wrap-up")
         self.assertIn("Bash(~/.agents/skills/wrap-up/scripts/save-handoff.py:*)", grants("wrap-up"))
+        self.assertIn("save_handoff", grants("wrap-up"))
+        self.assertIn("Do not fall back to Bash, native file tools", text)
         for forbidden in ("Write", "handoff-path.sh", "Bash(bd update", "Skill(", "archive.sh"):
             self.assertNotIn(forbidden, grants("wrap-up"))
         for obsolete in ("bd update {id}", "--status=ready", "invoke the `tidy-settings` skill", "Run /tidy-settings** →", "After any demotions"):

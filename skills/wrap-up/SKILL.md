@@ -1,11 +1,11 @@
 ---
 name: wrap-up
 description: Summarise session activity, artifact-hygiene coverage, and working-copy risks, then save a resume handoff. Reports tracker/settings drift without repairing it; new files auto-save, overwrites need confirmation. Run before leaving the client.
-allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/save-handoff.py:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*), Read, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/save-handoff.py:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*), Read, AskUserQuestion, save_handoff, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.15.0"
+version: "0.16.0"
 author: "flurdy"
 ---
 
@@ -460,11 +460,31 @@ If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)`
 
 ### 5. 💾 Save and verify the resume block (auto-save unless collision)
 
-Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `cl` and `pl` consume files under `~/.claude/handoffs/`. The deterministic helper owns path construction, no-clobber creation, writing, and read-back verification. The skill requests only this narrow save command, not a general file-write pre-approval. Frontmatter is not a portable permission sandbox; each client's actual permission policy still applies.
+Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `cl` and `pl` consume files under `~/.claude/handoffs/`. The deterministic helper owns path construction, no-clobber creation, writing, and read-back verification. Frontmatter is not a portable permission sandbox; each client's actual permission policy still applies.
 
-Stream only the exact unfenced resume summary already rendered in §4, never raw transcripts,
+Pass only the exact unfenced resume summary already rendered in §4, never raw transcripts,
 credentials, `.env` contents, or unrelated session text. Content sanitization remains the model's
-responsibility; this helper is not a secret scanner. When a shell heredoc is the only stdin mechanism, use a quoted delimiter absent from the block so backticks, `$()`, backslashes, and other content are not expanded:
+responsibility; the save operation is not a secret scanner.
+
+#### Pi: use the dedicated tool
+
+Call `save_handoff` with `date`, `time`, `slug`, and `content` (the complete unfenced block).
+This fixed-destination operation is available in every session-mode guard state, including plan,
+conflict and lost, without `/implement` or `/grant-file`. It does not grant repository, native-file,
+or shell-write authority. It runs the reviewed helper without a shell and verifies its receipt.
+New saves need no prompt; the tool uses only a short-lived target-file lease, never a directory
+or session-long grant. Distinct filenames can save concurrently; a contended target remains blocked.
+
+If the tool is absent, disabled or fails, report the handoff unsaved and keep the recovery block.
+Do not fall back to Bash, native file tools, a different directory, or `/grant-file` in Pi.
+Activation/reload of a compatible pi-session-mode package is a separate owner-approved operation.
+A helper-digest mismatch needs a reviewed adapter update, not a bypass.
+
+#### Other clients: use the helper under their own permission policy
+
+The following shell invocation is not a Pi fallback. When a shell heredoc is the stdin mechanism,
+use a quoted delimiter absent from the block so backticks, `$()`, backslashes, and other content
+are not expanded:
 
 ```bash
 ~/.agents/skills/wrap-up/scripts/save-handoff.py {YYYY-MM-DD} {HH:MM} {slug} <<'WRAP_UP_HANDOFF_EOF'
@@ -477,7 +497,7 @@ The helper requires Python 3.10+, accepts at most 64 KiB of UTF-8, and returns o
 
 #### Verified new save
 
-The normal no-collision call needs no user prompt. Treat it as saved only when that same invocation exits `0` and returns valid v1 JSON containing all of:
+The normal no-collision call needs no user prompt. Treat it as saved only when that same Pi tool invocation succeeds (or the other-client helper exits `0`) and returns valid v1 JSON containing all of:
 
 - `"status": "saved"`
 - the exact expected absolute `path`
@@ -491,25 +511,25 @@ Only after those postconditions pass may you print:
 Saved to `{path}` (verified `{sha256-prefix}`).
 ```
 
-Never print `Saved to`, a `cat` command, or an equivalent persistence claim based on path selection, an earlier file, a malformed response, or intended tool use. If you omit the helper call, report unsaved rather than infer success. This is an instruction to the model, not host-enforced output validation: the helper cannot prevent an uncalled or disobeyed workflow from inventing a success claim. Client-side output guards are outside this skill's scope.
+Never print `Saved to`, a `cat` command, or an equivalent persistence claim based on path selection, an earlier file, a malformed response, or intended tool use. If you omit the save call, report unsaved rather than infer success. This is an instruction to the model, not host-enforced output validation: the helper cannot prevent an uncalled or disobeyed workflow from inventing a success claim. Client-side output guards are outside this skill's scope.
 
 #### Collision — prompt before replacement
 
-A regular file already at the target returns exit `3`, `status: "collision"`, its `existingSha256`, and a first-free `suggestedSlug`; it never counts as saved, even if its contents look valid. Prompt:
+A regular file already at the target returns `status: "collision"`, its `existingSha256`, and a first-free `suggestedSlug` (the standalone helper exits `3`); it never counts as saved, even if its contents look valid. Prompt:
 
 > `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` already exists. Save this handoff how?
 
 Options:
 
-- **Save with different name** — use the suggested or user-selected replacement slug, update both the visible block's title and first-line header, then make a fresh normal helper call.
-- **Overwrite** — only after explicit approval, stream the same complete block with `--overwrite-sha256 {existingSha256}`. Success still requires the verified-save response above with `mode: "overwrite"`. The hash binds approval to the file inspected before the prompt; a changed, missing, symlinked, or non-regular target fails.
+- **Save with different name** — use the suggested or user-selected replacement slug, update both the visible block's title and first-line header, then make a fresh normal save call.
+- **Overwrite** — in Pi, call `save_handoff` with the same complete block and `overwriteSha256: existingSha256`; the tool requires a fresh native TUI confirmation bound to the existing and replacement hashes. Headless/RPC overwrite is refused; a hash or chat approval cannot substitute for the dialog. Other clients require explicit approval before the helper's `--overwrite-sha256 {existingSha256}` call. Success still requires the verified-save response above with `mode: "overwrite"`; a changed, missing, symlinked, or non-regular target fails.
 - **Don't save** — leave no new file; keep the complete resume block visible.
 
 The `-N` collision suffix remains a first-class convention: `list.sh` uses header time for normal same-day ordering, then the suffix to order an established collision family.
 
 #### Unsaved or failed
 
-Any non-collision error, invalid/missing response, unexpected path/mode, or failed postcondition means the save is **not verified**. Do not assume the file is absent: an I/O or concurrent-change failure may leave data needing recovery. Re-render the complete resume block, then report the attempted path plus only the helper's bounded reason/detail:
+Any non-collision error, `status: "cancelled"`, invalid/missing response, unexpected path/mode, or failed postcondition means the save is **not verified**. Do not assume the file is absent: an I/O or concurrent-change failure may leave data needing recovery. Re-render the complete resume block, then report the attempted path plus only the helper's bounded reason/detail:
 
 ```markdown
 ⚠️ Failed to save handoff to `{attempted-path}`: {reason} — {bounded-detail}
@@ -569,7 +589,11 @@ Each section is independent — fail soft, don't block the rest.
 
 ## Verification
 
-Run `make test-wrap-up test-session-boundaries` in the owning repository. To include both external
+Run `make test-wrap-up test-session-boundaries` in the owning repository. The Pi adapter's
+cross-repository checks live in pi-session-mode: set `HANDOFF_SAVE_HELPER` to this skill's absolute
+`scripts/save-handoff.py` path when running its `npm run check` and `npm run verify:git-install`.
+Its reviewed helper digest must match; these checks do not activate the installed extension.
+To include both external
 launcher discovery paths without starting either client, explicitly select the shared ai-tools
 collector:
 
