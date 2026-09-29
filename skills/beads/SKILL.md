@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cle
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.7.0"
+version: "0.8.0"
 author: "flurdy"
 ---
 
@@ -38,14 +38,14 @@ human-maintained policy outside its markers.
 
 For an explicitly requested fresh repository store with a private GitHub Dolt remote, use
 [beads-setup](../beads-setup/SKILL.md). Its preview grants no initialization or publication
-permission. It refuses existing/ancestor/workspace-owned stores and owns the checked bd 1.2.2
+permission. It refuses existing/ancestor/workspace-owned stores and owns the characterized bd
 fresh-init exception: bind process cwd but omit `-C` until the store exists. All later commands
 retain owning-store qualification. Never initialize merely to satisfy another workflow's discovery.
 
 ## Explicit integration cleanup
 
 For `/beads cleanup /absolute/repository` (or `cleanup --inspect` for preview only), or
-`/beads cleanup --global` for user-level Claude `bd prime` hooks, read
+`/beads cleanup --global` for user-level Claude `bd prime` hooks (removed by the helper, not bd), read
 [integration-cleanup.md](references/integration-cleanup.md). It owns standalone post-init
 inspection and separately confirmed native removal, including linked instruction files and
 shared hooks. It never runs merely because this baseline loaded and never mutates issue data.

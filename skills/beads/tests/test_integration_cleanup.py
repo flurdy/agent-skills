@@ -38,6 +38,9 @@ class InventoryTests(unittest.TestCase):
         })
         self.probe.start()
         self.addCleanup(self.probe.stop)
+        self.generated = patch.object(self.helper, "generated_codex", return_value={"files": {}, "block": None})
+        self.generated.start()
+        self.addCleanup(self.generated.stop)
 
     def put(self, path, value):
         target = self.repo / path
@@ -146,7 +149,7 @@ class InventoryTests(unittest.TestCase):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
         hashes = {path: self.helper.digest(content) for path, content in files.items()}
-        with patch.object(self.helper, "GENERATED_CODEX_HASHES", hashes):
+        with patch.object(self.helper, "generated_codex", return_value={"files": hashes, "block": None}):
             report = self.inspect()
             action = self.action(report, "codex-generated")
             self.assertEqual(action["status"], "ready")
@@ -208,6 +211,25 @@ class InventoryTests(unittest.TestCase):
         with patch.dict(os.environ, {"GIT_CONFIG_GLOBAL": str(global_config)}):
             self.assertEqual(self.action(self.inspect(), "hooks")["status"], "blocked")
 
+    def test_hook_markers_from_any_bd_version_are_recognized(self):
+        for version in ("1.2.2", "1.3.0", "2.0.0-rc1"):
+            text = "#!/bin/sh\n" + HOOK.replace("v1.2.2", "v" + version)
+            spans, error = self.helper.block_ranges(text, "hook")
+            self.assertIsNone(error)
+            self.assertEqual(len(spans), 1)
+
+    def test_native_action_selection_runs_self_test_and_blocks_on_failure(self):
+        self.put("CLAUDE.md", BLOCK)
+        argv = [str(HELPER), "--repo", str(self.repo), "--action", "claude"]
+        with patch.object(self.helper, "self_test", return_value=["CLAUDE.md authored text not preserved exactly"]) as tested, \
+                patch("sys.argv", argv), redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(self.helper.main(), 2)
+        tested.assert_called_once()
+        self.assertIn("self-test", out.getvalue())
+        with patch.object(self.helper, "self_test", return_value=[]), patch("sys.argv", argv), redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(self.helper.main(), 0)
+        self.assertTrue(self.action(json.loads(out.getvalue()), "claude")["selfTest"]["passed"])
+
     def test_stale_fingerprint_detects_content_and_topology_changes(self):
         self.put("CLAUDE.md", BLOCK)
         initial = self.inspect()["fingerprint"]
@@ -265,6 +287,7 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(self.action(self.inspect(), "claude")["status"], "blocked")
 
 
+
 class GlobalInventoryTests(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location("integration_cleanup", HELPER)
@@ -274,65 +297,82 @@ class GlobalInventoryTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=ROOT / ".artifacts", prefix="cleanup-global-test-")
         self.addCleanup(self.temp.cleanup)
         self.home = Path(self.temp.name) / "home"
-        self.neutral = Path(self.temp.name) / "neutral"
+        self.backup = Path(self.temp.name) / "backup"
         (self.home / ".claude").mkdir(parents=True)
-        self.neutral.mkdir()
-        for patcher in (patch.dict(os.environ, {"HOME": str(self.home), "CODEX_HOME": ""}),
-                        patch.object(self.helper, "bd_probe", return_value={
-                            "version": "1.3.0", "supported": True, "executable": "/trusted/bd", "sha256": "a" * 64})):
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.backup.mkdir(mode=0o700)
+        env = patch.dict(os.environ, {"HOME": str(self.home), "CODEX_HOME": ""})
+        env.start()
+        self.addCleanup(env.stop)
         self.settings = self.home / ".claude/settings.json"
+        self.authored = {"type": "command", "command": "run-user-check"}
 
-    def hooks(self, *commands):
-        self.settings.write_text(json.dumps({"hooks": {"SessionStart": [{"matcher": "", "hooks": [
-            {"type": "command", "command": command} for command in commands]}]}}))
+    def write(self, hooks, **extra):
+        self.settings.write_text(json.dumps({**extra, "hooks": hooks}, indent=2) + "\n")
 
     def action(self):
-        return self.helper.inspect_global(str(self.neutral))["actions"][0]
+        return self.helper.inspect_global()["actions"][0]
 
-    def test_exact_prime_hooks_are_ready_with_neutral_cwd_and_no_writes(self):
-        self.hooks("run-user-check", "bd prime")
+    def apply(self, *extra):
+        fingerprint = self.helper.inspect_global()["fingerprint"]
+        argv = [str(HELPER), "--global", "--expect", fingerprint, "--apply", "claude-global", "--backup-dir", str(self.backup), *extra]
+        with patch("sys.argv", argv), redirect_stdout(io.StringIO()) as out:
+            return self.helper.main(), out.getvalue()
+
+    def test_exact_prime_hooks_are_ready_without_bd_and_inspection_writes_nothing(self):
+        self.write({"SessionStart": [{"matcher": "", "hooks": [self.authored, {"type": "command", "command": "bd prime"}]}]})
         before = self.settings.read_bytes()
-        action = self.action()
+        with patch.object(self.helper, "bd_probe", side_effect=AssertionError("bd must not be probed")):
+            action = self.action()
         self.assertEqual(action["status"], "ready")
         self.assertEqual(action["effects"][0]["removedCommands"], 1)
-        self.assertIn("--chdir=" + str(self.neutral.resolve()), action["argv"])
-        self.assertEqual(action["argv"][-4:], ["setup", "claude", "--remove", "--global"])
         self.assertEqual(before, self.settings.read_bytes())
 
     def test_absent_or_authored_only_hooks_are_clean(self):
         self.assertEqual(self.action()["status"], "clean")
-        self.hooks("run-user-check")
+        self.write({"SessionStart": [{"matcher": "", "hooks": [self.authored]}]})
         self.assertEqual(self.action()["status"], "clean")
 
-    def test_nonempty_neutral_dir_unsupported_bd_or_linked_settings_block(self):
-        self.hooks("bd prime")
-        (self.neutral / "CLAUDE.md").write_text("authored\n")
-        self.assertEqual(self.action()["status"], "blocked")
-        (self.neutral / "CLAUDE.md").unlink()
-        with patch.object(self.helper, "bd_probe", return_value={"version": "future", "supported": False}):
-            self.assertEqual(self.action()["status"], "blocked")
+    def test_apply_removes_only_prime_hooks_preserving_order_mode_and_siblings(self):
+        self.write({"PreToolUse": [{"hooks": [{"type": "command", "command": "bd prime"}]}],
+                    "SessionStart": [{"matcher": "", "hooks": [self.authored, {"type": "command", "command": "bd prime"}]}],
+                    "PreCompact": [{"matcher": "", "hooks": [{"type": "command", "command": "bd prime --hook-json"}]}]},
+                   zeta={"kept": True}, alpha=["kept"])
+        self.settings.chmod(0o640)
+        original = self.settings.read_bytes()
+        code, output = self.apply()
+        self.assertEqual(code, 0, output)
+        result = json.loads(output)
+        self.assertEqual((result["removedCommands"], result["status"]), (2, "clean"))
+        data = json.loads(self.settings.read_text())
+        self.assertEqual(list(data), ["zeta", "alpha", "hooks"])
+        self.assertEqual(data["hooks"], {"PreToolUse": [{"hooks": [{"type": "command", "command": "bd prime"}]}],
+                                         "SessionStart": [{"matcher": "", "hooks": [self.authored]}]})
+        self.assertEqual(self.settings.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(Path(result["backup"]).read_bytes(), original)
+        self.assertEqual(Path(result["backup"]).stat().st_mode & 0o777, 0o600)
+
+    def test_apply_refuses_stale_unready_public_backup_or_linked_settings(self):
+        self.write({"SessionStart": [{"hooks": [{"type": "command", "command": "bd prime"}]}]})
+        argv = [str(HELPER), "--global", "--expect", "stale", "--apply", "claude-global", "--backup-dir", str(self.backup)]
+        with patch("sys.argv", argv), redirect_stdout(io.StringIO()):
+            self.assertEqual(self.helper.main(), 2)
+        with patch("sys.argv", [str(HELPER), "--global", "--apply", "claude-global"]), redirect_stdout(io.StringIO()):
+            self.assertEqual(self.helper.main(), 2)
+        self.backup.chmod(0o755)
+        self.assertEqual(self.apply()[0], 2)
+        self.backup.chmod(0o700)
         target = self.home / "dotfiles-settings.json"
         self.settings.rename(target)
         self.settings.symlink_to(target)
         self.assertEqual(self.action()["status"], "blocked")
+        self.assertEqual(self.apply()[0], 2)
+        self.assertIn("bd prime", target.read_text())
+        self.assertEqual(list(self.backup.iterdir()), [])
 
     def test_other_global_clients_are_residuals_only(self):
         codex = self.home / ".codex/hooks.json"
         codex.parent.mkdir()
         codex.write_text(json.dumps({"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bd codex-hook prime"}]}]}}))
-        report = self.helper.inspect_global(str(self.neutral))
+        report = self.helper.inspect_global()
         self.assertEqual([a["id"] for a in report["actions"]], ["claude-global"])
         self.assertEqual(len(report["residuals"]), 1)
-
-    def test_cli_requires_neutral_dir_and_rejects_unready_global_selection(self):
-        with patch("sys.argv", [str(HELPER), "--global"]), redirect_stdout(io.StringIO()) as out:
-            self.assertEqual(self.helper.main(), 2)
-        self.assertIn("--neutral-dir", out.getvalue())
-        argv = [str(HELPER), "--global", "--neutral-dir", str(self.neutral), "--action", "claude-global"]
-        with patch("sys.argv", argv), redirect_stdout(io.StringIO()):
-            self.assertEqual(self.helper.main(), 2)
-        with patch("sys.argv", argv[:-2] + ["--action", "hooks"]), redirect_stdout(io.StringIO()):
-            self.assertEqual(self.helper.main(), 2)
-
