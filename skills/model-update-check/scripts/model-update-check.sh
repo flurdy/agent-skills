@@ -169,21 +169,25 @@ elif ! jq -e \
       (.role | type == "string" and length > 0) and
       valid_openrouter_options($output_ceiling)) and
     ([.models[].model] | unique | length) == (.models | length) and
-    (.models | length) as $route_count |
-    ([.models[].model | sub("^openrouter/~?"; "") | split("/")[0] | ascii_downcase] | unique | length) as $provider_count |
-    ((.quorum // ([2, $route_count] | min)) | valid_quorum($route_count)) and
-    ((.consensusQuorum // ([((.quorum // ([2, $route_count] | min))), $provider_count] | min)) | valid_quorum($provider_count));
+    (
+      (.models | length) as $route_count |
+      ([.models[].model | sub("^openrouter/~?"; "") | split("/")[0] | ascii_downcase] | unique | length) as $provider_count |
+      ((.quorum // ([2, $route_count] | min)) | valid_quorum($route_count)) and
+      ((.consensusQuorum // ([((.quorum // ([2, $route_count] | min))), $provider_count] | min)) | valid_quorum($provider_count))
+    );
   def valid_routes:
     (.limits.maxOutputTokensPerModel) as $output_ceiling |
     (.routes | length >= 1 and length <= $max_routes) and
     all(.routes[]; valid_route($output_ceiling)) and
     ([.routes[].id] | unique | length) == (.routes | length) and
     ([.routes[] | if .kind == "local" then ("local/" + .agent + "/" + (.model // "native-default")) else .model end] | unique | length) == (.routes | length) and
-    ([.routes[] | select(.enabled != false)]) as $enabled_routes |
-    ($enabled_routes | length) as $route_count |
-    ([$enabled_routes[] | route_provider] | unique | length) as $provider_count |
-    (.quorum | valid_quorum($route_count)) and
-    ((.consensusQuorum // ([.quorum, $provider_count] | min)) | valid_quorum($provider_count));
+    (
+      ([.routes[] | select(.enabled != false)]) as $enabled_routes |
+      ($enabled_routes | length) as $route_count |
+      ([$enabled_routes[] | route_provider] | unique | length) as $provider_count |
+      (.quorum | valid_quorum($route_count)) and
+      ((.consensusQuorum // ([.quorum, $provider_count] | min)) | valid_quorum($provider_count))
+    );
   def valid_profile:
     valid_optional_enabled and
     ((((.models | type) == "array") and (has("routes") | not)) or
