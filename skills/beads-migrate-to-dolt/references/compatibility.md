@@ -52,6 +52,12 @@ behavior and destination identity before using them; a CLI upgrade never designa
   auto-generated integration commits and comment-ID format changes. None establishes current behavior.
 - **1.1:** remote schema coordination, bootstrap and native backup groups were documented; a fixed
   schema number is not a durable target. Use current inspection after the mandatory backup.
+- **1.2.2 → bd 1.3.0 (v53 → v66, observed 2026-09):** the new binary could not read the old schema,
+  even with `--readonly --ignore-schema-skew` (missing `leases` table), so the pre-migration baseline
+  came from raw `dolt sql` over a copy of the verified backup. The migration regenerated comment and
+  event IDs without changing their content, added `events` to `dolt_ignore`, and made server-mode
+  inspection require a running server. Until the migrated schema was pushed, every `bd dolt pull`
+  failed with `local changes would be stomped by merge: events`, even with no remote changes to merge.
 - **Classic SQLite/JSONL:** old exporters varied in fields and tombstone handling. If no matching
   exporter can preserve the actual data on a copy, stop for reviewed conversion rather than use a
   short field allowlist, guessed timestamp normalization or arbitrary int/string casts.

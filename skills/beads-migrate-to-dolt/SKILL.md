@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 model-tier: premium
 model: fable
 effort: high
-version: "2.0.1"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -214,8 +214,10 @@ Repeat protected schema inspection and the same structured baseline/export queri
 post-migration files. Require no pending schema migrations, expected storage identity/mode, and a
 clean intended Dolt working set; server-running status alone is not schema/data verification.
 
-Compare issue IDs, statuses, dependencies, comments and labels by identity, not only totals. Compare
-exportable field values including metadata, acceptance criteria, original timestamps and priority 0;
+Compare issue IDs, statuses, dependencies, comments and labels by identity, not only totals. Schema
+migrations may regenerate comment and event IDs; for those tables only, compare the full row multiset
+excluding only the regenerated ID column, and require equal row counts. Any other ID change is a
+mismatch. Compare exportable field values including metadata, acceptance criteria, original timestamps and priority 0;
 check memories/non-issue records separately. Spot-check representative issues with relationships and
 comments. Preserve records the interchange format cannot represent in the retained raw backup and
 report their limitation; unresolved required-field loss means incomplete migration, not success.
@@ -231,7 +233,11 @@ branch, `no-push` guard and local/remote commit identities without printing cred
 fresh destination check and explicit approval immediately before each push, pull, native backup sync,
 or bootstrap that can publish data or replace local state. Migration approval is not remote approval.
 
-A designated migrator publishes as a standalone approved action:
+A designated migrator publishes before any pull. A pull against a remote that still holds the old
+schema can refuse to merge even when the remote has no new commits; do not treat that refusal as
+permission to reset, merge by hand or migrate again. Instead, fetch into a working copy and prove the
+remote head is an ancestor of the migrated local head before the push. Publish as a standalone
+approved action:
 
 ```bash
 bd -C "$ROOT" dolt push

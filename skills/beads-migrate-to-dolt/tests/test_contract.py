@@ -99,6 +99,16 @@ class MigrationContractTests(unittest.TestCase):
         self.assertNotIn('grep -c', CORE)
         self.assertNotIn('--dedup=false', CORE)
 
+    def test_regenerated_record_ids_compare_by_content(self):
+        for phrase in ('regenerate comment and event IDs', 'excluding only the regenerated ID',
+                       'multiset'):
+            self.assertIn(phrase, CORE)
+        for phrase in ('bd 1.3.0', 'leases', 'dolt_ignore', 'stomped by merge'):
+            self.assertIn(phrase, COMPATIBILITY)
+
+    def test_migrator_publishes_before_pull(self):
+        self.assertIn('publishes before any pull', CORE)
+
     def test_remote_coordination_and_approval(self):
         for phrase in ('exactly one designated migrator', 'BD_ALLOW_REMOTE_MIGRATE=1',
                        'BD_NO_PUSH=false', 'bootstrap --dry-run --json',
