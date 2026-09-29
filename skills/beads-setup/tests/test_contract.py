@@ -25,7 +25,7 @@ class SetupContractTests(unittest.TestCase):
         self.assertIn("runtime command permission", self.text)
 
     def test_scope_and_capability_gates(self):
-        for phrase in ("Preview is read-only and the default", "bd 1.2.2", "Python 3.10+", "GitHub CLI",
+        for phrase in ("Preview is read-only and the default", "no version allowlist", "Python 3.10+", "GitHub CLI",
                        'beadsStore: "workspace"', "ancestor", "symlink", "dirty", "index", "shared Git",
                        "ambient", "no-push", "backup", "Never print credentials"):
             with self.subTest(phrase=phrase):

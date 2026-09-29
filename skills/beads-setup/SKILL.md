@@ -4,7 +4,7 @@ description: Preview and separately confirm a fresh repository Beads store with 
 allowed-tools: "Read,AskUserQuestion,Bash(python3 ~/.agents/skills/beads-setup/scripts/github_state.py:*)"
 model-tier: premium
 effort: high
-version: "0.1.0"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -28,9 +28,11 @@ policy. Prefix must already be a valid, normalized issue prefix for the checked 
 silent normalization. GitHub names are validated by the read-only helper; supply names, not URLs.
 
 Requires Git, GitHub CLI (`gh`) authenticated to github.com, Python 3.10+, GNU `env --chdir`,
-**bd 1.2.2**, and the matching **Dolt CLI 2.3.1** for database identity/readback checks.
-This first version supports fresh embedded stores only; configured server/shared modes stop for
-separate design. Record absolute executable paths and versions; upgrades need fresh characterization.
+bd, and a Dolt CLI for database identity/readback checks. There is no version allowlist: before
+execution, `BEADS_NATIVE_SETUP_TESTS=1 make test-beads-setup` (agent-skills repo) must pass against
+the installed bd and Dolt; a failure blocks execution. Characterized on bd 1.2.2 (Dolt 2.3.1) and
+bd 1.3.0 (Dolt 2.3.5). This first version supports fresh embedded stores only; configured
+server/shared modes stop for separate design. Record absolute executable paths and versions.
 Check `bd init --help`, `bd dolt push --help`, `bd help init-safety`, and `gh repo create --help`
 against the flags below. Help can initialize bd user caches: use retained verified evidence or
 separately authorized isolated probes, never invoke unverified store-opening commands as preview.
@@ -133,7 +135,7 @@ Repeat the entire local preflight. Preview the initialized file set and Git boot
 `.beads/` templates, metadata, database, interactions file and ignore rules; root .gitignore
 additions; local `beads.role` configuration. Inspect the checked version's actual footprint.
 
-bd 1.2.2 may auto-stage `.beads/`, existing instruction/Claude/Codex paths and .gitignore, then
+bd (checked: 1.2.2, 1.3.0) may auto-stage `.beads/`, existing instruction/Claude/Codex paths and .gitignore, then
 commit with `--no-verify`. The suppression flags do **not** disable that commit. The clean index,
 authored-file inventory and no-active-hooks preconditions are therefore mandatory. Stop if the
 repository policy disallows this native commit; do not substitute bypasses or rewrite its history.
@@ -144,7 +146,7 @@ After fresh init confirmation, use the literal reviewed values of ENV, ROOT, BD,
 "$ENV" --chdir="$ROOT" BD_DISABLE_METRICS=1 BD_DISABLE_EVENT_FLUSH=1 "$BD" --sandbox init --prefix "$PREFIX" --remote "$REMOTE" --non-interactive --skip-agents --skip-hooks
 ```
 
-**Fresh-init exception:** omit `-C` here only. Native bd 1.2.2 rejects `-C` before a store exists
+**Fresh-init exception:** omit `-C` here only. Native bd (checked: 1.2.2, 1.3.0) rejects `-C` before a store exists
 with `no beads project found`. The independently bound process cwd is mandatory. Subsequent store
 commands bind both cwd and `-C`; neither a source lease nor `-C` alone proves cwd correctness.
 
@@ -235,7 +237,7 @@ stores/history. The Beads baseline owns routine synchronization. Offer handoffs 
 ## Development evidence
 
 From agent-skills: `make test-beads-setup` runs contracts and mocked GET success/error/partial-state
-cases. `BEADS_NATIVE_SETUP_TESTS=1 make test-beads-setup` also characterizes bd 1.2.2 against isolated
+cases. `BEADS_NATIVE_SETUP_TESTS=1 make test-beads-setup` also characterizes the installed bd against isolated
 local fixtures (no live GitHub, real project initialization or remote publication). Fixture HOME and
 Git configuration are isolated; native init fixtures must be outside any ancestor Beads store.
 The native gate covers process cwd, the fresh `-C` refusal, explicit local Git-backed remote wiring,

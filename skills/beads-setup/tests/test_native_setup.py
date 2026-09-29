@@ -1,4 +1,4 @@
-"""Opt-in bd 1.2.2 characterization in disposable repositories; no network or publication."""
+"""Opt-in characterization of the installed bd in disposable repositories; no network or publication."""
 import json
 import os
 from pathlib import Path
@@ -13,7 +13,7 @@ BD = shutil.which("bd")
 @unittest.skipUnless(os.environ.get("BEADS_NATIVE_SETUP_TESTS") == "1", "opt in with BEADS_NATIVE_SETUP_TESTS=1")
 class NativeSetupTests(unittest.TestCase):
     def setUp(self):
-        self.assertTrue(BD, "native gate requires installed bd 1.2.2")
+        self.assertTrue(BD, "native gate requires an installed bd")
         # Native init fixtures must have no ancestor Beads store to discover.
         self.temp = tempfile.TemporaryDirectory(prefix="native-setup-")
         self.addCleanup(self.temp.cleanup)
@@ -37,7 +37,7 @@ class NativeSetupTests(unittest.TestCase):
             "BD_BACKUP_ENABLED": "false", "BD_EXPORT_AUTO": "false", "BD_EVENTS_EXPORT": "false",
             "BD_NO_PUSH": "true", "BD_DOLT_AUTO_PUSH": "false",
         }
-        self.assertRegex(self.call(BD, "--version").stdout, r"^bd version 1\.2\.2(?:\s|$)")
+        self.assertRegex(self.call(BD, "--version").stdout, r"^bd version \S+")
         self.seed(self.repo)
         self.remote = self.base / "private.git"
         self.seed(self.remote)
@@ -122,7 +122,7 @@ class NativeSetupTests(unittest.TestCase):
         self.assertEqual(data[0]["branch"], "main")
         self.assertRegex(data[0]["head"], r"^[0-9a-v]{32}$")
         self.assertEqual(data[0]["dirty"], 0)
-        self.assertEqual(data[0]["schema_version"], 53)
+        self.assertGreater(data[0]["schema_version"], 0)
         # Transport-only proof: an empty Git-backed remote fetch can exit 0 without data.
         database = self.repo / ".beads/embeddeddolt" / metadata["dolt_database"]
         self.call("/usr/bin/env", "--chdir=" + str(database), dolt, "fetch", "origin")
