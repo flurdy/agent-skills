@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.12.1"
+version: "1.13.0"
 author: "flurdy"
 ---
 
@@ -32,6 +32,7 @@ to start editing, invoke a coding skill, or continue to another task.
 ```bash
 /next                    # Show ready beads as a ranked table (same as `list`)
 /next list               # Explicitly render the full ranked table, then ask which to pick
+/next backlog            # Same, always including the P4 backlog table
 /next safe               # Same but exclude services with in-progress beads
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next task               # Auto-pick the next most suitable task and start it
@@ -78,6 +79,9 @@ to start editing, invoke a coding skill, or continue to another task.
 
 # Explicitly render the full table (when a bare /next got over-interpreted)
 /next list
+
+# Render the full table and always include the P4 backlog
+/next backlog
 
 # Show ready work, excluding services with in-progress beads
 /next safe
@@ -129,6 +133,12 @@ Tracker claims; session activity unverified.
 |---|---|---|---|---|---|---|
 | workspace | agents-mno | P3 | task | tooling | Revisit tooling | 2026-10-01T00:00:00Z |
 
+## Backlog (1 P4 beads; not auto-pickable, start by ID)
+
+| Repo | ID | Pri | Type | Labels | Title | Updated |
+|---|---|---|---|---|---|---|
+| frontend | web-klm | P4 | chore | - | Replace cookie helper | 2026-05-29 |
+
 Pick a number from ready work, a ready bead ID, or type task/bug/quick to auto-pick.
 ```
 
@@ -138,6 +148,9 @@ picker numbering; empty non-ready categories show their heading and `_None._`.
 Non-ready tables include all priorities. Blocker IDs (or count) and `defer_until` are shown
 when available; missing context is `—`. Blocked membership retains `bd blocked` semantics;
 deferred membership comes from an explicit `--status=deferred` read, not a date heuristic.
+The Backlog table lists unblocked P4 beads. It appears when fewer than 3 P0–P3 beads are
+ready and backlog exists, or always with `--backlog`. Its rows are unnumbered and never
+auto-picked, but a user may start one by its ID.
 
 ## Implementation
 
@@ -160,7 +173,8 @@ When invoked:
    ```
 
    `--list` outputs the ranked ready table plus complete owner-qualified, non-selectable
-   in-progress, blocked, and deferred tables. `--in-progress` alone retains the compact
+   in-progress, blocked, and deferred tables, plus the P4 Backlog table when ready work is
+   scarce or `--backlog` is passed. `--in-progress` alone retains the compact
    in-progress bullet summary for existing consumers; `--list` takes precedence if both
    are passed. Neither flag changes candidate ranking or selection.
    `--json` always returns only the ranked candidate array, ignoring display flags. It adds
@@ -184,6 +198,7 @@ When invoked:
    unavailable or incompatible `bd` reads produce source diagnostics, never partial tables.
 
 2. Parse command argument:
+   - `backlog`: Run `next-bd --list --backlog` and render it as in Listing Mode
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Show the script output with `--avoid-busy`, ask user to pick
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
@@ -347,10 +362,12 @@ changed by this `/next` extension.
 
 When listing:
 
-1. Run `~/.agents/skills/next/scripts/next-bd --list` for both bare `/next` and `/next list`.
-2. **Reproduce all four sections and any source diagnostics in your own markdown reply**:
-   every ranked ready row and every in-progress, blocked, and deferred row, using the Output
-   Format above. Preserve empty-category headings and `_None._`. Never omit non-ready tables
+1. Run `~/.agents/skills/next/scripts/next-bd --list` for both bare `/next` and `/next list`
+   (add `--backlog` for `/next backlog`).
+2. **Reproduce all four sections, the Backlog section when present, and any source diagnostics
+   in your own markdown reply**: every ranked ready row, every in-progress, blocked, and deferred
+   row, and every backlog row, using the Output Format above. Never list bead IDs in prose
+   instead of a table. Preserve empty-category headings and `_None._`. Never omit non-ready tables
    because ready work exists. Do not truncate to "top 3" or replace tables with a narrative.
 3. *After* the tables, you may add a short note (1–2 sentences) on the strongest candidate(s)
    and any in-progress overlap — but the tables come first and stay complete. Keep non-ready
@@ -364,8 +381,8 @@ Listing mode never marks anything `in_progress`. It only selects work once the u
 ## Handling Edge Cases
 
 - **No ready beads (P0-P3)**: Still render all non-ready sections and any source diagnostics;
-  don't auto-pick or treat an unavailable source as proof of no work. Mention P4 backlog only
-  if observed, not inferred from an empty ready table.
+  don't auto-pick or treat an unavailable source as proof of no work. `next-bd --list` adds
+  the Backlog table itself; reproduce it rather than summarising P4 IDs in prose.
 - **All open beads in progress**: Show the complete in-progress table. Explain that tracker
   claims may be active, parked, interrupted, or stale and do not prove session activity
 - **User picks in_progress bead**: Warn that it may be claimed, parked, interrupted, or stale and require explicit confirmation before starting; never infer session activity from Beads status, a branch, a worktree, a handoff, or a clean working copy
@@ -392,8 +409,8 @@ Rank ready beads in this order (first match wins):
 | 10   | Any other non-P4 issue          |
 
 **Important**: P4 items are backlog/future work and must NEVER be auto-picked. `next-bd`
-already filters to P0–P3; do not invent a `--priority-max` flag. A P4 listing requires a separately
-requested, owner-routed backlog view rather than relaxing the ready picker.
+already filters candidates to P0–P3; do not invent a `--priority-max` flag. P4 beads appear
+only in the separate, unnumbered Backlog table and start only by explicit ID.
 
 ## Quick Task Heuristics
 

@@ -24,7 +24,7 @@ class NextBdTest(WorkspaceFixture):
         result = self.run_next(self.base, "--help")
 
         self.assertIn("Usage: next-bd [OPTIONS]", result.stdout)
-        for option in ("--list", "--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
+        for option in ("--list", "--backlog", "--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
             self.assertIn(option, result.stdout)
         self.assertEqual(result.stderr, "")
         self.assertEqual(self.recorded_calls(), [])
@@ -186,6 +186,54 @@ class NextBdTest(WorkspaceFixture):
                     self.assertIn(f"## {heading} (0 beads; not selectable)", markdown)
                 self.assertEqual(markdown.count("_None._"), 3)
 
+    def test_full_listing_shows_backlog_when_ready_work_is_scarce(self) -> None:
+        backlog = issue("backlog-chore", 4, "chore", "2026-01-01T00:00:00Z")
+        backlog["updated_at"] = "2026-05-29T10:04:41Z"
+        data = {
+            "ready": [
+                issue("ready-task", 2, "task", "2026-01-02T00:00:00Z"),
+                backlog,
+                issue("blocked-p4", 4, "task", "2026-01-03T00:00:00Z"),
+            ],
+            "blocked": [issue("blocked-p4", 4, "task", "2026-01-03T00:00:00Z")],
+        }
+        workspace = self.create_workspace(repositories={"repo-a": data})
+        local = self.base / "local"
+        self.create_store(local, **data)
+
+        for directory, owner in ((workspace, "repo-a | "), (local, "")):
+            with self.subTest(workspace=bool(owner)):
+                markdown = self.run_next(directory, "--list").stdout
+                self.assertIn("## Backlog (1 P4 beads; not auto-pickable, start by ID)", markdown)
+                self.assertIn("| Updated |", markdown)
+                self.assertIn(
+                    f"| {owner}backlog-chore | P4 | chore | - | Title for backlog-chore | 2026-05-29 |",
+                    markdown,
+                )
+                self.assertNotIn("| blocked-p4 | P4 | task | - | Title for blocked-p4 | 2026-01-03 |", markdown)
+                self.assertEqual(markdown.count("| # |"), 1)
+                candidates = json.loads(self.run_next(directory, "--list", "--json").stdout)
+                self.assertEqual([row["id"] for row in candidates], ["ready-task"])
+
+    def test_backlog_is_hidden_when_ready_work_is_plentiful_unless_requested(self) -> None:
+        local = self.base / "local"
+        self.create_store(
+            local,
+            ready=[
+                *(issue(f"ready-{index}", 2, "task", "2026-01-01T00:00:00Z") for index in range(3)),
+                issue("backlog-task", 4, "task", "2026-01-01T00:00:00Z"),
+            ],
+        )
+        self.assertNotIn("## Backlog", self.run_next(local, "--list").stdout)
+        requested = self.run_next(local, "--list", "--backlog").stdout
+        self.assertIn("## Backlog (1 P4 beads; not auto-pickable, start by ID)", requested)
+        self.assertIn("| backlog-task | P4 |", requested)
+
+        empty = self.base / "empty"
+        self.create_store(empty)
+        self.assertNotIn("## Backlog", self.run_next(empty, "--list").stdout)
+        self.assertIn("## Backlog (0 P4 beads", self.run_next(empty, "--list", "--backlog").stdout)
+
     def test_every_category_failure_discards_source_including_local(self) -> None:
         categories = ("ready", "blocked", "in_progress", "deferred")
         for category in categories:
@@ -250,7 +298,8 @@ class NextBdTest(WorkspaceFixture):
         skill = (SKILL_DIR / "SKILL.md").read_text()
         listing = skill.split("## Listing Mode (default and `list`)", 1)[1].split("## Handling Edge Cases", 1)[0]
         for required in ("next-bd --list", "all four sections", "in-progress, blocked, and deferred",
-                         "_None._", "non-selectable", "never picker indexes"):
+                         "_None._", "non-selectable", "never picker indexes",
+                         "Backlog section", "--backlog", "Never list bead IDs in prose"):
             self.assertIn(required, listing)
 
     def test_non_ready_cells_cannot_split_markdown_rows(self) -> None:
