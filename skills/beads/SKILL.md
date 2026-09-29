@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cle
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.6.0"
+version: "0.7.0"
 author: "flurdy"
 ---
 
@@ -44,7 +44,8 @@ retain owning-store qualification. Never initialize merely to satisfy another wo
 
 ## Explicit integration cleanup
 
-For `/beads cleanup /absolute/repository` (or `cleanup --inspect` for preview only), read
+For `/beads cleanup /absolute/repository` (or `cleanup --inspect` for preview only), or
+`/beads cleanup --global` for user-level Claude `bd prime` hooks, read
 [integration-cleanup.md](references/integration-cleanup.md). It owns standalone post-init
 inspection and separately confirmed native removal, including linked instruction files and
 shared hooks. It never runs merely because this baseline loaded and never mutates issue data.

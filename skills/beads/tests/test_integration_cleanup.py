@@ -263,3 +263,76 @@ class InventoryTests(unittest.TestCase):
         self.put("CLAUDE.md", BLOCK)
         (self.repo / ".git/worktrees/peer").mkdir(parents=True)
         self.assertEqual(self.action(self.inspect(), "claude")["status"], "blocked")
+
+
+class GlobalInventoryTests(unittest.TestCase):
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("integration_cleanup", HELPER)
+        self.helper = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.helper)
+        (ROOT / ".artifacts").mkdir(exist_ok=True)
+        self.temp = tempfile.TemporaryDirectory(dir=ROOT / ".artifacts", prefix="cleanup-global-test-")
+        self.addCleanup(self.temp.cleanup)
+        self.home = Path(self.temp.name) / "home"
+        self.neutral = Path(self.temp.name) / "neutral"
+        (self.home / ".claude").mkdir(parents=True)
+        self.neutral.mkdir()
+        for patcher in (patch.dict(os.environ, {"HOME": str(self.home), "CODEX_HOME": ""}),
+                        patch.object(self.helper, "bd_probe", return_value={
+                            "version": "1.3.0", "supported": True, "executable": "/trusted/bd", "sha256": "a" * 64})):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.settings = self.home / ".claude/settings.json"
+
+    def hooks(self, *commands):
+        self.settings.write_text(json.dumps({"hooks": {"SessionStart": [{"matcher": "", "hooks": [
+            {"type": "command", "command": command} for command in commands]}]}}))
+
+    def action(self):
+        return self.helper.inspect_global(str(self.neutral))["actions"][0]
+
+    def test_exact_prime_hooks_are_ready_with_neutral_cwd_and_no_writes(self):
+        self.hooks("run-user-check", "bd prime")
+        before = self.settings.read_bytes()
+        action = self.action()
+        self.assertEqual(action["status"], "ready")
+        self.assertEqual(action["effects"][0]["removedCommands"], 1)
+        self.assertIn("--chdir=" + str(self.neutral.resolve()), action["argv"])
+        self.assertEqual(action["argv"][-4:], ["setup", "claude", "--remove", "--global"])
+        self.assertEqual(before, self.settings.read_bytes())
+
+    def test_absent_or_authored_only_hooks_are_clean(self):
+        self.assertEqual(self.action()["status"], "clean")
+        self.hooks("run-user-check")
+        self.assertEqual(self.action()["status"], "clean")
+
+    def test_nonempty_neutral_dir_unsupported_bd_or_linked_settings_block(self):
+        self.hooks("bd prime")
+        (self.neutral / "CLAUDE.md").write_text("authored\n")
+        self.assertEqual(self.action()["status"], "blocked")
+        (self.neutral / "CLAUDE.md").unlink()
+        with patch.object(self.helper, "bd_probe", return_value={"version": "future", "supported": False}):
+            self.assertEqual(self.action()["status"], "blocked")
+        target = self.home / "dotfiles-settings.json"
+        self.settings.rename(target)
+        self.settings.symlink_to(target)
+        self.assertEqual(self.action()["status"], "blocked")
+
+    def test_other_global_clients_are_residuals_only(self):
+        codex = self.home / ".codex/hooks.json"
+        codex.parent.mkdir()
+        codex.write_text(json.dumps({"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "bd codex-hook prime"}]}]}}))
+        report = self.helper.inspect_global(str(self.neutral))
+        self.assertEqual([a["id"] for a in report["actions"]], ["claude-global"])
+        self.assertEqual(len(report["residuals"]), 1)
+
+    def test_cli_requires_neutral_dir_and_rejects_unready_global_selection(self):
+        with patch("sys.argv", [str(HELPER), "--global"]), redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(self.helper.main(), 2)
+        self.assertIn("--neutral-dir", out.getvalue())
+        argv = [str(HELPER), "--global", "--neutral-dir", str(self.neutral), "--action", "claude-global"]
+        with patch("sys.argv", argv), redirect_stdout(io.StringIO()):
+            self.assertEqual(self.helper.main(), 2)
+        with patch("sys.argv", argv[:-2] + ["--action", "hooks"]), redirect_stdout(io.StringIO()):
+            self.assertEqual(self.helper.main(), 2)
+

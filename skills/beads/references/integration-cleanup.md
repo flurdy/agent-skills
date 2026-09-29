@@ -4,9 +4,11 @@ Use `/beads cleanup /absolute/repository` (Pi: `/skill:beads cleanup /absolute/r
 when the user explicitly selects post-init integration cleanup. `/beads cleanup --inspect ...`
 ends after the read-only preview. Loading the baseline, initializing Beads, or finishing migration
 never selects cleanup. This procedure owns standalone integration cleanup, not migration, data
-retention, tracker changes, installation, publication or global client setup.
+retention, tracker changes, installation or publication. Global client setup is limited to the
+Claude hook removal in [Global Claude hooks](#global-claude-hooks).
 
-Requires Python 3.10+, Git and, for native removal proposals, the fixture-checked **bd 1.2.2**.
+Requires Python 3.10+, Git and, for native removal proposals, a fixture-checked bd: **1.2.2** or
+**1.3.0** (`SUPPORTED_BD_VERSIONS`).
 The read-only helper reports other/missing versions as unsupported rather than guessing effects.
 
 ## Prevent new redundancy
@@ -55,7 +57,7 @@ not a filesystem sandbox or authority to modify any path.
 
 ## 2. Review the fixed action table
 
-Fixture/source evidence for bd 1.2.2 plus the explicitly reviewed cleanup-only exceptions:
+Fixture/source evidence for bd 1.2.2 (native fixtures also pass on 1.3.0) plus the explicitly reviewed cleanup-only exceptions:
 
 | Action | Effects | When to refuse |
 |---|---|---|
@@ -80,7 +82,8 @@ is not permission to alter generated content, repair malformed blocks, or edit a
 region.
 
 `codex-generated` is likewise a fixed exact-output exception, not a generic directory cleanup.
-The four stored hashes and Codex-block hash are regenerated and native-tested against bd 1.2.2.
+The four stored hashes and per-version Codex-block hashes are regenerated and native-tested
+against each supported bd. 1.3.0 changed only the Codex block.
 Missing known files are a no-op; any unexpected entry refuses deletion. Confirmed removal uses
 exact file paths and non-recursive `rmdir`, never `rm -r`. The global skill identity must differ.
 
@@ -169,6 +172,30 @@ their normal separately authorized workflows; this procedure does not automatica
 Migration aftercare may reuse this inventory only **after its own selection and migration-evidence
 gates**; standalone inspection never supplies or satisfies migration evidence.
 
+## Global Claude hooks
+
+`bd setup claude --global` adds `bd prime` to `SessionStart` and `PreCompact` in
+`~/.claude/settings.json`. The shared workflow needs no prime injection, and every compaction then
+injects the full CLI reference twice. Use `/beads cleanup --global` only when the user explicitly
+selects it.
+
+```bash
+NEUTRAL=$(mktemp -d)
+python3 ~/.agents/skills/beads/scripts/integration_cleanup.py --global --neutral-dir "$NEUTRAL"
+```
+
+The `claude-global` action counts only the four exact `bd prime` variants and is `blocked` for
+unsupported bd, linked/hardlinked/malformed settings or a non-empty `--neutral-dir`. The checked
+remover preserves sibling hook commands and unrelated properties, leaves `~/.claude/CLAUDE.md`
+alone, **but also strips the managed block from `CLAUDE.md` in its process cwd**; the proposed argv
+therefore binds `env --chdir` to the empty neutral directory. Never run it from a repository.
+Global Codex, Gemini and Cursor hooks are residuals only: no verified removal action.
+
+Back up `~/.claude/settings.json` privately, recheck with `--expect FINGERPRINT --action
+claude-global`, confirm the exact argv, run it once, then verify: a sorted-key JSON diff against
+the backup shows only the removed `bd prime` entries, `bd setup claude --check --global` reports no
+hooks, and a fresh inspection is `clean`. Remove the empty neutral directory afterwards.
+
 ## Verification commands
 
 From the agent-skills repository:
@@ -179,7 +206,7 @@ BEADS_NATIVE_CLEANUP_TESTS=1 make test-beads
 ```
 
 The first runs the always-available read-only inspector/contract fixtures; native characterization
-is explicitly skipped without opt-in. The second additionally runs bd 1.2.2 against disposable
+is explicitly skipped without opt-in. The second additionally runs the installed checked bd against disposable
 local fixture repositories and isolated homes, with metrics/event flushing disabled. It does not
 initialize a real store or run project hooks. A missing or mismatched native executable is not
 passing native compatibility evidence. Recheck and update support deliberately on bd upgrades.
