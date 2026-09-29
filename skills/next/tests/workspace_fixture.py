@@ -45,6 +45,9 @@ elif command == 'blocked':
 elif '--id' in arguments:
     key = 'probe'
 elif '--ready' in arguments:
+    if any(argument.startswith('--priority') for argument in arguments):
+        print('Error: validation failed: --ready cannot filter on priority', file=sys.stderr)
+        raise SystemExit(1)
     key = 'ready'
 elif '--status=in_progress' in arguments:
     key = 'in_progress'

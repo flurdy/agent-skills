@@ -333,7 +333,7 @@ def collect(root: Path) -> dict[str, Any]:
         "diagnostics": [],
     }
     commands = {
-        "ready": ["list", "--ready", "--priority-max=3", "--flat", "--limit=0"],
+        "ready": ["list", "--ready", "--flat", "--limit=0"],
         "blocked": ["blocked"],
         "in_progress": ["list", "--status=in_progress", "--flat", "--limit=0"],
         "deferred": ["list", "--status=deferred", "--flat", "--limit=0"],
