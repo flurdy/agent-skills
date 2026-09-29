@@ -48,6 +48,7 @@ dolt-server.log
 dolt-server.lock
 dolt-server.port
 dolt-server.activity
+dolt-server-config.yaml
 
 # Corrupt backup directories (created by bd doctor --fix recovery)
 *.corrupt.backup/

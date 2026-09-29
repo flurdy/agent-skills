@@ -20,3 +20,4 @@ CLAUDE.local.md
 *.db
 .beads/dolt/
 .beads-credential-key
+.beads.gate.lock*
