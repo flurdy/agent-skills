@@ -14,17 +14,14 @@ import sys
 from pathlib import Path
 from time import monotonic, sleep
 from typing import Any
-from urllib.parse import urlparse
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from github_remote import REPOSITORY_PATTERN, github_repository
 
 SCHEMA_VERSION = "gh-pr-checkout/v1"
 DEFAULT_TIMEOUT_SECONDS = 15.0
 DEFAULT_MAX_OUTPUT_BYTES = 1_000_000
 MAX_CANDIDATES = 100
-REPOSITORY_PATTERN = re.compile(r"^[^/\s]+/[^/\s]+$")
-SSH_GITHUB_HOST_PATTERN = re.compile(
-    r"^(?:[A-Za-z0-9-]+\.)?github\.com$",
-    flags=re.IGNORECASE,
-)
 SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40,64}$")
 
 
@@ -133,37 +130,6 @@ def error_record(source: str, message: str, path: str | None = None) -> dict[str
     if path:
         result["path"] = path
     return result
-
-
-def github_repository(remote_url: str) -> str | None:
-    value = remote_url.strip()
-    scp = re.fullmatch(
-        r"(?:[^@/:]+@)?([^/:]+):([^/\s]+)/([^/\s]+?)(?:\.git)?/?",
-        value,
-        flags=re.IGNORECASE,
-    )
-    if scp and SSH_GITHUB_HOST_PATTERN.fullmatch(scp.group(1)):
-        repository = f"{scp.group(2)}/{scp.group(3)}"
-        return repository if REPOSITORY_PATTERN.fullmatch(repository) else None
-
-    parsed = urlparse(value if "://" in value else f"https://{value}")
-    hostname = parsed.hostname or ""
-    exact_github = hostname.casefold() == "github.com"
-    ssh_alias = parsed.scheme.casefold() == "ssh" and SSH_GITHUB_HOST_PATTERN.fullmatch(
-        hostname
-    )
-    if not exact_github and not ssh_alias:
-        return None
-    if parsed.query or parsed.fragment or parsed.params:
-        return None
-    parts = parsed.path.strip("/").split("/")
-    if len(parts) != 2:
-        return None
-    owner, repository = parts
-    if repository.endswith(".git"):
-        repository = repository[:-4]
-    result = f"{owner}/{repository}"
-    return result if REPOSITORY_PATTERN.fullmatch(result) else None
 
 
 def parse_members(output: str) -> list[str]:

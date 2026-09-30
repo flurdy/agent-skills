@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.13.1"
+version: "1.13.2"
 author: "flurdy"
 ---
 
@@ -22,6 +22,13 @@ The GitHub org is auto-detected from the current repo's `origin` remote, falling
 ```
 /pr-status
 ```
+
+## Checkout helper
+
+`gh-pr-checkout.py` and the review-pr snapshot collector share
+[`scripts/github_remote.py`](scripts/github_remote.py) for remote identity parsing. Both accept
+single-label `*.github.com` aliases only for SSH, not HTTP(S); they do not resolve arbitrary SSH
+configuration aliases. Repository, exact-head, and clean-tree checks still govern local reads.
 
 ## Instructions
 

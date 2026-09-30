@@ -121,6 +121,7 @@ class FakeRunner:
         repository: str = "acme/widgets",
         current_number: int = 42,
         git_repository: str | None = None,
+        git_remote: str | None = None,
         git_head: str = HEAD_A,
         git_dirty: bool = False,
     ) -> None:
@@ -147,6 +148,7 @@ class FakeRunner:
         self.repository = repository
         self.current_number = current_number
         self.git_repository = git_repository
+        self.git_remote = git_remote
         self.git_head = git_head
         self.git_dirty = git_dirty
         self.calls: list[tuple[list[str], Path | None]] = []
@@ -195,7 +197,7 @@ class FakeRunner:
             if command == ["rev-parse", "--show-toplevel"]:
                 return f"{args[2]}\n"
             if command == ["remote", "get-url", "origin"]:
-                return f"git@github.com:{self.git_repository}.git\n"
+                return self.git_remote or f"git@github.com:{self.git_repository}.git\n"
             if command == ["rev-parse", "HEAD"]:
                 return f"{self.git_head}\n"
             if command == ["status", "--porcelain", "--untracked-files=all"]:
@@ -314,6 +316,85 @@ class SnapshotContractTest(unittest.TestCase):
                     expected_repo_lookup,
                     sum(command[:3] == ["gh", "repo", "view"] for command in commands),
                 )
+
+    def test_checkout_accepts_canonical_and_aliased_github_remotes(self) -> None:
+        for repository in ("acme/widgets", "contributor/widgets"):
+            for remote in (
+                f"git@github.com:{repository}.git",
+                f"ssh://git@github.com/{repository}.git",
+                f"https://github.com/{repository}.git",
+                f"git@blc.github.com:{repository}.git",
+                f"ssh://git@blc.github.com/{repository}.git",
+            ):
+                with self.subTest(remote=remote):
+                    runner = FakeRunner(git_repository=repository, git_remote=remote)
+                    result = SNAPSHOT.collect_snapshot(
+                        "acme/widgets#42", runner=runner, cwd=Path("/checkout"),
+                    )
+
+                    self.assertEqual("complete", result["status"])
+                    self.assertTrue(result["checkout"]["available"], result["checkout"])
+                    self.assertEqual(
+                        [
+                            ["rev-parse", "--show-toplevel"],
+                            ["remote", "get-url", "origin"],
+                            ["rev-parse", "HEAD"],
+                            ["status", "--porcelain", "--untracked-files=all"],
+                        ],
+                        [args[3:] for args in runner.command_args() if args[0] == "git"],
+                    )
+                    self.assertFalse(any(args[0] == "ssh" for args in runner.command_args()))
+
+    def test_checkout_rejects_untrusted_remotes_without_losing_remote_evidence(self) -> None:
+        for remote in (
+            "git@blc.github.com:wrong/widgets.git",
+            "git@blc.github.com:acme/other.git",
+            "git@notgithub.com:acme/widgets.git",
+            "git@github.com.evil.example:acme/widgets.git",
+            "git@nested.blc.github.com:acme/widgets.git",
+            "git@github-work:acme/widgets.git",
+            "ssh://git@github.com.evil.example/acme/widgets.git",
+            "https://blc.github.com/acme/widgets.git",
+            "http://blc.github.com/acme/widgets.git",
+            "https://github.com.evil.example/acme/widgets.git",
+            "ftp://github.com/acme/widgets.git",
+            "https://[invalid/acme/widgets.git",
+        ):
+            with self.subTest(remote=remote):
+                result = SNAPSHOT.collect_snapshot(
+                    "acme/widgets#42",
+                    runner=FakeRunner(git_repository="acme/widgets", git_remote=remote),
+                    cwd=Path("/checkout"),
+                )
+
+                self.assertEqual("complete", result["status"])
+                self.assertFalse(result["checkout"]["available"])
+                self.assertEqual("repository mismatch", result["checkout"]["reason"])
+                self.assertEqual(1, len(result["evidence"]["files"]))
+
+    def test_aliased_checkout_still_requires_exact_head_and_clean_tree(self) -> None:
+        for remote in (
+            "git@blc.github.com:acme/widgets.git",
+            "ssh://git@blc.github.com/acme/widgets.git",
+        ):
+            for head, dirty, reason in (
+                (HEAD_B, False, "HEAD does not match"),
+                (HEAD_A, True, "working tree is not clean"),
+            ):
+                with self.subTest(remote=remote, reason=reason):
+                    result = SNAPSHOT.collect_snapshot(
+                        "acme/widgets#42",
+                        runner=FakeRunner(
+                            git_repository="acme/widgets", git_remote=remote,
+                            git_head=head, git_dirty=dirty,
+                        ),
+                        cwd=Path("/checkout"),
+                    )
+
+                    self.assertEqual("complete", result["status"])
+                    self.assertFalse(result["checkout"]["available"])
+                    self.assertIn(reason, result["checkout"]["reason"])
+                    self.assertEqual(1, len(result["evidence"]["files"]))
 
     def test_missing_or_dirty_checkout_never_blocks_remote_evidence(self) -> None:
         for runner, reason in (

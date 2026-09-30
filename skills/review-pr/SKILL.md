@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-sna
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.1.1"
+version: "2.1.2"
 author: "flurdy"
 ---
 
@@ -90,6 +90,12 @@ A matching checkout is optional. Local repository reads are permitted only when
 `checkout.available` is true. That means the origin
 matches the selected repository, the working tree is clean, and local HEAD exactly matches the PR
 head SHA. Anchor every `Read`, `Grep`, or `Glob` path under `checkout.path`.
+
+Remote identity uses the shared [GitHub parser](../pr-status/scripts/github_remote.py).
+SSH origins support `github.com` and single-label aliases such as `blc.github.com`, in scp-style
+or `ssh://` form. HTTP(S) requires literal `github.com`. This is a naming convention, not SSH
+configuration or DNS verification; arbitrary aliases and nested subdomains remain unsupported.
+Alias recognition never replaces the repository, exact-HEAD, or clean-tree checks.
 
 When verification fails, state **Local repository search unavailable** with the collector's reason.
 Use only the bounded remote patches and metadata. Never search the workspace root or unrelated cwd,

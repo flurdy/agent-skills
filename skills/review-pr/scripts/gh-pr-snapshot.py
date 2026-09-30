@@ -17,6 +17,9 @@ from time import monotonic
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "pr-status" / "scripts"))
+from github_remote import github_repository
+
 FEEDBACK_COLLECTOR = (
     SCRIPT_DIR.parent.parent / "pr-status" / "scripts" / "gh-pr-feedback.py"
 )
@@ -326,19 +329,6 @@ def valid_object_id(value: Any) -> str:
     return value
 
 
-def normalized_remote(value: str) -> str | None:
-    remote = value.strip().removesuffix(".git")
-    patterns = (
-        r"^(?:git@|ssh://git@)github\.com[:/](?P<repository>[^/]+/[^/]+)$",
-        r"^https?://github\.com/(?P<repository>[^/]+/[^/]+)$",
-    )
-    for pattern in patterns:
-        match = re.fullmatch(pattern, remote)
-        if match is not None:
-            return match.group("repository")
-    return None
-
-
 def verify_checkout(
     candidate: Path,
     target: dict[str, Any],
@@ -359,7 +349,7 @@ def verify_checkout(
 
     try:
         root = Path(git("rev-parse", "--show-toplevel")).resolve()
-        remote = normalized_remote(git("remote", "get-url", "origin"))
+        remote = github_repository(git("remote", "get-url", "origin"))
         expected_repositories = {
             target["repository"].casefold(),
             str(target.get("headRepository") or "").casefold(),

@@ -53,10 +53,12 @@ class CheckoutResolverTest(unittest.TestCase):
         arguments.update(overrides)
         return CHECKOUT.resolve_checkout(**arguments)
 
-    def test_remote_parser_requires_the_exact_github_host(self) -> None:
+    def test_remote_parser_accepts_only_github_and_supported_ssh_aliases(self) -> None:
         accepted = {
             "git@github.com:acme/widgets.git",
             "git@work.github.com:acme/widgets.git",
+            "git@blc.github.com:acme/widgets.git",
+            "ssh://git@blc.github.com/acme/widgets.git",
             "https://github.com/acme/widgets.git",
             "ssh://git@github.com/acme/widgets.git",
             "ssh://git@work.github.com/acme/widgets.git",
@@ -69,6 +71,10 @@ class CheckoutResolverTest(unittest.TestCase):
             "https://github.com.evil.example/acme/widgets.git",
             "https://github.com/acme/widgets/extra",
             "https://work.github.com/acme/widgets.git",
+            "http://blc.github.com/acme/widgets.git",
+            "git@github-work:acme/widgets.git",
+            "git@github.com.evil.example:acme/widgets.git",
+            "ftp://github.com/acme/widgets.git",
         }
 
         self.assertEqual(
@@ -79,6 +85,9 @@ class CheckoutResolverTest(unittest.TestCase):
             {None},
             {CHECKOUT.github_repository(remote) for remote in rejected},
         )
+
+    def test_remote_parser_rejects_malformed_urls(self) -> None:
+        self.assertIsNone(CHECKOUT.github_repository("https://[invalid/acme/widgets.git"))
 
     def test_output_limit_terminates_the_process_group(self) -> None:
         marker = Path(self.temporary.name) / "output-child-survived"
