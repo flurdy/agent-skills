@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-upda
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.4.0"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -145,11 +145,14 @@ Spend additions require explicit exact-model billing and effective-start evidenc
 are never rewritten; no aliases, automatic backfills or retroactive reclassification. Missing evidence
 stays unknown, not subscription/free. Coverage is evaluated at the audit time, not inferred for history.
 
-The companion applier is **not implemented by this skill delivery**. Offer a separately authorized
-implementation handoff with selected changes, exact diffs/digests and unresolved decisions. Do not
-invent or invoke an apply command while `handoff.companionAvailable` is false. Audit completion does
-not depend on the companion. Actual application needs separate exact-change approval and target-file
-authority; refresh approval and this audit grant neither.
+The [attended companion](references/companion-apply.md) is now available for **complete, reviewed**
+recommendations. The audit remains read-only. Offer its preview only after the user selects changes;
+never automatically invoke its `--apply` mode or infer application authority from audit, refresh,
+review consent, a bead, or a lease. It requires a private saved report, exact per-file authority,
+interactive current-run digest approval, separate consent-sensitive approval, private backups and
+owner validation. Normal Pi Bash is noninteractive and cannot grant target-file authority by
+passing flags. Do not run it against live user configs during an audit. Incomplete proposals and
+unknown billing decisions remain incomplete; the companion cannot fill them in.
 
 ## Review-first report and interaction
 
@@ -173,8 +176,10 @@ never permission to apply anything. Keep the machine verdict and full source evi
 4. **On acceptance:** research and prepare validated stdin evidence as above, then show exact
    before/after changes for every affected config location. Separate unresolved billing-start,
    consent and allowlist choices from ordinary model-pin changes. Keep old policy/history intact.
-   If the companion is unavailable, say so plainly: the preview is ready for a separately authorized
-   implementation step, not an executable update. Never offer an `Apply` option backed by no applier.
+   The companion can preview only complete, reviewed changes. Its interactive apply path requires
+   a new exact-change and target-file authorization; **Review and preview** is not approval to apply.
+   Never offer an `Apply` option until the full preview has passed and the user has independently
+   chosen that action in an authorized terminal.
 5. **Housekeeping:** summarize unrelated spend-reporting gaps and npm/Homebrew differences below
    the main decision. They must not replace the model-review next step. Broken billing rules still
    block billing additions, but do not block a read-only model review. Do not open another prompt

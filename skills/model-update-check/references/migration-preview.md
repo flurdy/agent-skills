@@ -85,8 +85,9 @@ Existing source-health, configured-model, recent-list and finding fields remain.
   `consentSensitive`, and `authorization: "separate-current-run-required"`. These are advisory
   before/after records, **not executable JSON Patch**. Applying several selected proposals requires
   composing and revalidating their joint final diff; overlapping parent paths are not independent patches.
-- `handoff`: `previewOnly: true`, `companionAvailable: false`, and separate authorization/preservation
-  requirements. Do not pretend that an apply command already exists.
+- `handoff`: `previewOnly: true`, `companionAvailable: true` and a companion path. This is
+  availability of a **separately attended** tool, not permission to apply; see
+  [companion-apply.md](companion-apply.md) for the exact authority and backup contract.
 - `refresh`: command, disclosure, status, attempted, nativeCompleted and fresh. `fresh` requires
   native success **and** successful subsequent enumeration; it is not a per-model launch guarantee.
 
@@ -96,9 +97,9 @@ not silently overwritten. OpenRouter panel policy decisions remain separately vi
 work unless already configured. Unrelated config fields, panel quorum/provider diversity and model
 weights/order are never part of the generated edits.
 
-The planned companion must independently validate its input, recompute source digests, acquire each
-file's authority, preview the composed final diff, require exact approval, and provide private recovery
-without promising cross-file atomicity. This audit implements none of those writes.
+The implemented companion independently validates its input and source digests, composes a selected
+pointer-level diff, requires exact interactive approval plus each file's authority, and retains private
+recovery data without promising cross-file atomicity. This audit implements none of those writes.
 
 ## Native refresh evidence (Pi 0.87.1)
 

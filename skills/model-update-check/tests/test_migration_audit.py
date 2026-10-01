@@ -133,7 +133,8 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(policy["operation"], "add")
         self.assertEqual(policy["path"], "/models/openai-codex~1example-sol-2")
         self.assertTrue(any(c["consentSensitive"] for c in changes))
-        self.assertFalse(result["handoff"]["companionAvailable"])
+        self.assertTrue(result["handoff"]["companionAvailable"])
+        self.assertEqual(result["handoff"]["companion"], "scripts/apply_migration.py")
 
     def test_missing_billing_and_policy_evidence_remains_unknown(self):
         evidence = self.evidence()
@@ -294,7 +295,7 @@ class AuditTests(unittest.TestCase):
         self.assertIn("Do not ask the user to author JSON", skill)
         self.assertIn("--evidence -", skill)
         self.assertIn("not application", skill)
-        self.assertIn("Never offer an `Apply` option backed by no applier", skill)
+        self.assertIn("Never offer an `Apply` option until the full preview has passed", skill)
         self.assertIn("Never say an absent rule expired", skill)
 
     def test_broken_core_config_is_not_hidden_behind_review_prompt(self):

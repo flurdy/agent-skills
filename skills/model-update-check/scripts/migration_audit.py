@@ -555,8 +555,9 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
                   recommendations=recommendations, verdict=verdict, incompleteSources=failed_sources,
                   incompleteReasons=incomplete_reasons,
                   interaction=interaction_plan(sources, leads, recommendations, assessments, candidates, findings),
-                  handoff={"companionAvailable": False, "implementationOwner": "separate companion applier",
-                           "authorization": "Preview is not approval; file authority and exact changes require separate confirmation.",
+                  handoff={"companionAvailable": True, "companion": "scripts/apply_migration.py",
+                           "implementationOwner": "attended companion applier",
+                           "authorization": "Preview is not approval; exact changes, each file and consent-sensitive allowlists require separate current-run confirmation.",
                            "preserve": "All unrelated fields, old model keys, consent and historical billing intervals.",
                            "previewOnly": True})
     return report

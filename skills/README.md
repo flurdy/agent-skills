@@ -29,7 +29,7 @@
 | jira-comment | Draft and post a terse house-style comment on a Jira ticket after confirmation |
 | jira-ticket | Look up Jira ticket details including summary, type, and description |
 | landscape | Read-only full/quick orientation or compact local `resume` mode; suggests resume-or-next without loading handoffs or claiming work |
-| model-update-check | Audit coordinated model migration previews across Pi routing, second-opinion and pi-spend; read-only by default, with separately confirmed native catalog refresh |
+| model-update-check | Audit coordinated model migration previews across Pi routing, second-opinion and pi-spend; read-only by default, with separate attended refresh and apply paths |
 | name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
 | next | Rank ready beads across validated stores; list read-only or select and claim one task, then stop without implementing it |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
