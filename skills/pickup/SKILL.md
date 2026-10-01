@@ -5,7 +5,7 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.4.0"
+version: "0.4.1"
 author: "flurdy"
 ---
 
@@ -89,8 +89,9 @@ story_points = "customfield_10016"
    host in `url` (`https://<host>/browse/<key>`).
 
    - **Epic**: `parent` when `parent_type` is `Epic`; for a sub-task, its parent's summary
-     prefixed `↳ `. `—` when none. Truncate to ~35 chars. Prefix `★ ` when `parent_key`
-     matches a `parent_key` (or `key`) from `mine` — an epic you already have work in.
+     prefixed `↳ `. `—` when none. Truncate to ~35 chars.
+   - **★**: a leading header-less column; `★` when `parent_key` matches a `parent_key` (or
+     `key`) from `mine` — an epic you already have work in — otherwise blank.
    - **Cells**: replace any `|` in epic or summary text with `/` so it can't split the table.
    - **Summary**: drop a leading `FE |`, `BE|`, `FS |`-style prefix (the Labels column has it);
      truncate to ~70 chars.
@@ -99,17 +100,17 @@ story_points = "customfield_10016"
    ## Pickup — GE · FE, BE, FS
 
    ### Active — GE Sprint 27.12
-   | Key | Pri | Pts | Labels | Epic | Summary |
-   |-----|-----|-----|--------|------|---------|
-   | [GE-2410](…) | P3 | 3 | FE | STT verification | Add Amplitude tracking for … |
+   |   | Key | Pri | Pts | Labels | Epic | Summary |
+   |---|-----|-----|-----|--------|------|---------|
+   | ★ | [GE-2410](…) | P3 | 3 | FE | STT verification | Add Amplitude tracking for … |
 
    ### Next — GE Sprint 27.13
-   | Key | Pri | Pts | Labels | Epic | Summary |
-   |-----|-----|-----|--------|------|---------|
+   |   | Key | Pri | Pts | Labels | Epic | Summary |
+   |---|-----|-----|-----|--------|------|---------|
 
    ### Backlog
-   | Key | Pri | Pts | Labels | Epic | Summary |
-   |-----|-----|-----|--------|------|---------|
+   |   | Key | Pri | Pts | Labels | Epic | Summary |
+   |---|-----|-----|-----|--------|------|---------|
 
    ### Flagged / blocked
    | Key | Bucket | Pri | Pts | Why | Summary |
