@@ -44,7 +44,7 @@ PROJECTION = (
     "priority: fields.priority.name, labels: fields.labels, has_description: fields.description != null, "
     "parent: fields.parent.fields.summary, parent_type: fields.parent.fields.issuetype.name, "
     "points: fields.{story_points}, flags: fields.{flagged}[*].value, "
-    "sprints: fields.{sprint}[*].{{name: name, state: state}}, "
+    "sprints: fields.{sprint}[*].{{id: id, name: name, state: state, start: startDate}}, "
     "blocked_by: fields.issuelinks[?type.inward=='is blocked by' && inwardIssue]"
     ".{{key: inwardIssue.key, category: inwardIssue.fields.status.statusCategory.key}}}}"
 )
@@ -95,6 +95,7 @@ def load_config(path: Path) -> dict[str, Any]:
         "ready_statuses": string_list(jira, "ready_statuses", required=True),
         "labels": string_list(jira, "labels"),
         "exclude_types": string_list(jira, "exclude_types") or ["Epic"],
+        "holding_sprints": string_list(jira, "holding_sprints"),
         "fields": fields,
         **limits,
     }

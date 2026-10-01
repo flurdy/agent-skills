@@ -19,6 +19,7 @@ projects = ["GE"]
 ready_statuses = ["Ready to Work"]
 labels = ["FE", "BE"]
 next_limit = 5
+holding_sprints = ["READY FOR ENGINEERING"]
 """
 
 
@@ -62,6 +63,8 @@ class PickupTest(unittest.TestCase):
         self.assertIn("fields.customfield_10016", requests[0]["jq"])
         self.assertIn("parent", requests[0]["queryParams"]["fields"].split(","))
         self.assertIn("parent: fields.parent.fields.summary", requests[0]["jq"])
+        self.assertIn("start: startDate", requests[0]["jq"])
+        self.assertEqual(output["config"]["holding_sprints"], ["READY FOR ENGINEERING"])
 
     def test_label_override_and_all(self) -> None:
         self.write(CONFIG)
