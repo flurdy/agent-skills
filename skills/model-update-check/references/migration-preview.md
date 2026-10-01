@@ -4,7 +4,14 @@ This is the audit's bounded input/output contract, not a configuration applier. 
 are local working input: use ignored `.artifacts/` only when authorized, do not commit machine-local
 pins or raw audit output. No evidence file or emitted preview grants execution, consent or file authority.
 
-## Input: `--evidence FILE`
+## Input: `--evidence FILE` or `--evidence -`
+
+For normal conversation, the agent researches the selected upgrade after **Review and preview**
+and submits reviewed JSON on stdin (`--evidence -`). The user need not author JSON or a file.
+The helper reads at most 64 KiB into private disposable scratch and then follows the exact same
+validator, snapshot and digest path as file input. Output source `path` is `stdin`; the payload
+digest is retained. Oversized input is rejected before native collection/refresh. No user config
+or caller-selected evidence file is written. A preview still requires separate application approval.
 
 UTF-8 JSON, maximum 64 KiB, strict duplicate-key/constant handling. Top-level keys are exactly
 `schemaVersion: 1` and `recommendations` (0–32 entries). Each recommendation contains:
@@ -52,9 +59,19 @@ proposed twice. Invalid/missing policy requires separate repair rather than auto
 
 Existing source-health, configured-model, recent-list and finding fields remain. Additional fields:
 
+- `interaction` (version 1): read-only primary conversation action and exact-location opportunities.
+  Fixed priority: invalid core config → review supplied preview → review discovered candidate →
+  investigate unavailable catalogs → none. Billing housekeeping never authorizes or displaces review.
+  Action kinds are `inspect-config`, `review-upgrade`, `review-preview`, `inspect-availability`, `none`;
+  no `apply` or `update` action exists. `requiresReply` and `doesNotAuthorize` preserve the boundary
+  between review/preview and application, refresh, billing, allowlists or inference.
 - `configurationInventory`: every model-bearing JSON pointer and configured role, retaining
   disabled rows, weights/selection, aliases/defaults, exact global router policy projection and
   current spend coverage. `sourceSha256` binds the private input snapshot to its original target path.
+  `spendCoverage.reason` distinguishes missing/invalid policy, absent/invalid model rule and date gaps;
+  `explanation` is plain reporting language. The owner's classification always wins: raw policy is
+  used only to explain unknown coverage, never to promote it to subscription or metered. Valid entries
+  in a partially invalid policy remain covered; exact start/end behavior remains owner-defined.
 - `catalogCandidates`: complete discovery from each relevant provider/namespace, not a top-eight
   cutoff. Status is always `discovered-not-successor`. `crossRouteDiscoveryOnly` can suggest a
   research lead, never equivalent identity or runtime access. Keep data source distinctions intact.

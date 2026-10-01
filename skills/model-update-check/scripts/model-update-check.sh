@@ -22,7 +22,7 @@ usage() {
 Usage: model-update-check.sh [--offline]
                              [--router-config FILE]
                              [--consensus-config FILE] [--billing-policy FILE]
-                             [--evidence FILE]
+                             [--evidence FILE|-]
                              [--refresh-models --confirm-refresh] [--refresh-timeout SECONDS]
 
 Default/offline audits are read-only. Emits JSON with config locations, complete
@@ -109,6 +109,12 @@ printf '{}\n' > "$live_catalog"
 printf '{"data":[]}\n' > "$openrouter_catalog"
 printf '{}\n' > "$pi_package"
 printf '{}\n' > "$brew_info"
+
+if [[ "${evidence_args[1]:-}" == "-" ]]; then
+  python3 -c 'import sys; data = sys.stdin.buffer.read(65537); sys.exit(2) if len(data) > 65536 else sys.stdout.buffer.write(data)' \
+    > "$work_dir/evidence.json" || die "stdin evidence exceeds 64 KiB or could not be read"
+  evidence_args=(--evidence "$work_dir/evidence.json" --evidence-origin stdin)
+fi
 
 refresh_result="$work_dir/refresh.json"
 [[ "$offline" == false ]] || refresh_args+=(--offline)

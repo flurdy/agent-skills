@@ -265,6 +265,87 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(proposal["status"], "incomplete")
         self.assertTrue(any("invalid" in msg for msg in proposal["unresolved"]))
 
+    def test_review_action_leads_over_spend_housekeeping_without_authorizing_apply(self):
+        self.spend["models"] = {}
+        result = self.audit()
+        interaction = result["interaction"]
+        action = interaction["primaryAction"]
+        self.assertEqual(action["kind"], "review-upgrade")
+        self.assertEqual(action["scope"], "read-only")
+        self.assertEqual([o["id"] for o in action["options"]], ["review-preview", "leave-unchanged"])
+        self.assertTrue(action["requiresReply"])
+        self.assertIn("apply", action["doesNotAuthorize"])
+        self.assertTrue(interaction["opportunities"])
+        self.assertTrue(all(o["locations"] for o in interaction["opportunities"]))
+        self.assertTrue(any(f["kind"] == "spend-uncovered" for f in interaction["housekeeping"]))
+        self.assertTrue(all(o["cliAvailability"] == "unverified" for o in interaction["opportunities"] if o["from"].startswith("local/")))
+
+    def test_reviewed_preview_does_not_restart_candidate_review(self):
+        result = self.audit(self.evidence())
+        self.assertTrue(result["discoveryLeads"])
+        self.assertEqual(result["interaction"]["primaryAction"]["kind"], "review-preview")
+        self.assertIn("apply", result["interaction"]["primaryAction"]["doesNotAuthorize"])
+
+    def test_review_first_skill_contract_preserves_separate_approval(self):
+        skill = (SCRIPTS.parent / "SKILL.md").read_text()
+        self.assertIn("Review and preview (Recommended)", skill)
+        self.assertIn("Leave unchanged", skill)
+        self.assertIn("using AskUserQuestion", skill)
+        self.assertIn("Do not ask the user to author JSON", skill)
+        self.assertIn("--evidence -", skill)
+        self.assertIn("not application", skill)
+        self.assertIn("Never offer an `Apply` option backed by no applier", skill)
+        self.assertIn("Never say an absent rule expired", skill)
+
+    def test_broken_core_config_is_not_hidden_behind_review_prompt(self):
+        self.base["sources"]["routerConfig"]["status"] = "invalid"
+        result = self.audit()
+        self.assertEqual(result["interaction"]["primaryAction"]["kind"], "inspect-config")
+        self.assertIn("routerConfig", result["interaction"]["blockingSources"])
+
+    def test_no_candidates_does_not_generate_upgrade_or_apply_prompt(self):
+        self.dev["openai"]["models"].pop("example-sol-2")
+        self.pi.remove(NEW)
+        self.opened = {}
+        self.assertEqual(self.audit()["interaction"]["primaryAction"]["kind"], "none")
+        self.base["sources"]["modelsDev"]["status"] = "error"
+        self.assertEqual(self.audit()["interaction"]["primaryAction"]["kind"], "inspect-availability")
+
+    def test_spend_explanations_distinguish_missing_invalid_and_date_gaps(self):
+        cases = [
+            ({}, "missing-model-rule"),
+            ({OLD: [{"billing": "invalid"}]}, "invalid-model-rule"),
+            ({OLD: [{"billing": "subscription", "effectiveFrom": "2026-01-11T00:00:00Z", "effectiveUntil": None}]}, "not-started"),
+            ({OLD: [{"billing": "subscription", "effectiveFrom": "2026-01-01T00:00:00Z", "effectiveUntil": "2026-01-10T00:00:00Z"}]}, "ended"),
+            ({OLD: [{"billing": "subscription", "effectiveFrom": "2026-01-01T00:00:00Z", "effectiveUntil": "2026-01-09T00:00:00Z"},
+                    {"billing": "metered", "effectiveFrom": "2026-01-11T00:00:00Z", "effectiveUntil": None}]}, "gap"),
+        ]
+        for models, reason in cases:
+            with self.subTest(reason=reason):
+                self.spend["models"] = models
+                result = self.audit()
+                coverage = result["configurationInventory"][0]["spendCoverage"]
+                self.assertEqual(coverage["billing"], "unknown")
+                self.assertEqual(coverage["reason"], reason)
+                self.assertIn("report", coverage["explanation"])
+                self.assertEqual(result["interaction"]["primaryAction"]["kind"], "review-upgrade")
+                if reason == "missing-model-rule":
+                    self.assertIn("no spend-reporting rule", coverage["explanation"])
+                    self.assertNotIn("expired", coverage["explanation"])
+        self.spend = {}
+        self.assertEqual(self.audit()["configurationInventory"][0]["spendCoverage"]["reason"], "invalid-policy")
+        missing = AUDIT.SPEND.missing_policy(AUDIT.SPEND.EFFECTIVE_POLICY, "missing")
+        self.assertEqual(AUDIT.spend_coverage(OLD, missing, NOW, {}, "missing")["reason"], "missing-policy")
+
+    def test_valid_entry_in_partial_policy_and_start_boundary_stay_covered(self):
+        self.spend["models"][OLD][0]["effectiveFrom"] = "2026-01-10T00:00:00Z"
+        self.spend["models"][NEW] = [{"invalid": True}]
+        result = self.audit()
+        coverage = result["configurationInventory"][0]["spendCoverage"]
+        self.assertEqual(coverage["billing"], "subscription")
+        self.assertEqual(coverage["reason"], "covered")
+        self.assertEqual(result["sources"]["billingPolicy"]["status"], "partial")
+
     def test_router_projection_inline_false_conflict_explicit_and_unknown(self):
         router = copy.deepcopy(self.router)
         del router["modelPolicies"]

@@ -359,6 +359,16 @@ INVALID_QUORUM="$TMP_DIR/invalid-quorum.json"
 jq '.profiles.hybrid.quorum = 6' "$CONSENSUS_CONFIG" > "$INVALID_QUORUM"
 assert_invalid_panel "$INVALID_QUORUM" "quorum above enabled route count"
 
+# Conversational evidence uses the same validation/digests without a user-authored file.
+result_json="$(printf '%s' '{"schemaVersion":1,"recommendations":[]}' | "${RUN_ENV[@]}" "$HELPER" --offline "${COMMON_ARGS[@]}" --evidence -)"
+jq -e '.sources.releaseEvidence.status == "ok" and .sources.releaseEvidence.path == "stdin" and
+  (.sources.releaseEvidence.sha256 | length == 64) and .readOnly' <<< "$result_json" >/dev/null || fail "stdin evidence contract"
+result_json="$(printf '%s' '{}' | "${RUN_ENV[@]}" "$HELPER" --offline "${COMMON_ARGS[@]}" --evidence -)"
+jq -e '.sources.releaseEvidence.status == "invalid-or-stale" and .recommendations == []' <<< "$result_json" >/dev/null || fail "stdin bypassed validation"
+if python3 -c 'print("x" * 65537)' | "${RUN_ENV[@]}" "$HELPER" --offline "${COMMON_ARGS[@]}" --evidence - >/dev/null 2>&1; then
+  fail "oversized stdin evidence accepted"
+fi
+
 # Refresh never runs implicitly, and failed authorization never reaches native update.
 if grep -q '^update ' "$PI_LOG"; then fail "default/offline invoked update"; fi
 for extra in denied conflict unsupported fail timeout ok; do

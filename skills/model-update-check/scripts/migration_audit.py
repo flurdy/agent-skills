@@ -299,13 +299,71 @@ def change(source, path, before, after, consent=False, operation="replace"):
             "consentSensitive": consent, "authorization": "separate-current-run-required"}
 
 
-def spend_coverage(identity, policy, now):
+def spend_coverage(identity, policy, now, payload, policy_status):
     if identity.startswith("local/"):
-        return {"billing": "not-applicable", "reason": "CLI billing is not Pi telemetry"}
+        return {"billing": "not-applicable", "reason": "cli-not-pi",
+                "explanation": "This CLI route is not classified by Pi spend reports."}
     provider, model = identity.split("/", 1)
     billing, source = policy.classify(provider, model, now)
+    intervals = policy.models.get(identity, ())
+    if billing != "unknown":
+        reason = "covered"
+        explanation = f"Spend reports classify current usage as {billing}."
+    else:
+        if policy_status == "missing":
+            reason, explanation = "missing-policy", "The spend-reporting policy file is missing."
+        elif policy_status == "invalid":
+            reason, explanation = "invalid-policy", "The spend-reporting policy cannot be read or validated."
+        elif identity not in payload.get("models", {}):
+            reason, explanation = "missing-model-rule", "This model has no spend-reporting rule."
+        elif not intervals:
+            reason, explanation = "invalid-model-rule", "This model's spend-reporting rule is invalid."
+        elif all(interval.effective_from > now for interval in intervals):
+            reason, explanation = "not-started", "This model's spend-reporting rule starts in the future."
+        elif all(interval.effective_until is not None and interval.effective_until <= now for interval in intervals):
+            reason, explanation = "ended", "This model's spend-reporting rules have ended."
+        else:
+            reason, explanation = "gap", "There is a date gap in this model's spend-reporting rules."
+        explanation += " If used now, /pi-spend labels its usage unknown. This is a reporting gap, not a charge or proof of free usage."
     return {"billing": billing, "source": source, "at": now.isoformat(),
-            "historicalIntervals": len(policy.models.get(identity, ()))}
+            "historicalIntervals": len(intervals), "reason": reason, "explanation": explanation}
+
+
+def interaction_plan(sources, leads, recommendations, assessments, candidates, findings):
+    """Suggest the next conversation step; never authorize a side effect."""
+    blocking = [name for name in ("routerConfig", "consensusConfig") if sources[name]["status"] != "ok"]
+    unavailable = [name for name in ("piCatalog", "modelsDev", "openRouter") if sources[name]["status"] != "ok"]
+    candidate_facts = {item["identity"]: item for item in candidates}
+    locations = {item["identity"]: item["locations"] for item in assessments}
+    opportunities = []
+    for lead in leads:
+        facts = candidate_facts.get(lead["to"], {})
+        opportunities.append({"from": lead["from"], "to": lead["to"],
+                              "locations": locations.get(lead["from"], []),
+                              "piAvailable": facts.get("piAvailable"), "liveFound": facts.get("liveFound"),
+                              "cliAvailability": "unverified" if lead["to"].startswith("local/") else "not-applicable"})
+    if blocking:
+        kind, question = "inspect-config", "A configuration could not be audited. Review the problem before planning upgrades?"
+        label, option = "Review configuration issue", "inspect"
+    elif recommendations:
+        kind, question = "review-preview", "Review the proposed changes and any unresolved decisions?"
+        label, option = "Review preview", "review-preview"
+    elif leads:
+        kind, question = "review-upgrade", "Review the model candidate and preview the affected configuration changes?"
+        label, option = "Review and preview", "review-preview"
+    elif unavailable:
+        kind, question = "inspect-availability", "Some model sources are unavailable. Review what could not be checked?"
+        label, option = "Review missing evidence", "inspect"
+    else:
+        kind, question, label, option = "none", None, None, None
+    action = {"kind": kind, "question": question, "scope": "read-only", "requiresReply": kind != "none",
+              "doesNotAuthorize": ["apply", "refresh", "billing-classification", "allowlist-expansion", "inference"],
+              "options": ([{"id": option, "label": label, "description": "Read-only review; no configuration changes."},
+                           {"id": "leave-unchanged", "label": "Leave unchanged", "description": "Stop without changing settings."}]
+                          if kind != "none" else [])}
+    return {"schemaVersion": 1, "primaryAction": action, "opportunities": opportunities,
+            "blockingSources": blocking, "unavailableSources": unavailable,
+            "housekeeping": [f for f in findings if f["kind"] in {"spend-policy", "spend-uncovered", "pi-npm-ahead-of-homebrew"}]}
 
 
 def spend_change(evidence, spend, policy, now):
@@ -422,7 +480,7 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
         row["config"] = sources[row["source"]]["path"]
         row["sourceSha256"] = sources[row["source"]].get("sha256")
         row["facts"] = model_facts(row["identity"], catalogs, sources) if row["resolution"] == "exact" else None
-        row["spendCoverage"] = spend_coverage(row["identity"], policy, now)
+        row["spendCoverage"] = spend_coverage(row["identity"], policy, now, spend, spend_meta["status"])
     for configured in report["configuredModels"]:
         if configured["source"] == "model-tier-router":
             configured["metered"], configured["policyBasis"], configured["consent"] = router_policy(router, configured["model"])
@@ -462,13 +520,15 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
     unreviewed_leads = [item for item in leads if (item["from"], item["to"]) not in reviewed]
     findings = report["findings"]
     if policy.status != "complete":
-        findings.append({"severity": "review", "kind": "spend-policy", "message": "Spend policy is missing, invalid or partial; unknown is not free."})
+        findings.append({"severity": "review", "kind": "spend-policy", "message": "Some spend-reporting rules could not be read or validated. This concerns reporting, not an amount owed."})
     for identity, locations in sorted(grouped.items()):
         if any(r.get("policyBasis") in {"unknown", "invalid"} for r in locations):
             findings.append({"severity": "review", "kind": "router-policy-unknown", "model": identity,
                              "message": "Exact global billing/consent policy is missing or invalid; runtime decision required."})
         if locations[0]["spendCoverage"]["billing"] == "unknown":
-            findings.append({"severity": "review", "kind": "spend-uncovered", "model": identity, "message": "No valid exact-model interval covers the audit time; do not backfill automatically."})
+            coverage = locations[0]["spendCoverage"]
+            findings.append({"severity": "review", "kind": "spend-uncovered", "model": identity,
+                             "reason": coverage["reason"], "message": coverage["explanation"]})
     if evidence_meta["status"] not in {"ok", "not-supplied"}:
         findings.append({"severity": "error", "kind": "release-evidence", "message": "Evidence file is missing, invalid, oversized or older than seven days."})
     failed_sources = [name for name in ("piCatalog", "modelsDev", "openRouter") if sources[name]["status"] != "ok"]
@@ -494,6 +554,7 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
                   catalogCandidates=candidates, discoveryLeads=leads, migrationAssessments=assessments,
                   recommendations=recommendations, verdict=verdict, incompleteSources=failed_sources,
                   incompleteReasons=incomplete_reasons,
+                  interaction=interaction_plan(sources, leads, recommendations, assessments, candidates, findings),
                   handoff={"companionAvailable": False, "implementationOwner": "separate companion applier",
                            "authorization": "Preview is not approval; file authority and exact changes require separate confirmation.",
                            "preserve": "All unrelated fields, old model keys, consent and historical billing intervals.",
@@ -508,6 +569,7 @@ def main():
     parser.add_argument("--billing-policy", required=True)
     parser.add_argument("--billing-policy-path")
     parser.add_argument("--evidence")
+    parser.add_argument("--evidence-origin", choices=["stdin"])
     parser.add_argument("--catalog", required=True)
     parser.add_argument("--openrouter", required=True)
     parser.add_argument("--pi-catalog", required=True)
@@ -518,8 +580,11 @@ def main():
     opened = {m["id"]: m for m in json.loads(Path(args.openrouter).read_text())["data"] if isinstance(m, dict) and isinstance(m.get("id"), str)}
     pi = {f"{m['provider']}/{m['model']}" for m in json.loads(Path(args.pi_catalog).read_text())}
     refresh_result = json.loads(Path(args.refresh_result).read_text())
-    print(json.dumps(enrich(report, args.router, args.panel, args.billing_policy, args.evidence,
-                            (dev, opened, pi), refresh_result, datetime.now(timezone.utc), args.billing_policy_path), indent=2))
+    result = enrich(report, args.router, args.panel, args.billing_policy, args.evidence,
+                    (dev, opened, pi), refresh_result, datetime.now(timezone.utc), args.billing_policy_path)
+    if args.evidence_origin:
+        result["sources"]["releaseEvidence"]["path"] = args.evidence_origin
+    print(json.dumps(result, indent=2))
 
 
 if __name__ == "__main__":
