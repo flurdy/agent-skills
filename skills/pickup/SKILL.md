@@ -5,7 +5,7 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 
@@ -86,6 +86,7 @@ story_points = "customfield_10016"
 
    - **Epic**: `parent` when `parent_type` is `Epic`; for a sub-task, its parent's summary
      prefixed `↳ `. `—` when none. Truncate to ~35 chars.
+   - **Cells**: replace any `|` in epic or summary text with `/` so it can't split the table.
    - **Summary**: drop a leading `FE |`, `BE|`, `FS |`-style prefix (the Labels column has it);
      truncate to ~70 chars.
 
