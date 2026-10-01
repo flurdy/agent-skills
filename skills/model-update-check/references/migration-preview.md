@@ -77,6 +77,8 @@ Existing source-health, configured-model, recent-list and finding fields remain.
   research lead, never equivalent identity or runtime access. Keep data source distinctions intact.
 - `discoveryLeads`: same-family discovery with newer/unknown release metadata. Name/date similarity
   triggers investigation only; unreviewed leads make the verdict incomplete, never an automatic upgrade.
+  A retained old subscription allowlist entry is not a lead when the candidate is already allowed
+  for that same agent; an old explicit profile pin remains a separate actionable lead.
 - `migrationAssessments`: all affected config paths/roles for each current identity. No proposal
   evidence means a compatibility review, not a name/date-based automatic recommendation.
 - `recommendations`: reviewed pairs, candidate availability, optional-upgrade versus incomplete,

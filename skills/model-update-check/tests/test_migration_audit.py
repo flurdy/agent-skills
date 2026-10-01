@@ -281,6 +281,29 @@ class AuditTests(unittest.TestCase):
         self.assertTrue(any(f["kind"] == "spend-uncovered" for f in interaction["housekeeping"]))
         self.assertTrue(all(o["cliAvailability"] == "unverified" for o in interaction["opportunities"] if o["from"].startswith("local/")))
 
+    def test_retained_old_allowlist_is_not_a_pending_upgrade(self):
+        # The old ID remains authorized for rollback, but the active pin and allowlist
+        # already include its successor on the same Codex route.
+        self.router["tiers"]["standard"]["candidates"][1]["model"] = NEW
+        self.router["modelPolicies"][NEW] = {"metered": False, "consent": "ask"}
+        self.spend["models"][NEW] = copy.deepcopy(self.spend["models"][OLD])
+        self.panel["profiles"]["premium"]["routes"][0]["model"] = "example-sol-2"
+        self.panel["subscriptionRoutes"]["codex"].append("example-sol-2")
+
+        result = self.audit()
+        self.assertFalse(any(lead["from"] == "local/codex/example-sol-1" for lead in result["discoveryLeads"]))
+        self.assertNotEqual(result["interaction"]["primaryAction"]["kind"], "review-upgrade")
+
+        # A still-old profile pin needs review even when the replacement is allowed.
+        self.panel["profiles"]["premium"]["routes"][0]["model"] = "example-sol-1"
+        result = self.audit()
+        leads = [lead for lead in result["discoveryLeads"] if lead["from"] == "local/codex/example-sol-1"]
+        self.assertEqual(len(leads), 1)
+        opportunity = next(item for item in result["interaction"]["opportunities"]
+                           if item["from"] == "local/codex/example-sol-1")
+        self.assertEqual([location["path"] for location in opportunity["locations"]],
+                         ["/profiles/premium/routes/0/model"])
+
     def test_reviewed_preview_does_not_restart_candidate_review(self):
         result = self.audit(self.evidence())
         self.assertTrue(result["discoveryLeads"])

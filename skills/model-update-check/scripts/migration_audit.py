@@ -214,13 +214,12 @@ def discovery_leads(rows, candidates):
     """Name/date similarity is a research trigger only, never upgrade evidence."""
     result = []
     seen = set()
+    allowlisted = {(row["source"], row["path"].rsplit("/", 1)[0], row["identity"])
+                   for row in rows if row["usage"] == "subscriptionRoutes"}
     for row in rows:
         if row["resolution"] != "exact" or row.get("enabled") is False:
             continue
         identity = row["identity"]
-        if identity in seen:
-            continue
-        seen.add(identity)
         family = re.sub(r"\d+(?:[.-]\d+)*", "<version>", identity)
         if "<version>" not in family:
             continue
@@ -229,9 +228,16 @@ def discovery_leads(rows, candidates):
             target = candidate["identity"]
             if target == identity or re.sub(r"\d+(?:[.-]\d+)*", "<version>", target) != family:
                 continue
+            if (row["usage"] == "subscriptionRoutes" and
+                    (row["source"], row["path"].rsplit("/", 1)[0], target) in allowlisted):
+                continue
+            pair = identity, target
+            if pair in seen:
+                continue
             candidate_date = release_date(candidate)
             if current_date and candidate_date and candidate_date <= current_date:
                 continue
+            seen.add(pair)
             result.append({"from": identity, "to": target, "status": "compatibility-unverified",
                            "reason": "Same-family discovery lead; release metadata is newer or incomplete. Not successor proof.",
                            "currentRelease": current_date, "candidateRelease": candidate_date})
@@ -338,8 +344,14 @@ def interaction_plan(sources, leads, recommendations, assessments, candidates, f
     opportunities = []
     for lead in leads:
         facts = candidate_facts.get(lead["to"], {})
+        satisfied_allowlists = {(location["config"], location["path"].rsplit("/", 1)[0])
+                                for location in locations.get(lead["to"], [])
+                                if location["usage"] == "subscriptionRoutes"}
+        pending_locations = [location for location in locations.get(lead["from"], [])
+                             if location["usage"] != "subscriptionRoutes" or
+                             (location["config"], location["path"].rsplit("/", 1)[0]) not in satisfied_allowlists]
         opportunities.append({"from": lead["from"], "to": lead["to"],
-                              "locations": locations.get(lead["from"], []),
+                              "locations": pending_locations,
                               "piAvailable": facts.get("piAvailable"), "liveFound": facts.get("liveFound"),
                               "cliAvailability": "unverified" if lead["to"].startswith("local/") else "not-applicable"})
     if blocking:
