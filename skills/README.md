@@ -36,6 +36,7 @@
 | pedantic-review | Read-only craft and test-design review; requirements, coverage sufficiency, execution, and fixes stay with their separate owners |
 | peer-session | Send one human-approved live ask or instruction through Orca to a local or remote peer; verify correlated evidence without automatic retries, spawning or offline queueing |
 | pi-spend | Read-only estimate of Pi model cost by provider and model for today, this week, this month, and all recorded history, separating metered credit usage from flat-rate subscription usage |
+| pickup | Read-only shortlist of unassigned, ready Jira tickets for the team (active sprint, next sprint, top of backlog) with flagged or blocked tickets listed separately; scoped by a workspace `pickup.toml` |
 | plan-day | Render today's plan from a My PA workspace: ranked Jira, Trello, Beads and Thoughtbox items assigned to work, project-session, evening or skip blocks, flagged when delegable to an unattended session, written to a dated ephemeral plan file |
 | plan-to-backlog | Dynamically materialize an explicitly approved plan into proposal-first Beads tracking when durable ownership is requested, with no-item/single-item/epic outcomes and explicit confirmation before writes |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion |
