@@ -64,6 +64,12 @@ class PickupTest(unittest.TestCase):
         self.assertIn("parent", requests[0]["queryParams"]["fields"].split(","))
         self.assertIn("parent: fields.parent.fields.summary", requests[0]["jq"])
         self.assertIn("start: startDate", requests[0]["jq"])
+        self.assertIn("parent_key: fields.parent.key", requests[0]["jq"])
+        mine = output["mine"]["queryParams"]["jql"]
+        self.assertEqual(
+            mine,
+            'project in ("GE") AND assignee = currentUser() AND statusCategory != Done',
+        )
         self.assertEqual(output["config"]["holding_sprints"], ["READY FOR ENGINEERING"])
 
     def test_label_override_and_all(self) -> None:

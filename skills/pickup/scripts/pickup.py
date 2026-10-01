@@ -42,7 +42,7 @@ FIELD_ID = re.compile(r"^customfield_\d+$")
 PROJECTION = (
     "issues[*].{{key: key, url: self, summary: fields.summary, type: fields.issuetype.name, "
     "priority: fields.priority.name, labels: fields.labels, has_description: fields.description != null, "
-    "parent: fields.parent.fields.summary, parent_type: fields.parent.fields.issuetype.name, "
+    "parent_key: fields.parent.key, parent: fields.parent.fields.summary, parent_type: fields.parent.fields.issuetype.name, "
     "points: fields.{story_points}, flags: fields.{flagged}[*].value, "
     "sprints: fields.{sprint}[*].{{id: id, name: name, state: state, start: startDate}}, "
     "blocked_by: fields.issuelinks[?type.inward=='is blocked by' && inwardIssue]"
@@ -133,6 +133,19 @@ def build_requests(config: dict[str, Any], labels: list[str] | None) -> list[dic
     ]
 
 
+def build_mine_request(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "path": "/rest/api/3/search/jql",
+        "queryParams": {
+            "jql": f"project in ({quoted(config['projects'])}) AND assignee = currentUser() "
+            "AND statusCategory != Done",
+            "fields": "parent",
+            "maxResults": "50",
+        },
+        "jq": "issues[*].{key: key, parent_key: fields.parent.key}",
+    }
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -162,6 +175,7 @@ def main(argv: list[str]) -> int:
         "size": args.size,
         "labels": config["labels"] if labels is None else labels,
         "requests": build_requests(config, labels),
+        "mine": build_mine_request(config),
     }
     print(json.dumps(output, indent=2))
     return 0

@@ -5,7 +5,7 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.3.0"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -67,9 +67,10 @@ story_points = "customfield_10016"
 
    On a non-zero exit, show the error and the config example above, then stop.
 
-2. **Fetch.** For each entry in `requests` (buckets `active`, `next`, `backlog`), call
-   `mcp__jira__jira_get` with its `path`, `queryParams` and `jq` exactly as given. Run them in
-   parallel. A failed bucket is reported as unavailable, never as empty.
+2. **Fetch.** For each entry in `requests` (buckets `active`, `next`, `backlog`) and for
+   `mine`, call `mcp__jira__jira_get` with its `path`, `queryParams` and `jq` exactly as given.
+   Run them in parallel. A failed bucket is reported as unavailable, never as empty; a failed
+   `mine` only drops the ★ markers, with a one-line note.
 
 3. **Split.** A ticket is **flagged** when `flags` is non-empty, or any `blocked_by` entry has a
    `category` other than `done`. Everything else is **ready**. Note `has_description: false` as
@@ -88,7 +89,8 @@ story_points = "customfield_10016"
    host in `url` (`https://<host>/browse/<key>`).
 
    - **Epic**: `parent` when `parent_type` is `Epic`; for a sub-task, its parent's summary
-     prefixed `↳ `. `—` when none. Truncate to ~35 chars.
+     prefixed `↳ `. `—` when none. Truncate to ~35 chars. Prefix `★ ` when `parent_key`
+     matches a `parent_key` (or `key`) from `mine` — an epic you already have work in.
    - **Cells**: replace any `|` in epic or summary text with `/` so it can't split the table.
    - **Summary**: drop a leading `FE |`, `BE|`, `FS |`-style prefix (the Labels column has it);
      truncate to ~70 chars.
@@ -116,8 +118,10 @@ story_points = "customfield_10016"
    | [GE-1234](…) | next | P2 | 1 | blocked by GE-1200 (in progress) | … |
    ```
 
+   When any ★ appears, add a legend line: `★ epic you already have open work in`.
    Replace an empty table with a one-line "none". Add a caveat line for tickets lacking a
    description or points if any.
 
 6. **Suggest.** End with one line naming the top ready ticket (for `meaty`, the largest
-   pointed one in the earliest bucket) and `/start-ticket <KEY>`. If nothing is ready, say so and point at the flagged list.
+   pointed one in the earliest bucket) and `/start-ticket <KEY>`. Mention a ★ ticket in the
+   same bucket as an alternative when it isn't the top pick. If nothing is ready, say so and point at the flagged list.
