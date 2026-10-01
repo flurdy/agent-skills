@@ -111,7 +111,7 @@ TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-
   test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
   test-pi-spend test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
-  test-today test-wrap-up test-watch-protocols test-watch-telemetry
+  test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check
 
 test: $(TEST_TARGETS)
 
@@ -222,6 +222,11 @@ test-plan-day:
 
 test-handoffs:
 	@python3 -m unittest discover -s skills/handoffs/tests -p 'test_*.py'
+
+.PHONY: test-model-update-check
+test-model-update-check:
+	@skills/model-update-check/tests/test-model-update-check.sh
+	@python3 -B -m unittest discover -s skills/model-update-check/tests -p 'test_*.py'
 
 test-pi-spend:
 	@python3 -m unittest discover -s skills/pi-spend/tests -p 'test_*.py'

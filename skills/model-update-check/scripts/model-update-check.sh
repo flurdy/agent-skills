@@ -12,16 +12,24 @@ readonly PI_BREW_FORMULA="${PI_BREW_FORMULA:-pi-coding-agent}"
 router_config="$DEFAULT_ROUTER_CONFIG"
 consensus_config="$DEFAULT_CONSENSUS_CONFIG"
 offline=false
+billing_policy="${HOME}/.pi/agent/pi-spend-billing-policy.json"
+evidence_args=()
+refresh_args=()
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
 Usage: model-update-check.sh [--offline]
                              [--router-config FILE]
-                             [--consensus-config FILE]
+                             [--consensus-config FILE] [--billing-policy FILE]
+                             [--evidence FILE]
+                             [--refresh-models --confirm-refresh] [--refresh-timeout SECONDS]
 
-Compares configured model IDs with the active Pi model catalog and, unless
---offline is set, public models.dev and npm metadata. Emits JSON only. It never
-reads provider credentials, calls inference APIs, or edits configuration.
+Default/offline audits are read-only. Emits JSON with config locations, complete
+candidate discovery and evidence-backed migration previews. No configuration edits
+or inference. Refresh requires separate current-run authorization: Pi natively reads
+auth.json/models.json, performs network activity and persists catalogs; auth effects
+are version-dependent. Failure can leave partial effects. No package-update fallback.
 USAGE
 }
 
@@ -46,6 +54,29 @@ while [[ $# -gt 0 ]]; do
       consensus_config="$2"
       shift 2
       ;;
+    --billing-policy)
+      [[ $# -ge 2 ]] || die "--billing-policy requires a path"
+      billing_policy="$2"
+      shift 2
+      ;;
+    --evidence)
+      [[ $# -ge 2 ]] || die "--evidence requires a path"
+      evidence_args=(--evidence "$2")
+      shift 2
+      ;;
+    --refresh-models)
+      refresh_args+=(--requested)
+      shift
+      ;;
+    --confirm-refresh)
+      refresh_args+=(--confirmed)
+      shift
+      ;;
+    --refresh-timeout)
+      [[ $# -ge 2 ]] || die "--refresh-timeout requires seconds"
+      refresh_args+=(--timeout "$2")
+      shift 2
+      ;;
     --help|-h)
       usage
       exit 0
@@ -57,6 +88,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 command -v jq >/dev/null 2>&1 || die "jq is required"
+command -v python3 >/dev/null 2>&1 || die "Python 3.10+ is required"
 
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
@@ -78,8 +110,29 @@ printf '{"data":[]}\n' > "$openrouter_catalog"
 printf '{}\n' > "$pi_package"
 printf '{}\n' > "$brew_info"
 
+refresh_result="$work_dir/refresh.json"
+[[ "$offline" == false ]] || refresh_args+=(--offline)
+python3 -B "$SCRIPT_DIR/catalog_refresh.py" "${refresh_args[@]}" > "$refresh_result" || {
+  jq -e 'type == "object" and has("status")' "$refresh_result" >/dev/null || die "invalid refresh request"
+}
+
+router_snapshot="$work_dir/router.json"
+panel_snapshot="$work_dir/panel.json"
+spend_snapshot="$work_dir/spend.json"
+for pair in router panel spend; do
+  case "$pair" in
+    router) source="$router_config"; destination="$router_snapshot" ;;
+    panel) source="$consensus_config"; destination="$panel_snapshot" ;;
+    spend) source="$billing_policy"; destination="$spend_snapshot" ;;
+  esac
+  if [[ -f "$source" ]]; then
+    # One private input snapshot shared by validation, digest and preview.
+    cp -f -- "$source" "$destination" || die "unable to snapshot $pair config"
+  fi
+done
+
 router_status="ok"
-if [[ ! -f "$router_config" ]]; then
+if [[ ! -f "$router_snapshot" ]]; then
   router_status="missing"
 elif ! jq -e '
   (.tiers | type == "object") and
@@ -87,7 +140,7 @@ elif ! jq -e '
     (.value.candidates | type == "array") and
     all(.value.candidates[]; (.model | type == "string") and (.model | contains("/")))
   )
-' "$router_config" >/dev/null 2>&1; then
+' "$router_snapshot" >/dev/null 2>&1; then
   router_status="invalid"
 else
   jq -c --arg config "$router_config" '
@@ -112,11 +165,11 @@ else
         catalogModel: ($parts[1:] | join("/"))
       }
     ]
-  ' "$router_config" > "$router_entries"
+  ' "$router_snapshot" > "$router_entries"
 fi
 
 consensus_status="ok"
-if [[ ! -f "$consensus_config" ]]; then
+if [[ ! -f "$panel_snapshot" ]]; then
   consensus_status="missing"
 elif ! jq -e \
   --argjson max_routes 8 \
@@ -196,8 +249,11 @@ elif ! jq -e \
     (if has("models") then valid_legacy else valid_routes end);
   (.version == 1) and
   (.profiles | type == "object") and
+  ((has("modelPolicies") | not) or (.modelPolicies | type == "object" and all(to_entries[];
+    (.key | canonical_openrouter) and
+    (.value | type == "object" and .metered == true and (.consent == "ask" or .consent == "allow"))))) and
   all(.profiles[]; valid_profile)
-' "$consensus_config" >/dev/null 2>&1; then
+' "$panel_snapshot" >/dev/null 2>&1; then
   consensus_status="invalid"
 else
   jq -c --arg config "$consensus_config" '
@@ -222,36 +278,17 @@ else
         catalogModel: ($entry.model | sub("^openrouter/"; ""))
       }
     ]
-  ' "$consensus_config" > "$consensus_entries"
+  ' "$panel_snapshot" > "$consensus_entries"
 fi
 
 jq -s 'add | unique_by([.source, .usage, .model])' \
   "$router_entries" "$consensus_entries" > "$configured_entries"
 
-pi_status="ok"
-pi_version=""
-if ! command -v pi >/dev/null 2>&1; then
-  pi_status="missing"
-else
-  pi_version="$(pi --version 2>/dev/null || true)"
-  pi_output="$work_dir/pi-models.txt"
-  if [[ "$offline" == true ]]; then
-    if ! pi --offline --list-models > "$pi_output" 2>/dev/null; then
-      pi_status="error"
-    fi
-  elif ! pi --list-models > "$pi_output" 2>/dev/null; then
-    pi_status="error"
-  fi
-
-  if [[ "$pi_status" == "ok" ]]; then
-    awk 'NR > 1 && NF >= 2 { print $1 "\t" $2 }' "$pi_output" |
-      jq -Rsc '
-        split("\n") |
-        map(select(length > 0) | split("\t") | {provider: .[0], model: .[1]}) |
-        unique_by([.provider, .model])
-      ' > "$pi_models"
-  fi
-fi
+# One bounded, offline enumeration after any explicitly approved refresh.
+python3 -B "$SCRIPT_DIR/catalog_refresh.py" --enumerate > "$work_dir/pi.json" || true
+pi_status="$(jq -r '.status' "$work_dir/pi.json")"
+pi_version="$(jq -r '.installedVersion // ""' "$work_dir/pi.json")"
+jq '.models' "$work_dir/pi.json" > "$pi_models"
 
 brew_status="missing"
 brew_formula=""
@@ -260,7 +297,7 @@ brew_latest_version=""
 brew_update_available=false
 if command -v brew >/dev/null 2>&1; then
   brew_status="ok"
-  if ! brew info --json=v2 "$PI_BREW_FORMULA" > "$brew_info" 2>/dev/null ||
+  if ! HOMEBREW_NO_AUTO_UPDATE=1 brew info --json=v2 "$PI_BREW_FORMULA" > "$brew_info" 2>/dev/null ||
     ! jq -e '.formulae | type == "array" and length == 1' "$brew_info" >/dev/null 2>&1; then
     brew_status="error"
     printf '{}\n' > "$brew_info"
@@ -286,23 +323,23 @@ if [[ "$offline" == false ]]; then
     pi_release_status="missing-curl"
   else
     models_dev_status="ok"
-    if ! curl --fail --silent --show-error --location --max-time 30 \
+    if ! curl -q --fail --silent --show-error --location --max-time 30 --max-filesize 16777216 \
       "$MODELS_DEV_URL" --output "$live_catalog" 2>/dev/null ||
-      ! jq -e 'type == "object"' "$live_catalog" >/dev/null 2>&1; then
+      ! jq -e 'type == "object" and all(.[]; type == "object" and ((.models // {}) | type == "object" and all(.[]; type == "object")))' "$live_catalog" >/dev/null 2>&1; then
       models_dev_status="error"
       printf '{}\n' > "$live_catalog"
     fi
 
     openrouter_status="ok"
-    if ! curl --fail --silent --show-error --location --max-time 30 \
+    if ! curl -q --fail --silent --show-error --location --max-time 30 --max-filesize 16777216 \
       "$OPENROUTER_MODELS_URL" --output "$openrouter_catalog" 2>/dev/null ||
-      ! jq -e '.data | type == "array"' "$openrouter_catalog" >/dev/null 2>&1; then
+      ! jq -e '.data | type == "array" and all(.[]; type == "object" and (.id | type == "string"))' "$openrouter_catalog" >/dev/null 2>&1; then
       openrouter_status="error"
       printf '{"data":[]}\n' > "$openrouter_catalog"
     fi
 
     pi_release_status="ok"
-    if ! curl --fail --silent --show-error --location --max-time 15 \
+    if ! curl -q --fail --silent --show-error --location --max-time 15 --max-filesize 1048576 \
       "$PI_PACKAGE_URL" --output "$pi_package" 2>/dev/null ||
       ! jq -e '.version | type == "string"' "$pi_package" >/dev/null 2>&1; then
       pi_release_status="error"
@@ -423,7 +460,7 @@ jq -n \
     sources: {
       routerConfig: {path: $router_path, status: $router_status},
       consensusConfig: {path: $consensus_path, status: $consensus_status},
-      piCatalog: {status: $pi_status, installedVersion: (if $pi_version == "" then null else $pi_version end)},
+      piCatalog: {status: $pi_status, installedVersion: (if $pi_version == "" then null else $pi_version end), scope: "offline native catalog/auth scope; extensions disabled; CLI availability not inferred"},
       modelsDev: {status: $models_dev_status, url: $models_dev_url},
       openRouter: {status: $openrouter_status, url: $openrouter_url},
       piRelease: {status: $pi_release_status, latestVersion: (if $latest_pi_version == "" then null else $latest_pi_version end)},
@@ -487,4 +524,9 @@ jq -n \
       ]
     )
   }
-'
+' | python3 -B "$SCRIPT_DIR/migration_audit.py" \
+  --router "$router_snapshot" --panel "$panel_snapshot" --billing-policy "$spend_snapshot" \
+  --billing-policy-path "$billing_policy" \
+  "${evidence_args[@]}" \
+  --catalog "$live_catalog" --openrouter "$openrouter_catalog" --pi-catalog "$pi_models" \
+  --refresh-result "$refresh_result"

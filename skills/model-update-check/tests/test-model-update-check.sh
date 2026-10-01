@@ -12,7 +12,8 @@ fail() {
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
-mkdir -p "$TMP_DIR/bin" "$TMP_DIR/home"
+mkdir -p "$TMP_DIR/bin" "$TMP_DIR/home/.pi/agent"
+printf '{}\n' > "$TMP_DIR/home/.pi/agent/auth.json"
 PI_LOG="$TMP_DIR/pi.log"
 CURL_LOG="$TMP_DIR/curl.log"
 BREW_LOG="$TMP_DIR/brew.log"
@@ -26,7 +27,16 @@ case "$*" in
   --version)
     printf '%s\n' '0.80.0'
     ;;
-  --list-models|--offline\ --list-models)
+  update\ --help)
+    [[ "${REFRESH_CASE:-ok}" != unsupported ]] || exit 0
+    printf '  --models  Refresh model catalogs only\n'
+    ;;
+  update\ --models)
+    [[ "${REFRESH_CASE:-ok}" != fail ]] || exit 1
+    if [[ "${REFRESH_CASE:-ok}" == timeout ]]; then sleep 5; fi
+    printf 'native-output-must-not-be-exposed\n'
+    ;;
+  --offline\ --no-extensions\ --no-skills\ --no-prompt-templates\ --no-themes\ --no-context-files\ --no-approve\ --list-models)
     cat <<'MODELS'
 provider      model                 context  max-out  thinking  images
 anthropic     claude-sonnet-5       1M       128K     yes       yes
@@ -218,6 +228,7 @@ export FIXTURE_MODELS_DEV="$TMP_DIR/models-dev.json"
 RUN_ENV=(env \
   "PATH=$TMP_DIR/bin:$ORIGINAL_PATH" \
   "HOME=$TMP_DIR/home" \
+  "PI_CODING_AGENT_DIR=$TMP_DIR/home/.pi/agent" \
   "MODELS_DEV_URL=https://fixture.test/models" \
   "OPENROUTER_MODELS_URL=https://fixture.test/openrouter" \
   "PI_PACKAGE_URL=https://fixture.test/pi-latest")
@@ -227,6 +238,12 @@ result_json="$("${RUN_ENV[@]}" "$HELPER" "${COMMON_ARGS[@]}")"
 jq -e '
   .mode == "hybrid" and
   .readOnly == true and
+  .schemaVersion == 2 and
+  .refresh.status == "not-requested" and
+  any(.configurationInventory[];
+    .identity == "local/claude/fable" and .resolution == "native-alias") and
+  any(.configurationInventory[];
+    .identity == "openai-codex/gpt-5.6-terra" and .metered == false) and
   .sources.routerConfig.status == "ok" and
   .sources.consensusConfig.status == "ok" and
   .sources.piCatalog.installedVersion == "0.80.0" and
@@ -296,7 +313,7 @@ jq -e '
   all(.configuredModels[]; .liveFound == null)
 ' <<< "$result_json" >/dev/null || fail "offline audit output was incorrect"
 [[ ! -s "$CURL_LOG" ]] || fail "offline mode invoked curl"
-grep -Fqx -- '--offline --list-models' "$PI_LOG" || \
+grep -Fqx -- '--offline --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-approve --list-models' "$PI_LOG" || \
   fail "offline mode did not constrain Pi startup"
 
 INVALID_ROUTER="$TMP_DIR/invalid-router.json"
@@ -341,5 +358,35 @@ assert_invalid_panel "$INVALID_OPENROUTER_ID" "malformed OpenRouter identity"
 INVALID_QUORUM="$TMP_DIR/invalid-quorum.json"
 jq '.profiles.hybrid.quorum = 6' "$CONSENSUS_CONFIG" > "$INVALID_QUORUM"
 assert_invalid_panel "$INVALID_QUORUM" "quorum above enabled route count"
+
+# Refresh never runs implicitly, and failed authorization never reaches native update.
+if grep -q '^update ' "$PI_LOG"; then fail "default/offline invoked update"; fi
+for extra in denied conflict unsupported fail timeout ok; do
+  : > "$PI_LOG"
+  refresh_flags=(--refresh-models --confirm-refresh)
+  expected="$extra"
+  case "$extra" in
+    denied) refresh_flags=(--refresh-models); expected=authorization-required ;;
+    conflict) refresh_flags+=(--offline); expected=offline-conflict ;;
+    timeout) refresh_flags+=(--refresh-timeout 1) ;;
+    fail) expected=failed ;;
+  esac
+  result_json="$(REFRESH_CASE="$extra" "${RUN_ENV[@]}" "$HELPER" "${COMMON_ARGS[@]}" "${refresh_flags[@]}")"
+  jq -e --arg expected "$expected" '.refresh.status == $expected' <<< "$result_json" >/dev/null || fail "wrong refresh status: $extra"
+  if [[ "$extra" == ok ]]; then
+    jq -e '.refresh.fresh and (.readOnly == false)' <<< "$result_json" >/dev/null || fail "refresh success contract"
+    # Reacquisition must follow the models-only update, never precede it.
+    first="$(head -n 1 "$PI_LOG")"
+    [[ "$first" == 'update --help' ]] || fail "refresh capability probe was not first"
+    [[ "$(grep -n '^update --models$' "$PI_LOG" | cut -d: -f1)" -lt "$(grep -n '^--offline ' "$PI_LOG" | cut -d: -f1)" ]] || fail "catalog was not reacquired"
+  else
+    jq -e '.refresh.fresh == false and .verdict != "CURRENT"' <<< "$result_json" >/dev/null || fail "false freshness: $extra"
+  fi
+  if [[ "$extra" == denied || "$extra" == conflict ]]; then
+    if grep -q '^update ' "$PI_LOG"; then fail "unauthorized native command"; fi
+  fi
+  if grep -Eq '^update($| --(self|all|extensions)$)' "$PI_LOG"; then fail "package update fallback"; fi
+  [[ "$result_json" != *native-output-must-not-be-exposed* ]] || fail "native output leaked"
+done
 
 printf '%s\n' 'model-update-check tests passed'

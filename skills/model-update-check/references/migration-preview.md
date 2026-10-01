@@ -1,0 +1,104 @@
+# Reviewed migration evidence and advisory preview
+
+This is the audit's bounded input/output contract, not a configuration applier. Evidence files
+are local working input: use ignored `.artifacts/` only when authorized, do not commit machine-local
+pins or raw audit output. No evidence file or emitted preview grants execution, consent or file authority.
+
+## Input: `--evidence FILE`
+
+UTF-8 JSON, maximum 64 KiB, strict duplicate-key/constant handling. Top-level keys are exactly
+`schemaVersion: 1` and `recommendations` (0–32 entries). Each recommendation contains:
+
+| Key | Contract |
+|---|---|
+| `from`, `to` | Distinct exact identities on the same runtime route; never fuzzy matched |
+| `checkedAt` | UTC timestamp, no more than seven days old and not in the future |
+| `citations` | 1–4 `{url, quote}` records; HTTPS without credentials, default/443 port; quote ≤2,000 characters |
+| `compatibility` | Non-empty ≤2,000-character assessment for each of `role`, `stability`, `reasoning`, `modalities`, `limits`, `pricing`, `billingRoute` |
+| `nativeAvailability` | Optional ≤2,000-character reviewed exact CLI-resolution evidence; required for local CLI proposals |
+| `routerPolicy` | Optional `{metered: boolean, consent: "ask" or "allow", evidence: string}`; explicit proposed policy, never inherited from `from` |
+| `billing` | Optional `{billing: "metered" or "subscription", effectiveFrom: UTC timestamp, evidence: string}`; exact-model interval evidence, not launch consent |
+
+Unknown keys, wrong types, stale/future evidence, cross-route pairs and duplicates are rejected.
+Missing configuration/catalog data still blocks the affected preview; citations do not override a
+negative exact-route Pi/OpenRouter availability result. Local CLI availability stays a reviewed
+claim, not an inference from public catalog presence. A malformed evidence file never erases the
+remaining read-only audit.
+
+Identities are:
+
+- Pi/router and OpenRouter: the configured `provider/model-id` string, including `~` where present;
+- local reviews/allowlists: `local/claude/<pin>`, `local/codex/<pin>`, `local/gemini/<pin>`.
+
+These are distinct routes even when the final model names happen to match. To migrate a router
+candidate **and** a local CLI pin, supply separate reviewed pairs in the same file. Native defaults
+and aliases are preserved, not materialized into pins. A `model-latest` CLI alias remains native.
+OpenRouter catalog aliases remain exact provider identifiers and are audited on that route.
+
+The collector does **not** fetch or authenticate arbitrary citation URLs. The invoking agent/user
+must have reviewed authoritative public sources and verified that each quote actually supports the
+claimed relationship and role. All preview records retain
+`evidenceTrust: "reviewed-input-not-independently-verified"`. A release announcement establishes
+existence, not subscription availability, comparative quality or consent.
+
+Billing evidence specifies the intended start; the helper never chooses a historical date from a
+model release or invents a subscription classification. A proposed start before the audit time is
+unresolved rather than a historical backfill, even when the input claims billing evidence. Appending an interval reuses
+`pi-spend/scripts/pi_spend.py::parse_billing_policy` to reject invalid/overlapping ranges. Existing
+keys/intervals are preserved, including prior billing for the target. An identical interval is not
+proposed twice. Invalid/missing policy requires separate repair rather than automatic initialization.
+
+## Output: audit schema version 2
+
+Existing source-health, configured-model, recent-list and finding fields remain. Additional fields:
+
+- `configurationInventory`: every model-bearing JSON pointer and configured role, retaining
+  disabled rows, weights/selection, aliases/defaults, exact global router policy projection and
+  current spend coverage. `sourceSha256` binds the private input snapshot to its original target path.
+- `catalogCandidates`: complete discovery from each relevant provider/namespace, not a top-eight
+  cutoff. Status is always `discovered-not-successor`. `crossRouteDiscoveryOnly` can suggest a
+  research lead, never equivalent identity or runtime access. Keep data source distinctions intact.
+- `discoveryLeads`: same-family discovery with newer/unknown release metadata. Name/date similarity
+  triggers investigation only; unreviewed leads make the verdict incomplete, never an automatic upgrade.
+- `migrationAssessments`: all affected config paths/roles for each current identity. No proposal
+  evidence means a compatibility review, not a name/date-based automatic recommendation.
+- `recommendations`: reviewed pairs, candidate availability, optional-upgrade versus incomplete,
+  exact `changes`, and `unresolved` prerequisites.
+- `changes`: source/config path, source digest, JSON pointer, `operation`, `before`, `after`,
+  `consentSensitive`, and `authorization: "separate-current-run-required"`. These are advisory
+  before/after records, **not executable JSON Patch**. Applying several selected proposals requires
+  composing and revalidating their joint final diff; overlapping parent paths are not independent patches.
+- `handoff`: `previewOnly: true`, `companionAvailable: false`, and separate authorization/preservation
+  requirements. Do not pretend that an apply command already exists.
+- `refresh`: command, disclosure, status, attempted, nativeCompleted and fresh. `fresh` requires
+  native success **and** successful subsequent enumeration; it is not a per-model launch guarantee.
+
+Subscription allowlists add a proposed pin while retaining existing entries, with explicit
+`consentSensitive: true`. No approval is copied from the old model. Existing candidate policies are
+not silently overwritten. OpenRouter panel policy decisions remain separately visible unresolved
+work unless already configured. Unrelated config fields, panel quorum/provider diversity and model
+weights/order are never part of the generated edits.
+
+The planned companion must independently validate its input, recompute source digests, acquire each
+file's authority, preview the composed final diff, require exact approval, and provide private recovery
+without promising cross-file atomicity. This audit implements none of those writes.
+
+## Native refresh evidence (Pi 0.87.1)
+
+Reviewed installed documentation: `docs/models.md` and `docs/cli.md` distinguish models-only refresh
+from Pi/package updates. Reviewed implementation:
+
+- `dist/package-manager-cli.js::refreshModelCatalogs`: `ModelRuntime.create` with native auth/model
+  paths, then `refresh({allowNetwork: true, force: true})`; native errors/timeouts are failures.
+- `dist/core/model-runtime.js::create`: loads `models.json` and uses `models-store.json` for persisted
+  model data; refresh also updates native availability/auth checks.
+- `dist/core/remote-catalog-provider.js`: publishes persistent metadata on success and some failed
+  responses. Failure cannot promise no side effects or an unchanged cache.
+- `dist/core/auth-storage.js`: native AuthStorage can create a missing auth file and can execute
+  configured credential resolution. The passive collector checks only file existence, uses offline
+  enumeration with extensions/project execution disabled, suppresses native diagnostics, and never
+  opens credentials itself. Do not claim a universal side-effect guarantee for arbitrary native
+  provider/auth configuration or future Pi versions; recheck or report incomplete when uncertain.
+
+Tests prove the wrapper contract with synthetic native commands. A live refresh was not performed
+for implementation acceptance; it still requires current-run authorization and reviewed native effects.

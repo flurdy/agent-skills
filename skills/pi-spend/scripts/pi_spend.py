@@ -114,6 +114,11 @@ def load_billing_policy(path):
         return missing_policy(EFFECTIVE_POLICY, "billing-policy-missing")
     except (OSError, ValueError):
         return BillingPolicy(EFFECTIVE_POLICY, "invalid", ("billing-policy-invalid",), {})
+    return parse_billing_policy(payload)
+
+
+def parse_billing_policy(payload):
+    """Validate an in-memory policy with the same rules as the telemetry reader."""
     if (
         not isinstance(payload, dict)
         or type(payload.get("schemaVersion")) is not int
