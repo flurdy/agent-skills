@@ -22,7 +22,16 @@ DEFAULT_FIELDS = {
     "flagged": "customfield_10021",
     "story_points": "customfield_10016",
 }
-BASE_FIELDS = ("summary", "status", "priority", "issuetype", "labels", "issuelinks", "description")
+BASE_FIELDS = (
+    "summary",
+    "status",
+    "priority",
+    "issuetype",
+    "labels",
+    "issuelinks",
+    "description",
+    "parent",
+)
 BUCKETS = (
     ("active", "sprint in openSprints()", "active_limit"),
     ("next", "sprint in futureSprints() AND sprint not in openSprints()", "next_limit"),
@@ -33,6 +42,7 @@ FIELD_ID = re.compile(r"^customfield_\d+$")
 PROJECTION = (
     "issues[*].{{key: key, url: self, summary: fields.summary, type: fields.issuetype.name, "
     "priority: fields.priority.name, labels: fields.labels, has_description: fields.description != null, "
+    "parent: fields.parent.fields.summary, parent_type: fields.parent.fields.issuetype.name, "
     "points: fields.{story_points}, flags: fields.{flagged}[*].value, "
     "sprints: fields.{sprint}[*].{{name: name, state: state}}, "
     "blocked_by: fields.issuelinks[?type.inward=='is blocked by' && inwardIssue]"

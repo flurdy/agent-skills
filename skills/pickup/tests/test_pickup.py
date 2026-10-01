@@ -60,6 +60,8 @@ class PickupTest(unittest.TestCase):
         self.assertEqual(requests[1]["queryParams"]["maxResults"], "5")
         self.assertIn("customfield_10021", requests[0]["queryParams"]["fields"])
         self.assertIn("fields.customfield_10016", requests[0]["jq"])
+        self.assertIn("parent", requests[0]["queryParams"]["fields"].split(","))
+        self.assertIn("parent: fields.parent.fields.summary", requests[0]["jq"])
 
     def test_label_override_and_all(self) -> None:
         self.write(CONFIG)

@@ -5,7 +5,7 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.1.0"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -79,26 +79,41 @@ story_points = "customfield_10016"
    `points` ≥ 5. Unpointed tickets keep their rank. Never re-rank by priority — the team's rank
    already reflects it.
 
-5. **Render.** Build browse links from the host in `url` (`https://<host>/browse/<key>`). Sprint
-   is the name of the first sprint whose state matches the bucket, or `—` for backlog.
+5. **Render.** One ready table per sprint, in bucket order: the active sprint, each future
+   sprint in rank order of first appearance, then backlog. Name the sprint in the heading, not
+   a column. The flagged table stays single, with a Bucket column. Build browse links from the
+   host in `url` (`https://<host>/browse/<key>`).
+
+   - **Epic**: `parent` when `parent_type` is `Epic`; for a sub-task, its parent's summary
+     prefixed `↳ `. `—` when none. Truncate to ~35 chars.
+   - **Summary**: drop a leading `FE |`, `BE|`, `FS |`-style prefix (the Labels column has it);
+     truncate to ~70 chars.
 
    ```markdown
    ## Pickup — GE · FE, BE, FS
 
-   ### Ready
-   | Key | Bucket | Sprint | Pri | Pts | Labels | Summary |
-   |-----|--------|--------|-----|-----|--------|---------|
-   | [GE-2410](…) | active | GE Sprint 27.12 | P3 | 3 | FE | … |
+   ### Active — GE Sprint 27.12
+   | Key | Pri | Pts | Labels | Epic | Summary |
+   |-----|-----|-----|--------|------|---------|
+   | [GE-2410](…) | P3 | 3 | FE | STT verification | Add Amplitude tracking for … |
+
+   ### Next — GE Sprint 27.13
+   | Key | Pri | Pts | Labels | Epic | Summary |
+   |-----|-----|-----|--------|------|---------|
+
+   ### Backlog
+   | Key | Pri | Pts | Labels | Epic | Summary |
+   |-----|-----|-----|--------|------|---------|
 
    ### Flagged / blocked
    | Key | Bucket | Pri | Pts | Why | Summary |
    |-----|--------|-----|-----|-----|---------|
    | [GE-2430](…) | active | P3 | 2 | ⚑ Impediment | … |
-   | [GE-1234](…) | next | P2 | 1 | blocked by GE-1200 (indeterminate) | … |
+   | [GE-1234](…) | next | P2 | 1 | blocked by GE-1200 (in progress) | … |
    ```
 
-   Drop an empty section with a one-line "none". Add a caveat line for tickets lacking a
-   description or points if any. Truncate summaries to ~70 chars.
+   Replace an empty table with a one-line "none". Add a caveat line for tickets lacking a
+   description or points if any.
 
 6. **Suggest.** End with one line naming the top ready ticket (respecting `small`/`meaty`)
    and `/start-ticket <KEY>`. If nothing is ready, say so and point at the flagged list.
