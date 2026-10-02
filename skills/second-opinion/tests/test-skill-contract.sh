@@ -41,7 +41,7 @@ grep -Fq 'All modes, including PR review' "$SKILL" || fail 'Codex must receive t
 grep -Fq 'no current PR assessment' "$SKILL" || fail 'stale external claims must not authorize a current assessment'
 grep -Fq 'final revalidation **before** this section' "$SKILL" || fail 'PR stability must gate panel synthesis, not only the final assessment'
 for file in "$SKILL" "$README" "$REFERENCE"; do
-  for setting in 'reasoning.effort' 'maxOutputTokens' '16,000'; do
+  for setting in 'reasoning.effort' 'maxOutputTokens' '128,000'; do
     grep -Fq "$setting" "$file" || fail "missing OpenRouter setting $setting in $file"
   done
 done

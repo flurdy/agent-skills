@@ -11,7 +11,7 @@ readonly DEFAULT_PANEL="focused"
 readonly HARD_MAX_ROUTES=8
 readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
-readonly HARD_MAX_OUTPUT_TOKENS=16000
+readonly HARD_MAX_OUTPUT_TOKENS=128000
 readonly HARD_MAX_LOCAL_OUTPUT_BYTES=65536
 readonly HARD_MAX_TIMEOUT_SECONDS=1800
 
@@ -36,7 +36,7 @@ OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes 
 be disabled; quorum counts enabled routes while optional consensusQuorum counts
 unique providers. Built-in focused is used when absent from config. Local response
 and error capture are bounded while streaming. OpenRouter effort is passed as
-reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 16,000).
+reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 128,000).
 USAGE
 }
 

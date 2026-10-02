@@ -103,7 +103,7 @@ Local limits may lower but never exceed the compiled ceilings:
 - 8 requests total;
 - 4 concurrent requests;
 - 65,536 combined sanitized-user-prompt and fixed completion-contract bytes;
-- 16,000 output tokens per model (reasoning plus visible output);
+- 128,000 output tokens per model (reasoning plus visible output);
 - 1,048,576 response bytes per HTTP transport;
 - 1,800 seconds per request.
 

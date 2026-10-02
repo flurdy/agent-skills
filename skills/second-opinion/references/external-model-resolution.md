@@ -64,7 +64,7 @@ Unsupported values are rejected. Omitted values preserve the native default; the
 a universal effort mapping or claims to know an unreported effective default.
 OpenRouter effort is a request setting, not a guaranteed token split. Optional
 OpenRouter `maxOutputTokens` lowers the profile output-token ceiling; both include
-reasoning and visible output, and neither may exceed the compiled 16,000-token cap.
+reasoning and visible output, and neither may exceed the compiled 128,000-token cap.
 Omitted effort sends no reasoning setting and omitted cap inherits the profile limit.
 
 ## Cost and consent

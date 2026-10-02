@@ -469,12 +469,12 @@ jq -se 'all(.[]; .max_tokens == 100 and (.hasReasoning | not))' "$REQUEST_LOG" \
   >/dev/null || fail "omitted effort or budget changed existing requests"
 
 BUDGET_CONFIG="$TMP_DIR/budget.json"
-jq '.profiles.test.limits.maxOutputTokensPerModel = 16000 |
-    .profiles.test.models[0] += {effort:"high", maxOutputTokens:16000} |
+jq '.profiles.test.limits.maxOutputTokensPerModel = 64000 |
+    .profiles.test.models[0] += {effort:"high", maxOutputTokens:64000} |
     .profiles.test.models[1].maxOutputTokens = 2000' "$CONFIG" > "$BUDGET_CONFIG"
 budget_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --profile test)"
-jq -e '.ready and .hard_limits.max_output_tokens_per_model == 16000' \
-  <<< "$budget_check" >/dev/null || fail "16000-token profile was rejected"
+jq -e '.ready and .hard_limits.max_output_tokens_per_model == 128000' \
+  <<< "$budget_check" >/dev/null || fail "64000-token profile or 128000-token hard ceiling was rejected"
 budget_sha="$(jq -r '.profile_sha256' <<< "$budget_check")"
 : > "$REQUEST_LOG"
 : > "$FAKE_CURL_LOG"
@@ -482,10 +482,10 @@ budget_sha="$(jq -r '.profile_sha256' <<< "$budget_check")"
   --profile-sha256 "$budget_sha" --prompt-file "$PROMPT" > "$TMP_DIR/budget-results.json"
 jq -se '
   length == 4 and
-  (map(select(.model == "qwen/test-a")) | .[0].max_tokens == 16000 and .[0].reasoning == {effort:"high"}) and
+  (map(select(.model == "qwen/test-a")) | .[0].max_tokens == 64000 and .[0].reasoning == {effort:"high"}) and
   (map(select(.model == "x-ai/test-b")) | .[0].max_tokens == 2000 and (.[0].hasReasoning | not)) and
   all(.[] | select(.model != "qwen/test-a" and .model != "x-ai/test-b");
-    .max_tokens == 16000 and (.hasReasoning | not))
+    .max_tokens == 64000 and (.hasReasoning | not))
 ' "$REQUEST_LOG" >/dev/null || fail "configured reasoning and per-model caps were not sent"
 [[ "$(wc -l < "$FAKE_CURL_LOG")" -eq 4 ]] || fail "budget run retried a model"
 
@@ -497,7 +497,12 @@ for mutation in '.profiles.test.models[0].effort = "low"' '.profiles.test.models
   expect_failure 'profile changed since check' "${RUN_ENV[@]}" "$HELPER" run --confirmed \
     --config "$TMP_DIR/changed-budget.json" --profile test --profile-sha256 "$budget_sha" --prompt-file "$PROMPT"
 done
-for value in '0' '-1' '16001' '1.5' '"16000"' 'null' 'true'; do
+jq '.profiles.test.limits.maxOutputTokensPerModel = 128000 |
+    .profiles.test.models[0].maxOutputTokens = 128000' "$BUDGET_CONFIG" > "$TMP_DIR/ceiling.json"
+ceiling_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/ceiling.json" --profile test)"
+jq -e '.ready and .profile_limits.maxOutputTokensPerModel == 128000' \
+  <<< "$ceiling_check" >/dev/null || fail "128000-token ceiling was rejected"
+for value in '0' '-1' '128001' '1.5' '"64000"' 'null' 'true'; do
   for field in '.profiles.test.limits.maxOutputTokensPerModel' '.profiles.test.models[0].maxOutputTokens'; do
     jq "$field = $value" "$BUDGET_CONFIG" > "$TMP_DIR/invalid-budget.json"
     invalid_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/invalid-budget.json" --profile test)"

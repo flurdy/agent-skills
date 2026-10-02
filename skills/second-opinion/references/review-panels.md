@@ -131,12 +131,12 @@ never retries or silent downgrades. Omitted effort sends no `reasoning` field.
 
 For OpenRouter only, optional route `maxOutputTokens` may lower
 `limits.maxOutputTokensPerModel`; it cannot exceed that profile ceiling or the
-compiled 16,000-token ceiling. Without it, the route inherits the profile ceiling.
+compiled 128,000-token ceiling. Without it, the route inherits the profile ceiling.
 Both limits must be positive integers. Existing profiles and the built-in default
 remain unchanged at their configured caps (the built-in is 2,000). Local CLI output
 continues to use its separate byte bound.
 
-For example, a profile with a 16,000-token ceiling may give a reasoning route
+For example, a profile with a 64,000-token ceiling may give a reasoning route
 `"effort": "high"` and leave its cap inherited, while another OpenRouter route uses
 `"maxOutputTokens": 2000`. The total includes reasoning **and** visible answer tokens.
 Changing the profile ceiling affects every inheriting OpenRouter route; preserve

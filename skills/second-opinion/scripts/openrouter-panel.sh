@@ -9,7 +9,7 @@ readonly DEFAULT_PROFILE="extreme"
 readonly HARD_MAX_MODELS=8
 readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
-readonly HARD_MAX_OUTPUT_TOKENS=16000
+readonly HARD_MAX_OUTPUT_TOKENS=128000
 readonly HARD_MAX_RESPONSE_BYTES=1048576
 readonly HARD_MAX_TIMEOUT_SECONDS=1800
 readonly COMPLETION_MARKER='<!-- SECOND_OPINION_COMPLETE -->'
@@ -28,7 +28,7 @@ Usage:
 
 Configuration defaults to ~/.agents/second-opinion/config.json. A profile contains
 1-8 unique OpenRouter models and limits no greater than the compiled safety
-ceilings: 4 concurrent requests, 65,536 prompt bytes, 16,000 output tokens per
+ceilings: 4 concurrent requests, 65,536 prompt bytes, 128,000 output tokens per
 model, a 1,048,576-byte HTTP response transport cap, and 1,800 seconds per request.
 The prompt ceiling includes the fixed completion contract and sanitized user message.
 

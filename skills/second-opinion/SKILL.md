@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.a
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.7.1"
+version: "3.7.2"
 author: "flurdy"
 ---
 
@@ -101,7 +101,7 @@ For panels, generic `--model` is invalid. Use repeated `--route-model ID=VALUE` 
 `--route-effort ID=VALUE`. OpenRouter identities cannot be overridden. Unsupported effort is rejected,
 never translated. OpenRouter route effort is sent as `reasoning.effort`; verify model
 support first. Optional route `maxOutputTokens` may lower the profile ceiling (hard maximum
-16,000 tokens including reasoning). Omitted fields retain the profile cap and native effort;
+128,000 tokens including reasoning). Omitted fields retain the profile cap and native effort;
 effort does not guarantee answer headroom. See the panel reference for schema and provenance.
 
 ## 1. Parse arguments

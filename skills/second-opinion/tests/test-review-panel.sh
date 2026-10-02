@@ -659,15 +659,15 @@ jq -se 'all(.[]; .max_tokens == 100 and (.hasReasoning | not))' "$REQUEST_LOG" \
   >/dev/null || fail "existing requests changed with omitted reasoning settings"
 
 BUDGET_CONFIG="$TMP_DIR/budget.json"
-jq '.profiles.mixed.limits.maxOutputTokensPerModel = 16000 |
+jq '.profiles.mixed.limits.maxOutputTokensPerModel = 64000 |
     .profiles.mixed.routes[2].effort = "high" |
     .profiles.mixed.routes[3].maxOutputTokens = 2000' "$CONFIG" > "$BUDGET_CONFIG"
 budget_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --panel mixed --prompt-file "$PROMPT")"
 jq -e '
-  .openrouter.maxOutputTokensTotal == 18000 and
+  .openrouter.maxOutputTokensTotal == 66000 and
   (.routes[] | select(.id == "qwen-a") |
     .effectiveEffort == "high" and .effortSource == "panel" and
-    .effectiveMaxOutputTokens == 16000 and .outputTokensSource == "profile") and
+    .effectiveMaxOutputTokens == 64000 and .outputTokensSource == "profile") and
   (.routes[] | select(.id == "qwen-b") |
     .effectiveEffort == "native-default" and .effectiveMaxOutputTokens == 2000 and .outputTokensSource == "route")
 ' <<< "$budget_check" >/dev/null || fail "budget/effort check provenance was incorrect"
@@ -681,7 +681,7 @@ BUDGET_ARGS=(--config "$BUDGET_CONFIG" --panel mixed --prompt-file "$PROMPT"
 "${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed "${BUDGET_ARGS[@]}" > "$TMP_DIR/budget-results.json"
 jq -se '
   length == 2 and
-  (map(select(.model == "qwen/model-a")) | .[0].max_tokens == 16000 and .[0].reasoning == {effort:"high"}) and
+  (map(select(.model == "qwen/model-a")) | .[0].max_tokens == 64000 and .[0].reasoning == {effort:"high"}) and
   (map(select(.model == "QWEN/model-b")) | .[0].max_tokens == 2000 and (.[0].hasReasoning | not))
 ' "$REQUEST_LOG" >/dev/null || fail "coordinator dropped approved request settings"
 [[ "$(wc -l < "$CURL_LOG")" -eq 2 ]] || fail "coordinator retried budget routes"
@@ -689,7 +689,7 @@ jq -se '
 "${RUN_ENV[@]}" "$HELPER" decline-openrouter "${BUDGET_ARGS[@]}" > "$TMP_DIR/budget-declined.json"
 for file in "$TMP_DIR/budget-results.json" "$TMP_DIR/budget-declined.json"; do
   jq -e '.[0].effectiveEffort == "high" and .[0].effortSource == "panel" and
-    .[0].effectiveMaxOutputTokens == 16000 and .[1].effectiveMaxOutputTokens == 2000' "$file" \
+    .[0].effectiveMaxOutputTokens == 64000 and .[1].effectiveMaxOutputTokens == 2000' "$file" \
     >/dev/null || fail "run/decline lost approved effort or budget provenance"
 done
 for mutation in '.profiles.mixed.routes[2].effort = "low"' '.profiles.mixed.routes[3].maxOutputTokens = 1000'; do
@@ -700,7 +700,11 @@ for mutation in '.profiles.mixed.routes[2].effort = "low"' '.profiles.mixed.rout
   expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed \
     "${BUDGET_ARGS[@]}" --config "$TMP_DIR/changed-budget.json"
 done
-for value in '0' '-1' '16001' '1.5' '"16000"' 'null' 'true'; do
+jq '.profiles.mixed.limits.maxOutputTokensPerModel = 128000' "$BUDGET_CONFIG" > "$TMP_DIR/ceiling.json"
+ceiling_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/ceiling.json" --panel mixed)"
+jq -e '.routes[] | select(.id == "qwen-a") | .effectiveMaxOutputTokens == 128000' \
+  <<< "$ceiling_check" >/dev/null || fail "128000-token ceiling was rejected"
+for value in '0' '-1' '128001' '1.5' '"64000"' 'null' 'true'; do
   for field in '.profiles.mixed.limits.maxOutputTokensPerModel' '.profiles.mixed.routes[2].maxOutputTokens'; do
     jq "$field = $value" "$BUDGET_CONFIG" > "$TMP_DIR/invalid-budget.json"
     expect_failure 'panel routes or limits are invalid' "${RUN_ENV[@]}" "$HELPER" check \
@@ -735,7 +739,7 @@ override_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$BUDGET_CONFIG" --pa
   --openrouter-sha256 "$(jq -r '.openrouterSha256' <<< "$override_check")" \
   --prompt-sha256 "$budget_prompt_sha" > "$TMP_DIR/override-budget-results.json"
 jq -se 'map(select(.model == "qwen/model-a")) | length == 1 and
-  .[0].max_tokens == 16000 and .[0].reasoning == {effort:"low"}' "$REQUEST_LOG" \
+  .[0].max_tokens == 64000 and .[0].reasoning == {effort:"low"}' "$REQUEST_LOG" \
   >/dev/null || fail "approved effort override was not sent"
 jq -e '.[0].effectiveEffort == "low" and .[0].effortSource == "override"' \
   "$TMP_DIR/override-budget-results.json" >/dev/null || fail "override result provenance was reset"
@@ -743,7 +747,7 @@ printf '%s\n' "$override_check" > "$TMP_DIR/override-budget-check.json"
 "$HELPER" evaluate --policy quorum --check-file "$TMP_DIR/override-budget-check.json" \
   --results-file "$TMP_DIR/override-budget-results.json" > "$TMP_DIR/override-budget-eval.json"
 jq -e '.results[] | select(.id == "qwen-a") | .effectiveEffort == "low" and
-  .effortSource == "override" and .effectiveMaxOutputTokens == 16000' "$TMP_DIR/override-budget-eval.json" \
+  .effortSource == "override" and .effectiveMaxOutputTokens == 64000' "$TMP_DIR/override-budget-eval.json" \
   >/dev/null || fail "evaluation lost effort/budget provenance"
 # Legacy entries must survive both normalization and the helper projection.
 jq '.profiles.legacy.models[0] += {effort:"high",maxOutputTokens:80}' "$CONFIG" > "$TMP_DIR/legacy-budget.json"

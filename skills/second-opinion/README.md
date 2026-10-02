@@ -114,7 +114,7 @@ manager. Put exact OpenRouter model IDs in the local configuration, never in thi
 Reasoning and the visible answer share the output-token allowance. A small allowance
 can be exhausted entirely by reasoning, producing no answer. OpenRouter routes can
 set `effort` (sent as `reasoning.effort`) and `maxOutputTokens` to lower the profile's
-`limits.maxOutputTokensPerModel`. The hard ceiling is 16,000 tokens; existing profiles
+`limits.maxOutputTokensPerModel`. The hard ceiling is 128,000 tokens; existing profiles
 keep their configured limits. Omitted effort preserves the model's native behavior.
 
 `check` shows each effective cap/effort and the total OpenRouter token allowance.
