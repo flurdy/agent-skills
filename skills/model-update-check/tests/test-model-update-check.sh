@@ -341,6 +341,40 @@ assert_invalid_panel() {
   ' <<< "$result_json" >/dev/null || fail "$label did not degrade independently"
 }
 
+for budget in 64000 128000; do
+  LARGE_OUTPUT_PANEL="$TMP_DIR/large-output-$budget.json"
+  jq --argjson budget "$budget" '
+    .profiles.test.limits.maxOutputTokensPerModel = $budget |
+    .profiles.test.models[0].maxOutputTokens = $budget |
+    .profiles.hybrid.limits.maxOutputTokensPerModel = $budget |
+    .profiles.hybrid.routes[3].maxOutputTokens = $budget
+  ' "$CONSENSUS_CONFIG" > "$LARGE_OUTPUT_PANEL"
+  result_json="$("${RUN_ENV[@]}" "$HELPER" --offline \
+    --router-config "$ROUTER_CONFIG" --consensus-config "$LARGE_OUTPUT_PANEL")"
+  jq -e '
+    .sources.consensusConfig.status == "ok" and
+    (.configuredModels | length == 10) and
+    all(.findings[]; .kind != "config" or .source != "second-opinion")
+  ' <<< "$result_json" >/dev/null || fail "supported $budget output budget was rejected"
+done
+
+for budget in '128001' '0' '-1' '1.5' '"64000"' 'null' 'true'; do
+  INVALID_OUTPUT_PANEL="$TMP_DIR/invalid-output.json"
+  jq --argjson budget "$budget" '.profiles.hybrid.limits.maxOutputTokensPerModel = $budget' \
+    "$CONSENSUS_CONFIG" > "$INVALID_OUTPUT_PANEL"
+  assert_invalid_panel "$INVALID_OUTPUT_PANEL" "invalid profile output budget $budget"
+done
+
+INVALID_ROUTE_OUTPUT="$TMP_DIR/invalid-route-output.json"
+jq '.profiles.hybrid.limits.maxOutputTokensPerModel = 64000 |
+  .profiles.hybrid.routes[3].maxOutputTokens = 64001' \
+  "$CONSENSUS_CONFIG" > "$INVALID_ROUTE_OUTPUT"
+assert_invalid_panel "$INVALID_ROUTE_OUTPUT" "route output budget above profile ceiling"
+jq '.profiles.test.limits.maxOutputTokensPerModel = 64000 |
+  .profiles.test.models[0].maxOutputTokens = 64001' \
+  "$CONSENSUS_CONFIG" > "$INVALID_ROUTE_OUTPUT"
+assert_invalid_panel "$INVALID_ROUTE_OUTPUT" "legacy model output budget above profile ceiling"
+
 INVALID_PANEL="$TMP_DIR/invalid-panel.json"
 jq '.profiles.hybrid.models = .profiles.test.models' "$CONSENSUS_CONFIG" > "$INVALID_PANEL"
 assert_invalid_panel "$INVALID_PANEL" "models/routes conflict"

@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-upda
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.5.0"
+version: "1.5.1"
 author: "flurdy"
 ---
 
@@ -56,6 +56,9 @@ Router policy fields are a read-only global-config projection, **not** launch au
 proof of a live resolved route: explicit exact `modelPolicies` wins over inline metadata; inline
 conflicts are metered; absent/invalid classifications remain unknown. Project overlays are not
 included. Preserve false booleans, weights, disabled candidates and selection intent.
+Panel validation matches the second-opinion runners' 128,000-token output ceiling; route-specific
+output budgets may lower, but never exceed, their profile ceiling. This validates configuration
+shape, not a model's supported output size or authorization to spend that budget.
 
 ## Explicit native refresh
 

@@ -181,7 +181,7 @@ elif ! jq -e \
   --argjson max_routes 8 \
   --argjson max_parallel 4 \
   --argjson max_prompt 65536 \
-  --argjson max_output 16000 \
+  --argjson max_output 128000 \
   --argjson max_timeout 1800 '
   def canonical_openrouter:
     type == "string" and test("^openrouter/~?[A-Za-z0-9][A-Za-z0-9._-]*/.+$");
