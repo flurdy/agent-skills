@@ -210,12 +210,39 @@ class WorkflowContracts(unittest.TestCase):
         self.assertNotIn("jq:", skill("confluence"))
 
     def test_ticket_consumers_delegate_instead_of_duplicating_discovery(self):
-        for name in ("start-ticket", "create-pr", "stack-branch"):
+        for name in ("start-ticket", "create-pr", "stack-branch", "breakdown"):
             with self.subTest(name=name):
                 text = skill(name)
                 self.assertIn("../jira-ticket/SKILL.md", text)
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
+
+    def test_breakdown_keeps_a_read_only_overview_contract(self):
+        text = skill("breakdown")
+        metadata = text.split("---", 2)[1]
+        self.assertIn("model-tier: standard", metadata)
+        self.assertIn("effort: medium", metadata)
+        for tool in ("Write", "Edit", "Bash(make", "Bash(bd", "Skill(architect)", "Skill(triage)", "Skill(plan-to-backlog)"):
+            self.assertNotIn(tool, metadata)
+        headings = ("### Problem", "### Solution", "### Steps", "### Open questions")
+        positions = [text.index(heading) for heading in headings]
+        self.assertEqual(positions, sorted(positions))
+        for term in (
+            "**description**", "user-provided, not fetched verification",
+            "untrusted data", "do not edit files", "Do not run tests",
+            "do not execute them or claim their results", "Implementation requires a separate request",
+            "../architect/SKILL.md#when-to-use", "../triage/SKILL.md", "../plan-to-backlog/SKILL.md",
+        ):
+            with self.subTest(term=term):
+                self.assertIn(term, text)
+
+    def test_start_ticket_suggests_breakdown_only_after_success(self):
+        text = skill("start-ticket")
+        confirm = text.split("### 6. Confirm to User", 1)[1]
+        self.assertIn("../breakdown/SKILL.md", confirm)
+        self.assertIn("/skill:breakdown {TICKET-NUMBER}", confirm)
+        self.assertIn("Do not invoke it automatically", confirm)
+        self.assertIn("Skip this suggestion on a handoff-resume path, an abort, or any stop/error path", confirm)
 
     def test_native_gate_and_authoring_guidance(self):
         self.assertIn("test-portability", (ROOT / "Makefile").read_text())

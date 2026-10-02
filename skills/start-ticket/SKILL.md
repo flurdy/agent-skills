@@ -5,7 +5,7 @@ allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Ba
 model-tier: economy
 model: haiku
 effort: medium
-version: "2.1.0"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -148,3 +148,8 @@ confirmation. If declined, keep the branch local.
 ### 6. Confirm to User
 
 Output the active branch, ticket summary, and whether it remains local or now tracks `origin`.
+
+After successful branch creation or an explicitly chosen existing-branch resume, suggest
+[breakdown](../breakdown/SKILL.md) for a lightweight, read-only overview before implementation:
+`/breakdown {TICKET-NUMBER}` (Pi: `/skill:breakdown {TICKET-NUMBER}`). Do not invoke it automatically.
+Skip this suggestion on a handoff-resume path, an abort, or any stop/error path.
