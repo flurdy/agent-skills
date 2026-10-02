@@ -51,6 +51,90 @@ class NextSelectTest(WorkspaceFixture):
             if call["arguments"][:2] == ["comments", "add"]
         ]
 
+    def test_invalid_read_budget_fails_before_any_read_or_claim(self) -> None:
+        workspace = self.colliding_workspace()
+        for value in ("", "0", "121", "1.5", "nan", "private-invalid-value"):
+            self.environment["NEXT_BEADS_READ_TIMEOUT_SECONDS"] = value
+            for command in ("resolve", "start", "handoff", "stores"):
+                with self.subTest(value=value, command=command):
+                    arguments = (command,) if command == "stores" else (command, "repo-a:dup-1")
+                    result = self.run_select(workspace, *arguments)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("NEXT_BEADS_READ_TIMEOUT_SECONDS", result.stderr)
+                    self.assertNotIn("private-invalid-value", result.stderr)
+            result = self.run_script(SKILL_DIR / "scripts" / "next-bd", workspace, "--json", check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("NEXT_BEADS_READ_TIMEOUT_SECONDS", result.stderr)
+        self.assertEqual(self.recorded_calls(), [])
+
+    def test_real_subprocess_read_timeouts_fail_closed(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("task-1", 2, "task", "2026-01-01T00:00:00Z")],
+                       "delays": {"probe": 1.5, "show": 1.5}})
+        self.environment["NEXT_BEADS_READ_TIMEOUT_SECONDS"] = "1"
+        for directory, selector in ((workspace, "workspace:task-1"),
+                                    (workspace, "task-1")):
+            # Remove the manifest for the second iteration to exercise local show.
+            if selector == "task-1":
+                (workspace / "workspace.json").unlink()
+            result = self.run_select(directory, "start", selector)
+            self.assertEqual(result.returncode, 5)
+            self.assertIn("deadline 1s", json.loads(result.stdout)["failures"][0]["error"])
+        self.assertEqual(len(self.recorded_calls()), 2)
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+
+    def test_reads_reuse_exact_owner_but_each_start_resolves_once(self) -> None:
+        workspace = self.colliding_workspace()
+        resolved = json.loads(self.run_select(workspace, "resolve", "repo-a:dup-1").stdout)
+        for _ in range(2):
+            subprocess.run(["bd", "-C", resolved["directory"], "show", resolved["id"], "--json", "--readonly"],
+                           env=self.environment, check=True, capture_output=True, text=True)
+        self.assertEqual(sum("--id" in call["arguments"] for call in self.recorded_calls()), 1)
+        for selector in ("repo-a:dup-1", "repo-b:dup-1"):
+            before = len(self.recorded_calls())
+            self.assertEqual(self.run_select(workspace, "start", selector).returncode, 0)
+            calls = self.recorded_calls()[before:]
+            self.assertEqual(sum("--id" in call["arguments"] for call in calls), 1)
+            self.assertIn("--id", calls[0]["arguments"])
+            self.assertEqual(calls[0]["directory"], calls[-2]["directory"])
+
+    def test_prior_success_never_bypasses_later_unavailable_resolution(self) -> None:
+        workspace = self.colliding_workspace()
+        self.assertEqual(self.run_select(workspace, "resolve", "repo-a:dup-1").returncode, 0)
+        fixture = self.base / "sources" / "repo-a" / ".beads" / "fixture.json"
+        payload = json.loads(fixture.read_text())
+        payload["faults"] = {"probe": "error"}
+        fixture.write_text(json.dumps(payload))
+        for command in ("resolve", "start"):
+            result = self.run_select(workspace, command, "repo-a:dup-1")
+            self.assertEqual(result.returncode, 5)
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+
+    def test_changed_topology_store_or_context_requires_new_resolution(self) -> None:
+        workspace = self.colliding_workspace()
+        selector = "repo-a:dup-1"
+        self.assertEqual(self.run_select(workspace, "resolve", selector).returncode, 0)
+        self.declare_tracking(workspace, **{"repo-a": "workspace"})
+        self.assertEqual(self.run_select(workspace, "start", selector).returncode, 5)
+        self.declare_tracking(workspace, **{"repo-a": "local"})
+        member = self.base / "sources" / "repo-a"
+        shutil.rmtree(member / ".beads")
+        self.assertEqual(self.run_select(workspace, "start", selector).returncode, 5)
+        local = self.base / "unrelated"
+        self.create_store(local)
+        self.environment["PI_SESSION_ID"] = "new-session"
+        self.assertEqual(self.run_select(local, "start", selector).returncode, 4)
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+
+    def test_invented_resolution_cannot_be_passed_to_start(self) -> None:
+        workspace = self.colliding_workspace()
+        result = self.run_select(workspace, "start", "repo-a:dup-1", "--resolved-directory", str(workspace))
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(self.recorded_calls(), [])
+
     def test_index_selection_resolves_the_owning_store(self) -> None:
         workspace = self.colliding_workspace()
 
@@ -518,8 +602,8 @@ class NextSelectTest(WorkspaceFixture):
 
         (local / ".beads").unlink()
         missing = self.run_select(local, "resolve", "local-task")
-        self.assertEqual(missing.returncode, 4)
-        self.assertEqual(json.loads(missing.stdout)["status"], "not-found")
+        self.assertEqual(missing.returncode, 5)
+        self.assertEqual(json.loads(missing.stdout)["status"], "unavailable")
         self.assertEqual(self.update_calls(), [])
 
     def test_stores_lists_every_registered_store_with_usability(self) -> None:

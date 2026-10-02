@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * d
 model-tier: standard
 model: opus
 effort: high
-version: "1.4.1"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -238,7 +238,13 @@ This is the depth counterpart to `/backlog-groom`, which sweeps the whole backlo
 deliberately does not investigate — "if a single bead needs real investigation, flag it and move
 on". Refine mode is where that flagged bead goes.
 
-**R1. Resolve the owning store — before any read or write.**
+**R1. Resolve the owning store — before investigation reads.**
+
+Follow [Beads ownership proof lifetime](../beads/SKILL.md#ownership-proof-lifetime). Reuse an actual
+successful result only for the exact qualified target's store-qualified reads within this focused
+refinement. Invalidate on selector/store/topology/declaration/redirect/cwd/session changes, the end
+of the operation, or any failed resolution (including unavailable). Never invent proof or fall
+back to earlier success. R5 requires fresh resolution at each independent mutation boundary.
 
 Bead IDs do **not** resolve across stores: `bd show skills-1fw` from a workspace root fails with
 `no issue found`, and that is the usual working directory. Never infer ownership from the cwd.
@@ -273,9 +279,15 @@ reader.
 changed: which claims held, which were wrong, what scope was missed. Then list the concrete
 proposed edits and any new beads.
 
-**R5. Apply on approval**, all in the resolved store:
+**R5. Apply on approval**, all in the freshly resolved store. Immediately before each direct
+mutation, resolve its exact target again; if resolution fails or ownership changes, stop and
+reconcile the proposed scope rather than applying it elsewhere. A helper's own fresh full
+resolution counts once for its bounded mutation operation, not for subsequent independent writes.
+Do not add a duplicate caller check when that helper already performs the required resolution.
 
 ```bash
+~/.agents/skills/next/scripts/next-select resolve <selector>
+# Only after a fresh resolved result for the approved target:
 bd -C <directory> update <id> --description/--design/--notes/--acceptance/--priority/--labels
 ```
 

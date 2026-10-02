@@ -456,12 +456,12 @@ class NextBdTest(WorkspaceFixture):
         with mock.patch.object(
             collector.subprocess,
             "run",
-            side_effect=subprocess.TimeoutExpired(["bd"], 5),
+            side_effect=subprocess.TimeoutExpired(["bd"], 60),
         ):
             issues, error = collector.load_issues(source, ["list", "--ready"])
 
         self.assertEqual(issues, [])
-        self.assertEqual(error, "timed out after 5 seconds")
+        self.assertRegex(error, r"Beads read timed out \(elapsed [0-9.]+s, deadline 60s;")
 
         workspace = self.create_workspace(
             repositories={"healthy": {}, "slow": {}}
@@ -471,7 +471,7 @@ class NextBdTest(WorkspaceFixture):
             source: Any, arguments: list[str]
         ) -> tuple[list[dict[str, Any]], str | None]:
             if source.name == "slow":
-                return [], "timed out after 5 seconds"
+                return [], error
             if "--ready" in arguments and source.name == "healthy":
                 return [issue("healthy-task", 1, "task", "2026-01-01T00:00:00Z")], None
             return [], None
@@ -481,7 +481,7 @@ class NextBdTest(WorkspaceFixture):
 
         self.assertEqual([item["id"] for item in payload["ready"]], ["healthy-task"])
         self.assertEqual(
-            payload["diagnostics"], ["slow: ready: timed out after 5 seconds"]
+            payload["diagnostics"], [f"slow: ready: {error}"]
         )
 
     def test_declared_workspace_store_is_not_queried_or_duplicated(self) -> None:

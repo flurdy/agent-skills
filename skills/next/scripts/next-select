@@ -51,55 +51,12 @@ def usable_sources(collector: Any) -> tuple[bool, list[Any]]:
     return collector.discover_sources(Path.cwd())
 
 
-def owns_local_issue(source: Any, issue_id: str) -> bool:
-    try:
-        result = subprocess.run(
-            ["bd", "-C", str(source.directory), "show", issue_id, "--json", "--readonly"],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=COMMAND_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return result.returncode == 0
-
-
 def probe_issue(collector: Any, source: Any, issue_id: str) -> tuple[bool, str | None]:
     error = collector.store_error(source)
     if error is not None:
         return False, error
-    try:
-        result = subprocess.run(
-            [
-                "bd",
-                "-C",
-                str(source.directory),
-                "list",
-                "--id",
-                issue_id,
-                "--all",
-                "--json",
-                "--readonly",
-            ],
-            capture_output=True,
-            check=False,
-            text=True,
-            timeout=COMMAND_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired:
-        return False, f"timed out after {COMMAND_TIMEOUT_SECONDS} seconds"
-    except OSError as command_error:
-        return False, collector.concise_text(str(command_error))
-    if result.returncode != 0:
-        return False, collector.diagnostic_text(result)
-    try:
-        issues = json.loads(result.stdout)
-    except json.JSONDecodeError as json_error:
-        return False, f"invalid bd JSON: {json_error}"
-    if not isinstance(issues, list) or not all(isinstance(issue, dict) for issue in issues):
-        return False, "invalid bd JSON: expected an issue list"
-    return any(issue.get("id") == issue_id for issue in issues), None
+    issues, error = collector.load_issues(source, ["list", "--id", issue_id, "--all"])
+    return any(issue.get("id") == issue_id for issue in issues), error
 
 
 def resolution(workspace: bool, source: Any, issue_id: str) -> dict[str, Any]:
@@ -135,20 +92,29 @@ def store_listing(collector: Any) -> dict[str, Any]:
     return {"workspace": workspace, "stores": stores}
 
 
-def ranked_candidates(options: list[str]) -> list[dict[str, Any]]:
-    result = subprocess.run(
-        [str(SCRIPT_DIR / "next-bd"), "--json", *options],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
+def ranked_candidates(options: list[str]) -> tuple[list[dict[str, Any]], str | None]:
+    try:
+        result = subprocess.run(
+            [str(SCRIPT_DIR / "next-bd"), "--json", *options],
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+    except OSError:
+        return [], "ranked collection unavailable"
+    diagnostic = result.stderr.strip().replace("\n", " ")[:240] or None
     if result.returncode != 0:
-        return []
+        return [], diagnostic or f"ranked collection exited {result.returncode}"
     try:
         candidates = json.loads(result.stdout)
     except json.JSONDecodeError:
-        return []
-    return candidates if isinstance(candidates, list) else []
+        return [], "invalid ranked collection JSON"
+    if not isinstance(candidates, list) or not all(
+        isinstance(row, dict) and isinstance(row.get("id"), str) and row["id"].strip()
+        for row in candidates
+    ):
+        return [], "invalid ranked collection JSON: expected candidates with IDs"
+    return candidates, diagnostic
 
 
 def source_by_name(sources: list[Any], name: str) -> Any | None:
@@ -191,8 +157,10 @@ def source_failure(collector: Any, source: Any, error: str) -> dict[str, str]:
 def resolve_index(
     workspace: bool, sources: list[Any], index: int, options: list[str]
 ) -> tuple[dict[str, Any], int]:
-    candidates = ranked_candidates(options)
+    candidates, error = ranked_candidates(options)
     if index < 1 or index > len(candidates):
+        if error is not None:
+            return {"status": "unavailable", "selector": str(index), "error": error}, UNAVAILABLE_EXIT
         return {"status": "not-found", "selector": str(index)}, NOT_FOUND_EXIT
     candidate = candidates[index - 1]
     name = candidate.get("repository", sources[0].name)
@@ -211,8 +179,17 @@ def resolve_id(
 ) -> tuple[dict[str, Any], int]:
     selector = f"{qualifier}:{issue_id}" if qualifier is not None else issue_id
     if not workspace and qualifier is None:
-        if owns_local_issue(sources[0], issue_id):
-            return resolution(False, sources[0], issue_id), 0
+        source = sources[0]
+        issues, error = collector.load_issues(source, ["show", issue_id])
+        if error is None and len(issues) > 1:
+            error = "invalid bd JSON: expected a single local issue"
+        if error is not None:
+            return {
+                "status": "unavailable", "selector": issue_id, "id": issue_id,
+                "failures": [source_failure(collector, source, error)],
+            }, UNAVAILABLE_EXIT
+        if issues:
+            return resolution(False, source, issue_id), 0
         return {"status": "not-found", "selector": issue_id}, NOT_FOUND_EXIT
     if qualifier is not None:
         source = source_by_name(sources, qualifier)
@@ -270,6 +247,7 @@ def resolve_id(
 
 def resolve(selector: str, options: list[str], expected_id: str) -> tuple[dict[str, Any], int]:
     collector = load_collector()
+    collector.beads_read_timeout()
     workspace, sources = usable_sources(collector)
     if selector.isdigit():
         resolved, code = resolve_index(workspace, sources, int(selector), options)
@@ -469,6 +447,11 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     arguments = parse_arguments(argv)
+    try:
+        load_collector().beads_read_timeout()
+    except ValueError as error:
+        print(f"next-select: {error}", file=sys.stderr)
+        return 2
     if arguments.command == "stores":
         json.dump(store_listing(load_collector()), sys.stdout, separators=(",", ":"))
         sys.stdout.write("\n")

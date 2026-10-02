@@ -8,9 +8,11 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 COMMAND_TIMEOUT_SECONDS = 5
+BEADS_READ_TIMEOUT_ENV = "NEXT_BEADS_READ_TIMEOUT_SECONDS"
 MISSING_STORE_ERROR = "missing .beads store"
 REGISTRATION_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MANAGED_DIRECTORIES = (
@@ -32,6 +34,13 @@ class Source:
     store: str = "local"
     declaration_error: str | None = None
     store_declared: bool = False
+
+
+def beads_read_timeout() -> int:
+    value = os.environ.get(BEADS_READ_TIMEOUT_ENV, "60")
+    if not re.fullmatch(r"[0-9]{1,3}", value) or not 1 <= int(value) <= 120:
+        raise ValueError(f"{BEADS_READ_TIMEOUT_ENV} must be an integer from 1 to 120 seconds")
+    return int(value)
 
 
 def is_nested(path: Path, parent: Path) -> bool:
@@ -282,17 +291,20 @@ def store_error(source: Source) -> str | None:
 
 
 def load_issues(source: Source, arguments: list[str]) -> tuple[list[dict[str, Any]], str | None]:
+    timeout = beads_read_timeout()
+    started = monotonic()
     try:
         result = subprocess.run(
-            ["bd", *arguments, "--json", "--readonly"],
+            ["bd", "-C", str(source.directory), *arguments, "--json", "--readonly"],
             cwd=source.directory,
             capture_output=True,
             check=False,
             text=True,
-            timeout=COMMAND_TIMEOUT_SECONDS,
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired:
-        return [], f"timed out after {COMMAND_TIMEOUT_SECONDS} seconds"
+        return [], (f"Beads read timed out (elapsed {monotonic() - started:.2f}s, "
+                    f"deadline {timeout}s; {BEADS_READ_TIMEOUT_ENV})")
     except OSError as error:
         return [], concise_text(str(error))
     if result.returncode != 0:
@@ -301,8 +313,11 @@ def load_issues(source: Source, arguments: list[str]) -> tuple[list[dict[str, An
         issues = json.loads(result.stdout)
     except json.JSONDecodeError as error:
         return [], f"invalid bd JSON: {error}"
-    if not isinstance(issues, list) or not all(isinstance(issue, dict) for issue in issues):
-        return [], "invalid bd JSON: expected an issue list"
+    if not isinstance(issues, list) or not all(
+        isinstance(issue, dict) and isinstance(issue.get("id"), str) and issue["id"].strip()
+        for issue in issues
+    ):
+        return [], "invalid bd JSON: expected an issue list with non-empty IDs"
     return issues, None
 
 
@@ -323,6 +338,7 @@ def owned_issues(
 
 
 def collect(root: Path) -> dict[str, Any]:
+    beads_read_timeout()
     workspace, sources = discover_sources(root)
     payload: dict[str, Any] = {
         "workspace": workspace,
@@ -359,7 +375,12 @@ def collect(root: Path) -> dict[str, Any]:
 
 
 def main() -> int:
-    json.dump(collect(Path.cwd()), sys.stdout, separators=(",", ":"))
+    try:
+        payload = collect(Path.cwd())
+    except ValueError as error:
+        print(f"next-bd: {error}", file=sys.stderr)
+        return 2
+    json.dump(payload, sys.stdout, separators=(",", ":"))
     sys.stdout.write("\n")
     return 0
 

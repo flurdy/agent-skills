@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.13.0"
+version: "1.14.0"
 author: "flurdy"
 ---
 
@@ -228,6 +228,32 @@ When invoked:
      details in that store only.
    - If bead has description with steps, highlight the first step
 
+## Beads read deadlines
+
+`NEXT_BEADS_READ_TIMEOUT_SECONDS` sets a **per-probe** deadline for Beads ownership and listing
+reads in both `next-select` and `next-bd`: default **60 seconds**, ASCII integer **1–120** inclusive.
+Unset uses the default; empty, fractional, non-numeric or out-of-range values fail with a non-zero
+exit before collection, resolution or mutation. Invalid values are not echoed. No retries occur.
+
+```bash
+NEXT_BEADS_READ_TIMEOUT_SECONDS=90 ~/.agents/skills/next/scripts/next-select resolve <repo>:<id>
+```
+
+This is not an operation-wide limit: bare workspace resolution can take one deadline per store;
+listing can take four per store (ready, blocked, in-progress, deferred), plus topology checks.
+Timed-out reads report elapsed time and the configured deadline, never partial subprocess output.
+They remain `unavailable`, not evidence of absence or permission to use a different store.
+Listing omits a failing source while preserving healthy sources and its diagnostic.
+
+Local unqualified selectors retain `bd show` shorthand and local store fallback behavior, but
+failed commands, timeouts and malformed JSON now return `unavailable`, not `not-found`. Without
+an established missing-issue error contract, even non-zero local `show` means unavailable; use
+an exact `local:<id>` selector for the list-based empty-result/not-found distinction.
+
+Git topology checks, claim comment lookup/add, update, final claim display and attribution-lock
+waits retain their existing **5-second** budgets. Handoff execution is unchanged. This setting
+does not authorize writes, maintenance, synchronization or a guard bypass.
+
 ## Resume awareness (handoff check before starting)
 
 Run this **only when committing to start a specific bead** — `/next <bead-id>`, `task`, `quick`, `bug`, or a pick from the table — *before* `bd update --status=in_progress`. **Never** in Listing mode (`/next` / `/next list` mark nothing in_progress, so they must stay network-free and silent).
@@ -263,6 +289,13 @@ When a live handoff remains, ask with `AskUserQuestion` before starting:
 Keep it to one prompt. If `bd`/`list.sh` errors or there's no handoffs dir, proceed silently — the check is a courtesy, never a blocker.
 
 ## Owner-routed selection
+
+Follow [Beads ownership proof lifetime](../beads/SKILL.md#ownership-proof-lifetime): reuse actual
+successful resolution only for exact store-qualified reads in one focused operation; invalidate
+on target/store/topology/cwd/session changes or any failed resolution. No persistent cache or
+invented proof. Mutations need fresh full resolution. `next-select start` already performs it
+once for its bounded claim operation, so do not add an identical caller-side check. A prior
+`resolve` or `handoff` never exempts `start` or any later independent write from its own check.
 
 Every selection resolves through one command before anything is read or written:
 

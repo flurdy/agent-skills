@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cle
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.8.0"
+version: "0.9.0"
 author: "flurdy"
 ---
 
@@ -54,8 +54,8 @@ these prevent integrations, not other init effects, and never remove existing se
 
 ## Resolve the owning store
 
-Resolve ownership before every read that drives a decision and before every mutation.
-Never infer the owning store from an issue ID, label, prefix, or the current directory.
+Resolve ownership before the first decision-driving read in a focused operation and freshly
+at every mutation boundary. Never infer the owning store from an issue ID, label, prefix, or the current directory.
 
 For an existing bead or selector, run the shared resolver first:
 
@@ -83,6 +83,37 @@ store: route their new work to the root directory reported by `next-select store
 from that workspace root and use `workspace:<id>` for existing root-owned work; do not treat a
 member qualifier or an owner hint as proof that the root owns a particular issue. See
 [next's ownership contract](../next/SKILL.md#workspace-tracking-ownership).
+
+## Ownership proof lifetime
+
+A successful resolver result may be reused for store-qualified reads of the exact qualified
+target within one focused operation. Bind the actual returned issue/store identity and the
+originating cwd/session; an owner hint, user assertion or model-invented receipt is not proof.
+This is an instruction-level boundary, not a runtime cache or receipt API.
+
+Invalidate read reuse when the target selector, owning repository/store identity,
+topology/declaration/redirect, originating cwd or session changes, or the operation ends.
+Any failed resolution (including `unavailable`) invalidates earlier success: never fall back to
+cached ownership, write on failed proof, or interpret an unavailable result as not-found.
+
+Immediately before each independent mutation, run a fresh full ownership resolution for its
+exact target. A helper such as `next-select start` that performs this resolution internally
+satisfies that boundary once for its bounded claim operation (attribution/update/display); do
+not duplicate it with an identical caller-side check. Every direct `bd` mutation needs its own
+fresh resolution. Neither read reuse nor a completed helper authorizes later independent writes
+or unrelated targets. Stricter repository rules, source/plan guards and sync approvals still apply.
+
+| Scenario | Required action |
+|---|---|
+| Same exact qualified target, unchanged context, more reads in one operation | Reuse actual successful resolution; qualify reads with its directory |
+| Bare selector ambiguous across stores | Stop; ask for an exact owner; no reusable proof |
+| Changed target selector | Resolve again before reading or writing |
+| Changed repository/store identity or topology/declaration/redirect | Invalidate; resolve again |
+| Changed originating cwd or session, or ended operation | Invalidate; resolve again |
+| Later failed resolution, including unavailable | Discard earlier success; no fallback writes |
+| Direct bd mutation after reads | Fresh full resolution immediately before that mutation |
+| Helper start with its own resolver | One internal full resolution; no duplicate caller check |
+| Stale or invented proof, later independent write or unrelated target | No authority; obtain fresh full resolution |
 
 ## Local issue mutations versus source authority
 
