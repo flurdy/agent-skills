@@ -7,7 +7,7 @@ allowed-tools: "Read,AskUserQuestion,ToolSearch,confluence_page,confluence_get_p
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.2.0"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -28,9 +28,19 @@ If the capability is missing, use discovery **if exposed**. In Claude Code, `Too
 use only an exposed discovery facility's documented schema; Pi does not provide MCP or `ToolSearch`
 in core. Discover once for the missing capability and invoke only a tool whose loaded schema supports
 it. A Jira tool sharing the tenant does not prove Confluence endpoint access. Use a generic Jira
-adapter for `/wiki` paths only when its documented contract supports them; never probe unrelated
-endpoints or swap tool names while retaining guessed arguments. Examples omit response filters:
-adapters may use different filter languages, so apply one only after verifying its documented syntax.
+adapter for `/wiki` paths only when its documented contract supports them or it is listed below;
+never probe unrelated endpoints or swap tool names while retaining guessed arguments. Examples omit
+response filters: adapters may use different filter languages, so apply one only after verifying
+its documented syntax.
+
+Verified generic adapters:
+
+- `mcp__jira__jira_get` reads Confluence REST v1 `/wiki/rest/api/content` paths on the same
+  Atlassian tenant: page (`/content/<pageId>`), search (`/content/search`) and comments
+  (`/content/<pageId>/child/comment`). Its `jq` parameter is a JMESPath expression, for example
+  `{id: id, title: title, version: version.number, space: space.key, body: body.storage.value}`.
+  Its description lists only Jira paths; this entry is the supporting contract. A 401/403/404 still
+  means unavailable for that page.
 
 No match means **unavailable for this run**; it does not prove the server is unconfigured. Report the
 missing Confluence read/search/comments capability and the discovery result or request error. Offer
