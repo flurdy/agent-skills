@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 REBASE="$ROOT/skills/rebase/SKILL.md"
+UPSTREAM="$ROOT/skills/rebase/references/upstream.md"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -86,5 +87,36 @@ for file in stack-branch pr-status ready-to-merge landscape; do
 done
 assert_contains "$ROOT/skills/stack-branch/SKILL.md" '/rebase merged {parent-branch}'
 assert_contains "$ROOT/skills/README.md" '| rebase |'
+
+# Trunk dispatch cannot fall through to the feature publication/PR path.
+assert_order "$REBASE" '## Mode boundary' '## Instructions — feature and stacked modes only' 'Force-push gate'
+assert_contains "$REBASE" '/rebase upstream'
+assert_contains "$REBASE" 'follow only that path, then stop'
+assert_contains "$REBASE" 'never switch modes implicitly'
+assert_contains "$REBASE" 'Bash(python3 ~/.agents/skills/rebase/scripts/upstream.py:*)'
+assert_order "$UPSTREAM" '## 1. Inspect' '## 2. Fresh fetch gate' '## 3. Preview' '## 4. Revalidate' '## 5. Conflicts' '## 6. Optional'
+for invariant in \
+    'one visible fetch invocation' \
+    'including preflight and verification, go through this route' \
+    'not an atomic lock' \
+    'not proof of nonpublication' \
+    'confirm the range is unshared' \
+    'For either integration, use `AskUserQuestion` immediately before the command.' \
+    'Use `AskUserQuestion` for each history-changing recovery' \
+    'Use `AskUserQuestion` immediately before publication' \
+    'Approval' \
+    'next tool call' \
+    'No helper silently applies' \
+    'Never substitute `reset --hard`' \
+    'ordered stable patch-ID equality' \
+    'range-diff' \
+    'repository-native tests' \
+    'git push --no-force --no-follow-tags' \
+    'a rejected push stops without retry'; do
+    assert_contains "$UPSTREAM" "$invariant"
+done
+assert_not_contains "$UPSTREAM" 'git push --force'
+assert_not_contains "$UPSTREAM" 'gh-pr-edit-base.sh'
+assert_not_contains "$UPSTREAM" 'gh pr '
 
 printf '%s\n' 'rebase skill contract tests passed'

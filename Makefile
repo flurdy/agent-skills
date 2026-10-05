@@ -260,6 +260,7 @@ test-git-pr-lifecycle:
 test-rebase:
 	@bash skills/rebase/tests/test-rebase-range.sh
 	@bash skills/rebase/tests/test-skill-contract.sh
+	@python3 -m unittest discover -s skills/rebase/tests -p 'test_upstream.py'
 
 test-total-review:
 	@python3 -m unittest discover -s skills/total-review/tests -p 'test_*.py'
