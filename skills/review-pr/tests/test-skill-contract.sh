@@ -39,6 +39,10 @@ for invariant in \
     'target fields are' \
     'changesOverview' \
     'checkoutReason' \
+    'Linked Confluence pages' \
+    '/wiki/rest/api/content/<pageId>' \
+    'Never claim a requirement met from an unread page' \
+    '"confluence": []' \
     'not in this PR' \
     'not-in-this-pr' \
     'Draft Comments' \
