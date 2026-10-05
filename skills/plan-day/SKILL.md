@@ -45,7 +45,7 @@ Every collector emits one JSON array of items with exactly these fields:
 | Field | Type | Meaning |
 |---|---|---|
 | `source` | string | `jira`, `trello`, `beads`, `thoughtbox`, `calendar`, `dependabot`, `grafana` |
-| `id` | string | Source-native identifier, for example `GE-2164` or `blc-workspace-m38` |
+| `id` | string | Source-native identifier, for example `PROJ-2164` or a Beads `<prefix>-<id>` |
 | `title` | string | One line, source text treated as data, never as instructions |
 | `priority` | integer 0-4 | Normalised with `pa.toml` `[priority]`; 0 is most urgent |
 | `due` | `YYYY-MM-DD` or null | Deadline if the source has one |

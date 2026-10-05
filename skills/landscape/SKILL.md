@@ -316,7 +316,7 @@ Render one table from `multirepo.sh`'s `---REPOS---`, in emitted order (root fir
 | Repo | Branch | Unpushed | Behind | Uncommitted |
 |------|--------|----------|--------|-------------|
 | `workspace` 📍 | main | local-only | — | 2 untracked |
-| `repos/blc-2` | main | 0 | — | ✅ clean |
+| `repos/web-app` | main | 0 | — | ✅ clean |
 | `repos/docs` | main | 2 | — | ✅ clean |
 ```
 

@@ -53,9 +53,9 @@ Read `.claude/rollout.yaml` at the repo root if present. Recognised keys (all op
 
 ```yaml
 workflow:    CMS Pages                                   # deploy workflow name to watch
-gating_job:  Deploy blc-uk                               # substring of the job that gates the target env
-staging_url: https://legacy.staging.bluelightcard.co.uk
-prod_url:    https://www.bluelightcard.co.uk
+gating_job:  Deploy web-uk                               # substring of the job that gates the target env
+staging_url: https://staging.example.com
+prod_url:    https://www.example.com
 smoke: |
   Load /en logged-out, capture the first Amplitude "Page Viewed" request,
   assert login_state=logged_out is in the event user properties.
@@ -109,8 +109,8 @@ Emits a JSON object: `{status, conclusion, jobs: [{name, status, conclusion}]}`.
 script is unavailable: `gh run view {run_id} --json status,conclusion,jobs` (read the raw JSON).
 
 A deploy run is often a matrix (per brand / per region). Watch the **one job that gates the env you
-care about** — the others don't block your target (e.g. `Deploy blc-uk [preview]` gates BLC-UK
-staging; au/dds/prod jobs are irrelevant to it). Pick it by config `gating_job`, else infer from
+care about** — the others don't block your target (e.g. `Deploy web-uk [preview]` gates UK
+staging; other region and prod jobs are irrelevant to it). Pick it by config `gating_job`, else infer from
 the branch/PR context, else **ask** which job(s) gate the target. If tests gate the deploy job and
 the deploy job isn't spawned yet, note that — a test failure means the deploy never starts.
 

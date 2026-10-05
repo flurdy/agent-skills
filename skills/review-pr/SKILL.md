@@ -105,7 +105,7 @@ matches the selected repository, the working tree is clean, and local HEAD exact
 head SHA. Anchor every `Read`, `Grep`, or `Glob` path under `checkout.path`.
 
 Remote identity uses the shared [GitHub parser](../pr-status/scripts/github_remote.py).
-SSH origins support `github.com` and single-label aliases such as `blc.github.com`, in scp-style
+SSH origins support `github.com` and single-label aliases such as `work.github.com`, in scp-style
 or `ssh://` form. HTTP(S) requires literal `github.com`. This is a naming convention, not SSH
 configuration or DNS verification; arbitrary aliases and nested subdomains remain unsupported.
 Alias recognition never replaces the repository, exact-HEAD, or clean-tree checks.

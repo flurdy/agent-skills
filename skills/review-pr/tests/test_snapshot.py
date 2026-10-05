@@ -377,7 +377,7 @@ class SnapshotContractTest(unittest.TestCase):
                 repository_view=SNAPSHOT.CommandError("no known GitHub host"),
                 review_requests=SNAPSHOT.CommandError("search unavailable"),
                 git_repository="acme/widgets",
-                git_remote="git@blc.github.com:acme/widgets.git\n",
+                git_remote="git@work.github.com:acme/widgets.git\n",
             )
 
             result = SNAPSHOT.collect_snapshot("42", runner=runner, cwd=root / "docs")
@@ -408,8 +408,8 @@ class SnapshotContractTest(unittest.TestCase):
                 f"git@github.com:{repository}.git",
                 f"ssh://git@github.com/{repository}.git",
                 f"https://github.com/{repository}.git",
-                f"git@blc.github.com:{repository}.git",
-                f"ssh://git@blc.github.com/{repository}.git",
+                f"git@work.github.com:{repository}.git",
+                f"ssh://git@work.github.com/{repository}.git",
             ):
                 with self.subTest(remote=remote):
                     runner = FakeRunner(git_repository=repository, git_remote=remote)
@@ -432,15 +432,15 @@ class SnapshotContractTest(unittest.TestCase):
 
     def test_checkout_rejects_untrusted_remotes_without_losing_remote_evidence(self) -> None:
         for remote in (
-            "git@blc.github.com:wrong/widgets.git",
-            "git@blc.github.com:acme/other.git",
+            "git@work.github.com:wrong/widgets.git",
+            "git@work.github.com:acme/other.git",
             "git@notgithub.com:acme/widgets.git",
             "git@github.com.evil.example:acme/widgets.git",
-            "git@nested.blc.github.com:acme/widgets.git",
+            "git@nested.work.github.com:acme/widgets.git",
             "git@github-work:acme/widgets.git",
             "ssh://git@github.com.evil.example/acme/widgets.git",
-            "https://blc.github.com/acme/widgets.git",
-            "http://blc.github.com/acme/widgets.git",
+            "https://work.github.com/acme/widgets.git",
+            "http://work.github.com/acme/widgets.git",
             "https://github.com.evil.example/acme/widgets.git",
             "ftp://github.com/acme/widgets.git",
             "https://[invalid/acme/widgets.git",
@@ -459,8 +459,8 @@ class SnapshotContractTest(unittest.TestCase):
 
     def test_aliased_checkout_still_requires_exact_head_and_clean_tree(self) -> None:
         for remote in (
-            "git@blc.github.com:acme/widgets.git",
-            "ssh://git@blc.github.com/acme/widgets.git",
+            "git@work.github.com:acme/widgets.git",
+            "ssh://git@work.github.com/acme/widgets.git",
         ):
             for head, dirty, reason in (
                 (HEAD_B, False, "HEAD does not match"),
