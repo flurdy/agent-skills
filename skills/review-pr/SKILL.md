@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-sna
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.3.0"
+version: "2.4.0"
 author: "flurdy"
 ---
 
@@ -161,6 +161,15 @@ For each changed file, assess:
 If file patches, feedback, checks, Jira requirements, or repository-wide evidence needed for a
 claim are unavailable, make the limitation explicit. Missing evidence is never evidence of absence.
 
+Judge the PR proportionately:
+
+- A PR may deliver one slice of a ticket. Mark an AC the PR neither claims nor touches as
+  `not in this PR`, not `fail`; do not require the whole ticket to be done.
+- Only ACs the PR claims or touches can make the verdict **Needs changes**.
+- Ticket/PR drift, such as a small change outside the flag or a PR that does not close the story,
+  is an informational concern unless it is a real risk.
+- Answered or minor bot threads are informational; they do not block **Safe to merge**.
+
 ## 7. Recheck the immutable revisions
 
 Immediately before writing any verdict, run the fast verifier using the original snapshot SHAs:
@@ -221,19 +230,34 @@ If genuinely empty, emit:
 ### AC Checklist
 | AC | Status | Evidence |
 |----|--------|----------|
-| ... | pass/fail/partial | ... |
+| ... | pass/fail/partial/not in this PR | ... |
 
 ### Concerns
-- ...
+- {blocking | informational} — ...
 
 ### Verdict
 {Safe to merge | Needs changes | Needs discussion}
+
+### Draft Comments
+**Overall:** ...
+- path:line — ...
 ```
+
+Omit **Draft Comments** when there is nothing worth saying. Drafts are never posted by this skill:
+
+- Substantive points only: correctness, scope, AC gaps, open questions. Skip nits, or fold them into
+  at most one combined minor line.
+- State observations or ask questions; do not instruct the author ("X happens when Y",
+  "Is Z intended?", not "Change X to Y").
+- One terse overall comment; inline comments only when tied to a specific `path:line`.
+- Do not repeat points already raised in unresolved threads.
 
 Verdict rules:
 
-- **Needs changes** for unmet ACs, failing exact-head CI, or a valid blocking concern.
-- **Needs discussion** for conflicting evidence or a substantive unresolved question.
+- **Needs changes** for unmet ACs the PR claims or touches, failing exact-head CI, or a valid
+  blocking concern.
+- **Needs discussion** for conflicting evidence or a substantive unresolved question. Informational
+  concerns alone never require discussion.
 - **Safe to merge** only when the snapshot is complete, exact-head CI succeeds, Jira ACs are met
   when linked, and unresolved comments are `None.`. Listed limitations do not block it unless an
   unread test region is needed to support a claim.
@@ -271,7 +295,8 @@ For `--automation`, emit one JSON object and no conversational prompt or surroun
   "unresolvedComments": [],
   "acChecklist": [],
   "concerns": [],
-  "verdict": "safe-to-merge|needs-changes|needs-discussion|null"
+  "verdict": "safe-to-merge|needs-changes|needs-discussion|null",
+  "draftComments": {"overall": null, "inline": []}
 }
 ```
 
@@ -282,7 +307,10 @@ by the manual report. `checkoutReason` explains unavailable local evidence. `lim
 the collector's limitations, minus any test file fully read from a verified checkout. `jiraKey` is
 populated when a key is linked; `jiraSummary` is populated only when lookup succeeds. Each unresolved
 comment, AC row, and concern retains its concise evidence so an automation caller can render the
-same complete report without re-running analysis.
+same complete report without re-running analysis. AC `status` is `pass`, `fail`, `partial`, or
+`not-in-this-pr`; each concern carries `severity: blocking|informational`. `draftComments.overall`
+is a string or null and each `inline` entry is `{path, line, body}`; both are empty when no draft
+is warranted and are never posted.
 
 The watcher may consume a verdict only when `status` is `complete`, the final revision recheck
 succeeded, and `verdict` is non-null. This output authorizes no GitHub review or other external

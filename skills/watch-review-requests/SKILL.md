@@ -7,7 +7,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/watch-telemetry/scripts/wat
 model-tier: premium
 model: opus
 effort: xhigh
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -398,7 +398,8 @@ allows the next queued PR to proceed if time and budget remain.
 #### GitHub draft
 
 After that fresh verification, ask a second single-select question with **Approve**, **Comment**,
-and **Request changes**. Generate concise text grounded only in the rendered review; show the exact
+and **Request changes**. Generate concise text grounded only in the rendered review, starting from
+its **Draft Comments** overall comment when present; show the exact
 repository, PR, review kind, and body. Save the immutable target, selected kind, exact body, and later shown quoted-heredoc command
 in `github-draft` state. Then ask:
 

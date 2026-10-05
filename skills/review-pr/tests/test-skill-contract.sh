@@ -39,6 +39,12 @@ for invariant in \
     'target fields are' \
     'changesOverview' \
     'checkoutReason' \
+    'not in this PR' \
+    'not-in-this-pr' \
+    'Draft Comments' \
+    'draftComments' \
+    'never posted' \
+    'informational' \
     'review-request-number' \
     'workspace-primary-number' \
     'ambiguous-target' \
