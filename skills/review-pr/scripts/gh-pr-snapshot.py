@@ -120,6 +120,10 @@ class CommandError(RuntimeError):
     """A bounded external command failed."""
 
 
+class AmbiguousTargetError(CommandError):
+    """A bare PR number matched more than one repository."""
+
+
 class SubprocessRunner:
     """Run commands with one caller-owned deadline and bounded captured output."""
 
@@ -276,26 +280,173 @@ def resolve_target(
             "selectorSource": "current-branch",
         }
 
-    repository = parse_json(
-        runner.run(
-            ["gh", "repo", "view", "--json", "nameWithOwner"],
+    try:
+        repository = parse_json(
+            runner.run(
+                ["gh", "repo", "view", "--json", "nameWithOwner"],
+                cwd=cwd,
+                deadline=deadline,
+                max_output_bytes=max_output_bytes,
+            ),
+            "current repository",
+        )
+        if not isinstance(repository, dict) or not isinstance(
+            repository.get("nameWithOwner"), str
+        ):
+            raise CommandError("current checkout did not resolve a GitHub repository")
+        owner, repo = repository_parts(repository["nameWithOwner"])
+    except CommandError as error:
+        return resolve_number_elsewhere(
+            number,
+            error,
+            runner=runner,
             cwd=cwd,
             deadline=deadline,
             max_output_bytes=max_output_bytes,
-        ),
-        "current repository",
-    )
-    if not isinstance(repository, dict) or not isinstance(
-        repository.get("nameWithOwner"), str
-    ):
-        raise CommandError("current checkout did not resolve a GitHub repository")
-    owner, repo = repository_parts(repository["nameWithOwner"])
+        )
     return {
         "owner": owner,
         "repo": repo,
         "number": number,
         "selectorSource": source,
     }
+
+
+def resolve_number_elsewhere(
+    number: int,
+    checkout_error: CommandError,
+    *,
+    runner: Any,
+    cwd: Path,
+    deadline: float,
+    max_output_bytes: int,
+) -> dict[str, Any]:
+    routes = (
+        ("review-request-number", review_request_repositories),
+        ("workspace-primary-number", workspace_primary_repositories),
+    )
+    for source, find_repositories in routes:
+        repositories = find_repositories(
+            number,
+            runner=runner,
+            cwd=cwd,
+            deadline=deadline,
+            max_output_bytes=max_output_bytes,
+        )
+        if len(repositories) > 1:
+            raise AmbiguousTargetError(
+                f"PR {number} matched several repositories: "
+                + ", ".join(f"{repository}#{number}" for repository in repositories)
+            )
+        if repositories:
+            owner, repo = repository_parts(repositories[0])
+            return {
+                "owner": owner,
+                "repo": repo,
+                "number": number,
+                "selectorSource": source,
+            }
+    raise checkout_error
+
+
+def review_request_repositories(
+    number: int,
+    *,
+    runner: Any,
+    cwd: Path,
+    deadline: float,
+    max_output_bytes: int,
+) -> list[str]:
+    try:
+        requests = parse_json(
+            runner.run(
+                [
+                    "gh",
+                    "search",
+                    "prs",
+                    "--review-requested=@me",
+                    "--state=open",
+                    "--json",
+                    "number,repository",
+                    "--limit",
+                    "100",
+                ],
+                cwd=cwd,
+                deadline=deadline,
+                max_output_bytes=max_output_bytes,
+            ),
+            "review requests",
+        )
+    except CommandError:
+        return []
+    if not isinstance(requests, list):
+        return []
+    return sorted(
+        {
+            item["repository"]["nameWithOwner"]
+            for item in requests
+            if isinstance(item, dict)
+            and item.get("number") == number
+            and isinstance(item.get("repository"), dict)
+            and isinstance(item["repository"].get("nameWithOwner"), str)
+        }
+    )
+
+
+def workspace_primary_repositories(
+    number: int,
+    *,
+    runner: Any,
+    cwd: Path,
+    deadline: float,
+    max_output_bytes: int,
+) -> list[str]:
+    del number
+    manifest = next(
+        (
+            directory / "workspace.json"
+            for directory in (cwd, *cwd.parents)
+            if (directory / "workspace.json").is_file()
+        ),
+        None,
+    )
+    if manifest is None:
+        return []
+    try:
+        workspace = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return []
+    entries = workspace.get("repositories") if isinstance(workspace, dict) else None
+    if not isinstance(entries, list):
+        return []
+    repositories = set()
+    for entry in entries:
+        if not (
+            isinstance(entry, dict)
+            and entry.get("role") == "primary"
+            and isinstance(entry.get("path"), str)
+        ):
+            continue
+        try:
+            remote = runner.run(
+                [
+                    "git",
+                    "-C",
+                    str(manifest.parent / entry["path"]),
+                    "remote",
+                    "get-url",
+                    "origin",
+                ],
+                cwd=cwd,
+                deadline=deadline,
+                max_output_bytes=max_output_bytes,
+            )
+        except CommandError:
+            continue
+        repository = github_repository(remote)
+        if repository is not None:
+            repositories.add(repository)
+    return sorted(repositories)
 
 
 def graphql_pull_request(
@@ -749,6 +900,9 @@ def collect_snapshot(
             deadline=deadline,
             max_output_bytes=max_output_bytes,
         )
+    except AmbiguousTargetError as error:
+        result["errors"].append(error_record("target", str(error), "ambiguous"))
+        return result
     except CommandError as error:
         result["errors"].append(error_record("target", str(error), "invalid"))
         return result

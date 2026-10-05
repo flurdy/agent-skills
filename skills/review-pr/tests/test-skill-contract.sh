@@ -39,6 +39,9 @@ for invariant in \
     'target fields are' \
     'changesOverview' \
     'checkoutReason' \
+    'review-request-number' \
+    'workspace-primary-number' \
+    'ambiguous-target' \
     'limitations' \
     'test files not fully read' \
     'jiraKey' \

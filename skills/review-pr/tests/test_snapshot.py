@@ -124,6 +124,8 @@ class FakeRunner:
         git_remote: str | None = None,
         git_head: str = HEAD_A,
         git_dirty: bool = False,
+        repository_view: Exception | None = None,
+        review_requests: list[dict[str, Any]] | Exception | None = None,
     ) -> None:
         self.initial = initial if initial is not None else metadata()
         self.final = final if final is not None else final_metadata()
@@ -151,6 +153,8 @@ class FakeRunner:
         self.git_remote = git_remote
         self.git_head = git_head
         self.git_dirty = git_dirty
+        self.repository_view = repository_view
+        self.review_requests = review_requests if review_requests is not None else []
         self.calls: list[tuple[list[str], Path | None]] = []
         self.graphql_calls = 0
 
@@ -166,7 +170,13 @@ class FakeRunner:
         del deadline, max_output_bytes
         self.calls.append((args, cwd))
         if args[:3] == ["gh", "repo", "view"]:
+            if self.repository_view is not None:
+                raise self.repository_view
             return json.dumps({"nameWithOwner": self.repository})
+        if args[:3] == ["gh", "search", "prs"]:
+            if isinstance(self.review_requests, Exception):
+                raise self.review_requests
+            return json.dumps(self.review_requests)
         if args[:3] == ["gh", "pr", "view"]:
             return json.dumps(
                 {
@@ -316,6 +326,81 @@ class SnapshotContractTest(unittest.TestCase):
                     expected_repo_lookup,
                     sum(command[:3] == ["gh", "repo", "view"] for command in commands),
                 )
+
+    def test_bare_number_falls_back_to_a_single_review_request(self) -> None:
+        runner = FakeRunner(
+            repository_view=SNAPSHOT.CommandError("no known GitHub host"),
+            review_requests=[
+                {"number": 42, "repository": {"nameWithOwner": "acme/widgets"}},
+                {"number": 7, "repository": {"nameWithOwner": "acme/other"}},
+            ],
+        )
+
+        result = SNAPSHOT.collect_snapshot("42", runner=runner, cwd=Path("/workspace"))
+
+        self.assertEqual("complete", result["status"])
+        self.assertEqual("review-request-number", result["target"]["selectorSource"])
+        self.assertEqual("acme/widgets", result["target"]["repository"])
+
+    def test_bare_number_matching_several_review_requests_is_ambiguous(self) -> None:
+        runner = FakeRunner(
+            repository_view=SNAPSHOT.CommandError("no known GitHub host"),
+            review_requests=[
+                {"number": 42, "repository": {"nameWithOwner": "acme/widgets"}},
+                {"number": 42, "repository": {"nameWithOwner": "acme/gadgets"}},
+            ],
+        )
+
+        result = SNAPSHOT.collect_snapshot("42", runner=runner, cwd=Path("/workspace"))
+
+        self.assertEqual("failed", result["status"])
+        self.assertEqual("ambiguous", result["errors"][0]["kind"])
+        self.assertIn("acme/gadgets#42, acme/widgets#42", result["errors"][0]["message"])
+        self.assertEqual(0, runner.graphql_calls)
+
+    def test_bare_number_falls_back_to_workspace_primary_repository(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "workspace.json").write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "repositories": [
+                            {"name": "web", "path": "repos/web", "role": "primary"},
+                            {"name": "api", "path": "repos/api", "role": "service"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            runner = FakeRunner(
+                repository_view=SNAPSHOT.CommandError("no known GitHub host"),
+                review_requests=SNAPSHOT.CommandError("search unavailable"),
+                git_repository="acme/widgets",
+                git_remote="git@blc.github.com:acme/widgets.git\n",
+            )
+
+            result = SNAPSHOT.collect_snapshot("42", runner=runner, cwd=root / "docs")
+
+        self.assertEqual("complete", result["status"])
+        self.assertEqual("workspace-primary-number", result["target"]["selectorSource"])
+        self.assertIn(
+            ["git", "-C", str(root / "repos/web"), "remote", "get-url", "origin"],
+            runner.command_args(),
+        )
+
+    def test_bare_number_without_any_fallback_keeps_checkout_error(self) -> None:
+        runner = FakeRunner(
+            repository_view=SNAPSHOT.CommandError("no known GitHub host"),
+        )
+
+        result = SNAPSHOT.collect_snapshot("42", runner=runner, cwd=Path("/nonexistent"))
+
+        self.assertEqual("failed", result["status"])
+        self.assertEqual(
+            [{"source": "target", "kind": "invalid", "message": "no known GitHub host"}],
+            result["errors"],
+        )
 
     def test_checkout_accepts_canonical_and_aliased_github_remotes(self) -> None:
         for repository in ("acme/widgets", "contributor/widgets"):

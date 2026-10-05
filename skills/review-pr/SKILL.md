@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-sna
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.2.0"
+version: "2.3.0"
 author: "flurdy"
 ---
 
@@ -68,6 +68,14 @@ Run the collector once before analysis:
 
 Omit absent options. With numeric or no selector, the collector uses the current checkout only to
 resolve the shorthand, then passes explicit owner/repository to every remote request.
+
+When the current checkout cannot resolve a bare number (for example a workspace root), the collector
+tries, in order, your open review requests with that number, then the `role: primary` repository
+in the nearest `workspace.json`. One match is used and recorded in `target.selectorSource`
+(`review-request-number` or `workspace-primary-number`); name the chosen repository in the report.
+Several matches fail with a `target` error of kind `ambiguous` listing each `owner/repo#number`:
+ask which one with `AskUserQuestion` and rerun qualified, or under `--automation` return `failed`
+with `reason: ambiguous-target`. No match keeps the original checkout error.
 
 The collector returns canonical repository/PR identity, node ID, base/head refs and SHAs, bounded
 file patches, exact-head CI rollup, normalized feedback, a review-state key, checkout verification,
