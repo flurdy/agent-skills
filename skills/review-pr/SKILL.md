@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-sna
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.1.2"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -71,18 +71,23 @@ resolve the shorthand, then passes explicit owner/repository to every remote req
 
 The collector returns canonical repository/PR identity, node ID, base/head refs and SHAs, bounded
 file patches, exact-head CI rollup, normalized feedback, a review-state key, checkout verification,
-limits, and errors.
+limits, errors, and limitations.
 It disables paging and lazy Git fetching, applies one deadline and command-output cap, and rechecks
 base/head identity after collection.
 
 Gate on its status:
 
-- `complete` with `reviewReady: true` — continue.
+- `complete` with `reviewReady: true` — continue. Carry every `limitations` entry into the report.
 - `partial` — name every unavailable/truncated source; do not issue a definitive verdict.
 - `stale` — stop and report the expected and observed revisions; never present mixed-SHA evidence.
 - `failed` — stop and report the bounded error; do not infer that missing evidence is empty.
 
 Draft or closed/merged state remains explicit in `target`; do not treat it as an open review.
+
+`limitations` lists test, spec, fixture, and snapshot files whose patch was truncated or
+unavailable. These do not make the snapshot partial; truncated or unavailable source patches still
+do. With a verified checkout, read the full file from `checkout.path` instead; otherwise judge test
+coverage from the bounded patch and say which test files were not fully read.
 
 ## 3. Use local code only after exact checkout proof
 
@@ -197,6 +202,7 @@ If genuinely empty, emit:
 **Jira:** {key and summary | Not linked | Unavailable}
 **CI:** {exact-head rollup state}
 **Local checkout:** {verified path | unavailable reason}
+**Limitations:** {None | test files not fully read, with paths}
 
 ### Changes Overview
 - ...
@@ -221,7 +227,8 @@ Verdict rules:
 - **Needs changes** for unmet ACs, failing exact-head CI, or a valid blocking concern.
 - **Needs discussion** for conflicting evidence or a substantive unresolved question.
 - **Safe to merge** only when the snapshot is complete, exact-head CI succeeds, Jira ACs are met
-  when linked, and unresolved comments are `None.`.
+  when linked, and unresolved comments are `None.`. Listed limitations do not block it unless an
+  unread test region is needed to support a claim.
 - No definitive verdict for `partial`, `stale`, or `failed` snapshots.
 
 ### Automation output
@@ -250,7 +257,8 @@ For `--automation`, emit one JSON object and no conversational prompt or surroun
     "jiraKey": null,
     "jiraSummary": null,
     "ci": "SUCCESS|FAILURE|PENDING|UNKNOWN",
-    "errors": []
+    "errors": [],
+    "limitations": []
   },
   "unresolvedComments": [],
   "acChecklist": [],
@@ -262,8 +270,9 @@ For `--automation`, emit one JSON object and no conversational prompt or surroun
 `reason` is null for complete results and names the bounded failure/stale reason otherwise,
 including `premium-route-unavailable`. Before snapshot identity is available, target fields are
 null rather than fabricated. `changesOverview` contains the complete bounded changes summary used
-by the manual report. `checkoutReason` explains unavailable local evidence. `jiraKey` is populated
-when a key is linked; `jiraSummary` is populated only when lookup succeeds. Each unresolved
+by the manual report. `checkoutReason` explains unavailable local evidence. `limitations` copies
+the collector's limitations, minus any test file fully read from a verified checkout. `jiraKey` is
+populated when a key is linked; `jiraSummary` is populated only when lookup succeeds. Each unresolved
 comment, AC row, and concern retains its concise evidence so an automation caller can render the
 same complete report without re-running analysis.
 

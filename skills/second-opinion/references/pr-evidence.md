@@ -26,6 +26,8 @@ Do not claim a hard host deadline unless the runtime actually enforces one.
 Require schema version 1, `status=complete`, `reviewReady=true`, and no collection errors before
 sending a PR packet. Partial, stale, failed, invalid, or missing evidence stops PR dispatch; name
 unavailable/truncated sources. Do not retry or recollect silently. Missing evidence is not an empty PR.
+A complete snapshot may still list test-file `limitations`; carry them into the packet as
+unread evidence.
 
 Retain the immutable identity tuple and completeness outside the reviewer-controlled text:
 

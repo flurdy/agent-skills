@@ -39,6 +39,8 @@ for invariant in \
     'target fields are' \
     'changesOverview' \
     'checkoutReason' \
+    'limitations' \
+    'test files not fully read' \
     'jiraKey' \
     'jiraSummary' \
     'Unresolved Reviewer Comments'; do

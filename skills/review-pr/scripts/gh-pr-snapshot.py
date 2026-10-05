@@ -37,6 +37,24 @@ PR_URL = re.compile(
     r"(?P<repo>[A-Za-z0-9_.-]+)/pull/(?P<number>[1-9][0-9]*)/?$"
 )
 OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+TEST_DIRECTORY_NAMES = frozenset(
+    {
+        "test",
+        "tests",
+        "__tests__",
+        "spec",
+        "specs",
+        "__mocks__",
+        "fixtures",
+        "__fixtures__",
+        "__snapshots__",
+        "testdata",
+        "e2e",
+    }
+)
+TEST_FILE_NAME = re.compile(
+    r"(?:\.(?:test|spec)\.[^/]+|_(?:test|spec)\.[^/.]+|^test_[^/]+\.py|\.snap)$"
+)
 
 INITIAL_QUERY = """
 query ReviewPrSnapshot($owner: String!, $repo: String!, $number: Int!) {
@@ -189,6 +207,13 @@ class SubprocessRunner:
 
 def error_record(source: str, message: str, kind: str = "unavailable") -> dict[str, str]:
     return {"source": source, "kind": kind, "message": message[:500]}
+
+
+def is_test_path(path: str) -> bool:
+    *directories, name = path.split("/")
+    return bool(
+        TEST_DIRECTORY_NAMES.intersection(directories) or TEST_FILE_NAME.search(name)
+    )
 
 
 def parse_json(output: str, source: str) -> Any:
@@ -531,6 +556,7 @@ def empty_result(limits: dict[str, int]) -> dict[str, Any]:
         "evidence": {"files": [], "feedback": None},
         "limits": limits,
         "errors": [],
+        "limitations": [],
     }
 
 
@@ -575,8 +601,11 @@ def collect_files(
             patch = patch_value
             patch_unavailable = False
         patch_truncated = len(patch) > patch_limit
+        incomplete = (
+            result["limitations"] if is_test_path(item["filename"]) else result["errors"]
+        )
         if patch_unavailable:
-            result["errors"].append(
+            incomplete.append(
                 error_record(
                     "files",
                     f"patch for {item['filename']} was unavailable",
@@ -584,7 +613,7 @@ def collect_files(
                 )
             )
         elif patch_truncated:
-            result["errors"].append(
+            incomplete.append(
                 error_record(
                     "files",
                     f"patch for {item['filename']} exceeded {patch_limit} characters",

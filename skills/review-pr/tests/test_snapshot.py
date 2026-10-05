@@ -678,6 +678,92 @@ class SnapshotContractTest(unittest.TestCase):
         self.assertIn(("files", "unavailable"), kinds)
         self.assertIn(("feedback", "truncated"), kinds)
 
+    def test_incomplete_test_patches_are_limitations_not_errors(self) -> None:
+        files = [
+            {
+                "filename": "src/widget.ts",
+                "status": "modified",
+                "changes": 2,
+                "patch": "@@ -1 +1 @@\n-old\n+new",
+            },
+            {
+                "filename": "packages/web/src/Form.spec.tsx",
+                "status": "added",
+                "changes": 483,
+                "patch": "+" * 50,
+            },
+            {
+                "filename": "tests/fixtures/large.json",
+                "status": "added",
+                "changes": 9000,
+            },
+        ]
+
+        result = SNAPSHOT.collect_snapshot(
+            "acme/widgets#42",
+            runner=FakeRunner(files=files),
+            cwd=Path("/workspace"),
+            patch_limit=40,
+        )
+
+        self.assertEqual("complete", result["status"])
+        self.assertTrue(result["reviewReady"])
+        self.assertEqual([], result["errors"])
+        self.assertEqual(
+            [
+                ("packages/web/src/Form.spec.tsx", "truncated"),
+                ("tests/fixtures/large.json", "unavailable"),
+            ],
+            [
+                (limitation["message"].split()[2], limitation["kind"])
+                for limitation in result["limitations"]
+            ],
+        )
+        self.assertTrue(result["evidence"]["files"][1]["patchTruncated"])
+
+    def test_truncated_source_patch_stays_partial_alongside_test_limitations(self) -> None:
+        files = [
+            {"filename": "src/widget.ts", "status": "modified", "patch": "+" * 50},
+            {"filename": "src/widget.test.ts", "status": "modified", "patch": "+" * 50},
+        ]
+
+        result = SNAPSHOT.collect_snapshot(
+            "acme/widgets#42",
+            runner=FakeRunner(files=files),
+            cwd=Path("/workspace"),
+            patch_limit=40,
+        )
+
+        self.assertEqual("partial", result["status"])
+        self.assertFalse(result["reviewReady"])
+        self.assertEqual(
+            ["patch for src/widget.ts exceeded 40 characters"],
+            [error["message"] for error in result["errors"]],
+        )
+        self.assertEqual(1, len(result["limitations"]))
+
+    def test_test_path_classification(self) -> None:
+        for path in (
+            "src/widget.test.ts",
+            "src/Form.spec.tsx",
+            "pkg/widget_test.go",
+            "spec/models/user_spec.rb",
+            "tests/test_snapshot.py",
+            "src/__tests__/widget.ts",
+            "src/__snapshots__/widget.ts.snap",
+            "app/src/test/java/WidgetTest.java",
+            "e2e/login.ts",
+        ):
+            self.assertTrue(SNAPSHOT.is_test_path(path), path)
+        for path in (
+            "src/widget.ts",
+            "src/testing.ts",
+            "src/contest/entry.ts",
+            "src/specification.md",
+            "test_helper",
+        ):
+            self.assertFalse(SNAPSHOT.is_test_path(path), path)
+
     def test_partial_feedback_and_file_caps_are_explicit(self) -> None:
         feedback = {
             "schemaVersion": 1,
