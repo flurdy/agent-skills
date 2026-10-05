@@ -255,6 +255,7 @@ test-pr-feedback: test-pr-feedback-actions
 test-git-pr-lifecycle:
 	@bash skills/start-ticket/tests/test-branch-preflight.sh
 	@bash skills/start-ticket/tests/test-lifecycle-contract.sh
+	@bash skills/create-pr/tests/test-required-sections.sh
 
 test-rebase:
 	@bash skills/rebase/tests/test-rebase-range.sh

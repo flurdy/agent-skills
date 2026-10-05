@@ -1,11 +1,11 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, audits publication artifacts, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(~/.agents/skills/create-pr/scripts/pr-required-sections.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.4.1"
+version: "2.5.0"
 author: "flurdy"
 ---
 
@@ -109,20 +109,24 @@ freehand body. If found, follow the template's headings verbatim; the template o
 style wherever the two conflict, because it is the reviewing team's contract rather than ours.
 If not found, ask the user for confirmation on generating the body ourselves.
 
-Organisation PR standards can require document fields that repo templates omit. For
-`bluelightcard` repositories, the org `pr-conventions` check requires a `**PRD:**`,
-`**Tech RFC:**` and `**ADR:**` line, each holding a Confluence link or the literal `N/A`; empty
-values and `<…>` placeholders fail. When the body lacks them, append:
+Organisation PR standards can require body sections that repo templates omit. Find optional
+required-sections config with:
 
-```markdown
-## Related documents
-
-- **PRD:** N/A
-- **Tech RFC:** N/A
-- **ADR:** N/A
+```bash
+~/.agents/skills/create-pr/scripts/pr-required-sections.sh
 ```
 
-Use a Confluence link from the Jira ticket where one exists; otherwise `N/A`.
+It prints the nearest `.agents/create-pr/required-sections.md`, searching upward from the current
+directory and then from the repository root, below the home directory. It is harness-neutral: keep
+organisation-specific rules in that file (repository or workspace), not in this skill. When a path
+is printed, read it as Markdown body sections, with optional HTML comments as filling guidance:
+
+- Append each `## ` section whose heading the body lacks, after the template's own sections.
+- Fill every `<…>` value from evidence (Jira ticket, linked documents) or the default the guidance
+  names; never leave a `<…>` placeholder in the body.
+- Drop the HTML comments. A section already present in the body is left as is.
+
+No path printed means no extra sections.
 
 **The description is frozen the moment the PR leaves draft.** Editing a description after review
 has begun invalidates existing approvals and restarts the flow, so the body must already be final
