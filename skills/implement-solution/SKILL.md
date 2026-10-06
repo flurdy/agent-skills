@@ -5,7 +5,7 @@ allowed-tools: "Read,Edit,Write,Grep,Glob,Bash(git:*),Bash(make:*),Bash(npm:*),B
 model-tier: premium
 model: opus
 effort: high
-version: "2.2.0"
+version: "2.2.1"
 author: "flurdy"
 ---
 
@@ -15,7 +15,7 @@ Implement the smallest maintainable solution that meets the requested outcome. A
 
 This is a bounded premium/high implementation route. Load it before coding when a task is implementation-ready and the conditions below apply; do not wait for the user to name the skill. Reassess during implementation when an apparently simple change exposes those conditions. Preserve the established context, tests, and completed work rather than restarting discovery. Explicit invocation also opts in. It is not an always-on gate and should not add ceremony when the repository already makes the right change obvious.
 
-For model-initiated loading, read this skill separately from mutation calls and wait for the next model response before emitting edits. Routing cannot upgrade tool arguments already generated. Continue here after a coding-entry handoff; do not call the entry skill again.
+For model-initiated loading, read this skill separately from mutation calls. Continue on the next model response after the skill read returns, not a new user message. Never mutate in the same response that loads the skill: routing cannot upgrade tool arguments already generated. Continue here after a coding-entry handoff; do not call the entry skill again.
 
 ## When to Use
 

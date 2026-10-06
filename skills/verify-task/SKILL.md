@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select re
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.0.1"
+version: "2.0.2"
 author: "flurdy"
 ---
 
@@ -159,6 +159,13 @@ Ready to finalize requires met requirements, sufficient applicable coverage, com
 checks, and unchanged scope. Show skipped/unavailable/failed checks; do not substitute an all-green
 summary for missing evidence. Partial or stale proof cannot authorize `complete-task`.
 
-End with one useful handoff: a concrete coding request for missing behavior/tests, prerequisite
-setup for unavailable evidence, or `complete-task` for verified work. Never write the fix, claim or
-close the Bead, stage/commit, or start another workflow merely because verification finished.
+Never write the fix, claim or close the Bead, stage/commit, or start another workflow merely
+because verification finished. Hand back according to the caller's authorization:
+
+- **Standalone (default):** end with the report and one useful handoff: a concrete coding request
+  for missing behavior/tests, prerequisite setup for unavailable evidence, or `complete-task` for
+  verified work. Do not infer permission to implement or finalize from a verification-only request.
+- **Composed:** when the caller invoked verification as a step of an already-authorized broader task,
+  return the evidence to that caller. The owning workflow, not this verification pass, resumes its
+  authorized next step without requiring another user message solely to continue. Preserve existing
+  scope and approval gates; failed, incomplete, or stale evidence still blocks finalization.

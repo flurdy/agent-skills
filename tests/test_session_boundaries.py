@@ -15,6 +15,29 @@ def grants(name):
 
 
 class SessionBoundaries(unittest.TestCase):
+    def test_coding_skill_reads_continue_without_a_user_prompt(self):
+        for name in ("develop", "implement-solution"):
+            with self.subTest(skill=name):
+                text = " ".join(skill(name).split())
+                for boundary in ("not a new user message", "Never mutate in the same response that loads the skill"):
+                    self.assertTrue(boundary in text, f"missing routing boundary: {boundary}")
+
+    def test_verification_distinguishes_standalone_and_composed_handoffs(self):
+        text = " ".join(skill("verify-task").split())
+        for boundary in (
+            "Standalone (default)",
+            "already-authorized broader task",
+            "owning workflow, not this verification pass",
+            "without requiring another user message solely to continue",
+            "existing scope and approval gates",
+            "Partial or stale proof cannot authorize `complete-task`",
+            "No automatic fixes",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertTrue(boundary in text, f"missing verification boundary: {boundary}")
+        for forbidden in ("Write", "Edit", "Skill(", "Bash(git:*)", "Bash(bd update"):
+            self.assertNotIn(forbidden, grants("verify-task"))
+
     def test_next_stops_after_one_claim(self):
         text = skill("next")
         for obsolete in ("Continue fixing bugs", "Minor Bug Criteria", "Context Continuity", "and fix it", "Show top 5 candidates"):

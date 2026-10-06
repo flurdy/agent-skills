@@ -3,7 +3,7 @@ name: develop
 description: "Load before authorized code changes: features, fixes, refactors, tests, and mechanical edits, including discussion-to-coding transitions. Read separately from edits. Skip read-only requests and implementation already owned by a specialist."
 model-tier: standard
 effort: high
-version: "1.0.1"
+version: "1.0.2"
 author: "flurdy"
 ---
 
@@ -15,10 +15,10 @@ judgment. Explicit invocation is `/develop <task>`; in Pi use `/skill:develop <t
 
 Read this skill once per new coding run, even if its text remains in context from a
 previous run. Use a standalone skill read before generating mutation calls.
-Wait for the next model response before emitting edits, writes, or shell mutations;
-do not bundle the read and mutations in the same response. Apply the same separation
-when loading a specialist below. Already-generated edits are not upgraded by a model
-switch.
+Continue on the next model response after the skill read returns, not a new user message.
+Never mutate in the same response that loads the skill: keep edits, writes, and shell
+mutations separate from the read. Apply the same separation when loading a specialist
+below. Already-generated edits are not upgraded by a model switch.
 
 ## Choose the next step
 
