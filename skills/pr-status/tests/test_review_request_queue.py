@@ -963,6 +963,117 @@ class NormalizationTest(unittest.TestCase):
         self.assertEqual("alice", normalized["requestEvents"][0]["requester"])
 
 
+class DashboardRequestTest(unittest.TestCase):
+    def test_dashboard_keeps_triaged_requests_visible(self) -> None:
+        initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [snapshot()], viewer_login="ivar"
+        )
+        handled = QUEUE.mark_triaged(initial["state"], [initial["queue"][0]["workKey"]])
+        repeated = QUEUE.reduce_queue(handled, [snapshot()], viewer_login="ivar")
+        self.assertEqual([], repeated["queue"])
+        self.assertIn("requests", repeated, "dashboard inventory is missing")
+        self.assertEqual(["acme/widgets#42"], [row["key"] for row in repeated["requests"]])
+        changed = QUEUE.reduce_queue(
+            repeated["state"], [snapshot(head=HEAD_B)], viewer_login="ivar"
+        )
+        self.assertEqual(HEAD_B, changed["requests"][0]["headSha"])
+        self.assertTrue(changed["requests"][0]["actionable"])
+        self.assertEqual(["head_changed"], transition_names(changed))
+
+    def test_dashboard_metadata_changes_are_announced_once(self) -> None:
+        current = snapshot()
+        current.update(title="Login fix", updatedAt="2026-07-30T12:00:00Z",
+                       checksState="PENDING", ciHeadSha=HEAD_A, mergeState="CLEAN",
+                       reviewDecision="REVIEW_REQUIRED", otherReviews=[])
+        initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [current], viewer_login="ivar"
+        )
+        self.assertIn("requests", initial, "dashboard inventory is missing")
+        self.assertEqual("Login fix", initial["requests"][0]["title"])
+        self.assertEqual("2026-07-30T12:00:00Z", initial["requests"][0]["updatedAt"])
+        current["checksState"] = "SUCCESS"
+        changed = QUEUE.reduce_queue(initial["state"], [current], viewer_login="ivar")
+        self.assertEqual(["status_changed"], transition_names(changed))
+        self.assertEqual(["checksState"], changed["transitions"][0]["changedFields"])
+        repeated = QUEUE.reduce_queue(changed["state"], [current], viewer_login="ivar")
+        self.assertEqual([], repeated["transitions"])
+        self.assertEqual("SUCCESS", repeated["requests"][0]["checksState"])
+        self.assertNotIn("triagedWorkKey", repeated["state"]["entries"][0])
+
+    def test_dashboard_draft_team_and_failed_rows_are_not_actionable(self) -> None:
+        initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"),
+            [snapshot(draft=True), snapshot("acme/teams", current_kind="team",
+                                           current_reviewer="acme/platform", events=[
+                request_event("TEAM", "2026-07-30T10:00:00Z", kind="team",
+                              reviewer="acme/platform")])], viewer_login="ivar"
+        )
+        self.assertIn("requests", initial, "dashboard inventory is missing")
+        self.assertEqual(2, len(initial["requests"]))
+        self.assertFalse(any(row["actionable"] for row in initial["requests"]))
+        failed = QUEUE.reduce_queue(
+            initial["state"], [], viewer_login="ivar",
+            failed_repositories={"acme/widgets", "acme/teams"}
+        )
+        self.assertEqual(2, len(failed["requests"]))
+        self.assertFalse(any(row["available"] for row in failed["requests"]))
+        self.assertFalse(any(row["actionable"] for row in failed["requests"]))
+
+    def test_incomplete_history_preserves_only_explicitly_stale_dashboard_rows(self) -> None:
+        initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [snapshot()], viewer_login="ivar"
+        )
+        current = snapshot(head=HEAD_B)
+        current["historyComplete"] = False
+        result = QUEUE.reduce_queue(initial["state"], [current], viewer_login="ivar")
+        self.assertEqual("partial", result["status"])
+        self.assertIn("requests", result, "dashboard inventory is missing")
+        self.assertFalse(result["requests"][0]["available"])
+        self.assertFalse(result["requests"][0]["actionable"])
+        self.assertEqual(HEAD_A, result["requests"][0]["headSha"])
+
+    def test_dashboard_request_removal_does_not_leave_an_outstanding_row(self) -> None:
+        initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [snapshot()], viewer_login="ivar"
+        )
+        for current in (snapshot(current_kind=None),
+                        snapshot(state="MERGED", merged=True, current_kind=None),
+                        snapshot(state="CLOSED", current_kind=None)):
+            with self.subTest(state=current["state"]):
+                result = QUEUE.reduce_queue(initial["state"], [current], viewer_login="ivar")
+                self.assertIn("requests", result, "dashboard inventory is missing")
+                self.assertEqual([], result["requests"])
+                self.assertEqual(1, len(result["transitions"]))
+
+    def test_normalization_collects_status_without_conflating_update_and_request_time(self) -> None:
+        pr = {
+            "id": "PR_A", "number": 42, "headRefOid": HEAD_A,
+            "title": "Login fix", "updatedAt": "2026-07-30T12:00:00Z",
+            "mergeStateStatus": "BEHIND", "reviewDecision": "CHANGES_REQUESTED",
+            "commits": {"nodes": [{"commit": {"oid": HEAD_A,
+                         "statusCheckRollup": {"state": "SUCCESS"}}}]},
+            "timelineItems": {"nodes": [{"__typename": "PullRequestReview",
+                "id": "OTHER", "author": {"login": "bob"}, "state": "APPROVED",
+                "submittedAt": "2026-07-30T11:00:00Z", "commit": {"oid": HEAD_B}}]},
+        }
+        normalized = QUEUE.normalize_pull_request("acme/widgets", pr, True, "ivar")
+        self.assertIn("title", normalized, "dashboard metadata is missing")
+        self.assertEqual("Login fix", normalized["title"])
+        self.assertEqual("2026-07-30T12:00:00Z", normalized["updatedAt"])
+        self.assertEqual("SUCCESS", normalized["checksState"])
+        self.assertEqual(HEAD_A, normalized["ciHeadSha"])
+        self.assertEqual("BEHIND", normalized["mergeState"])
+        self.assertEqual(["OTHER"], [review["id"] for review in normalized["otherReviews"]])
+        pr["commits"]["nodes"][0]["commit"]["oid"] = HEAD_B
+        mismatched = QUEUE.normalize_pull_request("acme/widgets", pr, True, "ivar")
+        self.assertIsNone(mismatched["checksState"])
+
+    def test_status_query_requests_exact_head_and_update_metadata(self) -> None:
+        for field in ("title", "updatedAt", "mergeStateStatus", "reviewDecision",
+                      "commits(last: 1)", "statusCheckRollup", "oid"):
+            self.assertIn(field, QUEUE.PULL_REQUEST_FIELDS)
+
+
 class QueueCollectionTest(unittest.TestCase):
     def test_history_pagination_reports_truncation_at_the_cap(self) -> None:
         class PagingClient(QUEUE.GhClient):

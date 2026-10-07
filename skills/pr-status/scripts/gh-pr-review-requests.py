@@ -27,6 +27,11 @@ TRIAGE_FIELDS = (
     "jiraKeys", "otherReviewers", "ci",
 )
 JIRA_KEY = re.compile(r"(?<![A-Z0-9])[A-Z][A-Z0-9]+-\d+\b")
+DASHBOARD_FIELDS = (
+    "updatedAt", "checksState", "ciHeadSha", "mergeState",
+    "reviewDecision", "otherReviews",
+)
+STATUS_FIELDS = ("checksState", "mergeState", "reviewDecision", "otherReviews", "priorReview")
 
 
 @dataclass(frozen=True)
@@ -216,6 +221,7 @@ def item_from_entry(
         "explicitReRequest": explicit_rerequest
         or bool(entry.get("explicitReRequest", False)),
         "priorReview": entry.get("priorReview"),
+        **{field: entry.get(field) for field in DASHBOARD_FIELDS},
         "workKey": entry.get("workKey"),
         "transition": transition,
         "actionable": actionable,
@@ -310,6 +316,7 @@ def reduce_queue(
     queue = []
     errors = []
     sequence = int(state.get("sequence", 0))
+    observed_entries = {}
 
     for snapshot in sorted(
         snapshots, key=lambda item: (item["repository"].casefold(), item["number"])
@@ -455,6 +462,7 @@ def reduce_queue(
             if previous
             else False,
             "priorReview": review or (previous.get("priorReview") if previous else None),
+            **{field: snapshot.get(field) for field in DASHBOARD_FIELDS},
             "workKey": retained_work_key,
             "currentRequested": source is not None,
             "tracking": source is not None and terminal is None,
@@ -530,6 +538,12 @@ def reduce_queue(
             and not entry["isDraft"]
             and (mode == "recheck" or entry.get("triagedWorkKey") != current_work_key)
         )
+        changed_fields = [
+            field for field in STATUS_FIELDS
+            if previous is not None and previous.get(field) != entry.get(field)
+        ]
+        if transition is None and source is not None and changed_fields:
+            transition = "status_changed"
         if transition:
             item = item_from_entry(
                 transition_entry,
@@ -537,6 +551,7 @@ def reduce_queue(
                 actionable=actionable if transition_entry is entry else False,
                 explicit_rerequest=explicit_rerequest,
             )
+            item["changedFields"] = changed_fields
             transitions.append(item)
         transitions.extend(extra_transitions)
         if actionable:
@@ -549,6 +564,7 @@ def reduce_queue(
                 )
             )
         next_entries[key] = {field: value for field, value in entry.items() if field not in TRIAGE_FIELDS}
+        observed_entries[key] = entry
 
     protected_keys = {
         key
@@ -585,11 +601,35 @@ def reduce_queue(
         "status": "partial" if errors or failed else "complete",
         "mode": mode,
         "queue": queue,
+        "requests": dashboard_requests(entries, observed_entries),
         "transitions": transitions,
         "errors": errors,
         "failedRepositories": sorted(failed),
         "state": result_state,
     }
+
+
+def dashboard_requests(
+    entries: list[dict[str, Any]], observed_entries: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    requests = []
+    for retained in entries:
+        entry = observed_entries.get(retained["key"], retained)
+        if not entry.get("currentRequested") or not entry.get("tracking"):
+            continue
+        available = entry["key"] in observed_entries
+        item = item_from_entry(
+            entry, "current", actionable=(
+                available and entry.get("requestSource") == "direct"
+                and not entry.get("isDraft") and entry.get("state") == "OPEN"
+            ), explicit_rerequest=False,
+        )
+        item["available"] = available
+        requests.append(item)
+    return sorted(requests, key=lambda item: (
+        (item.get("requestEvent") or {}).get("createdAt") or "~",
+        item["repository"].casefold(), item["number"],
+    ))
 
 
 def mark_triaged(state: dict[str, Any], displayed_work_keys: list[str]) -> dict[str, Any]:
@@ -932,6 +972,9 @@ PULL_REQUEST_FIELDS = f"""
   changedFiles
   headRefName
   headRefOid
+  updatedAt
+  mergeStateStatus
+  reviewDecision
   commits(last: 1) {{ nodes {{ commit {{ oid statusCheckRollup {{ state }} }} }} }}
   author {{ login }}
   reviewRequests(first: $pageSize) {REVIEW_REQUEST_FIELDS}
@@ -1023,6 +1066,7 @@ def normalize_pull_request(
 
     request_events = []
     viewer_reviews = []
+    other_reviews = []
     timeline_nodes = pull_request.get("timelineItems", {}).get("nodes", [])
     for event in timeline_nodes:
         typename = event.get("__typename")
@@ -1041,9 +1085,13 @@ def normalize_pull_request(
             )
         elif typename == "PullRequestReview" and event.get("submittedAt"):
             author = (event.get("author") or {}).get("login")
-            if not isinstance(author, str) or author.casefold() != viewer_login.casefold():
+            if not isinstance(author, str):
                 continue
-            viewer_reviews.append(
+            destination = (
+                viewer_reviews if author.casefold() == viewer_login.casefold()
+                else other_reviews
+            )
+            destination.append(
                 {
                     "id": event.get("id"),
                     "author": author,
@@ -1053,7 +1101,14 @@ def normalize_pull_request(
                 }
             )
 
+    ci = exact_head_ci(pull_request)
     return {
+        "updatedAt": pull_request.get("updatedAt"),
+        "checksState": ci["state"] if ci["state"] != "UNKNOWN" else None,
+        "ciHeadSha": ci["headSha"],
+        "mergeState": pull_request.get("mergeStateStatus"),
+        "reviewDecision": pull_request.get("reviewDecision"),
+        "otherReviews": other_reviews if history_complete else None,
         "repository": repository,
         "number": int(pull_request["number"]),
         "nodeId": pull_request.get("id"),
@@ -1074,7 +1129,7 @@ def normalize_pull_request(
         "otherReviewers": [request for request in current_requests
                            if request["sourceKind"] != "direct"
                            or request["reviewer"].casefold() != viewer_login.casefold()],
-        "ci": exact_head_ci(pull_request),
+        "ci": ci,
         "currentRequests": current_requests,
         "requestEvents": request_events,
         "viewerReviews": viewer_reviews,

@@ -40,6 +40,7 @@
 | pickup | Read-only shortlist of unassigned, ready Jira tickets for the team (active sprint, next sprint, top of backlog) with flagged or blocked tickets listed separately; scoped by a workspace `pickup.toml` |
 | plan-day | Render today's plan from a My PA workspace: ranked Jira, Trello, Beads and Thoughtbox items assigned to work, project-session, evening or skip blocks, flagged when delegable to an unattended session, written to a dated ephemeral plan file |
 | plan-to-backlog | Dynamically materialize an explicitly approved plan into proposal-first Beads tracking when durable ownership is requested, with no-item/single-item/epic outcomes and explicit confirmation before writes |
+| pr-review-requests | Read-only inbound PR dashboard with request/update times, exact-head CI, merge state, reviews, feedback, and manual next steps |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion |
 | project-brief | Read-only workspace-level synthesis of project outcomes, requirement linkage, delivery evidence, coordination risks, and the single most important next coordination action |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
@@ -71,7 +72,7 @@
 | watch-pr-feedback | Watch open PRs for normalized feedback, independently validate each new or edited actionable item once, and render a bounded decision queue. Read-only by default; attended mode pauses only for acknowledgment |
 | watch-prs | Start a recurring PR status dashboard — runs /pr-status on an adaptive cadence (fast ~3m when CI is in flight, backing off 10→30m when settled) until end of day, with transition-driven suggested next actions. Unattended; pass `\d+m` for a fixed interval |
 | watch-release | Start a recurring release-gatekeeper loop — runs /release-manager on an adaptive cadence (fast ~3m when a push is mid-rollout or CI is running, backing off 10→30m when settled) until end of day. Pass `\d+m` for a fixed interval instead |
-| watch-review-requests | Triage direct GitHub review requests with lightweight metadata, deduplicated updates and lifecycle transitions; suggest manual reviews without running or submitting them |
+| watch-review-requests | Schedule the read-only inbound PR request dashboard; adaptive/fixed cadence, unattended, manual review only |
 | watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | watch-telemetry | Query opt-in local watcher-execution counters with partial coverage, fixed privacy-safe fields, and bounded active retention; explicitly enable, disable, or prune collection |
 | wrap-up | Report session activity, artifact hygiene and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |

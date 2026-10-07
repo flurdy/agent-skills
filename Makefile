@@ -241,6 +241,7 @@ test-review-pr:
 	@bash skills/review-pr/tests/test-skill-contract.sh
 
 test-review-requests:
+	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_request_feedback.py'
 	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_review_request_queue.py'
 	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_checkout_resolver.py'
 
