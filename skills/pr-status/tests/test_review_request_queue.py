@@ -286,8 +286,8 @@ class QueueTransitionTest(unittest.TestCase):
             [snapshot()],
             viewer_login="ivar",
         )
-        handled = QUEUE.mark_reviewed(
-            initial["state"], initial["queue"][0]["workKey"]
+        handled = QUEUE.mark_triaged(
+            initial["state"], [initial["queue"][0]["workKey"]]
         )
         settled = QUEUE.reduce_queue(
             handled,
@@ -503,7 +503,7 @@ class QueueTransitionTest(unittest.TestCase):
             viewer_login="ivar",
         )
         work_key = initial["queue"][0]["workKey"]
-        handled = QUEUE.mark_reviewed(initial["state"], work_key)
+        handled = QUEUE.mark_triaged(initial["state"], [work_key])
 
         changed = QUEUE.reduce_queue(
             handled,
@@ -513,17 +513,21 @@ class QueueTransitionTest(unittest.TestCase):
 
         self.assertEqual(["head_changed"], transition_names(changed))
         self.assertFalse(changed["transitions"][0]["explicitReRequest"])
-        self.assertFalse(changed["transitions"][0]["actionable"])
-        self.assertEqual([], changed["queue"])
+        self.assertTrue(changed["transitions"][0]["actionable"])
+        self.assertEqual(1, len(changed["queue"]))
+        self.assertNotEqual(work_key, changed["queue"][0]["workKey"])
 
-    def test_local_review_is_reported_once_and_handled_work_does_not_reappear(self) -> None:
+    def test_triage_is_idempotent_and_does_not_claim_a_review(self) -> None:
         initial = QUEUE.reduce_queue(
             self.empty,
             [snapshot()],
             viewer_login="ivar",
         )
         work_key = initial["queue"][0]["workKey"]
-        handled = QUEUE.mark_reviewed(initial["state"], work_key)
+        handled = QUEUE.mark_triaged(initial["state"], [work_key])
+        self.assertEqual(handled, QUEUE.mark_triaged(handled, [work_key]))
+        self.assertNotIn("triagedWorkKey", initial["state"]["entries"][0])
+        self.assertIsNone(handled["entries"][0]["priorReview"])
 
         first_poll = QUEUE.reduce_queue(
             handled,
@@ -536,7 +540,7 @@ class QueueTransitionTest(unittest.TestCase):
             viewer_login="ivar",
         )
 
-        self.assertEqual(["reviewed_locally"], transition_names(first_poll))
+        self.assertEqual([], transition_names(first_poll))
         self.assertEqual([], first_poll["queue"])
         self.assertEqual([], second_poll["transitions"])
         self.assertEqual([], second_poll["queue"])
@@ -644,7 +648,7 @@ class QueueTransitionTest(unittest.TestCase):
             [snapshot()],
             viewer_login="ivar",
         )
-        handled = QUEUE.mark_reviewed(initial["state"], initial["queue"][0]["workKey"])
+        handled = QUEUE.mark_triaged(initial["state"], [initial["queue"][0]["workKey"]])
         settled = QUEUE.reduce_queue(handled, [snapshot()], viewer_login="ivar")
 
         normal = QUEUE.reduce_queue(settled["state"], [snapshot()], viewer_login="ivar")
@@ -669,7 +673,7 @@ class QueueTransitionTest(unittest.TestCase):
 
 
 class CommandContractTest(unittest.TestCase):
-    def test_mark_reviewed_cli_updates_only_returned_session_state(self) -> None:
+    def test_mark_triaged_cli_updates_only_returned_session_state(self) -> None:
         initial = QUEUE.reduce_queue(
             QUEUE.empty_state("ivar"),
             [snapshot()],
@@ -678,23 +682,52 @@ class CommandContractTest(unittest.TestCase):
         work_key = initial["queue"][0]["workKey"]
         output = io.StringIO()
 
-        with redirect_stdout(output):
+        with redirect_stdout(output), mock.patch.object(QUEUE, "GhClient") as client, mock.patch.object(
+            QUEUE, "resolve_repository_scope"
+        ) as scope:
             status = QUEUE.main(
                 [
                     "--state-json",
                     json.dumps(initial["state"]),
-                    "--mark-reviewed",
+                    "--mark-triaged",
                     work_key,
                 ]
             )
 
         result = json.loads(output.getvalue())
         self.assertEqual(0, status)
-        self.assertEqual("mark-reviewed", result["mode"])
+        self.assertEqual("mark-triaged", result["mode"])
         self.assertEqual(
             work_key,
-            result["state"]["entries"][0]["handledWorkKey"],
+            result["state"]["entries"][0]["triagedWorkKey"],
         )
+        client.assert_not_called()
+        scope.assert_not_called()
+
+    def test_batch_acknowledgement_accepts_stdin_without_remote_calls(self) -> None:
+        initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [snapshot(), snapshot(number=43)], viewer_login="ivar"
+        )
+        keys = [item["workKey"] for item in initial["queue"]]
+        arguments = ["--state-stdin"]
+        for key in keys:
+            arguments.extend(["--mark-triaged", key])
+        output = io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(json.dumps(initial["state"]))), redirect_stdout(output), \
+                mock.patch.object(QUEUE, "GhClient") as client, \
+                mock.patch.object(QUEUE, "resolve_repository_scope") as scope:
+            status = QUEUE.main(arguments)
+        self.assertEqual(0, status)
+        self.assertEqual(set(keys), {entry["triagedWorkKey"] for entry in json.loads(output.getvalue())["state"]["entries"]})
+        client.assert_not_called()
+        scope.assert_not_called()
+
+    def test_legacy_mark_and_mixed_modes_are_rejected(self) -> None:
+        for arguments in (["--mark-reviewed", "key"], ["--mark-triaged", "key", "--recheck"]):
+            with self.subTest(arguments=arguments), mock.patch.object(sys, "stderr", io.StringIO()):
+                with self.assertRaises(SystemExit) as error:
+                    QUEUE.parse_args(arguments)
+                self.assertEqual(2, error.exception.code)
 
     def test_cli_exposes_reset_and_recheck_without_mutation_commands(self) -> None:
         help_text = SCRIPT.read_text(encoding="utf-8")
@@ -706,7 +739,168 @@ class CommandContractTest(unittest.TestCase):
         self.assertNotIn("requested_reviewers", help_text)
 
 
+class TriageStateTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.initial = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [snapshot()], viewer_login="ivar"
+        )
+
+    def test_rerequest_after_triage_is_new_work(self) -> None:
+        item = self.initial["queue"][0]
+        marked = QUEUE.mark_triaged(self.initial["state"], [item["workKey"]])
+        current = snapshot()
+        current["requestEvents"].append(request_event("REQ_NEW", "2026-07-31T10:00:00Z"))
+        result = QUEUE.reduce_queue(marked, [current], viewer_login="ivar")
+        self.assertEqual(["re_requested"], transition_names(result))
+        self.assertNotEqual(item["workKey"], result["queue"][0]["workKey"])
+
+    def test_observed_draft_clears_triage_even_with_incomplete_history(self) -> None:
+        for history_complete in (True, False):
+            with self.subTest(history_complete=history_complete):
+                marked = QUEUE.mark_triaged(
+                    self.initial["state"], [self.initial["queue"][0]["workKey"]]
+                )
+                draft = snapshot(draft=True)
+                draft["historyComplete"] = history_complete
+                paused = QUEUE.reduce_queue(marked, [draft], viewer_login="ivar")
+                self.assertEqual([], paused["queue"])
+                self.assertEqual(["draft"], transition_names(paused))
+                self.assertFalse(paused["transitions"][0]["actionable"])
+                resumed = QUEUE.reduce_queue(paused["state"], [snapshot()], viewer_login="ivar")
+                self.assertEqual(["ready"], transition_names(resumed))
+                self.assertEqual(1, len(resumed["queue"]))
+
+    def test_recheck_never_makes_a_draft_actionable(self) -> None:
+        result = QUEUE.reduce_queue(
+            self.initial["state"], [snapshot(draft=True)], viewer_login="ivar", mode="recheck"
+        )
+        self.assertEqual([], result["queue"])
+        self.assertFalse(result["transitions"][0]["actionable"])
+
+    def test_failure_keeps_triaged_keys_without_claiming_new_work(self) -> None:
+        marked = QUEUE.mark_triaged(
+            self.initial["state"], [self.initial["queue"][0]["workKey"]]
+        )
+        failed = QUEUE.reduce_queue(marked, [], viewer_login="ivar", failed_repositories={"acme/widgets"})
+        self.assertEqual("partial", failed["status"])
+        self.assertEqual(marked, failed["state"])
+        self.assertEqual([], failed["queue"])
+        recovered = QUEUE.reduce_queue(failed["state"], [snapshot()], viewer_login="ivar")
+        self.assertEqual([], recovered["queue"])
+        self.assertEqual([], recovered["transitions"])
+
+    def test_batch_marking_is_atomic_and_only_accepts_current_open_direct_work(self) -> None:
+        original = json.dumps(self.initial["state"], sort_keys=True)
+        key = self.initial["queue"][0]["workKey"]
+        with self.assertRaises(ValueError):
+            QUEUE.mark_triaged(self.initial["state"], [key, "missing"])
+        self.assertEqual(original, json.dumps(self.initial["state"], sort_keys=True))
+        for change in ({"isDraft": True}, {"state": "CLOSED"}, {"tracking": False},
+                       {"currentRequested": False}, {"requestSource": "team"}):
+            with self.subTest(change=change):
+                state = json.loads(original)
+                state["entries"][0].update(change)
+                with self.assertRaises(ValueError):
+                    QUEUE.mark_triaged(state, [key])
+        multiple = QUEUE.reduce_queue(
+            QUEUE.empty_state("ivar"), [snapshot(), snapshot(number=43)], viewer_login="ivar"
+        )
+        keys = [item["workKey"] for item in multiple["queue"]]
+        marked = QUEUE.mark_triaged(multiple["state"], keys)
+        self.assertEqual(set(keys), {entry["triagedWorkKey"] for entry in marked["entries"]})
+        self.assertEqual(marked, QUEUE.mark_triaged(marked, keys))
+
+    def test_legacy_review_state_is_rejected_not_reinterpreted(self) -> None:
+        legacy = {**self.initial["state"], "schemaVersion": 1}
+        with self.assertRaisesRegex(ValueError, "schema"):
+            QUEUE.reduce_queue(legacy, [snapshot()], viewer_login="ivar")
+        self.assertEqual(2, QUEUE.SCHEMA_VERSION)
+
+    def test_metadata_is_visible_but_not_retained_in_queue_state(self) -> None:
+        current = snapshot()
+        metadata = {"title": "APP-123 Add widget", "createdAt": "2026-07-29T10:00:00Z",
+                    "additions": 30, "deletions": 4, "changedFiles": 2,
+                    "jiraKeys": ["APP-123"],
+                    "otherReviewers": [{"sourceKind": "direct", "reviewer": "bob"}],
+                    "ci": {"headSha": HEAD_A, "state": "SUCCESS"}}
+        current.update(metadata)
+        result = QUEUE.reduce_queue(QUEUE.empty_state("ivar"), [current], viewer_login="ivar")
+        for field, value in metadata.items():
+            self.assertEqual(value, result["queue"][0][field])
+            self.assertEqual(value, result["transitions"][0][field])
+            self.assertNotIn(field, result["state"]["entries"][0])
+        marked = QUEUE.mark_triaged(result["state"], [result["queue"][0]["workKey"]])
+        current["title"] = "APP-123 Retitled widget"
+        current["ci"]["state"] = "PENDING"
+        repeated = QUEUE.reduce_queue(marked, [current], viewer_login="ivar")
+        self.assertEqual([], repeated["queue"])
+        self.assertEqual([], repeated["transitions"])
+
+
 class NormalizationTest(unittest.TestCase):
+    def test_metadata_query_is_bounded_and_has_no_review_content(self) -> None:
+        query = QUEUE.PULL_REQUEST_FIELDS
+        for field in ("title", "createdAt", "additions", "deletions", "changedFiles",
+                      "headRefName", "commits(last: 1)", "statusCheckRollup", "oid"):
+            self.assertIn(field, query)
+        for field in ("body", "diff", "files(", "reviewThreads("):
+            self.assertNotIn(field, query)
+
+    def test_metadata_normalization_binds_ci_and_reports_pending_reviewers(self) -> None:
+        raw = {"id": "PR_A", "number": 42, "headRefOid": HEAD_A,
+               "title": "APP-123 Add widget", "headRefName": "feat/APP-123-WEB-456",
+               "createdAt": "2026-07-29T10:00:00Z", "additions": 30, "deletions": 4,
+               "changedFiles": 2, "commits": {"nodes": [{"commit": {
+                   "oid": HEAD_A, "statusCheckRollup": {"state": "SUCCESS"}}}]},
+               "reviewRequests": {"nodes": [
+                   {"requestedReviewer": {"__typename": "User", "login": "ivar"}},
+                   {"requestedReviewer": {"__typename": "User", "login": "bob"}},
+                   {"requestedReviewer": {"__typename": "Team", "slug": "platform",
+                                          "organization": {"login": "acme"}}},
+               ]}}
+        result = QUEUE.normalize_pull_request("acme/widgets", raw, True, "ivar")
+        self.assertEqual("APP-123 Add widget", result["title"])
+        self.assertEqual(["APP-123", "WEB-456"], result["jiraKeys"])
+        self.assertEqual(30, result["additions"])
+        self.assertEqual(4, result["deletions"])
+        self.assertEqual(2, result["changedFiles"])
+        self.assertEqual(raw["createdAt"], result["createdAt"])
+        self.assertEqual({"headSha": HEAD_A, "state": "SUCCESS"}, result["ci"])
+        self.assertEqual([{"sourceKind": "direct", "reviewer": "bob"},
+                          {"sourceKind": "team", "reviewer": "acme/platform"}], result["otherReviewers"])
+        raw["commits"]["nodes"][0]["commit"]["oid"] = HEAD_B
+        result = QUEUE.normalize_pull_request("acme/widgets", raw, True, "ivar")
+        self.assertEqual({"headSha": None, "state": "UNKNOWN"}, result["ci"])
+
+    def test_exact_head_ci_handles_all_rollup_states_and_rejects_unbound_results(self) -> None:
+        for state in ("EXPECTED", "PENDING", "SUCCESS", "ERROR", "FAILURE"):
+            with self.subTest(state=state):
+                raw = {"headRefOid": HEAD_A, "commits": {"nodes": [
+                    {"commit": {"oid": HEAD_A, "statusCheckRollup": {"state": state}}}
+                ]}}
+                self.assertEqual({"headSha": HEAD_A, "state": state}, QUEUE.exact_head_ci(raw))
+                raw["headRefOid"] = None
+                self.assertEqual("UNKNOWN", QUEUE.exact_head_ci(raw)["state"])
+        for rollup in ({"state": []}, {"state": {}}, [], "SUCCESS"):
+            raw = {"headRefOid": HEAD_A, "commits": {"nodes": [
+                {"commit": {"oid": HEAD_A, "statusCheckRollup": rollup}}
+            ]}}
+            self.assertEqual("UNKNOWN", QUEUE.exact_head_ci(raw)["state"])
+
+    def test_missing_or_malformed_metadata_never_invents_green_ci_or_zero_size(self) -> None:
+        for commits in (None, {}, {"nodes": []},
+                        {"nodes": [{"commit": {"oid": HEAD_A, "statusCheckRollup": None}}]},
+                        {"nodes": [{"commit": {"oid": HEAD_A, "statusCheckRollup": {"state": "BOGUS"}}}]}):
+            raw = {"number": 42, "headRefOid": HEAD_A, "commits": commits,
+                   "additions": True, "deletions": -1, "changedFiles": "2"}
+            result = QUEUE.normalize_pull_request("acme/widgets", raw, True, "ivar")
+            self.assertEqual("UNKNOWN", result["ci"]["state"])
+            self.assertIsNone(result["additions"])
+            self.assertIsNone(result["deletions"])
+            self.assertIsNone(result["changedFiles"])
+            self.assertEqual([], result["jiraKeys"])
+            self.assertEqual([], result["otherReviewers"])
+
     def test_normalization_keeps_only_the_viewers_submitted_reviews(self) -> None:
         pull_request = {
             "id": "PR_A",

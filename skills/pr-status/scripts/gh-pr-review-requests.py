@@ -11,6 +11,7 @@ import argparse
 import copy
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -18,9 +19,14 @@ from pathlib import Path
 from time import monotonic
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_OUTPUT_BYTES = 4_000_000
+TRIAGE_FIELDS = (
+    "title", "createdAt", "additions", "deletions", "changedFiles",
+    "jiraKeys", "otherReviewers", "ci",
+)
+JIRA_KEY = re.compile(r"(?<![A-Z0-9])[A-Z][A-Z0-9]+-\d+\b")
 
 
 @dataclass(frozen=True)
@@ -213,6 +219,7 @@ def item_from_entry(
         "workKey": entry.get("workKey"),
         "transition": transition,
         "actionable": actionable,
+        **{field: entry.get(field) for field in TRIAGE_FIELDS},
     }
 
 
@@ -324,6 +331,14 @@ def reduce_queue(
                 }
             )
             if terminal is None:
+                if previous and snapshot.get("isDraft") and snapshot.get("nodeId") == previous.get("nodeId"):
+                    observed = next_entries[key]
+                    observed["isDraft"] = True
+                    observed.pop("triagedWorkKey", None)
+                    if not previous.get("isDraft"):
+                        transitions.append(item_from_entry(
+                            observed, "draft", actionable=False, explicit_rerequest=False
+                        ))
                 continue
 
         sequence += 1
@@ -379,8 +394,6 @@ def reduce_queue(
             if source == "direct" and event_id
             else None
         )
-        prior_handled_event = previous.get("handledRequestEventId") if previous else None
-        prior_handled_head = previous.get("handledHeadSha") if previous else None
         retained_source = source or (previous.get("requestSource") if previous else None)
         retained_event_id = event_id or (
             previous.get("requestEventId") if previous else None
@@ -445,14 +458,11 @@ def reduce_queue(
             "workKey": retained_work_key,
             "currentRequested": source is not None,
             "tracking": source is not None and terminal is None,
-            "handledWorkKey": previous.get("handledWorkKey") if previous else None,
-            "handledRequestEventId": prior_handled_event,
-            "handledHeadSha": prior_handled_head,
-            "localReviewReported": previous.get("localReviewReported", True)
-            if previous
-            else True,
             "observation": sequence,
+            **{field: snapshot.get(field) for field in TRIAGE_FIELDS},
         }
+        if previous and previous.get("triagedWorkKey") and not entry["isDraft"]:
+            entry["triagedWorkKey"] = previous["triagedWorkKey"]
 
         transition = None
         transition_entry = entry
@@ -488,6 +498,7 @@ def reduce_queue(
                         "priorReview": review or previous.get("priorReview"),
                         "currentRequested": False,
                         "tracking": False,
+                        **{field: snapshot.get(field) for field in TRIAGE_FIELDS},
                     }
                 )
         else:
@@ -511,27 +522,13 @@ def reduce_queue(
                 transition = "draft"
             elif previous.get("headSha") != entry["headSha"]:
                 transition = "head_changed"
-            elif (
-                entry.get("handledWorkKey") == current_work_key
-                and not entry.get("localReviewReported", True)
-            ):
-                transition = "reviewed_locally"
-                entry["localReviewReported"] = True
 
-        handled_current = entry.get("handledWorkKey") == current_work_key
-        head_changed_after_handled_request = (
-            prior_handled_event == event_id
-            and prior_handled_head is not None
-            and prior_handled_head != entry.get("headSha")
-        )
         actionable = (
             source == "direct"
+            and entry["state"] == "OPEN"
             and terminal is None
             and not entry["isDraft"]
-            and (
-                mode == "recheck"
-                or (not handled_current and not head_changed_after_handled_request)
-            )
+            and (mode == "recheck" or entry.get("triagedWorkKey") != current_work_key)
         )
         if transition:
             item = item_from_entry(
@@ -551,7 +548,7 @@ def reduce_queue(
                     explicit_rerequest=explicit_rerequest,
                 )
             )
-        next_entries[key] = entry
+        next_entries[key] = {field: value for field, value in entry.items() if field not in TRIAGE_FIELDS}
 
     protected_keys = {
         key
@@ -595,21 +592,24 @@ def reduce_queue(
     }
 
 
-def mark_reviewed(state: dict[str, Any], reviewed_work_key: str) -> dict[str, Any]:
-    viewer_login = str(state.get("viewerLogin", ""))
-    validate_state(state, viewer_login)
+def mark_triaged(state: dict[str, Any], displayed_work_keys: list[str]) -> dict[str, Any]:
+    validate_state(state, str(state.get("viewerLogin", "")))
     updated = copy.deepcopy(state)
-    for entry in updated["entries"]:
-        if entry.get("workKey") != reviewed_work_key:
-            continue
-        if entry.get("requestSource") != "direct" or not entry.get("currentRequested"):
-            raise ValueError("work key is not a current direct review request")
-        entry["handledWorkKey"] = reviewed_work_key
-        entry["handledRequestEventId"] = entry.get("requestEventId")
-        entry["handledHeadSha"] = entry.get("headSha")
-        entry["localReviewReported"] = False
-        return updated
-    raise ValueError("work key is not present in review-request state")
+    entries = {entry.get("workKey"): entry for entry in updated["entries"]}
+    for key in displayed_work_keys:
+        entry = entries.get(key)
+        if entry is None:
+            raise ValueError("work key is not present in review-request state")
+        if (
+            entry.get("requestSource") != "direct"
+            or not entry.get("currentRequested")
+            or not entry.get("tracking")
+            or entry.get("state") != "OPEN"
+            or entry.get("isDraft")
+        ):
+            raise ValueError("work key is not a current open non-draft direct request")
+        entry["triagedWorkKey"] = key
+    return updated
 
 
 class GhClient:
@@ -925,7 +925,14 @@ PULL_REQUEST_FIELDS = f"""
   state
   isDraft
   merged
+  title
+  createdAt
+  additions
+  deletions
+  changedFiles
+  headRefName
   headRefOid
+  commits(last: 1) {{ nodes {{ commit {{ oid statusCheckRollup {{ state }} }} }} }}
   author {{ login }}
   reviewRequests(first: $pageSize) {REVIEW_REQUEST_FIELDS}
   timelineItems(
@@ -977,6 +984,27 @@ def reviewer_identity(reviewer: Any) -> tuple[str, str] | None:
     if login:
         return "other", str(login)
     return None
+
+
+def exact_head_ci(pull_request: dict[str, Any]) -> dict[str, Any]:
+    unknown = {"headSha": None, "state": "UNKNOWN"}
+    commits = pull_request.get("commits")
+    nodes = commits.get("nodes") if isinstance(commits, dict) else None
+    if not isinstance(nodes, list) or len(nodes) != 1 or not isinstance(nodes[0], dict):
+        return unknown
+    commit = nodes[0].get("commit")
+    head = pull_request.get("headRefOid")
+    if not isinstance(commit, dict) or not head or commit.get("oid") != head:
+        return unknown
+    rollup = commit.get("statusCheckRollup")
+    state = rollup.get("state") if isinstance(rollup, dict) else None
+    if not isinstance(state, str) or state not in {"EXPECTED", "PENDING", "SUCCESS", "ERROR", "FAILURE"}:
+        return unknown
+    return {"headSha": head, "state": state}
+
+
+def nonnegative_count(value: Any) -> int | None:
+    return value if type(value) is int and value >= 0 else None
 
 
 def normalize_pull_request(
@@ -1035,6 +1063,18 @@ def normalize_pull_request(
         "isDraft": bool(pull_request.get("isDraft")),
         "merged": bool(pull_request.get("merged")),
         "headSha": pull_request.get("headRefOid"),
+        "title": pull_request.get("title"),
+        "createdAt": pull_request.get("createdAt"),
+        "additions": nonnegative_count(pull_request.get("additions")),
+        "deletions": nonnegative_count(pull_request.get("deletions")),
+        "changedFiles": nonnegative_count(pull_request.get("changedFiles")),
+        "jiraKeys": list(dict.fromkeys(JIRA_KEY.findall(
+            f"{pull_request.get('title') or ''} {pull_request.get('headRefName') or ''}"
+        ))),
+        "otherReviewers": [request for request in current_requests
+                           if request["sourceKind"] != "direct"
+                           or request["reviewer"].casefold() != viewer_login.casefold()],
+        "ci": exact_head_ci(pull_request),
         "currentRequests": current_requests,
         "requestEvents": request_events,
         "viewerReviews": viewer_reviews,
@@ -1339,7 +1379,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--reset", action="store_true")
     modes.add_argument("--recheck", action="store_true")
-    parser.add_argument("--mark-reviewed", metavar="WORK_KEY")
+    modes.add_argument("--mark-triaged", metavar="WORK_KEY", action="append",
+                       help="acknowledge displayed work in returned state only; repeat for a batch")
     parser.add_argument("--page-size", type=int, default=50)
     parser.add_argument("--max-candidates", type=int, default=100)
     parser.add_argument("--max-state-entries", type=int, default=200)
@@ -1364,14 +1405,14 @@ def main(argv: list[str]) -> int:
     ).normalized()
     try:
         state = parse_state(arguments)
-        if arguments.mark_reviewed:
+        if arguments.mark_triaged:
             if state is None:
-                raise ValueError("--mark-reviewed requires session state")
+                raise ValueError("--mark-triaged requires session state")
             result = {
                 "schemaVersion": SCHEMA_VERSION,
                 "status": "complete",
-                "mode": "mark-reviewed",
-                "state": mark_reviewed(state, arguments.mark_reviewed),
+                "mode": "mark-triaged",
+                "state": mark_triaged(state, arguments.mark_triaged),
             }
         else:
             deadline = monotonic() + max(0.1, arguments.timeout)
