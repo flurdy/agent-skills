@@ -15,6 +15,55 @@ def grants(name):
 
 
 class SessionBoundaries(unittest.TestCase):
+    def test_backlog_groom_binds_workspace_stores_and_unfinished_statuses(self):
+        text = " ".join(skill("backlog-groom").split())
+        for boundary in (
+            "/backlog-groom workspace",
+            "open,in_progress,blocked,deferred",
+            "next-select stores",
+            "deduplicate by the returned canonical `directory`",
+            "`workspace: true` selects workspace mode by default",
+            "`workspace: false` selects the local open-only default",
+            "/backlog-groom local",
+            "An explicit `local` override narrows the scope",
+            "No recursive filesystem discovery",
+            "unavailable stores",
+            "Missing evidence is not a clean backlog",
+            "never synchronize",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertTrue(boundary in text, f"missing grooming scope boundary: {boundary}")
+        catalog = (ROOT / "skills/README.md").read_text()
+        row = next(line for line in catalog.splitlines() if line.startswith("| backlog-groom |"))
+        self.assertIn("workspace", row)
+        self.assertIn("unfinished", row)
+
+    def test_backlog_groom_qualifies_commands_and_preserves_apply_gates(self):
+        text = skill("backlog-groom")
+        normalized = " ".join(text.split())
+        for boundary in (
+            "not approval for label edits",
+            "fresh `next-select resolve`",
+            "If status, ownership, or relevant content changed",
+            "per-store duplicate coverage",
+            "Do not pass the list's comma-separated status filter",
+            "Do not use `--skip-labels` or `--brief`",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertTrue(boundary in normalized, f"missing grooming safety boundary: {boundary}")
+        commands = re.findall(r"(?m)^bd .*", text)
+        self.assertTrue(commands)
+        for command in commands:
+            self.assertTrue(command.startswith("bd -C <directory> "), command)
+            self.assertIn("--readonly", command)
+            if "find-duplicates" in command:
+                self.assertNotIn("--status", command)
+            if " stale " in command:
+                self.assertIn("--status=<one-status>", command)
+                self.assertNotIn("open,in_progress", command)
+        self.assertIn("next-select stores", grants("backlog-groom"))
+        self.assertNotIn("Bash(bd:*)", grants("backlog-groom"))
+
     def test_coding_skill_reads_continue_without_a_user_prompt(self):
         for name in ("develop", "implement-solution"):
             with self.subTest(skill=name):
