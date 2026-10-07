@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.6.1"
+version: "0.6.2"
 author: "flurdy"
 ---
 
@@ -63,8 +63,13 @@ Email addresses in the `owner`, `created_by`, and `assignee` fields of Beads `.b
 records are treated as structural attribution; unrelated fields remain reportable.
 
 The Bead-reference detector matches known prefixes with any 3–8 character base36 suffix and
-optional `.N` children, plus a generic digit-bearing shape so a checked-in file can only widen
-detection. Known prefixes come from clone-local `artifactHygiene.beadPrefixes` (multi-valued or
+optional `.N` children, plus a generic shape requiring both letters and digits in the 3–8 character
+suffix so a checked-in file can only widen detection. Generic matching ignores numeric-only fixture
+values such as `test-stt-123` and `member-uuid-123`; known prefixes still match numeric-only IDs.
+Unknown-prefix numeric-only and digitless IDs are not detected by this heuristic. Generic prefixes
+require each hyphen-separated segment to start with a letter, so prefixes such as `project-2` need
+to be known explicitly. This is not a blanket test-file exemption: mixed-suffix fixtures can still
+match. Known prefixes come from clone-local `artifactHygiene.beadPrefixes` (multi-valued or
 comma-separated), `ARTIFACT_HYGIENE_BEAD_PREFIXES`, and the repository's own `.beads/config.yaml`
 `issue-prefix` and `.beads/issues.jsonl` IDs; `target.beadPrefixSource` reports which. Plain
 hyphenated words such as `dry-run` are not reported, nor are `<prefix>-beads` Dolt remote repository

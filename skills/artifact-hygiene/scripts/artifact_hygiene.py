@@ -25,6 +25,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v2"
+HELPER_VERSION = "0.6.2-poc"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -77,7 +78,9 @@ PLACEHOLDER_EMAIL_SUFFIXES = (b".example", b".invalid", b".localhost", b".test")
 BEAD_PREFIX = re.compile(r"[a-z][a-z0-9-]{0,31}")
 BEAD_SUFFIX = rb"[a-z0-9]{3,8}"
 BEAD_CHILD = rb"(?:\.[0-9]+)*"
-BEAD_GENERIC = rb"[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-(?=[a-z]*[0-9])" + BEAD_SUFFIX
+BEAD_GENERIC = (
+    rb"[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-(?=[a-z]*[0-9])(?=[0-9]*[a-z])" + BEAD_SUFFIX
+)
 BEAD_CONFIG_PREFIX = re.compile(
     rb"^[ \t]*issue-prefix[ \t]*:[ \t]*\"?([a-z][a-z0-9-]{0,31})\"?[ \t]*$", re.MULTILINE
 )
@@ -169,7 +172,7 @@ CUSTOM_DETECTOR_IDS = frozenset(
 
 def build_bead_detector(prefixes: tuple[str, ...]) -> CustomDetector:
     """Match Beads IDs: known prefixes with any base36 suffix, plus a generic
-    digit-bearing shape so a repository file can only widen detection."""
+    mixed letter-and-digit suffix so a repository file can only widen detection."""
     shapes = [BEAD_GENERIC]
     canary = b"canary" + b"-9yx"
     if prefixes:
@@ -2050,7 +2053,7 @@ def scan(
             "remoteVisibility": visibility,
         },
         "provenance": {
-            "helperVersion": "0.6.0-poc",
+            "helperVersion": HELPER_VERSION,
             "secretScanner": {
                 "name": "gitleaks",
                 "version": scanner_version_value,
@@ -2099,7 +2102,7 @@ def failed_payload(code: str) -> dict[str, Any]:
             "remoteVisibility": "unknown",
         },
         "provenance": {
-            "helperVersion": "0.6.0-poc",
+            "helperVersion": HELPER_VERSION,
             "secretScanner": {"name": "gitleaks", "version": None, "configSha256": None},
         },
         "coverage": [

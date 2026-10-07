@@ -1221,6 +1221,77 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         )
         self.assertTrue(all(item["detector"] == "beads.reference" for item in findings))
 
+    def test_generic_bead_suffix_requires_letters_and_digits(self) -> None:
+        helper = load_helper_module()
+        negatives = (
+            "test-stt-123", "member-uuid-123", "other-123", "other-123.4",
+            "other-abc.1", "other-12", "other-ab", "other-12345678",
+            "other-123456789a", "other-a12345678", "other-a1b-",
+        )
+        positives = ("other-1ab", "other-a1b", "other-ab1", "other-1234567a", "other-ab1.2.3")
+        for prefixes in ((), ("project-2",)):
+            detector = helper.build_bead_detector(prefixes)
+            for value in negatives + positives:
+                with self.subTest(prefixes=prefixes, value=value):
+                    self.assertEqual(bool(detector.pattern.search(value.encode())), value in positives)
+            self.assertTrue(helper.custom_detector_capability_probe(
+                helper.monotonic() + 5, helper.active_detectors(detector),
+            ))
+
+    def test_known_bead_prefix_keeps_numeric_and_digitless_suffixes(self) -> None:
+        helper = load_helper_module()
+        detector = helper.build_bead_detector(("project-2",))
+        for suffix in ("123", "12345678", "xxxx", "a1b", "123.1", "xxxx.1.2"):
+            with self.subTest(suffix=suffix):
+                self.assertIsNotNone(detector.pattern.fullmatch(("project-2-" + suffix).encode()))
+
+    def test_numeric_fixtures_are_clean_but_known_beads_block_history(self) -> None:
+        fixtures = "test-stt-123\nmember-uuid-123\n"
+        prefix = "project-2"
+        for source in ("generic", "local", "environment", "repository"):
+            with self.subTest(source=source), mock.patch.object(
+                self, "repository", RepositoryFixture(Path(self.temporary.name) / source),
+            ):
+                environment = {"ARTIFACT_HYGIENE_BEAD_PREFIXES": ""}
+                self.repository.write("base.txt", "clean\n")
+                if source == "local":
+                    self.repository.run("config", "--local", "artifactHygiene.beadPrefixes", prefix)
+                elif source == "environment":
+                    environment["ARTIFACT_HYGIENE_BEAD_PREFIXES"] = prefix
+                elif source == "repository":
+                    self.repository.write(".beads/config.yaml", f"issue-prefix: {prefix}\n")
+                self.repository.commit_all("base")
+                self.repository.mark_base()
+                self.repository.write("fixtures.test.ts", fixtures)
+                self.repository.commit_all("add numeric fixtures")
+                completed = self.run_audit(extra_environment=environment)
+                payload = json.loads(completed.stdout)
+                self.assertEqual(completed.returncode, 0, payload)
+                self.assertEqual(payload["status"], "complete")
+                self.assertEqual(payload["verdict"], "clean")
+                self.assertEqual(payload["findings"], [])
+                expected_source = "configured" if source in {"local", "environment"} else source
+                self.assertEqual(payload["target"]["beadPrefixSource"], expected_source)
+                if source == "generic":
+                    continue
+                ids = [prefix + "-" + suffix for suffix in ("xxxx", "123", "a1b.2")]
+                self.repository.write("fixtures.test.ts", fixtures + "\n".join(ids) + "\n")
+                self.repository.commit_all("add private references")
+                before = self.repository.state()
+                completed = self.run_audit(extra_environment=environment)
+                payload = json.loads(completed.stdout)
+                self.assertEqual(completed.returncode, 0, payload)
+                self.assertEqual(payload["status"], "complete")
+                self.assertEqual(payload["verdict"], "block")
+                self.assertEqual(len(payload["findings"]), len(ids))
+                self.assertTrue(all(item["category"] == "bead-reference"
+                                    and item["policy"]["grade"] == "block"
+                                    and item["location"]["publication"] == "branch-history"
+                                    for item in payload["findings"]))
+                for value in ids:
+                    self.assertNotIn(value, completed.stdout)
+                self.assertEqual(self.repository.state(), before)
+
     def test_known_prefixes_match_digitless_ids_and_only_widen(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("branch-history")
