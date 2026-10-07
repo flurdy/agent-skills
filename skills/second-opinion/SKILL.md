@@ -1,11 +1,11 @@
 ---
 name: second-opinion
 description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Bash(printf '%s' * | python3 ~/.agents/skills/second-opinion/scripts/review-panel-stdin.py),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.7.2"
+version: "3.8.0"
 author: "flurdy"
 ---
 
@@ -133,10 +133,13 @@ it from task risk, panel size, or an API key.
 
 Before gathering artifact-producing context or executing any route in Pi, read
 [guarded-plan.md](references/guarded-plan.md) when the session is guarded or its authority is unclear.
-Named panels are unsupported in guarded plan and file-only sessions: stop before artifacts,
-helper execution or panel billing consent. Do not emulate a panel, silently select a direct peer,
-or acquire source-write authority solely for a supported read-only consultation. Direct routes
-remain subject to their own read-only, context, availability and billing checks.
+Named panels in guarded sessions use only the installed
+[path-free private transport](references/panel-stdin.md). Read that reference before invocation;
+use its stdin requests instead of every caller-file preparation, command and cleanup step in §4.
+The same check, local-run, metered-subset and evaluate stages and approvals still apply. An older
+guard or missing helper is unavailable support: stop rather than creating files or bypassing it.
+Do not emulate a panel, silently select a direct peer, or acquire source-write authority solely for
+a supported read-only consultation. Direct routes retain their own read-only and billing checks.
 
 ## 2. Gather and sanitize context
 
@@ -225,9 +228,16 @@ independent direct route; never retry or substitute silently.
 ## 4. Execute a named panel
 
 The guarded-session preflight must have passed before this step. Use the same exact sanitized
-user prompt for every route. The OpenRouter helper adds only its fixed
-completion contract as a system message. Create a private file with `mktemp`, set mode `600`, and write
-the prompt with `Write`. Do not put panel prompt text in shell argv.
+user prompt for every route. The OpenRouter helper adds only its fixed completion contract as a
+system message.
+
+**Guarded sessions:** use [panel-stdin.md](references/panel-stdin.md) for the transport of all four
+stages below; do not create caller files. The literal JSON packet is visible in the Bash tool call
+and transcript, so it must already be sanitized. Do not place prompt text in provider CLI argv.
+
+**Existing caller-file interface outside guarded sessions:** create a private file with `mktemp`,
+set mode `600`, and write the prompt with `Write`. The commands below describe this interface;
+guarded sessions send the equivalent fields to the stdin helper, preserving the same gates.
 
 ### 4.1 Check and bind
 
@@ -264,7 +274,8 @@ For PR mode, perform the local preflight from the evidence contract immediately 
 If the invoking checkout is ineligible, do not run the local subset; report its routes unavailable
 with the context reason and let evaluation preserve missing results. Never forge successful results.
 
-Save the returned JSON array to a mode-private result file. The coordinator invokes each enabled
+Preserve the returned JSON array exactly (inline for the private transport; a mode-private file
+for the caller-file interface). The coordinator invokes each enabled
 local route at most once, in bounded parallel batches, with read-only tools/sandboxing and prompt
 stdin. Disabled routes are not invoked. Preserve missing CLIs, timeouts, and failures.
 
@@ -294,7 +305,7 @@ or expand a metered subset.
 
 ### 4.4 Evaluate mechanical quorum
 
-Write the `check`, local-result, and OpenRouter-result JSON to private files, then run:
+For the caller-file interface, write the `check`, local-result, and OpenRouter-result JSON to private files, then run:
 
 ```bash
 ~/.agents/skills/second-opinion/scripts/review-panel.sh evaluate \
@@ -313,7 +324,8 @@ calls. The helper strips the marker and classifies every other transport-success
 `incomplete`; this is protocol completion, not semantic validation. Results retain bounded response
 ID/model/provider, normalized and native finish reasons, usage, and tool-call count, but never tool
 arguments or hidden reasoning text. The evaluator deliberately does not compare natural-language
-claims. Remove all private prompt/result files after evaluation, success or failure.
+claims. The stdin helper owns its private-file cleanup; for the caller-file interface, remove all private
+prompt/result files after evaluation, success or failure.
 
 ## 5. Present panel results
 

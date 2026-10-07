@@ -59,6 +59,14 @@ PLAN_CONTRACT="$ROOT/skills/second-opinion/references/guarded-plan.md"
 for invariant in 'unsupported' 'file-only' 'before creating' 'Do not emulate' 'inherited cwd' 'async-only' 'billing' 'incomplete' '0.85.1' '0.67.0'; do
   grep -Fq -- "$invariant" "$PLAN_CONTRACT" || fail "missing guarded-plan invariant: $invariant"
 done
+TRANSPORT="$ROOT/skills/second-opinion/references/panel-stdin.md"
+for invariant in 'private stdin transport' 'Caller-file panel commands remain unsupported' 'Do not emulate'; do
+  grep -Fq -- "$invariant" "$PLAN_CONTRACT" || fail "missing private-panel boundary: $invariant"
+done
+for invariant in 'review-panel-stdin.py' 'single quotes' 'SIGKILL' 'not a sandbox' 'consent' 'promptSha256' 'caller-selected' '16 MiB'; do
+  grep -Fq -- "$invariant" "$TRANSPORT" || fail "missing stdin transport contract: $invariant"
+done
+grep -Fq 'instead of every caller-file preparation' "$SKILL" || fail 'guarded sessions still prepare caller files'
 python3 - "$SKILL" <<'PY'
 import pathlib
 import sys

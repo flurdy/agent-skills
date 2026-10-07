@@ -213,7 +213,10 @@ is invalid with `quorum` or `consensus`.
 
 ## Coordinator protocol
 
-The skill invokes `scripts/review-panel.sh` in four bounded stages:
+The skill invokes `scripts/review-panel.sh` in four bounded stages. Guarded Pi sessions use the
+[path-free stdin transport](panel-stdin.md) around the same coordinator; only file ownership and
+transport change, not the stages, hashes or consent:
+
 
 1. `check` rejects a disabled profile, normalizes its routes and thresholds, applies overrides, checks
    enabled-route availability, and binds the canonical panel, OpenRouter subset, and exact prompt with

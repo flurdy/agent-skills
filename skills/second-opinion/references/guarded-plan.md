@@ -2,16 +2,17 @@
 
 ## Disposition
 
-Named panels are **unsupported** in guarded plan, conflict, acquiring, lost, and file-only
-implementation sessions. This includes `quorum` and `consensus` with any profile, including a
-profile named `premium`. `premium` is not an additional valid `--agent` value. A direct Claude
-`--model fable` request is still one route, not a premium panel.
+Named panels are eligible in guarded plan, conflict, acquiring, lost, and file-only sessions
+**only through the installed [private stdin transport](panel-stdin.md)** and a guard supporting
+that exact command shape. Caller-file panel commands remain unsupported. This applies to `quorum`
+and `consensus` with any profile, including `premium`; a profile is not another `--agent` value.
 
-Stop **before creating** prompt, PR-snapshot, check, or result artifacts, running a panel helper,
-or requesting panel billing consent. Do not emulate a panel with several direct calls or a
-subagent workflow. Do not silently downgrade an explicitly selected panel: offer one independent
-direct route and wait for the user to select it. Never recommend implementation mode solely for
-a supported read-only consultation.
+Stop **before creating** caller-owned prompt, PR-snapshot, check, or result artifacts. The stdin
+helper owns its scratch files without source-write authority. A missing helper or older guard is
+unavailable support: do not bypass it, emulate a panel with direct calls or a subagent workflow,
+or silently choose another route. Do not emulate unsupported panels. Never recommend implementation
+mode solely for a supported read-only consultation. Panel authorization and billing approval still
+precede their respective execution stages; check alone authorizes no model request.
 
 Use the current host's guard state; an environment variable, bead claim, writable-looking path,
 or successful unknown-script invocation does not establish authority. If the state is unclear,
@@ -31,14 +32,14 @@ or successfully launched. Record actual runtime evidence separately for the curr
 | Direct Codex | Eligible with read-only sandbox | Executable, auth and billing check; native options supported | Terminal Codex response, not merely login status |
 | Direct Gemini | Eligible with its sandbox | Executable, sandbox, auth and current-run billing consent as applicable | Terminal Gemini response; absence is unavailable, not passing |
 | Verified external read-only child | Eligible with inherited cwd; async-only | Current `subagent` capability/preflight and guard discovery both accept the exact definition; separate billing rules | Completed run plus read-only contract and observed terminal process |
-| Named quorum / premium-profile / consensus panel | Unsupported by design in guarded states | No approved private-artifact mechanism | Report blocked; never count as passing or as a partial panel launch |
+| Named quorum / premium-profile / consensus panel | Eligible through the installed stdin helper only | Supporting guard, helper and usual coordinator prerequisites; selected routes and consent | Actual bounded helper/route results; unavailable or skipped providers are not passing |
 | Named panel in a live worktree implementation session | Existing panel procedure only; no new authority from this document | Exact configured panel, digests, prerequisites, limits and metered consent | Per-route results and evaluation; passing tests alone are not live provider evidence |
 
 Direct eligibility does not exempt artifact-producing context collectors such as the PR snapshot
 workflow. If required context cannot be collected within current authority, report that context
 boundary as blocked; do not skip PR identity checks or redirect the review to another checkout.
 
-### Current compatibility baseline — 2026-09-15
+### Historical compatibility baseline — 2026-09-15
 
 This baseline is evidence for Pi 0.85.1 only. It records one machine's runtime results rather than
 promising future authentication, model availability, pricing or compatibility.
@@ -60,24 +61,27 @@ watcher could observe the runner process terminal; the no-tools child itself mad
 The first detached print-mode probe completed its child but exited before terminal observation and is
 not counted as the passing process-terminal smoke. No Gemini or OpenRouter prompt was exposed.
 
-## Why no private-artifact exception
+## Private-artifact exception
 
-The panel coordinator already owns private internal temporary files, but its multi-stage protocol
-requires caller-owned prompt, check, and result files. Native Write, `chmod`, redirects and cleanup
-are not permitted merely because files are disposable. The guard also rejects `mktemp` and
-recognizable invocations of `review-panel.sh` and `openrouter-panel.sh`, including bounded shell
-and `env` wrapper forms. Existing prompt files do not authorize helper execution.
+The trusted `review-panel-stdin.py` transport reuses the existing coordinator. Each request owns
+one fresh private scratch directory, supplies coordinator files internally, and returns bounded
+JSON on stdout. No stateful native adapter, caller-selected artifact paths or shell-path parser is
+needed. Read [the exact invocation and schema](panel-stdin.md) before using it.
 
-This remains an accidental-change guard, not a shell sandbox: renamed helpers, arbitrary script
-indirection and hostile filesystem changes are not comprehensively detected. Passing the checker
-is not authorization to exploit those gaps. No broad temporary-directory, home-directory or
-repository grant is introduced. Persistent exact-file grants and dynamic source leases are not
-private review artifacts. Do not use `/grant-file`, arbitrary Bash writes, an interpreter, or a
-new stdin wrapper as a workaround.
+The guard still rejects caller-file `review-panel.sh`/`openrouter-panel.sh` invocations, `mktemp`,
+native Write, arbitrary redirects and cleanup. It allows only a literal single-quoted JSON printf
+pipe into the installed Python helper; old guards still deny or lack support. Passing a different
+command through a checker gap is not authorization. No broad temporary-directory, home-directory,
+repository or exact-file grant is introduced; no source lease is acquired.
 
-A future supported mechanism would need a separately reviewed typed invocation boundary with
-trusted helper identity, no caller-selected filesystem paths, private bounded artifacts, and
-cancellation/failure/reload cleanup. This disposition does not add that capability.
+The helper and its sibling coordinator are trusted installed code, not digest-verified native
+capabilities or an OS sandbox. Private permissions and existing exit/signal cleanup address normal
+runs. SIGKILL, power loss, or uncooperative children can leave private artifacts/processes; no
+crash-proof cleanup or automatic reaper is claimed. Shell/tool transcripts contain the sanitized
+inline packet, and provider CLI config/cache effects remain outside the guard's confinement.
+
+The compatibility table above is historical 2026-09-15 evidence for the previous deny-only policy,
+not proof that the new path or any current provider launched. Recheck current runtime support.
 
 ## External child compatibility
 

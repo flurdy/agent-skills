@@ -21,8 +21,9 @@ quick-start and deliberately links to the detailed policy rather than reproducin
 
 Use one peer for ordinary decisions. Use a panel when different provider perspectives are
 material enough to justify the extra time, review effort, and—where configured—cost.
-In guarded Pi plan/file-only sessions, direct read-only routes remain eligible but named panels
-are unsupported. See the [support matrix and diagnostics](references/guarded-plan.md).
+In guarded Pi plan/file-only sessions, direct read-only routes remain eligible. Named panels use
+an installed [private stdin helper](references/panel-stdin.md) with a supporting guard, without
+source leases or general temporary-file grants. See the [support matrix](references/guarded-plan.md).
 
 ## Direct peer review
 
@@ -90,7 +91,8 @@ For a direct route, install and authenticate the relevant CLI:
 - `codex`
 - `gemini`
 
-For panels, `jq` and the included coordinator are also required. Local panel profiles and any
+For panels, `jq` and the included coordinator are also required; the private stdin transport
+additionally needs Python 3.10+. Local panel profiles and any
 OpenRouter routes live in:
 
 ```text
