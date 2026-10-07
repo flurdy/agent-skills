@@ -13,6 +13,9 @@ router_config="$DEFAULT_ROUTER_CONFIG"
 consensus_config="$DEFAULT_CONSENSUS_CONFIG"
 offline=false
 billing_policy="${HOME}/.pi/agent/pi-spend-billing-policy.json"
+launcher_config="${HOME}/.pi/agent/pl-launcher.json"
+settings_config="${PI_CODING_AGENT_DIR:-${HOME}/.pi/agent}/settings.json"
+startup_args=()
 evidence_args=()
 refresh_args=()
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,6 +25,7 @@ usage() {
 Usage: model-update-check.sh [--offline]
                              [--router-config FILE]
                              [--consensus-config FILE] [--billing-policy FILE]
+                             [--launcher-config FILE] [--settings-config FILE]
                              [--evidence FILE|-]
                              [--refresh-models --confirm-refresh] [--refresh-timeout SECONDS]
 
@@ -57,6 +61,18 @@ while [[ $# -gt 0 ]]; do
     --billing-policy)
       [[ $# -ge 2 ]] || die "--billing-policy requires a path"
       billing_policy="$2"
+      shift 2
+      ;;
+    --launcher-config)
+      [[ $# -ge 2 ]] || die "--launcher-config requires a path"
+      launcher_config="$2"
+      startup_args+=(--launcher-required)
+      shift 2
+      ;;
+    --settings-config)
+      [[ $# -ge 2 ]] || die "--settings-config requires a path"
+      settings_config="$2"
+      startup_args+=(--settings-required)
       shift 2
       ;;
     --evidence)
@@ -533,6 +549,7 @@ jq -n \
 ' | python3 -B "$SCRIPT_DIR/migration_audit.py" \
   --router "$router_snapshot" --panel "$panel_snapshot" --billing-policy "$spend_snapshot" \
   --billing-policy-path "$billing_policy" \
+  --launcher "$launcher_config" --settings "$settings_config" "${startup_args[@]}" \
   "${evidence_args[@]}" \
   --catalog "$live_catalog" --openrouter "$openrouter_catalog" --pi-catalog "$pi_models" \
   --refresh-result "$refresh_result"

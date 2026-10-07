@@ -61,11 +61,20 @@ Existing source-health, configured-model, recent-list and finding fields remain.
 
 - `interaction` (version 1): read-only primary conversation action and exact-location opportunities.
   Fixed priority: invalid core config → review supplied preview → review discovered candidate →
-  investigate unavailable catalogs → none. Billing housekeeping never authorizes or displaces review.
-  Action kinds are `inspect-config`, `review-upgrade`, `review-preview`, `inspect-availability`, `none`;
+  review startup drift/invalid inputs → investigate unavailable catalogs → none. Startup findings
+  remain visible under `startupFindings` even when another action takes priority.
+  Billing housekeeping never authorizes or displaces review.
+  Action kinds are `inspect-config`, `review-upgrade`, `review-preview`, `inspect-startup`, `inspect-availability`, `none`;
   no `apply` or `update` action exists. `requiresReply` and `doesNotAuthorize` preserve the boundary
   between review/preview and application, refresh, billing, allowlists or inference.
-- `configurationInventory`: every model-bearing JSON pointer and configured role, retaining
+- `startupAudit` (version 1): audit-only launcher/settings defaults, field health, original source
+  paths/digests, exact-reference scope/router comparisons and distinct fresh-pl/plain-pi/resume/Orca
+  selection boundaries. Missing optional sources retain `missing`; explicit missing or invalid
+  sources produce findings. Only named startup fields are emitted, not unrelated settings. Startup
+  sources appear under `sources.launcherConfig` and `sources.piSettings` but never become migration
+  inventory entries, proposals or applier targets. Membership is not availability; runtime selection
+  remains conditional on CLI/project/auth/session/host state. See the [startup contract](../SKILL.md#startup-defaults-are-separate-from-skill-routing).
+- `configurationInventory`: every migration-owned model-bearing JSON pointer and configured role, retaining
   disabled rows, weights/selection, aliases/defaults, exact global router policy projection and
   current spend coverage. `sourceSha256` binds the private input snapshot to its original target path.
   `spendCoverage.reason` distinguishes missing/invalid policy, absent/invalid model rule and date gaps;

@@ -316,6 +316,40 @@ jq -e '
 grep -Fqx -- '--offline --no-extensions --no-skills --no-prompt-templates --no-themes --no-context-files --no-approve --list-models' "$PI_LOG" || \
   fail "offline mode did not constrain Pi startup"
 
+# Startup sources are optional by default, explicit missing paths are actionable.
+jq -e '.sources.launcherConfig.status == "missing" and .sources.piSettings.status == "missing" and
+  .startupAudit.auditOnly and .startupAudit.findings == []' <<< "$result_json" >/dev/null || fail "missing optional startup sources"
+LAUNCHER="$TMP_DIR/home/.pi/agent/pl-launcher.json"
+SETTINGS="$TMP_DIR/home/.pi/agent/settings.json"
+printf '%s\n' '{"defaultModel":"openai-codex/example-old","defaultThinking":"high"}' > "$LAUNCHER"
+printf '%s\n' '{"defaultProvider":"openai-codex","defaultModel":"example-other","enabledModels":["openai-codex/gpt-5.6-terra"],"apiKey":"PRIVATE_SENTINEL"}' > "$SETTINGS"
+startup_before="$(sha256sum "$LAUNCHER" "$SETTINGS")"
+result_json="$("${RUN_ENV[@]}" "$HELPER" --offline "${COMMON_ARGS[@]}")"
+jq -e --arg launcher "$LAUNCHER" --arg settings "$SETTINGS" '
+  .sources.launcherConfig.path == $launcher and .sources.piSettings.path == $settings and
+  .sources.launcherConfig.status == "ok" and .sources.piSettings.status == "ok" and
+  (.sources.piSettings.sha256 | length == 64) and
+  .startupAudit.defaults.piSettings.enabledModelsMembership == "not-exactly-listed" and
+  any(.startupAudit.findings[]; .code == "startup-defaults-disagree") and
+  .interaction.primaryAction.kind == "inspect-startup" and
+  ([.startupAudit.launchPaths[].path] == ["fresh-pl","plain-pi","resume-continue","orca"]) and
+  .recommendations == []' <<< "$result_json" >/dev/null || fail "startup defaults or provenance"
+[[ "$result_json" != *PRIVATE_SENTINEL* ]] || fail "unrelated settings leaked"
+[[ "$startup_before" == "$(sha256sum "$LAUNCHER" "$SETTINGS")" ]] || fail "startup sources mutated"
+# The Pi agent-dir override affects settings, not the launcher's fixed home path.
+mkdir -p "$TMP_DIR/alternate-agent"
+printf '{}\n' > "$TMP_DIR/alternate-agent/settings.json"
+result_json="$("${RUN_ENV[@]}" PI_CODING_AGENT_DIR="$TMP_DIR/alternate-agent" "$HELPER" --offline "${COMMON_ARGS[@]}")"
+jq -e --arg path "$TMP_DIR/alternate-agent/settings.json" --arg launcher "$LAUNCHER" '
+  .sources.piSettings.path == $path and .sources.launcherConfig.path == $launcher
+' <<< "$result_json" >/dev/null || fail "agent-dir settings path"
+result_json="$("${RUN_ENV[@]}" "$HELPER" --offline "${COMMON_ARGS[@]}" --launcher-config "$TMP_DIR/missing-launcher" --settings-config "$TMP_DIR/missing-settings")"
+jq -e '.sources.launcherConfig.required and .sources.piSettings.required and
+  .sources.piSettings.status == "missing" and
+  ([.startupAudit.findings[] | select(.code == "startup-config-unavailable")] | length == 2)
+' <<< "$result_json" >/dev/null || fail "explicit missing startup sources"
+rm -f "$LAUNCHER" "$SETTINGS"
+
 INVALID_ROUTER="$TMP_DIR/invalid-router.json"
 printf '%s\n' '{}' > "$INVALID_ROUTER"
 result_json="$("${RUN_ENV[@]}" "$HELPER" --offline \

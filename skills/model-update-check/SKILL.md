@@ -1,11 +1,11 @@
 ---
 name: model-update-check
-description: Audit model discovery and coordinated migration previews across Pi routing, second-opinion and pi-spend; read-only by default, with separately confirmed native catalog refresh.
+description: Audit Pi startup defaults, model routing, discovery and coordinated migration previews across second-opinion and pi-spend; read-only by default, with separately confirmed native catalog refresh.
 allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-update-check.sh:*),Grep,WebSearch,WebFetch,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.5.2"
+version: "1.6.0"
 author: "flurdy"
 ---
 
@@ -13,6 +13,8 @@ author: "flurdy"
 
 Audit model configuration and propose coordinated migrations without changing it:
 
+- `~/.pi/agent/pl-launcher.json`: fresh `pl` model/thinking configuration;
+- `${PI_CODING_AGENT_DIR:-~/.pi/agent}/settings.json`: user-level Pi defaults and `enabledModels`;
 - `~/.pi/agent/model-tier-router.json`: tiers/candidates and exact global policies;
 - `~/.agents/second-opinion/config.json`: OpenRouter entries, explicit local CLI pins,
   aliases/defaults and consent-sensitive `subscriptionRoutes`;
@@ -59,6 +61,40 @@ included. Preserve false booleans, weights, disabled candidates and selection in
 Panel validation matches the second-opinion runners' 128,000-token output ceiling; route-specific
 output budgets may lower, but never exceed, their profile ceiling. This validates configuration
 shape, not a model's supported output size or authorization to spend that budget.
+
+## Startup defaults are separate from skill routing
+
+`startupAudit` is an audit-only projection of launcher and Pi settings, with original paths,
+SHA-256 digests, per-field/source health and exact-reference comparisons against `enabledModels`
+and enabled global router candidates. Only named startup fields are emitted; unrelated settings,
+credentials and session contents are not inspected for this projection. Inputs use the same bounded,
+strict JSON reader as other audit snapshots, read once in memory without creating config files.
+Use `--launcher-config FILE` or `--settings-config FILE` to select explicit sources. Pi settings honor
+`PI_CODING_AGENT_DIR`; the launcher's default path remains fixed under `~/.pi/agent`.
+Missing default-path files mean normal fallback, not corruption; an explicitly selected missing file
+or an invalid file/field produces a review finding. Built-in model defaults are never guessed.
+
+| Launch path | Selection boundary |
+|---|---|
+| Fresh `pl` | Explicit `--model` wins, otherwise the launcher passes its own configured default. Missing/ignored fields use launcher built-ins, not Pi settings. |
+| Plain `pi` | Pi 1.0 CLI prefers the saved default inside the resolved model scope, else the first resolved entry. An empty scope falls back to saved/authenticated defaults. Trusted project settings and CLI arguments can override user settings. |
+| Resume/continue | Restores session model unless explicitly overridden; availability can force fallback. Fresh launcher defaults are not injected. |
+| Orca | Host CLI/SDK arguments and session state control selection. No host invocation is inspected, so never infer its model from `pl` or router tiers. |
+
+The report lists configured defaults, thinking fields and the first `enabledModels` expression,
+not a proven live model. `exact-match` is lexical membership; `not-exactly-listed` is not proof of
+unavailability or exclusion. Aliases, globs, case variants and thinking suffixes stay
+`unresolved-patterns` where exact evidence is absent. Empty/missing lists are unrestricted; invalid
+lists stay unknown. Router-disabled/unavailable states are distinct from a disabled candidate.
+Disagreement can be intentional: never call a different startup default an automatic upgrade or
+copy a tier model into settings. Installed launcher customizations, project overrides, per-model
+thinking overrides, authentication, other Pi versions and host/session state remain runtime-owned.
+
+Startup findings stay visible in `interaction.startupFindings`; `inspect-startup` offers read-only
+review when no core repair, supplied migration preview or discovered upgrade leads take priority.
+Known startup drift remains reviewable even if catalogs are offline; catalog health stays visible.
+Startup sources are **not** added to migration inventories, proposals or the companion's write
+allowlist. Auditing them never authorizes changing defaults, `enabledModels`, consent or routing.
 
 ## Explicit native refresh
 

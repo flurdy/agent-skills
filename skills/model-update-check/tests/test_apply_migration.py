@@ -107,6 +107,24 @@ class ApplyTests(unittest.TestCase):
         self.assertEqual(plan["files"][0]["sourceSha256"], before[plan["files"][0]["source"]])
         self.assertTrue(all(row["status"] == "pending" for row in plan["files"]))
 
+    def test_startup_sources_never_expand_applier_authority(self):
+        report = copy.deepcopy(self.report)
+        startup = self.root / "settings.json"
+        startup.write_text('{"defaultModel":"unrelated"}')
+        report["sources"]["piSettings"] = {"status": "ok", "path": str(startup), "sha256": self.sha(startup)}
+        report["startupAudit"] = {"auditOnly": True}
+        plan = self.plan(report)
+        self.assertEqual({row["source"] for row in plan["files"]}, apply.SOURCES)
+        # A later startup-config edit does not invalidate unrelated migration targets.
+        startup.write_text('{"defaultModel":"changed"}')
+        self.assertEqual(self.plan(report)["files"], plan["files"])
+        for source in ("piSettings", "launcherConfig"):
+            forged = copy.deepcopy(report)
+            forged["recommendations"][0]["changes"][0].update(
+                source=source, path="/defaultModel", config=str(startup), sourceSha256=self.sha(startup))
+            with self.subTest(source=source), self.assertRaises(apply.Refused):
+                self.plan(forged)
+
     def test_single_selection_keeps_other_file_byte_identical(self):
         plan = self.plan(selection=(1,))
         unchanged = next(row for row in plan["files"] if row["source"] == "consensusConfig")

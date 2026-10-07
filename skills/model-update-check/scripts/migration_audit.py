@@ -23,16 +23,16 @@ CLI_CATALOG = {"codex": "openai", "claude": "anthropic", "gemini": "google"}
 PI_CATALOG = {"openai-codex": "openai", "google-gemini-cli": "google"}
 
 
-def load_spend():
-    path = SKILLS / "pi-spend/scripts/pi_spend.py"
-    spec = importlib.util.spec_from_file_location("model_audit_spend", path)
+def load_helper(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-SPEND = load_spend()
+SPEND = load_helper("model_audit_spend", SKILLS / "pi-spend/scripts/pi_spend.py")
+STARTUP = load_helper("model_audit_startup", Path(__file__).with_name("startup_audit.py"))
 
 
 def snapshot(path, ceiling=MAX_CONFIG_BYTES):
@@ -382,6 +382,9 @@ def interaction_plan(sources, leads, recommendations, assessments, candidates, f
     elif leads:
         kind, question = "review-upgrade", "Review the model candidate and preview the affected configuration changes?"
         label, option = "Review and preview", "review-preview"
+    elif any(f["kind"] == "startup" for f in findings):
+        kind, question = "inspect-startup", "Startup settings differ or could not be audited. Review launch paths and configuration evidence?"
+        label, option = "Review startup settings", "inspect"
     elif unavailable:
         kind, question = "inspect-availability", "Some model sources are unavailable. Review what could not be checked?"
         label, option = "Review missing evidence", "inspect"
@@ -394,6 +397,7 @@ def interaction_plan(sources, leads, recommendations, assessments, candidates, f
                           if kind != "none" else [])}
     return {"schemaVersion": 1, "primaryAction": action, "opportunities": opportunities,
             "blockingSources": blocking, "unavailableSources": unavailable,
+            "startupFindings": [f for f in findings if f["kind"] == "startup"],
             "housekeeping": [f for f in findings if f["kind"] in {"spend-policy", "spend-uncovered", "pi-npm-ahead-of-homebrew"}]}
 
 
@@ -487,7 +491,8 @@ def previews(evidence, rows, router, panel, spend, policy, catalogs, sources, no
     return result
 
 
-def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs, refresh, now, billing_policy_path=None):
+def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs, refresh, now, billing_policy_path=None,
+           startup_paths=None):
     router, router_meta = snapshot(router_path)
     panel, panel_meta = snapshot(panel_path)
     spend, spend_meta = snapshot(spend_path)
@@ -507,6 +512,9 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
         report["findings"].append({"severity": "error", "kind": "config", "source": source,
                                    "message": "Malformed configured model identity; source excluded."})
     rows = [r for r in rows if r["source"] not in invalid_sources]
+    if startup_paths is not None:
+        report["startupAudit"] = STARTUP.audit(startup_paths, snapshot, sources, router, rows)
+        report["findings"].extend(report["startupAudit"]["findings"])
     for row in rows:
         row["config"] = sources[row["source"]]["path"]
         row["sourceSha256"] = sources[row["source"]].get("sha256")
@@ -567,7 +575,8 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
     refresh_failed = refresh["status"] not in {"ok", "not-requested"}
     if refresh_failed:
         findings.append({"severity": "error", "kind": "refresh", "message": "Refresh did not complete; catalog freshness is unproven.", "status": refresh["status"]})
-    repair = any(sources[name]["status"] != "ok" for name in ("routerConfig", "consensusConfig"))
+    repair = (any(sources[name]["status"] != "ok" for name in ("routerConfig", "consensusConfig"))
+              or any(f["kind"] == "startup" for f in findings))
     unknown_models = sorted({r["identity"] for r in rows if r["resolution"] == "exact" and r.get("enabled") is not False
                              and (r["facts"]["liveFound"] is None or (not r["identity"].startswith("local/") and r["facts"]["piAvailable"] is None))})
     incomplete_reasons = (["Unreviewed discovery leads require authoritative compatibility evidence."] if unreviewed_leads else [])
@@ -604,6 +613,12 @@ def main():
     parser.add_argument("--panel", required=True)
     parser.add_argument("--billing-policy", required=True)
     parser.add_argument("--billing-policy-path")
+    parser.add_argument("--launcher")
+    parser.add_argument("--launcher-path")
+    parser.add_argument("--launcher-required", action="store_true")
+    parser.add_argument("--settings")
+    parser.add_argument("--settings-path")
+    parser.add_argument("--settings-required", action="store_true")
     parser.add_argument("--evidence")
     parser.add_argument("--evidence-origin", choices=["stdin"])
     parser.add_argument("--catalog", required=True)
@@ -616,8 +631,17 @@ def main():
     opened = {m["id"]: m for m in json.loads(Path(args.openrouter).read_text())["data"] if isinstance(m, dict) and isinstance(m.get("id"), str)}
     pi = {f"{m['provider']}/{m['model']}" for m in json.loads(Path(args.pi_catalog).read_text())}
     refresh_result = json.loads(Path(args.refresh_result).read_text())
+    startup_paths = None
+    if args.launcher and args.settings:
+        startup_paths = {
+            "launcherConfig": {"snapshot": args.launcher, "path": args.launcher_path or args.launcher,
+                               "required": args.launcher_required},
+            "piSettings": {"snapshot": args.settings, "path": args.settings_path or args.settings,
+                           "required": args.settings_required},
+        }
     result = enrich(report, args.router, args.panel, args.billing_policy, args.evidence,
-                    (dev, opened, pi), refresh_result, datetime.now(timezone.utc), args.billing_policy_path)
+                    (dev, opened, pi), refresh_result, datetime.now(timezone.utc), args.billing_policy_path,
+                    startup_paths=startup_paths)
     if args.evidence_origin:
         result["sources"]["releaseEvidence"]["path"] = args.evidence_origin
     print(json.dumps(result, indent=2))
