@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-upda
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.5.1"
+version: "1.5.2"
 author: "flurdy"
 ---
 
@@ -108,9 +108,13 @@ local pins and subscription allowlists. `catalogCandidates` uses the **complete*
 models.dev and OpenRouter catalogs, not the old top-eight recent lists. Cross-route listings are
 explicitly discovery-only: OpenRouter availability never proves Codex CLI or Pi availability.
 All discovered entries start as `discovered-not-successor`; Pro/batch and different roles are not
-silently substituted. Same-family entries with newer or incomplete release metadata are research
-leads only. Unreviewed leads keep the verdict incomplete, not falsely current. Existing `recent*`
-fields remain browsing hints, not selection authority.
+silently substituted. Same-family entries become research leads only when both have valid catalog
+dates and the candidate is strictly later at their shared precision. Missing/invalid dates or
+overlapping coarse dates stay in `discoveryUncertainties`, not upgrade opportunities. These gaps
+and unreviewed dated leads keep the verdict incomplete, not falsely current. Existing `recent*`
+fields remain browsing hints, not selection authority. OpenRouter listing dates remain discovery
+metadata, not proof of release order, successor compatibility or runtime access; confirm those
+claims during the separate reviewed-evidence step.
 
 ## Successor assessment and coordinated preview
 
@@ -188,7 +192,9 @@ never permission to apply anything. Keep the machine verdict and full source evi
    block billing additions, but do not block a read-only model review. Do not open another prompt
    automatically for housekeeping.
 
-When there are no candidates, say so; do not manufacture an upgrade prompt. Offer to investigate
+When there are no evidenced upgrade leads, say so; do not manufacture an upgrade prompt from
+model names or missing dates. Keep unresolved chronology visible in details even when all catalog
+sources are healthy; `primaryAction: none` does not mean `CURRENT`. Offer to investigate
 unavailable sources when needed. On request, show the complete source-health and configured-model
 inventory, including aliases, disabled entries, exact identities and per-route evidence. Report
 `releaseEvidence: not-supplied` as no reviewed proposal yet—not a broken model configuration.

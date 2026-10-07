@@ -75,10 +75,17 @@ Existing source-health, configured-model, recent-list and finding fields remain.
 - `catalogCandidates`: complete discovery from each relevant provider/namespace, not a top-eight
   cutoff. Status is always `discovered-not-successor`. `crossRouteDiscoveryOnly` can suggest a
   research lead, never equivalent identity or runtime access. Keep data source distinctions intact.
-- `discoveryLeads`: same-family discovery with newer/unknown release metadata. Name/date similarity
-  triggers investigation only; unreviewed leads make the verdict incomplete, never an automatic upgrade.
-  A retained old subscription allowlist entry is not a lead when the candidate is already allowed
-  for that same agent; an old explicit profile pin remains a separate actionable lead.
+- `discoveryLeads`: same-family discovery only when valid dates for both models establish a strictly
+  later candidate at their shared precision. These are research leads, not successor/compatibility
+  proof; OpenRouter listing timestamps in particular do not establish actual model release order.
+  Unreviewed leads make the verdict incomplete, never an automatic upgrade. A retained old
+  subscription allowlist entry is not a lead when the candidate is already allowed for that same
+  agent; an old explicit profile pin remains a separate actionable lead.
+- `discoveryUncertainties`: unreviewed same-family pairs with missing, invalid or overlapping coarse
+  dates. They keep the verdict incomplete without creating `review-upgrade` opportunities. Equal
+  full dates and demonstrably older candidates are not upgrade leads. Complete catalogs remain
+  available under `catalogCandidates`; no dates or source-health uncertainty are invented or hidden.
+  An explicitly reviewed pair is handled by `recommendations`, not this discovery-only uncertainty.
 - `migrationAssessments`: all affected config paths/roles for each current identity. No proposal
   evidence means a compatibility review, not a name/date-based automatic recommendation.
 - `recommendations`: reviewed pairs, candidate availability, optional-upgrade versus incomplete,

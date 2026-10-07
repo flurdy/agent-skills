@@ -203,16 +203,31 @@ def discover(rows, catalogs, sources):
 def release_date(facts):
     date = (facts.get("modelsDev") or {}).get("release_date")
     if isinstance(date, str) and re.fullmatch(r"\d{4}(?:-\d{2}){0,2}", date):
-        return date
+        try:
+            datetime.strptime(date, {4: "%Y", 7: "%Y-%m", 10: "%Y-%m-%d"}[len(date)])
+            return date
+        except ValueError:
+            pass
     created = (facts.get("openRouter") or facts.get("crossRouteDiscoveryOnly") or {}).get("created")
-    if isinstance(created, (int, float)) and 0 < created < 253402300799:
+    if type(created) in (int, float) and 0 < created < 253402300799:
         return datetime.fromtimestamp(created, timezone.utc).date().isoformat()
     return None
 
 
-def discovery_leads(rows, candidates):
-    """Name/date similarity is a research trigger only, never upgrade evidence."""
-    result = []
+def release_order(current, candidate):
+    """Compare at shared date precision; overlapping coarse dates remain unknown."""
+    if not current or not candidate:
+        return None
+    precision = min(len(current), len(candidate))
+    current, candidate = current[:precision], candidate[:precision]
+    if current == candidate and precision < 10:
+        return None
+    return (candidate > current) - (candidate < current)
+
+
+def discovery_assessment(rows, candidates):
+    """Only demonstrably later catalog dates trigger review; names just narrow scope."""
+    result, uncertainties = [], []
     seen = set()
     allowlisted = {(row["source"], row["path"].rsplit("/", 1)[0], row["identity"])
                    for row in rows if row["usage"] == "subscriptionRoutes"}
@@ -234,14 +249,18 @@ def discovery_leads(rows, candidates):
             pair = identity, target
             if pair in seen:
                 continue
-            candidate_date = release_date(candidate)
-            if current_date and candidate_date and candidate_date <= current_date:
-                continue
             seen.add(pair)
-            result.append({"from": identity, "to": target, "status": "compatibility-unverified",
-                           "reason": "Same-family discovery lead; release metadata is newer or incomplete. Not successor proof.",
-                           "currentRelease": current_date, "candidateRelease": candidate_date})
-    return result
+            candidate_date = release_date(candidate)
+            order = release_order(current_date, candidate_date)
+            dates = {"from": identity, "to": target,
+                     "currentRelease": current_date, "candidateRelease": candidate_date}
+            if order is None:
+                uncertainties.append({**dates, "status": "release-order-unknown",
+                                      "reason": "Missing, invalid or overlapping release dates; no newer model inferred."})
+            elif order > 0:
+                result.append({**dates, "status": "compatibility-unverified",
+                               "reason": "Same-family discovery with later catalog date metadata. Not successor or compatibility proof."})
+    return result, uncertainties
 
 
 def checked_time(value, now):
@@ -527,9 +546,10 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
         assessments.append({"identity": identity, "locations": [{k: r[k] for k in ("config", "path", "usage")} for r in locations],
                             "assessment": "native-resolution" if locations[0]["resolution"] != "exact" else "configured; successor compatibility requires reviewed evidence"})
     candidates = discover(rows, catalogs, sources)
-    leads = discovery_leads(rows, candidates)
+    leads, uncertainties = discovery_assessment(rows, candidates)
     reviewed = {(item["from"], item["to"]) for item in recommendations}
     unreviewed_leads = [item for item in leads if (item["from"], item["to"]) not in reviewed]
+    uncertainties = [item for item in uncertainties if (item["from"], item["to"]) not in reviewed]
     findings = report["findings"]
     if policy.status != "complete":
         findings.append({"severity": "review", "kind": "spend-policy", "message": "Some spend-reporting rules could not be read or validated. This concerns reporting, not an amount owed."})
@@ -551,6 +571,8 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
     unknown_models = sorted({r["identity"] for r in rows if r["resolution"] == "exact" and r.get("enabled") is not False
                              and (r["facts"]["liveFound"] is None or (not r["identity"].startswith("local/") and r["facts"]["piAvailable"] is None))})
     incomplete_reasons = (["Unreviewed discovery leads require authoritative compatibility evidence."] if unreviewed_leads else [])
+    if uncertainties:
+        incomplete_reasons.append("Release chronology is unknown for same-family discoveries; no upgrade inferred.")
     if unknown_models:
         incomplete_reasons.append("Model evidence is unknown for: " + ", ".join(unknown_models))
     review = repair or policy.status != "complete" or any(f["kind"] in {"router-policy-unknown", "spend-uncovered", "pi-unavailable", "live-missing", "openrouter-missing", "openrouter-expiration"} for f in findings) or bool(recommendations)
@@ -563,7 +585,8 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
     refresh["fresh"] = refresh["fresh"] and sources["piCatalog"]["status"] == "ok"
     report.update(schemaVersion=2, generatedAt=now.isoformat().replace("+00:00", "Z"),
                   readOnly=not refresh["attempted"], refresh=refresh, configurationInventory=rows,
-                  catalogCandidates=candidates, discoveryLeads=leads, migrationAssessments=assessments,
+                  catalogCandidates=candidates, discoveryLeads=leads, discoveryUncertainties=uncertainties,
+                  migrationAssessments=assessments,
                   recommendations=recommendations, verdict=verdict, incompleteSources=failed_sources,
                   incompleteReasons=incomplete_reasons,
                   interaction=interaction_plan(sources, leads, recommendations, assessments, candidates, findings),

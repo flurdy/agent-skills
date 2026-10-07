@@ -100,6 +100,96 @@ class AuditTests(unittest.TestCase):
         self.assertIn(NEW, {item["to"] for item in leads})
         self.assertFalse(any(item["to"].endswith(("-pro", "-batch")) for item in leads))
 
+    def test_offline_undated_models_are_not_upgrade_opportunities(self):
+        self.base["mode"] = "offline"
+        self.base["sources"]["modelsDev"]["status"] = "skipped"
+        self.base["sources"]["openRouter"]["status"] = "skipped"
+        self.dev, self.opened = {}, {}
+        self.router["tiers"]["standard"]["candidates"][1]["model"] = NEW
+        self.router["modelPolicies"][NEW] = {"metered": False, "consent": "ask"}
+        self.panel["profiles"]["premium"]["routes"][0]["model"] = "example-sol-2"
+        self.panel["subscriptionRoutes"]["codex"].append("example-sol-2")
+        result = self.audit()
+        self.assertEqual(result["discoveryLeads"], [])
+        self.assertEqual(result["interaction"]["opportunities"], [])
+        self.assertEqual(result["interaction"]["primaryAction"]["kind"], "inspect-availability")
+        self.assertEqual(result["verdict"], "INCOMPLETE EVIDENCE")
+        self.assertEqual(result["incompleteSources"], ["modelsDev", "openRouter"])
+        self.assertTrue({OLD, NEW} <= {item["identity"] for item in result["catalogCandidates"]})
+        self.assertTrue(result["discoveryUncertainties"])
+        self.assertEqual(result["recommendations"], [])
+
+    def test_missing_release_dates_stay_uncertain_without_a_prompt_even_online(self):
+        self.opened = {}
+        for current, candidate in ((None, None), ("2025-01-01", None), (None, "2025-02-01")):
+            with self.subTest(current=current, candidate=candidate):
+                self.dev["openai"]["models"] = {
+                    "example-sol-1": {"release_date": current},
+                    "example-sol-2": {"release_date": candidate},
+                }
+                result = self.audit()
+                self.assertEqual(result["discoveryLeads"], [])
+                self.assertEqual(result["interaction"]["opportunities"], [])
+                self.assertEqual(result["interaction"]["primaryAction"]["kind"], "none")
+                self.assertFalse(result["interaction"]["primaryAction"]["requiresReply"])
+                self.assertEqual(result["verdict"], "INCOMPLETE EVIDENCE")
+                self.assertTrue(result["discoveryUncertainties"])
+                self.assertTrue(any("release" in reason.casefold() for reason in result["incompleteReasons"]))
+
+    def test_release_order_requires_provably_later_calendar_metadata(self):
+        self.opened = {}
+        cases = (
+            ("2025-02-01", "2025-01-01", False, False),
+            ("2025-02-01", "2025-02-01", False, False),
+            ("2025-01-01", "2025-02-01", True, False),
+            ("2025-03", "2025-03-15", False, True),
+            ("2025-03-15", "2025-03", False, True),
+            ("2025", "2025-12-31", False, True),
+            ("2025-02", "2025-03-01", True, False),
+            ("2024", "2025-01-01", True, False),
+            ("2025-01-01", "2025-13-01", False, True),
+            ("2025-02-30", "2025-03-01", False, True),
+            ("2025-01-01", "0000", False, True),
+        )
+        for current, candidate, newer, uncertain in cases:
+            with self.subTest(current=current, candidate=candidate):
+                self.dev["openai"]["models"] = {
+                    "example-sol-1": {"release_date": current},
+                    "example-sol-2": {"release_date": candidate},
+                }
+                result = self.audit()
+                self.assertEqual(bool(result["discoveryLeads"]), newer)
+                self.assertEqual(bool(result["discoveryUncertainties"]), uncertain)
+                self.assertEqual(result["interaction"]["primaryAction"]["kind"], "review-upgrade" if newer else "none")
+                self.assertEqual(result["verdict"], "INCOMPLETE EVIDENCE" if newer or uncertain else "CURRENT")
+                if newer:
+                    self.assertTrue(all(item["currentRelease"] == current and item["candidateRelease"] == candidate
+                                        for item in result["discoveryLeads"]))
+                    self.assertEqual(result["recommendations"], [])
+
+    def test_dated_catalog_fallback_still_produces_a_research_lead(self):
+        self.dev["openai"]["models"]["example-sol-2"] = {}
+        self.opened["openai/example-sol-2"]["created"] = datetime(2025, 2, 1, tzinfo=timezone.utc).timestamp()
+        result = self.audit()
+        self.assertEqual(result["interaction"]["primaryAction"]["kind"], "review-upgrade")
+        self.assertIn(NEW, {item["to"] for item in result["discoveryLeads"]})
+        self.assertEqual(result["recommendations"], [])
+        self.assertEqual(result["discoveryUncertainties"], [])
+
+    def test_invalid_listing_timestamp_is_not_release_evidence(self):
+        for created in (True, False, float("inf"), float("nan"), -1, "2025-02-01"):
+            with self.subTest(created=created):
+                self.assertIsNone(AUDIT.release_date({"openRouter": {"created": created}}))
+
+    def test_reviewed_evidence_remains_available_without_catalog_release_dates(self):
+        self.dev["openai"]["models"] = {"example-sol-1": {}, "example-sol-2": {}}
+        self.opened = {}
+        result = self.audit(self.evidence())
+        self.assertEqual(result["discoveryLeads"], [])
+        self.assertEqual(result["interaction"]["primaryAction"]["kind"], "review-preview")
+        self.assertEqual(result["recommendations"][0]["status"], "optional-upgrade")
+        self.assertNotIn((OLD, NEW), {(item["from"], item["to"]) for item in result["discoveryUncertainties"]})
+
     def test_source_failure_retains_other_candidates_without_false_current(self):
         self.dev = {}
         self.base["sources"]["modelsDev"]["status"] = "error"
