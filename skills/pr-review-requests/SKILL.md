@@ -141,24 +141,30 @@ Use a single table across repositories; repository-qualified PR links avoid ambi
 - **Requested:** age of `requestEvent.createdAt`, prefixed ↻ for an explicit re-request. Put
   requester and precise event time in the new/re-request transition detail, not another column.
 - **Updated:** age of PR `updatedAt`; not request time or last commit time.
-- **CI:** ✅ SUCCESS, ❌ FAILURE/ERROR, ⏳ PENDING/EXPECTED, ? unknown. Trust `checksState` only
-  when `ciHeadSha == headSha`; no status rollup or mismatched identity is unknown, not passing.
-- **Merge:** `mergeState` CLEAN → Clean; BEHIND → Behind; DIRTY → Conflict; BLOCKED → Blocked;
-  UNSTABLE → Unstable; UNKNOWN/null → ?; other values → Checking. Drafts → Draft. Never infer
-  merge readiness from CI or approvals alone.
-- **Reviews:** `You: {priorReview.state or —} · others: {compact summary}`. Reduce `otherReviews`
-  to latest submitted review per author; distinguish approval, changes requested, comment, and
-  dismissed. Mark reviews on a different `headSha` stale. `reviewDecision` is the aggregate gate,
-  not your review or proof that every historical approval remains valid. A null `otherReviews`
-  means unknown, not none. Bound long summaries; show names/state details in relevant deltas.
+- **CI:** ✅ passing, ❌ failing, ⏳ running, ? unknown. Map SUCCESS to ✅, FAILURE/ERROR to ❌,
+  and PENDING/EXPECTED to ⏳; do not repeat the raw state. Trust `checksState` only when
+  `ciHeadSha == headSha`; no status rollup or mismatched identity is unknown, not passing.
+- **Merge:** ✅ Clean; ⚠️ Behind; 💥 Conflict; 🚧 Blocked; Unstable; ? unknown; or Checking.
+  Map CLEAN, BEHIND, DIRTY, BLOCKED, UNSTABLE, UNKNOWN/null, and other values respectively.
+  Drafts → 🚧 Draft. 🔀 Merged and 🗑️ Closed belong in Recent transitions, never outstanding
+  request rows. Never infer merge readiness from CI or approvals alone.
+- **Reviews:** `You: {priorReview.state or —} · others: {compact summary}`, with ✅ Approved, ☑️ Stale approval,
+  👎 Changes requested, 💬 Commented, 🔔 Awaiting review, and — unknown. Reduce `otherReviews`
+  to latest submitted review per author; mark an approval/review on a different `headSha` as
+  ☑️ Stale approval. `reviewDecision` is the aggregate gate, not your review or proof that every
+  historical approval remains valid. A null `otherReviews` means unknown, not none. Bound long
+  summaries; show names/state details in relevant deltas.
 - **Feedback:** `💬 {threads} open · {conversationCount} comments · {latest author, age}`;
   omit empty activity segments, use — only for a complete empty source. For incomplete feedback,
   prefix ? and call counts observed/lower-bound, never exact or zero.
-- **Next:** Draft → Wait for ready; unavailable/incomplete/unknown evidence → Recheck; failing or
-  running CI → Wait for CI; conflict/behind → Wait for author; changes requested/open threads
-  or other feedback candidates → Resolve discussion; otherwise → Review. These are manual
-  workflow suggestions, never an approval verdict. A current viewer approval may say Await merge
-  only if aggregate approval, clean merge, passing CI, and complete empty actionable feedback agree.
+- **Next:** 🚧 Draft → Wait for ready; unavailable/incomplete/unknown evidence → Recheck; failing
+  or running CI → ⏳ Wait for CI; conflict/behind → ✍️ Await author; changes requested, open
+  threads, or other feedback candidates → 💬 Resolve discussion; otherwise → 🔎 Review. Use
+  ✍️ Await author only when the bounded feedback evidence shows an unresolved reviewer request
+  with no newer author response; do not infer it from a changes-requested review alone. These are
+  manual workflow suggestions, never an approval verdict. A current viewer approval may say
+  🚀 Await merge only if aggregate approval, clean merge, passing CI, and complete empty actionable
+  feedback agree.
 
 No standing Head, Review outcome, What you chose, branch, target, size, or Jira columns. Exact
 head identity stays in state and relevant transition details.

@@ -49,6 +49,9 @@ for invariant in (
     're_requested', 'head_changed', 'status_changed', 'team', 'draft', 'merged',
     'closed', 'request_removed', 'session-local', '200', 'stop rather than',
     '/review-pr owner/repo#123', 'next-tick:', '1200', '1500', '1800',
+    '✅ Approved', '☑️ Stale approval', '👎 Changes requested', '💬 Commented',
+    '🔔 Awaiting review', '🔀 Merged', '🗑️ Closed', '🚧 Blocked',
+    '🔎 Review', '⏳ Wait for CI', '✍️ Await author', '🚀 Await merge',
 ):
     assert invariant in summary, f'missing dashboard invariant: {invariant}'
 for invariant in ('schemaVersion 2', '--state-stdin', 'pending display', 'legacy state',
