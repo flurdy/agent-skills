@@ -137,16 +137,17 @@ Do NOT run `/pr-status` in this turn, and do NOT call `ScheduleWakeup` yourself.
 skill with no interval and this prompt, substituting the stop hour:
 
 ```
-/loop When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs claude tick` once; telemetry failure must not block the watch. Then invoke the pr-status skill and render its full read-only dashboard. Do not execute suggested actions. Then pace the loop with one trailing ScheduleWakeup(delaySeconds = N from the dashboard's next-tick line, prompt = this message verbatim, noop = false), or ScheduleWakeup(stop: true) if that wake would land past {stop_hour}:00
+/loop When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-prs claude tick` once; telemetry failure must not block the watch. Then invoke the pr-status skill and compose its full read-only dashboard without printing it yet. Do not execute suggested actions. Then call ScheduleWakeup once (delaySeconds = N from the dashboard's next-tick line, prompt = this message verbatim, noop = false), or ScheduleWakeup(stop: true) if that wake would land past {stop_hour}:00; after it returns, print the full dashboard — tables, changes, suggested actions, next-tick line — as the closing message of the turn
 ```
 
-Each tick is then a plain `/pr-status` run inside the loop the harness is already running —
-dashboard first, one `ScheduleWakeup` call at the very end. `/pr-status` closes with
-`next-tick: {hot|warm|cold} (~{N}s) — {reason}`; that `N` (hot ~180s / warm ~600s /
-cold 1200–1800s, 600 if the line is missing) is the next delay.
+Each tick is then a plain `/pr-status` run inside the loop the harness is already running.
+`/pr-status` closes with `next-tick: {hot|warm|cold} (~{N}s) — {reason}`; that `N` (hot ~180s /
+warm ~600s / cold 1200–1800s, 600 if the line is missing) is the next delay.
 
-Keep scheduling to that single trailing call — ticks that dwell on scheduling have skipped the
-dashboard, and the dashboard is the whole point.
+Schedule first, print last. Claude Code replaces text written before the final tool call with a
+one-line auto summary, so a dashboard printed before `ScheduleWakeup` never shows its tables;
+text after the call is shown in full. Sonnet and Opus sessions do this; Fable sessions are kept
+out of adaptive mode by the guard above because they drop text after the call.
 
 #### Fixed mode (interval given)
 

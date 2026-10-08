@@ -209,4 +209,4 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 
 If the fetch failed, emit `next-tick: warm (~600s) — incomplete fetch`. Keep the reason to a few words; no other pacing commentary.
 
-If the invoking prompt asks you to reschedule via `ScheduleWakeup`, do that only after everything above is printed — the turn ends when it returns.
+If the invoking prompt asks you to reschedule via `ScheduleWakeup`, follow its ordering: `/watch-prs` ticks call `ScheduleWakeup` first and print the dashboard as the closing message, because text written before the call is collapsed into a one-line summary.
