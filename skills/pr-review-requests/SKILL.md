@@ -4,7 +4,7 @@ description: Show a read-only inbound PR dashboard with request/update times, ex
 allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(python3 ~/.agents/skills/pr-review-requests/scripts/request-feedback.py:*),Bash(date:*)"
 model-tier: economy
 effort: medium
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -191,9 +191,10 @@ For a ready request suggest `/review-pr owner/repo#123` (substitute its qualifie
 For CI/merge/discussion blockers suggest waiting or inspecting the linked discussion, not submitting
 a review. For partial fetches name failed sources and suggest Recheck. No prompt or execution.
 
-## 5. Cadence
+## 5. Cadence (watch context only)
 
-End visible output with exactly one terminal line; no further prose before scheduler completion:
+The one-shot command omits this line and schedules nothing. In watch context, end visible output
+with exactly one terminal line; no further prose before scheduler completion:
 
 ```text
 next-tick: {hot|warm|cold} (~{N}s) — {reason}
@@ -204,5 +205,4 @@ next-tick: {hot|warm|cold} (~{N}s) — {reason}
 - cold (1200 → 1500 → 1800s): no soon-actionable work across complete quiet ticks.
 
 Reset quiet streak on hot/warm. Terminal state loss/third consecutive source failure emits
-`next-tick: stop (~0s) — {reason}`. The one-shot command schedules nothing. In watch context render
-first, then let the watcher/runtime complete or stop; do not schedule beyond its fixed deadline.
+`next-tick: stop (~0s) — {reason}`. Render first, then let the watcher/runtime complete or stop; do not schedule beyond its fixed deadline.
