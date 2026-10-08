@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.13.2"
+version: "1.13.3"
 author: "flurdy"
 ---
 
@@ -194,9 +194,10 @@ Use the normalized record's author and bounded gist in the bullet. Keep its `ide
 second comment/thread query. When the inventory is partial, suggest a safe recheck and name the
 failed source instead of claiming that the candidate set is complete.
 
-### 7. Next-tick recommendation
+### 7. Next-tick recommendation (watch context only)
 
-End with one cadence line for `/watch-prs` to pace from (harmless on a one-shot run):
+Omit this line on a direct `/pr-status` run. When invoked as a `/watch-prs` tick, end with one
+cadence line for the watcher to pace from:
 
 ```
 next-tick: {hot|warm|cold} (~{N}s) — {reason}
