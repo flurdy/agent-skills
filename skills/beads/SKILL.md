@@ -4,11 +4,11 @@ description: >
   Shared Beads workflow baseline. Use whenever an agent uses `bd`,
   manages durable tasks, blockers, or handoffs, resolves work ownership, or decides between an
   ephemeral checklist and durable tracking. Covers store authority and remote Dolt safety.
-allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cleanup.py:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),Skill(beads-setup),AskUserQuestion"
+allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cleanup.py:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(refine),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),Skill(beads-setup),AskUserQuestion"
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.9.0"
+version: "0.10.0"
 author: "flurdy"
 ---
 
@@ -143,7 +143,8 @@ store rather than leaving it only in chat, a `todo` list, or an untracked note.
 
 Do not create a bead for every implementation step, test, commit, review, retry, or handoff. Keep
 those under the existing durable owner unless they have an independently valuable outcome and
-lifecycle.
+lifecycle. The shared [sizing criteria](references/sizing.md) define that test and the epic
+threshold.
 
 ## Dispatch by intent
 
@@ -153,6 +154,7 @@ Dispatch to the focused skill instead of reproducing its procedure.
 |---|---|
 | Rank or start ready work | `/next` |
 | Create from a raw prompt or Jira ticket, refine, or split a bead | `/triage` |
+| Judge whether one existing bead should stay whole, be clarified, or split | `/refine` |
 | Materialize an explicitly approved cited plan | `/plan-to-backlog` |
 | Audit backlog quality, priority, labels, lifecycle, or duplicates | `/backlog-groom` |
 | Reconcile Jira, Beads, and pull-request drift | `/tracking-sweep` |

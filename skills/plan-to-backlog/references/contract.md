@@ -146,7 +146,9 @@ outcome.
 ### Epic
 
 Choose `epic` only when the parent represents an aggregate outcome worth tracking and the
-children pass the independent-value test below.
+children pass the independent-value test below. The thresholds and child test are the shared
+[sizing criteria](../../beads/references/sizing.md); `/refine` and `/triage` apply the same
+rules to existing beads so the policies cannot diverge.
 
 The normal threshold is three to six direct children. Two children justify an epic only
 when they cross a genuine ownership, repository, release, or independently shippable

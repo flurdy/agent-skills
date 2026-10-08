@@ -46,6 +46,7 @@
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
 | ready-to-release | Shared read-only release authority — collects evidence, evaluates gates, and renders one service's verdict |
 | rebase | Rebase feature/stacked branches, or explicitly integrate upstream into local main/master; isolated trunk mode preserves remote history and never enters force-push or PR flows |
+| refine | Read-only sizing assessment of one existing bead — keep whole, clarify, or split into independently valuable outcomes, possibly under an epic; hands approved changes to /triage, never writes |
 | release-maintenance | Explicitly invoked, separately confirmed manifest reconciliation, config synchronization, restart, or rollout acknowledgement; never runs inside a watch tick |
 | release-manager | Attended push gatekeeper consuming shared readiness verdicts; current-command confirmation, CI tracking, rollout observation, and cadence |
 | release-status | Read-only dashboard consuming the shared release authority, including blockers and separate activation follow-ups |

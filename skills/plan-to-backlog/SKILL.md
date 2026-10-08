@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 model-tier: standard
 model: opus
 effort: high
-version: "1.2.2"
+version: "1.2.3"
 author: "flurdy"
 ---
 
@@ -211,6 +211,9 @@ tests, review, documentation of the same change, rollout, commits, retries, agen
 handoffs in the item's design or execution checklist.
 
 ### Epic
+
+Thresholds and the child test below are the shared [sizing criteria](../beads/references/sizing.md);
+this skill applies them to plan disposition.
 
 The normal threshold is three to six direct children. Allow two only when they cross a
 genuine ownership, repository, release, or independently shippable boundary and the

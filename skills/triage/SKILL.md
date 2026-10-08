@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * d
 model-tier: standard
 model: opus
 effort: high
-version: "1.5.0"
+version: "1.5.1"
 author: "flurdy"
 ---
 
@@ -238,6 +238,15 @@ This is the depth counterpart to `/backlog-groom`, which sweeps the whole backlo
 deliberately does not investigate — "if a single bead needs real investigation, flag it and move
 on". Refine mode is where that flagged bead goes.
 
+When the question is purely *size* — one bead, several, or an epic — `/refine` renders that
+judgement read-only and hands back here with a paste-ready steer. Either way, splitting applies the
+shared [sizing criteria](../beads/references/sizing.md): every child needs its own observable
+outcome, acceptance evidence, independent value and lifecycle; phases of one change are not
+children; an epic needs three to six such children (two only at a genuine ownership, repository or
+release boundary); an existing bead that becomes the epic is converted in place with
+`bd update <id> --type epic`, never `bd promote`; and a `bd dep` is added only for a genuine
+acceptance-level blocker, not sequencing.
+
 **R1. Resolve the owning store — before investigation reads.**
 
 Follow [Beads ownership proof lifetime](../beads/SKILL.md#ownership-proof-lifetime). Reuse an actual
@@ -307,7 +316,8 @@ resolved store so they get dedup-checked and linked with `bd -C <directory> dep 
   but requires explicit per-bead confirmation and closes with `bd close --reason="…"`. Never
   batch closes.
 - **Splitting stays here.** Unlike `/backlog-groom`, refine mode does not delegate splitting — it
-  already owns the create path.
+  already owns the create path. `/refine` only advises; its handoff is a steer, not approval, and
+  R4/R5 still apply in full.
 
 ## Priority Guidelines
 
