@@ -179,6 +179,11 @@ class ReleaseGatesTests(unittest.TestCase):
             self.assertEqual(result["services"], [])
             self.assertTrue(result["errors"])
 
+    def test_section_names_may_contain_digits(self):
+        data = snapshot()
+        data["digest"]["text"] = data["digest"]["text"].replace("---TOGGLES---", "---K8S---\npresent=true\n---TOGGLES---")
+        self.assertEqual(self.web(data)["verdict"], "READY")
+
     def test_invalid_and_duplicate_service_rows_fail_closed(self):
         for old, new in [("|false|success|", "|maybe|success|"), ("web|1|", "web|-1|"), ("---TOGGLES---", "web|1|false|success|main|main|abc|1/1|v2|1h|up|up\n---TOGGLES---")]:
             data = snapshot()

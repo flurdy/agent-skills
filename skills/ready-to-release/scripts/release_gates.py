@@ -86,7 +86,7 @@ def sections(text):
     result = {}
     current = None
     for line in text.splitlines():
-        if re.fullmatch(r"---[A-Z]+---", line):
+        if re.fullmatch(r"---[A-Z0-9]+---", line):
             if line in result:
                 raise ValueError("duplicate evidence section")
             current = line
