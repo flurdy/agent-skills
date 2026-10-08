@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.6.2"
+version: "0.6.3"
 author: "flurdy"
 ---
 
@@ -74,7 +74,12 @@ comma-separated), `ARTIFACT_HYGIENE_BEAD_PREFIXES`, and the repository's own `.b
 `issue-prefix` and `.beads/issues.jsonl` IDs; `target.beadPrefixSource` reports which. Plain
 hyphenated words such as `dry-run` are not reported, nor are `<prefix>-beads` Dolt remote repository
 names. Email matches immediately followed by `:` are treated as scp-style Git URLs and matches
-immediately preceded by `://` as URL userinfo (`git+ssh://git@host/…`); personal-name matches stop
+immediately preceded by `://` as URL userinfo (`git+ssh://git@host/…`). Complete scoped or
+unscoped npm `package@version` tokens enclosed in single backticks are excluded only when
+the token is at most 512 bytes, its version is strict SemVer, and the email-like domain's
+last label starts with a digit. Alphabetic-ending prerelease domains remain reportable,
+even in scoped specs; bare specs, ranges, malformed tokens, and adjacent email matches
+receive no exemption. This does not skip whole lines or arbitrary code spans. Personal-name matches stop
 at identifier boundaries, and paths under
 an `artifact-hygiene/` directory are exempt from the non-secret detectors because the audit's own
 source and fixtures necessarily contain canary shapes; secret scanning still covers them.

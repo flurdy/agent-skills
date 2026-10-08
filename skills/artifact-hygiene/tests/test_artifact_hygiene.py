@@ -1334,6 +1334,114 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(source, "configured")
         self.assertEqual(prefixes, ("router", "agents", "inbox", "skills", "ai-tools"))
 
+    def test_email_detector_skips_only_bounded_numeric_npm_versions(self) -> None:
+        helper = load_helper_module()
+        cases = [
+            (b"`@synthetic/widget@3.2.1`", 0),
+            (b"`synthetic-widget@3.2.1`", 0),
+            (b"`@synthetic/widget@0.10.0-local.1`", 0),
+            (b"`synthetic-widget@0.10.0-local.1`", 0),
+            (b"`widget@1.2.3-alpha`", 0),
+            (b"`widget@1.2.3-rc.1+build.05`", 0),
+            (b"`widget@1.2.3+build.05`", 0),
+            (b"`widget@0.0.0`", 0),
+            (b"`widget@1.2.3-alpha.tld`", 1),
+            (b"`@synthetic/widget@1.2.3-alpha.tld`", 1),
+            (b"widget@1.2.3", 1),
+            (b"`widget@v1.2.3`", 1),
+            (b"`widget@01.2.3`", 1),
+            (b"`widget@1.02.3`", 1),
+            (b"`widget@1.2.03`", 1),
+            (b"`widget@1.2.3-rc.01`", 1),
+            (b"`widget@1.2.3.4`", 1),
+            (b"`widget@1.2.3+`", 1),
+            (b"`widget@1.2.3-`", 1),
+            (b"`widget@1.2.3-rc..1`", 1),
+            (b"x`widget@1.2.3`", 1),
+            (b"`widget@1.2.3", 1),
+            (b"``widget@1.2.3``", 1),
+            (b"`widget@1.2.3 contact`", 1),
+            (b"`widget@1.2.3\n`", 1),
+            (b"`widget@1.2.3/acme.dev`", 1),
+            (b"user@123.acme.dev", 1),
+            (b"a@1.2.3.acme", 1),
+            (b"a+b!c#d@acme.dev", 1),
+            (b"`weird@acme.dev`", 1),
+            (b"`widget@1.2.3` and bob@acme.dev", 1),
+            (b"`@synthetic/widget@1.2.3`,bob@acme.dev", 1),
+            (b"bob@acme.dev `widget@1.2.3` jane@acme.dev", 2),
+            (b"`a@1.2.3` `@s/b@2.3.4` bob@acme.dev", 1),
+            (b"`a@1.2.3 bob@acme.dev`", 2),
+            (b"`n@1.2.3+" + b"x" * 504 + b"`", 0),
+            (b"`n@1.2.3+" + b"x" * 505 + b"`", 1),
+            (b"`widget@1.2.3-" + b"0" * 480 + b"`", 1),
+            (b"`widget@1.2.3+build..5`", 1),
+            (b"`widget@1.2.3@acme.dev`", 1),
+        ]
+        for data, expected_count in cases:
+            with self.subTest(data=data):
+                coverage = helper.Coverage("branch-history")
+                findings = helper.detect_non_secret(
+                    data, source="branch-history", path="notes.md",
+                    deadline=helper.monotonic() + 5, coverage=coverage,
+                )
+                emails = [item for item in findings if item["detector"] == "pii.email"]
+                self.assertEqual(len(emails), expected_count)
+                self.assertEqual(coverage.status, "complete")
+                self.assertNotIn(data.decode(), json.dumps(findings))
+
+    def test_npm_version_skips_preserve_email_lines_and_deadline(self) -> None:
+        helper = load_helper_module()
+        detector = next(item for item in helper.DEFAULT_DETECTORS if item.detector == "pii.email")
+        data = b"`a@1.2.3`\nbob@acme.dev\n`@s/b@2.3.4`\njane@acme.dev\n"
+        coverage = helper.Coverage("branch-history")
+        findings = helper.detect_non_secret(
+            data, source="branch-history", path="notes.md",
+            deadline=helper.monotonic() + 5, coverage=coverage, detectors=(detector,),
+        )
+        self.assertEqual([item["location"]["line"] for item in findings], [2, 4])
+        coverage = helper.Coverage("branch-history")
+        with mock.patch.object(helper, "monotonic", side_effect=[0.0, 2.0]):
+            findings = helper.detect_non_secret(
+                data, source="branch-history", path="notes.md", deadline=1.0,
+                coverage=coverage, detectors=(detector,),
+            )
+        self.assertEqual(findings, [])
+        self.assertEqual(coverage.status, "partial")
+        self.assertIn("deadline-exceeded", coverage.limits)
+
+    def test_npm_version_history_is_clean_but_adjacent_email_still_blocks(self) -> None:
+        self.repository.write("README.md", "# Package\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        specs = "`@synthetic/widget@0.10.0-local.1` and `widget@3.2.1`\n"
+        self.repository.write("README.md", "# Package\n" + specs)
+        self.repository.commit_all("docs: record package versions")
+        before = self.repository.state()
+        clean = self.run_audit()
+        self.assertEqual(clean.returncode, 0, clean.stdout)
+        report = json.loads(clean.stdout)
+        self.assertEqual((report["status"], report["verdict"]), ("complete", "clean"))
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(self.repository.state(), before)
+
+        email = "private" + "@acme.dev"
+        self.repository.write("README.md", "# Package\n" + specs.rstrip() + " " + email + "\n")
+        self.repository.commit_all("docs: add contact")
+        before = self.repository.state()
+        blocked = self.run_audit()
+        self.assertEqual(blocked.returncode, 0, blocked.stdout)
+        report = json.loads(blocked.stdout)
+        self.assertEqual((report["status"], report["verdict"]), ("complete", "block"))
+        self.assertEqual(len(report["findings"]), 1)
+        item = report["findings"][0]
+        self.assertEqual(item["detector"], "pii.email")
+        self.assertEqual(item["location"]["publication"], "branch-history")
+        self.assertEqual(item["policy"]["grade"], "block")
+        self.assertNotIn(email, blocked.stdout)
+        self.assertNotIn(specs.rstrip(), blocked.stdout)
+        self.assertEqual(self.repository.state(), before)
+
     def test_email_detector_skips_scp_style_git_urls(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("branch-history")

@@ -25,7 +25,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v2"
-HELPER_VERSION = "0.6.2-poc"
+HELPER_VERSION = "0.6.3-poc"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -75,6 +75,16 @@ PLACEHOLDER_EMAIL_DOMAINS = {
     b"localhost",
 }
 PLACEHOLDER_EMAIL_SUFFIXES = (b".example", b".invalid", b".localhost", b".test")
+NPM_CODE_TOKEN = re.compile(rb"(?<!`)`([^`\s]{1,512})`(?!`)")
+NPM_NAME = rb"[a-z0-9~-][a-z0-9._~-]*"
+SEMVER_NUMBER = rb"(?:0|[1-9][0-9]*)"
+SEMVER_PRERELEASE = rb"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
+NPM_EXACT_VERSION = re.compile(
+    rb"(?:@" + NPM_NAME + rb"/)?" + NPM_NAME + rb"@"
+    + SEMVER_NUMBER + rb"\." + SEMVER_NUMBER + rb"\." + SEMVER_NUMBER
+    + rb"(?:-" + SEMVER_PRERELEASE + rb"(?:\." + SEMVER_PRERELEASE + rb")*)?"
+    + rb"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
 BEAD_PREFIX = re.compile(r"[a-z][a-z0-9-]{0,31}")
 BEAD_SUFFIX = rb"[a-z0-9]{3,8}"
 BEAD_CHILD = rb"(?:\.[0-9]+)*"
@@ -1439,6 +1449,10 @@ def detect_non_secret(
             and detector.category in {"bead-reference", "personal-data"}
         ):
             return True
+        npm_tokens = (
+            NPM_CODE_TOKEN.finditer(data) if detector.detector == "pii.email" else iter(())
+        )
+        npm_token = None
         line = 1
         cursor = 0
         for match in detector.pattern.finditer(data):
@@ -1459,6 +1473,22 @@ def detect_non_secret(
                 if match.group(0).startswith(b"//") and data[match.start() - 1 : match.start()] == b":":
                     continue
                 domain = match.group(0).lower().rsplit(b"@", 1)[-1]
+                # Keep ambiguous email-like prereleases, even inside scoped specs.
+                if domain.rsplit(b".", 1)[-1][:1] in b"0123456789":
+                    while npm_token is None or npm_token.end() <= match.start():
+                        if monotonic() >= deadline:
+                            coverage.limited("deadline-exceeded")
+                            return False
+                        npm_token = next(npm_tokens, None)
+                        if npm_token is None:
+                            break
+                    if (
+                        npm_token is not None
+                        and npm_token.start() <= match.start()
+                        and match.end() < npm_token.end()
+                        and NPM_EXACT_VERSION.fullmatch(npm_token.group(1))
+                    ):
+                        continue
                 if domain in PLACEHOLDER_EMAIL_DOMAINS or domain.endswith(
                     PLACEHOLDER_EMAIL_SUFFIXES
                 ):
