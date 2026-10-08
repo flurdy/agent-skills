@@ -5,14 +5,15 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.4.1"
+version: "0.5.0"
 author: "flurdy"
 ---
 
 # Pickup — What Could I Take Next?
 
 List unassigned tickets in a ready status for this team, by sprint then priority, so you can
-choose one to start. `/landscape` and `/plan-day` cover tickets already assigned to
+choose one to start. Your own not-yet-started tickets come first, so you finish what you hold
+before claiming more. `/landscape` and `/plan-day` cover tickets already in progress for
 you; `/next` covers beads; `/project-brief` covers workspace coordination. This skill only
 answers "what unclaimed work is ready?".
 
@@ -70,7 +71,10 @@ story_points = "customfield_10016"
 2. **Fetch.** For each entry in `requests` (buckets `active`, `next`, `backlog`) and for
    `mine`, call `mcp__jira__jira_get` with its `path`, `queryParams` and `jq` exactly as given.
    Run them in parallel. A failed bucket is reported as unavailable, never as empty; a failed
-   `mine` only drops the ★ markers, with a one-line note.
+   `mine` drops the ★ markers and the "Already yours" table, with a one-line note.
+
+   **Yours, not started** = `mine` entries whose `status` is in `config.ready_statuses` and whose
+   `type` is not in `config.exclude_types`. No label filter: they are yours either way.
 
 3. **Split.** A ticket is **flagged** when `flags` is non-empty, or any `blocked_by` entry has a
    `category` other than `done`. Everything else is **ready**. Note `has_description: false` as
@@ -83,7 +87,9 @@ story_points = "customfield_10016"
 
    `meaty` uses the default order; it only changes which ticket step 6 suggests.
 
-5. **Render.** One ready table per sprint, in bucket order: the active sprint, future sprints
+5. **Render.** First an **Already yours, not started** table (Key, Sprint, Pri, Pts, Summary),
+   ordered active sprint, then future sprints, then no sprint, then by step 4; Sprint is the
+   open or future sprint name, `—` when none. Omit the table when empty. Then one ready table per sprint, in bucket order: the active sprint, future sprints
    by `start` ascending then sprint `id` ascending, any `holding_sprints` (in config order),
    then backlog. Name the sprint in the heading, not a column. The flagged table stays single, with a Bucket column. Build browse links from the
    host in `url` (`https://<host>/browse/<key>`).
@@ -98,6 +104,11 @@ story_points = "customfield_10016"
 
    ```markdown
    ## Pickup — GE · FE, BE, FS
+
+   ### Already yours, not started
+   | Key | Sprint | Pri | Pts | Summary |
+   |-----|--------|-----|-----|---------|
+   | [GE-2257](…) | GE Sprint 27.13 | P3 | 3 | Add Employment Status, Sector … |
 
    ### Active — GE Sprint 27.12
    |   | Key | Pri | Pts | Labels | Epic | Summary |
@@ -123,6 +134,8 @@ story_points = "customfield_10016"
    Replace an empty table with a one-line "none". Add a caveat line for tickets lacking a
    description or points if any.
 
-6. **Suggest.** End with one line naming the top ready ticket (for `meaty`, the largest
+6. **Suggest.** If an "Already yours" ticket is in the active sprint, or in the next sprint
+   while the active table is empty, suggest it first (`/start-ticket <KEY>`) and name the top
+   unclaimed ticket as the alternative. Otherwise end with one line naming the top ready ticket (for `meaty`, the largest
    pointed one in the earliest bucket) and `/start-ticket <KEY>`. Mention a ★ ticket in the
    same bucket as an alternative when it isn't the top pick. If nothing is ready, say so and point at the flagged list.

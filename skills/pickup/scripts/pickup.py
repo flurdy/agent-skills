@@ -49,6 +49,11 @@ PROJECTION = (
     ".{{key: inwardIssue.key, category: inwardIssue.fields.status.statusCategory.key}}}}"
 )
 
+MINE_PROJECTION = (
+    "issues[*].{{key: key, url: self, summary: fields.summary, status: fields.status.name, "
+    "type: fields.issuetype.name, priority: fields.priority.name, parent_key: fields.parent.key, "
+    "points: fields.{story_points}, sprints: fields.{sprint}[*].{{id: id, name: name, state: state, start: startDate}}}}"
+)
 
 class ConfigError(Exception):
     pass
@@ -134,15 +139,18 @@ def build_requests(config: dict[str, Any], labels: list[str] | None) -> list[dic
 
 
 def build_mine_request(config: dict[str, Any]) -> dict[str, Any]:
+    fields = config["fields"]
     return {
         "path": "/rest/api/3/search/jql",
         "queryParams": {
             "jql": f"project in ({quoted(config['projects'])}) AND assignee = currentUser() "
-            "AND statusCategory != Done",
-            "fields": "parent",
+            "AND statusCategory != Done ORDER BY Rank ASC",
+            "fields": ",".join(
+                ("summary", "status", "priority", "issuetype", "parent", fields["sprint"], fields["story_points"])
+            ),
             "maxResults": "50",
         },
-        "jq": "issues[*].{key: key, parent_key: fields.parent.key}",
+        "jq": MINE_PROJECTION.format(**fields),
     }
 
 

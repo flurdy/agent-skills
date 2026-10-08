@@ -68,8 +68,13 @@ class PickupTest(unittest.TestCase):
         mine = output["mine"]["queryParams"]["jql"]
         self.assertEqual(
             mine,
-            'project in ("GE") AND assignee = currentUser() AND statusCategory != Done',
+            'project in ("GE") AND assignee = currentUser() AND statusCategory != Done ORDER BY Rank ASC',
         )
+        mine_fields = output["mine"]["queryParams"]["fields"].split(",")
+        self.assertIn("status", mine_fields)
+        self.assertIn("customfield_10020", mine_fields)
+        self.assertIn("status: fields.status.name", output["mine"]["jq"])
+        self.assertIn("points: fields.customfield_10016", output["mine"]["jq"])
         self.assertEqual(output["config"]["holding_sprints"], ["READY FOR ENGINEERING"])
 
     def test_label_override_and_all(self) -> None:
@@ -90,6 +95,12 @@ class PickupTest(unittest.TestCase):
         _, output, _ = run(self.root)
         self.assertIn("fields.customfield_99[*].value", output["requests"][0]["jq"])
         self.assertIn("customfield_10020", output["requests"][0]["jq"])
+
+    def test_story_points_override_feeds_mine(self) -> None:
+        self.write(CONFIG + '\n[jira.fields]\nstory_points = "customfield_10024"\n')
+        _, output, _ = run(self.root)
+        self.assertIn("customfield_10024", output["mine"]["queryParams"]["fields"].split(","))
+        self.assertIn("points: fields.customfield_10024", output["mine"]["jq"])
 
     def test_fails_closed(self) -> None:
         cases = {
