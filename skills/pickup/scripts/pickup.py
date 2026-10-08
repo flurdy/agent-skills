@@ -51,6 +51,7 @@ PROJECTION = (
 
 MINE_PROJECTION = (
     "issues[*].{{key: key, url: self, summary: fields.summary, status: fields.status.name, "
+    "status_category: fields.status.statusCategory.key, "
     "type: fields.issuetype.name, priority: fields.priority.name, parent_key: fields.parent.key, "
     "points: fields.{story_points}, sprints: fields.{sprint}[*].{{id: id, name: name, state: state, start: startDate}}}}"
 )

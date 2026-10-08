@@ -74,6 +74,7 @@ class PickupTest(unittest.TestCase):
         self.assertIn("status", mine_fields)
         self.assertIn("customfield_10020", mine_fields)
         self.assertIn("status: fields.status.name", output["mine"]["jq"])
+        self.assertIn("status_category: fields.status.statusCategory.key", output["mine"]["jq"])
         self.assertIn("points: fields.customfield_10016", output["mine"]["jq"])
         self.assertEqual(output["config"]["holding_sprints"], ["READY FOR ENGINEERING"])
 
