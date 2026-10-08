@@ -34,6 +34,7 @@
 | name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
 | next | Rank ready beads across validated stores; list read-only or select and claim one task, then stop without implementing it |
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
+| pair-programming | Opt-in conversational pairing with agent-written code: discuss small agreed steps and their evidence, allow redirection, and preserve normal workflow and safety gates |
 | pedantic-review | Read-only craft and test-design review; requirements, coverage sufficiency, execution, and fixes stay with their separate owners |
 | peer-session | Send one human-approved live ask or instruction through Orca to a local or remote peer; verify correlated evidence without automatic retries, spawning or offline queueing |
 | pi-spend | Read-only estimate of Pi model cost by provider and model for today, this week, this month, and all recorded history, separating metered credit usage from flat-rate subscription usage |
