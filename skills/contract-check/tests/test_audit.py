@@ -78,6 +78,36 @@ class AuditTests(unittest.TestCase):
         self.provider.unlink()
         self.assertIn("MISSING_PROVIDER  web -> api", self.run_audit("stale"))
 
+    def pin_times(self):
+        os.utime(self.provider, (1000000000, 1000000000))
+        os.utime(self.consumer, (1000000100, 1000000100))
+
+    def put_normalize_hook(self, body='sed -i "s/[0-9]/0/g" "$@"'):
+        return self.put("scripts/pact-normalize", f"#!/bin/bash\n{body}\n", executable=True)
+
+    def test_project_normalizer_equivalence_is_ok_and_read_only(self):
+        self.consumer.write_text('{"generated":"123"}\n')
+        self.provider.write_text('{"generated":"000"}\n')
+        self.pin_times()
+        self.assertIn("STALE  web -> api", self.run_audit("stale"))
+        self.put_normalize_hook()
+        before = self.footprint()
+        output = self.run_audit("stale")
+        self.assertIn("OK  web -> api", output)
+        self.assertNotIn("STALE ", output)
+        self.assertEqual(before, self.footprint())
+
+    def test_normalizer_cannot_hide_real_changes_or_failures(self):
+        self.consumer.write_text('{"shape":"new"}\n')
+        self.pin_times()
+        self.put_normalize_hook()
+        self.assertIn("STALE  web -> api", self.run_audit("stale"))
+        self.consumer.write_text('{"generated":"123"}\n')
+        self.provider.write_text('{"generated":"000"}\n')
+        self.pin_times()
+        self.put_normalize_hook("exit 3")
+        self.assertIn("STALE  web -> api", self.run_audit("stale"))
+
     def test_failed_git_status_is_incomplete_not_clean(self):
         self.put("scripts/mgit", "#!/bin/bash\nexit 7\n", executable=True)
         output = self.run_audit()

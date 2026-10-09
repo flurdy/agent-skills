@@ -27,6 +27,7 @@ fi
 cd "$PROJECT_ROOT"
 
 MGIT="./scripts/mgit"
+NORMALIZE_HOOK="./scripts/pact-normalize"
 
 # Provider pact directories — two layouts coexist:
 #   Play services:    test/resources/pacts/
@@ -45,6 +46,25 @@ pact_dir_for_provider() {
 }
 
 # ─── STALE CHECK ─────────────────────────────────────────────────────────────
+
+# True when an optional project hook normalizes temporary copies of both pacts to equal
+# bytes. Project files are never passed to the hook; a missing or failing hook keeps the
+# raw finding.
+normalized_equal() {
+    local consumer_file=$1 provider_file=$2 name tmp result=1
+    [[ -x "$NORMALIZE_HOOK" ]] || return 1
+    name="$(basename "$consumer_file")"
+    tmp="$(mktemp -d)"
+    mkdir -p "$tmp/built" "$tmp/provider"
+    cp "$consumer_file" "$tmp/built/$name"
+    cp "$provider_file" "$tmp/provider/$name"
+    if "$NORMALIZE_HOOK" "$tmp/built/$name" "$tmp/provider/$name" >/dev/null 2>&1 \
+        && cmp -s "$tmp/built/$name" "$tmp/provider/$name"; then
+        result=0
+    fi
+    rm -rf "$tmp"
+    return "$result"
+}
 
 check_stale() {
     echo "## Staleness Report"
@@ -65,7 +85,7 @@ check_stale() {
         provider="$(echo "$filename" | sed 's/.*-consumer-//' | sed 's/-provider\.json//')"
 
         local consumer
-        consumer="$(echo "$filename" | sed 's/-consumer-.*//')"
+        consumer="${filename%%-consumer-*}"
 
         local pact_dir
         pact_dir="$(pact_dir_for_provider "$provider")"
@@ -76,6 +96,9 @@ check_stale() {
             missing_provider=$((missing_provider + 1))
         elif cmp -s "$consumer_file" "$provider_file"; then
             echo "OK  $consumer -> $provider"
+            ok=$((ok + 1))
+        elif normalized_equal "$consumer_file" "$provider_file"; then
+            echo "OK  $consumer -> $provider  (equal after project normalization)"
             ok=$((ok + 1))
         else
             local consumer_ts provider_ts
@@ -123,7 +146,7 @@ check_uncommitted() {
 
         # Get relative pact path within the service
         local pact_rel
-        pact_rel="${provider_dir#$service/}"
+        pact_rel="${provider_dir#"$service"/}"
 
         # Use mgit to check status
         local status_output
@@ -234,7 +257,7 @@ check_matrix() {
         local filename
         filename="$(basename "$f")"
         local consumer provider
-        consumer="$(echo "$filename" | sed 's/-consumer-.*//')"
+        consumer="${filename%%-consumer-*}"
         provider="$(echo "$filename" | sed 's/.*-consumer-//' | sed 's/-provider\.json//')"
         relationships["$consumer->$provider"]="${relationships["$consumer->$provider"]:-} consumer"
     done
@@ -245,7 +268,7 @@ check_matrix() {
         local filename
         filename="$(basename "$f")"
         local consumer provider
-        consumer="$(echo "$filename" | sed 's/-consumer-.*//')"
+        consumer="${filename%%-consumer-*}"
         provider="$(echo "$filename" | sed 's/.*-consumer-//' | sed 's/-provider\.json//')"
         relationships["$consumer->$provider"]="${relationships["$consumer->$provider"]:-} provider"
     done

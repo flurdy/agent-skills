@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/contract-check/scripts/cont
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -16,7 +16,8 @@ explicit test generation, local sync, normalization and provider verification. R
 consume this audit's mechanical evidence; do not create a second health collector.
 
 This audit never runs tests, creates links, changes permissions, copies pacts, fixes CI, or writes
-tracking. Do not normalize before auditing or dismiss generated-looking diffs as harmless. Report
+tracking. Never normalize project files before auditing or dismiss generated-looking diffs by eye.
+Only a reviewed project `scripts/pact-normalize` hook may compare temporary copies. Report
 findings and optional next-command pointers without confirmation prompts or automatic handoffs.
 A separate setup request belongs to the [project setup contract](references/project-setup.md).
 
@@ -50,11 +51,12 @@ Run from the intended project. The helper honors an existing absolute `RELEASE_P
 when supplied by the release authority; otherwise it finds the nearest ancestor `.mgit.conf`.
 Verify that root before execution. Missing/invalid setup is **UNKNOWN**, not permission to create it.
 
-Before checks that execute project-owned helpers, inspect `scripts/mgit` and `scripts/pact-pairs`
-and their delegated commands. Their required modes must be read-only; unknown or mutating helpers
-make that check unavailable. Do not execute unreviewed project code merely because a file exists.
-`stale`, `coverage`, and `matrix` do not require these project helper calls. Missing executable
-support means unavailable; do not install dependencies or repair permissions.
+Before checks that execute project-owned helpers, inspect `scripts/mgit`, `scripts/pact-pairs`,
+any `scripts/pact-normalize` hook, and their delegated commands. The Git and edge modes must be
+read-only, and the hook may rewrite only the temporary paths it receives. Unknown or mutating
+helpers make that check unavailable. Do not execute unreviewed project code merely because a file
+exists. `coverage` and `matrix` make no project helper calls; `stale` calls only the optional hook.
+Missing executable support means unavailable; do not install dependencies or repair permissions.
 
 For a service view, confirm the service in project topology. Mechanical collection is project-wide;
 filter its findings to edges involving that service and scope semantic reads to it. Do not present
@@ -76,7 +78,7 @@ Never substitute an arbitrary project `scripts/contract-check` implementation.
 
 | Signal | Meaning |
 |---|---|
-| `OK` | Observed evidence matches the bounded check; not a live test result |
+| `OK` | Observed evidence matches the bounded check; not a live test result. `(equal after project normalization)` means only the hook's transformations differ |
 | `STALE` / `DIFFERS` | Pact bytes differ; consumer newer / not newer |
 | `MISSING_PROVIDER` | No provider copy found in the supported layout |
 | `UNCOMMITTED` | Modified, staged, deleted, renamed or untracked provider pact path |

@@ -18,6 +18,7 @@ The shipped helper supports these conventions only:
 | Provider input | `<provider>/test/resources/pacts/` or `<provider>/src/test/resources/pacts/` |
 | Git adapter | Reviewed `scripts/mgit status <service> --porcelain=v1 --untracked-files=all -- <pact-directory>/`; must honor `GIT_OPTIONAL_LOCKS=0` and propagate failure |
 | Edge collector | Reviewed executable `scripts/pact-pairs`, modes below; not provided by this skill |
+| Normalizer hook | Optional reviewed executable `scripts/pact-normalize <file>...` that rewrites the given files in place and exits non-zero on failure. The stale check passes it temporary copies of the built and provider pact; equal results report `OK`. Absent or failing hooks keep raw byte comparison |
 | Runtime | Bash 4+ (associative arrays), GNU stat/date, and standard grep/sed/awk/sort/cmp utilities |
 
 Single repositories, other layouts and languages may use the runner through existing explicit
