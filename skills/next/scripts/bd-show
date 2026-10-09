@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# bd-show: Show one or more beads with separators between them.
+# Usage: bd-show <id> [id2 id3 ...]
+#   --json  Output as JSON array instead of formatted text
+set -euo pipefail
+
+if [ $# -lt 1 ]; then
+  echo "Usage: bd-show <id> [id2 id3 ...]" >&2
+  echo "  --json  Output as JSON array" >&2
+  exit 1
+fi
+
+JSON_MODE=false
+IDS=()
+for arg in "$@"; do
+  if [[ "$arg" == "--json" ]]; then
+    JSON_MODE=true
+  else
+    IDS+=("$arg")
+  fi
+done
+
+if [ ${#IDS[@]} -eq 0 ]; then
+  echo "Error: at least one bead ID required" >&2
+  exit 1
+fi
+
+if $JSON_MODE; then
+  # Collect JSON output, flatten nested arrays into a single array
+  results="[]"
+  for id in "${IDS[@]}"; do
+    item=$(bd show "$id" --json 2>/dev/null || echo "[{\"error\": \"not found\", \"id\": \"$id\"}]")
+    results=$(echo "$results" | jq --argjson new "$item" '. + ($new | if type == "array" then . else [.] end)')
+  done
+  echo "$results"
+else
+  first=true
+  for id in "${IDS[@]}"; do
+    if $first; then
+      first=false
+    else
+      echo ""
+      echo "---"
+      echo ""
+    fi
+    bd show "$id" 2>&1 || echo "Error: bead '$id' not found"
+  done
+fi

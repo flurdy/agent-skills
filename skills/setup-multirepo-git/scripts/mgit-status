@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# mgit-status: Show git status for one or more services (or all) with headers.
+# Usage: mgit-status [service1 service2 ...]
+#   No args = root + every service listed in .mgit.conf
+# Root detection matches mgit: MGIT_ROOT, or walk up from $PWD to find .mgit.conf.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MGIT="$SCRIPT_DIR/mgit"
+
+find_root() {
+  if [[ -n "${MGIT_ROOT:-}" ]]; then
+    echo "$MGIT_ROOT"
+    return
+  fi
+  local root="$PWD"
+  while [[ "$root" != "/" ]]; do
+    [[ -f "$root/.mgit.conf" ]] && { echo "$root"; return; }
+    root="$(dirname "$root")"
+  done
+  echo "mgit-status: no .mgit.conf found in parent directories." >&2
+  exit 1
+}
+
+configured_services() {
+  local root services_line
+  root="$(find_root)" || exit 1
+  services_line=$(grep -E '^services=' "$root/.mgit.conf" 2>/dev/null || true)
+  [[ -n "$services_line" ]] || { echo "mgit-status: no services= line in $root/.mgit.conf" >&2; exit 1; }
+  tr ',' '\n' <<< "${services_line#services=}" | xargs -n1
+}
+
+if [ $# -gt 0 ]; then
+  SERVICES=("$@")
+else
+  services_list="$(configured_services)"
+  mapfile -t configured <<< "$services_list"
+  SERVICES=("root" "${configured[@]}")
+fi
+
+first=true
+for svc in "${SERVICES[@]}"; do
+  if $first; then
+    first=false
+  else
+    echo ""
+  fi
+  echo "=== $svc ==="
+  "$MGIT" status "$svc" --short 2>&1 || echo "  (not found or not a git repo)"
+done

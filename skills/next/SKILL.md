@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.14.0"
+version: "1.15.0"
 author: "flurdy"
 ---
 
@@ -227,6 +227,11 @@ When invoked:
      current harness session with session activity explicitly unverified, and shows its full
      details in that store only.
    - If bead has description with steps, highlight the first step
+
+## Multi-bead display
+
+`scripts/bd-show <id> [id ...]` shows several beads with separators (`--json` returns one flat
+array), so callers need not chain `bd show` calls. Projects may symlink it into their own `scripts/`.
 
 ## Beads read deadlines
 

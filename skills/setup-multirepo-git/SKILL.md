@@ -5,7 +5,7 @@ allowed-tools: "Read,Write,Bash(git:*),Bash(ln:*),Bash(mkdir:*),Bash(cat:*),Bash
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -134,6 +134,9 @@ Verify the symlink works:
 ./scripts/mgit status <first-service> --short
 ./scripts/mgit status root --short
 ```
+
+Optionally link `scripts/mgit-status` the same way: a single-command status of root plus every
+`.mgit.conf` service (or only the services passed as arguments), using `mgit` beside it.
 
 ### Step 4: Output permission patterns
 
