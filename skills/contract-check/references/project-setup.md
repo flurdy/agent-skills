@@ -80,8 +80,9 @@ Only `<provider>/.circleci/config.yml` is inspected:
   service names, optionally suffixed `-consumer`; single/double quotes and trailing comments are
   accepted. The literal set is compared with synced consumer names. Enumeration takes precedence
   over a tag mention, conservatively avoiding an assumed all-consumer run.
-- **tag:** absent enumeration, a line naming `sbt testOnly -- -n tags.ContractVerifyTest` (including
-  the usual quoted testOnly argument), either a shell line or literal `run:`/`command:` value.
+- **tag:** absent enumeration, a line naming `sbt testOnly -- -n tags.ContractVerifyTest` or the munit
+  form `sbt testOnly -- --include-tags=ContractVerifyTest` (including the usual quoted testOnly
+  argument), either a shell line or literal `run:`/`command:` value.
   This only names a tag-driven verification mechanism. The project's tests must independently prove
   the tag selects the intended verifier and every relevant pact.
 - Comments and prose/echo mentions of `ContractVerifyTest` do not supply tag evidence. Dynamic

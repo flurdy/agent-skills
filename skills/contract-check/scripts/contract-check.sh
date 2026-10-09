@@ -340,7 +340,7 @@ check_coverage() {
                  | sed -E 's/.*PACTCONSUMER[0-9]*:[[:space:]]*//')
 
         local style="" ; local -a unverified=()
-        local tag_selector='testOnly[[:space:]]+--[[:space:]]+-n[[:space:]]+tags\.ContractVerifyTest'
+        local tag_selector='testOnly[[:space:]]+--[[:space:]]+(-n[[:space:]]+tags\.ContractVerifyTest|--include-tags=ContractVerifyTest)'
         if $invalid; then
             style="unsupported"
         elif [[ ${#active[@]} -gt 0 ]]; then

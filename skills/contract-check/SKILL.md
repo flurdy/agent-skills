@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/contract-check/scripts/cont
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.1.0"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -16,7 +16,7 @@ explicit test generation, local sync, normalization and provider verification. R
 consume this audit's mechanical evidence; do not create a second health collector.
 
 This audit never runs tests, creates links, changes permissions, copies pacts, fixes CI, or writes
-tracking. Never normalize project files before auditing or dismiss generated-looking diffs by eye.
+tracking. Do not normalize project files before auditing or dismiss generated-looking diffs by eye.
 Only a reviewed project `scripts/pact-normalize` hook may compare temporary copies. Report
 findings and optional next-command pointers without confirmation prompts or automatic handoffs.
 A separate setup request belongs to the [project setup contract](references/project-setup.md).

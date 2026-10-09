@@ -175,6 +175,15 @@ class AuditTests(unittest.TestCase):
                 self.assertIn("OK   api  style=tag", output)
                 self.assertIn("static configuration", output)
 
+    def test_munit_tag_command_forms_are_static_matches(self):
+        for line in ('cat /dev/null | sbt "testOnly -- --include-tags=ContractVerifyTest"',
+                     "command: sbt 'testOnly -- --include-tags=ContractVerifyTest'"):
+            with self.subTest(line=line):
+                self.ci.write_text("    " + line + "\n")
+                self.assertIn("OK   api  style=tag", self.run_audit("coverage"))
+        self.ci.write_text('    sbt "testOnly -- --include-tags=ContractConsumerTest"\n')
+        self.assertIn("style=unsupported", self.run_audit("coverage"))
+
     def test_src_provider_layout_and_single_quoted_enum(self):
         self.provider.unlink()
         self.put("api/src/test/resources/pacts/web-consumer-api-provider.json", "{}\n")
