@@ -328,7 +328,7 @@ check_coverage() {
                 for a in "${active[@]}"; do [[ "$a" == "$c" ]] && found=true && break; done
                 $found || unverified+=("$c")
             done
-        elif grep -Eq "^[[:space:]]*((-[[:space:]]*)?(run|command):[[:space:]]*)?sbt[[:space:]]+(\"$tag_selector\"|'$tag_selector'|$tag_selector)[[:space:]]*$" <<< "$active_cfg"; then
+        elif grep -Eq "^[[:space:]]*((-[[:space:]]*)?(run|command):[[:space:]]*)?(cat[[:space:]]+/dev/null[[:space:]]*\|[[:space:]]*)?sbt[[:space:]]+(\"$tag_selector\"|'$tag_selector'|$tag_selector)[[:space:]]*$" <<< "$active_cfg"; then
             style="tag"
         else
             style="unsupported"

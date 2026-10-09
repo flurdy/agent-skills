@@ -130,7 +130,7 @@ class AuditTests(unittest.TestCase):
         self.assertIn("style=unsupported", output)
 
     def test_tag_mentions_outside_a_command_are_not_verification_evidence(self):
-        for text in ('description: ContractVerifyTest\n', '- run: echo "ContractVerifyTest"\n', '- run: sbt "testOnly *OtherTest" && echo "-- -n tags.ContractVerifyTest"\n'):
+        for text in ('description: ContractVerifyTest\n', '- run: echo "ContractVerifyTest"\n', '- run: sbt "testOnly *OtherTest" && echo "-- -n tags.ContractVerifyTest"\n', '- run: cat other.txt | sbt "testOnly -- -n tags.ContractVerifyTest"\n'):
             with self.subTest(text=text):
                 self.ci.write_text(text)
                 output = self.run_audit("coverage")
@@ -138,7 +138,7 @@ class AuditTests(unittest.TestCase):
                 self.assertIn("style=unsupported", output)
 
     def test_supported_tag_command_forms_are_static_matches(self):
-        for line in ('sbt testOnly -- -n tags.ContractVerifyTest', "command: sbt 'testOnly -- -n tags.ContractVerifyTest'", '- run: sbt "testOnly -- -n tags.ContractVerifyTest" # selector'):
+        for line in ('sbt testOnly -- -n tags.ContractVerifyTest', "command: sbt 'testOnly -- -n tags.ContractVerifyTest'", '- run: sbt "testOnly -- -n tags.ContractVerifyTest" # selector', 'cat /dev/null | sbt "testOnly -- -n tags.ContractVerifyTest"', 'command: cat /dev/null | sbt "testOnly -- -n tags.ContractVerifyTest"'):
             with self.subTest(line=line):
                 self.ci.write_text("    " + line + "\n")
                 output = self.run_audit("coverage")
