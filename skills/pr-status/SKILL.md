@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.13.3"
+version: "1.13.4"
 author: "flurdy"
 ---
 
@@ -29,6 +29,16 @@ The GitHub org is auto-detected from the current repo's `origin` remote, falling
 [`scripts/github_remote.py`](scripts/github_remote.py) for remote identity parsing. Both accept
 single-label `*.github.com` aliases only for SSH, not HTTP(S); they do not resolve arbitrary SSH
 configuration aliases. Repository, exact-head, and clean-tree checks still govern local reads.
+
+## Shared inline-comment reader
+
+[`scripts/gh-pr-inline-comments.sh`](scripts/gh-pr-inline-comments.sh) owns the legacy REST
+inline-comment projection used by `review-comments` and `reply-comments`. It takes
+`<owner> <repo> <number>` and requires Bash plus authenticated `gh`. Missing tools and API failures
+return nonzero; stdout, stderr and the API exit status pass through without retries. This preserves
+the old single-page response, not a complete or normalized feedback inventory. The consumers retain
+forwarding `gh-pr-comments.sh` entry points for existing permission rules. The distinct composite
+report in `review-pr/scripts/gh-pr-comments.sh` is unchanged.
 
 ## Instructions
 

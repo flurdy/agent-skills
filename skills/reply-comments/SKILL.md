@@ -1,11 +1,11 @@
 ---
 name: reply-comments
 description: Safely publish prepared PR-feedback outcomes through separately confirmed push, reply, and inline-thread resolution gates. Re-fetches normalized identities before every mutation and keeps retries idempotent.
-allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-conversation-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(git:*),AskUserQuestion"
+allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-inline-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-conversation-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(git:*),AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.2.1"
+version: "1.2.2"
 author: "flurdy"
 ---
 
@@ -78,6 +78,11 @@ Compare each selected stable `identity`, `updateKey`, and `stateKey` with the va
 the inventory is `partial`, do not mutate and name the failed source. If an item is changed,
 resolved, outdated, or self-authored, stop that item and return it to selection/validation. Missing
 is not resolved. This re-fetch is mandatory even when the previous skill ran moments ago.
+
+Keep `pr-status` installed alongside this skill. The legacy `gh-pr-comments.sh` entry point forwards
+to its shared `gh-pr-inline-comments.sh` reader (Bash and authenticated `gh` required; missing tools
+or API failures return nonzero). That single-page reader is not a substitute for the normalized
+inventory required before mutations.
 
 ### 4. Compose Endpoint-correct Replies
 

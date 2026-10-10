@@ -256,6 +256,7 @@ test-pr-feedback-actions:
 
 test-pr-feedback: test-pr-feedback-actions
 	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_feedback_inventory.py'
+	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_inline_comments.py'
 	@bash skills/pr-status/tests/test-feedback-contract.sh
 
 test-git-pr-lifecycle:

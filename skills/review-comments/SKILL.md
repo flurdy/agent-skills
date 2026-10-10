@@ -1,11 +1,11 @@
 ---
 name: review-comments
 description: Address PR review feedback through explicit item selection, independent validation, focused local fixes, verification, and a local commit. Never publishes remote actions; use reply-comments for separately confirmed push, reply, and resolution gates.
-allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd list:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git branch --show-current),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
+allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd list:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/review-comments/scripts/gh-pr-view-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-inline-comments.sh:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(git status:*),Bash(git diff:*),Bash(git add:*),Bash(git commit:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git branch --show-current),Bash(make:*),Bash(npm:*),Bash(npx:*),Bash(sbt:*),AskUserQuestion"
 model-tier: premium
 model: opus
 effort: high
-version: "2.0.0"
+version: "2.0.1"
 author: "flurdy"
 ---
 
@@ -66,8 +66,17 @@ invented.
 
 If `partial` is true, show available records and failed sources. The user may select an available
 record, but do not infer that an absent record is handled. If the helper is unavailable, the
-existing `gh-pr-view-reviews.sh` and `gh-pr-comments.sh` wrappers remain a compatibility fallback;
-label stable identity and race protection unavailable and do not combine both fetch paths.
+existing `gh-pr-view-reviews.sh` and the shared inline-comment reader remain a compatibility fallback:
+
+```bash
+~/.agents/skills/pr-status/scripts/gh-pr-inline-comments.sh {owner} {repo} {pr_number}
+```
+
+This Bash helper requires authenticated `gh`; missing tools or API failures return nonzero.
+It preserves the legacy single-page response, so label completeness, stable identity and race
+protection unavailable and do not combine both fetch paths. Keep `pr-status` installed alongside
+this skill. The old local `gh-pr-comments.sh` path forwards to the shared reader for existing
+permission rules; it is not a second implementation.
 
 ### 3. Apply Source and Lifecycle Policy
 
