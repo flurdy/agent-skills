@@ -1,11 +1,11 @@
 ---
 name: circleci-status
 description: Check CircleCI build status and failed job logs for the current GitHub repository. Use when asked whether CircleCI is green, failing, pending, or when needing CircleCI job logs.
-allowed-tools: "Bash(~/.agents/skills/circleci-status/scripts/status.sh:*), Bash(~/.agents/skills/circleci-status/scripts/logs.sh:*), Bash(gh api:*), Bash(gh auth status:*), Bash(git config:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(curl:*)"
+allowed-tools: "Bash(~/.agents/skills/circleci-status/scripts/status.sh:*), Bash(~/.agents/skills/circleci-status/scripts/logs.sh:*), Bash(gh auth status:*), Bash(git config:*), Bash(git branch:*), Bash(git rev-parse:*), Bash(curl:*)"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.1"
+version: "1.0.2"
 author: "flurdy"
 ---
 

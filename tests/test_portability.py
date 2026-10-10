@@ -180,6 +180,30 @@ class ResourceSelectionTests(unittest.TestCase):
 
 
 class WorkflowContracts(unittest.TestCase):
+    def test_status_skills_use_narrow_api_wrappers(self):
+        wrappers = {
+            "circleci-status": ("status.sh", "logs.sh"),
+            "pr-status": (
+                "gh-pr-list-open.sh", "gh-pr-list-closed.sh", "gh-pr-details.sh",
+                "gh-pr-feedback.py", "gh-pr-checks.sh", "gh-pr-reviews.sh",
+                "gh-pr-threads.sh", "gh-pr-merge-state.sh",
+            ),
+        }
+        for name, scripts in wrappers.items():
+            with self.subTest(skill=name):
+                text = skill(name)
+                frontmatter = text.split("---", 2)[1]
+                grants = re.search(r'^allowed-tools: "(.*)"$', frontmatter, re.M)
+                self.assertIsNotNone(grants)
+                permissions = {entry.strip() for entry in grants[1].split(",")}
+                self.assertNotIn("Bash(gh api:*)", permissions)
+                self.assertNotIn("Bash(gh:*)", permissions)
+                for script in scripts:
+                    self.assertIn(
+                        f"Bash(~/.agents/skills/{name}/scripts/{script}:*)", permissions
+                    )
+                    self.assertTrue((ROOT / "skills" / name / "scripts" / script).is_file())
+
     def test_canonical_contract_audit_remains_read_only(self):
         text = skill("contract-check")
         self.assertIn("~/.agents/skills/contract-check/scripts/contract-check.sh", text)
