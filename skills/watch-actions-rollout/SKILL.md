@@ -4,11 +4,11 @@ description: >
   After a merge, watch the GitHub Actions deploy until the gating job lands, then run a
   scoped smoke test against staging (browser for UI, GET for read-only API).
   Goal-terminating loop — stops when the deploy lands and the smoke completes, or fails.
-allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*),Bash(gh api:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh run view:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
+allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh run view:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.1.0"
+version: "2.1.1"
 author: "flurdy"
 ---
 
@@ -202,7 +202,13 @@ When the gating job is green:
     (no visible session needed, deterministic network capture via `browser_network_requests`).
   **Read-only navigation only** with either driver — no form submits, clicks, or actions that mutate
   state; never trigger a JS dialog.
-- **API:** `curl`/`gh api` a `GET` and assert the status code / payload field.
+- **API:** use `curl --disable --request GET` against the confirmed HTTP(S) URL, with
+  `--proto '=http,https' --max-time 30 --silent --show-error --write-out '\n%{http_code}\n'`.
+  Inspect the status code and payload against the confirmed assertion; curl exit 0 alone is not
+  an HTTP-success result. Do not follow redirects or load user curl configuration, and do not add
+  credentials, request bodies or write methods. An auth wall or redirect is an incomplete smoke,
+  not permission to change the target or authentication. Never use the GitHub CLI for arbitrary
+  application URLs.
 
 Report **pass/fail with the captured evidence** (the screenshot path, the network payload, the
 status code), then stop the loop.

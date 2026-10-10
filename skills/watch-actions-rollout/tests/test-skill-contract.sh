@@ -53,7 +53,6 @@ for invariant in \
     'run-jobs.sh {run_id}' \
     'Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*)' \
     'Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*)' \
-    'Bash(gh api:*)' \
     'Bash(gh pr view:*)' \
     'Bash(gh run list:*)' \
     'Bash(gh run view:*)' \
@@ -79,6 +78,13 @@ claude_line=$(line_of '### Claude Code fallback')
     fail "smoke confirmation, Pi, and Claude sections must exist"
 ((smoke_line < pi_line && pi_line < claude_line)) || \
     fail "smoke confirmation must precede the Pi and Claude scheduling branches"
+
+assert_not_contains 'Bash(gh api:*)'
+assert_not_contains 'Bash(gh:*)'
+assert_not_contains 'gh api'
+assert_contains 'curl --disable --request GET'
+assert_contains 'Do not follow redirects'
+assert_contains 'confirmed HTTP(S) URL'
 
 assert_not_contains '/skill:watch-actions-rollout'
 assert_not_contains 'allowIndefinite: true'

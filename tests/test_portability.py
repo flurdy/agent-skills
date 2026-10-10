@@ -204,6 +204,16 @@ class WorkflowContracts(unittest.TestCase):
                     )
                     self.assertTrue((ROOT / "skills" / name / "scripts" / script).is_file())
 
+    def test_no_skill_executes_or_grants_raw_github_api(self):
+        for path in sorted((ROOT / "skills").glob("*/SKILL.md")):
+            with self.subTest(skill=path.parent.name):
+                text = path.read_text()
+                frontmatter = text.split("---", 2)[1]
+                self.assertNotIn("Bash(gh api:", frontmatter)
+                self.assertNotIn("Bash(gh:*)", frontmatter)
+                for block in re.findall(r"```(?:bash|sh)\n(.*?)```", text, re.S):
+                    self.assertIsNone(re.search(r"^\s*gh\s+api\b", block, re.M))
+
     def test_canonical_contract_audit_remains_read_only(self):
         text = skill("contract-check")
         self.assertIn("~/.agents/skills/contract-check/scripts/contract-check.sh", text)
