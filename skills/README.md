@@ -13,11 +13,11 @@
 | browser-screenshot | Take a screenshot of the running web application for visual verification of UI/CSS changes |
 | circleci-status | Check CircleCI build status and failed job logs for the current GitHub repository |
 | clean-code | Format, lint, and fix all warnings across the entire codebase |
-| complete-task | Complete an in-progress task by running clean-code, staging, and committing; closes on trunk, hands off to /create-pr in PR workflows, and protects detached commits |
+| complete-task | Complete an in-progress task by running clean-code, staging, and committing; closes on trunk, hands off to /create-pr in PR workflows, and protects detached commits; can offer an opt-in, approved Jira review move |
 | confluence | Read Confluence pages and comments for design docs, ADRs, and runbooks |
 | contract-check | Read-only Pact-lite health authority: content drift, uncommitted pacts, sync gaps, static CI evidence and semantic test gaps |
 | contract-test | Execute existing scoped Pact-lite generation, local sync and provider verification; status delegates to contract-check |
-| create-pr | Audit publication artifacts, then create a separately confirmed pull request following project conventions and close the associated bead |
+| create-pr | Audit publication artifacts, then create a separately confirmed pull request following project conventions and close the associated bead; can offer an opt-in, approved Jira review move |
 | delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
 | develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |

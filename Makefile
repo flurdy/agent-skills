@@ -272,6 +272,7 @@ test-git-pr-lifecycle:
 	@bash skills/start-ticket/tests/test-branch-preflight.sh
 	@bash skills/start-ticket/tests/test-lifecycle-contract.sh
 	@bash skills/create-pr/tests/test-required-sections.sh
+	@python3 -B -m unittest discover -s skills/complete-task/tests -p 'test_*.py'
 
 test-rebase:
 	@bash skills/rebase/tests/test-rebase-range.sh

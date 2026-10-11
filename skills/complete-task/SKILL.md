@@ -1,11 +1,11 @@
 ---
 name: complete-task
 description: "Complete an in-progress task by running clean-code, staging, and committing. Close the bead on trunk, leave it open for PR creation, and protect detached commits. Use after /verify-task."
-allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
+allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/complete-task/scripts/jira-review.py:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -159,6 +159,8 @@ Never close a bead if the commit failed or changes are still uncommitted.
 bd -C <directory> close <bead-id> --reason="<brief summary of what was done>"
 ```
 
+Then continue to §6a.
+
 **Detached mode** — never close the bead. Report the detached commit SHA, leave the bead `in_progress`,
 and offer the exact preservation command without running it automatically:
 
@@ -175,6 +177,20 @@ and finalize the bead.
 - **Not yet** — leave the branch committed and the bead `in_progress`; remind the user to run `/create-pr` when ready.
 - **Close the bead anyway** — escape hatch for a repo that is actually trunk-based despite the feature branch; close it as in trunk mode.
 
+### 6a. Offer Jira review (opt-in)
+
+Only after this run's trunk-mode close succeeds, follow the shared
+[Jira review procedure](references/jira-review.md), starting with:
+
+```bash
+~/.agents/skills/complete-task/scripts/jira-review.py plan --bead <bead-id> --store <directory> --milestone trunk-commit
+```
+
+Add `--repo <path>` when the repository is not the current directory. Detached mode, PR mode and
+**Close the bead anyway** never offer it: none is a configured delivery milestone. Without a policy
+the helper is silent. A transition still needs its own fresh **Move to review** approval, and a Jira
+skip or failure never reopens the bead or undoes the commit.
+
 ### 7. Check for Follow-Up Work
 
 After finalizing:
@@ -188,6 +204,7 @@ Summarize what was done:
 
 - Workflow mode (trunk, PR, or detached) and resulting bead state — **closed** (trunk / close-anyway) or **left `in_progress`** (PR or detached)
 - If a PR was created via the handoff, its URL
+- The Jira review outcome, separately from local completion (nothing when disabled)
 - Commit hash and message
 - Files changed count
 - Any follow-up items noted
@@ -211,6 +228,7 @@ Summarize what was done:
 - Never amend existing commits
 - Never close a bead with uncommitted changes
 - Never close a bead from a detached HEAD
+- Never transition Jira outside the §6a procedure and its explicit approval
 - In PR mode, do not close the bead — that happens at `/create-pr` (reopen later if review demands major changes)
 - Always stage specific files, never bulk-add
 - If any step fails, stop and inform the user rather than forcing through

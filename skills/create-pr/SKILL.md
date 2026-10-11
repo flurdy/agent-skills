@@ -1,11 +1,11 @@
 ---
 name: create-pr
 description: Create a pull request from the current branch following project conventions. Uses the branch name to find the Jira ticket, generates a PR with the standard template, audits publication artifacts, pushes to origin, and closes the associated bead.
-allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(~/.agents/skills/create-pr/scripts/pr-required-sections.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
+allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/complete-task/scripts/jira-review.py:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(~/.agents/skills/create-pr/scripts/pr-required-sections.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.5.0"
+version: "2.6.0"
 author: "flurdy"
 ---
 
@@ -260,6 +260,17 @@ Skip this whole step silently if `bd` is unavailable or the repo has no beads da
    bd -C <directory> update <bead-id> --status=in_progress
    ```
 
+6. **Offer Jira review (opt-in).** Only after this close succeeds, follow the shared
+   [Jira review procedure](../complete-task/references/jira-review.md), starting with:
+
+   ```bash
+   ~/.agents/skills/complete-task/scripts/jira-review.py plan --bead <bead-id> --store <directory> --milestone pr-created --expected-key {ticket}
+   ```
+
+   Omit `--expected-key` when §3 found no ticket. Add `--draft` for a draft PR and `--stacked` when
+   `{base-branch}` is not the default branch; the helper then reports why no offer follows. The PR and
+   bead close stand whatever the Jira outcome; a transition needs its own **Move to review** approval.
+
 Note: `/ready-to-merge` closes a bead only if it is `in_progress`. It therefore no-ops when this
 close remains current, but closes it post-merge if `/review-comments` reopened it for substantial
 review work.
@@ -267,3 +278,4 @@ review work.
 ### 10. Return Result
 
 Output the PR URL so the user can view it, and note the bead that was closed (or left open, if none matched).
+Report any Jira review outcome separately (nothing when disabled).
