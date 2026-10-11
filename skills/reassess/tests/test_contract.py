@@ -26,7 +26,7 @@ class ReassessContractTests(unittest.TestCase):
         front = self.raw.split("---", 2)[1]
         for field in (
             "name: reassess", "disable-model-invocation: true", "model-tier: standard",
-            "effort: high", 'version: "0.1.0"', 'author: "flurdy"',
+            "effort: high", 'version: "0.1.1"', 'author: "flurdy"',
         ):
             self.assertIn(field, front)
         self.assertNotRegex(front, r"(?m)^model:")
@@ -58,6 +58,28 @@ class ReassessContractTests(unittest.TestCase):
             "Elapsed days away never determine depth, ranking or disposition",
             "identical substantive evidence", "one-day and a six-month absence",
             "changed deadline", "stable source ID/path order", "budget is reached",
+        )
+
+    def test_reserve_before_dispatch_and_preserve_implementation_budget(self):
+        self.require_terms(
+            "before the first evidence read", "8,000 intent", "12,000 implementation",
+            "8,000 unfinished work", "8,000 interrupted/build evidence", "4,000 material follow-up",
+            "reserve the whole parallel batch", "Line counts and line limits alone are not character bounds",
+            "Charge each read once", "including repeated reads", "donor category has been screened",
+            "Never borrow implementation space", "stop collection immediately",
+            "size-bounded lifecycle/header excerpt first", "named material uncertainty",
+            "procedural guard, not runtime enforcement",
+        )
+
+    def test_direction_requires_an_implementation_comparison(self):
+        self.require_terms(
+            "root-only review cannot establish member implementation or overall product direction",
+            "explicit outcome compared with inspected implementation",
+            "Empty inventories or a declared tracker-unused policy",
+            "actual operative documents, configuration or recipes", "application code is not required",
+            "Direction: evidence needed — direction not assessed",
+            "Do not say", "qualify it away later", "keep build confidence separate",
+            "Separate housekeeping", "not incidental cleanup", "confirmed blocker",
         )
 
     def test_interrupted_work_and_source_trust(self):
@@ -97,6 +119,8 @@ class ReassessContractTests(unittest.TestCase):
             "outdated-hostile-artifact", "claimed-interrupted-work", "mismatched-ci",
             "unavailable-ci", "absent-docs", "truncated-inventory", "unique-shared-store",
             "root-default", "member-workspace-request", "missing-outcome", "uncertain-dependencies",
+            "oversized-parallel-batch", "doc-heavy-overrun", "docs-config-implementation",
+            "housekeeping-vs-implementation-gap",
         }
         self.assertEqual(set(self.cases), required)
         self.assertEqual(len(self.cases), len(self.fixtures["cases"]))
@@ -146,6 +170,29 @@ class ReassessContractTests(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertIn(phrase, self.cases[case]["expected"][field])
         self.assertIn("b222", self.cases["mismatched-ci"]["expected"]["build"])
+
+    def test_dogfood_regression_oracles(self):
+        batch = self.cases["oversized-parallel-batch"]
+        self.assertGreater(sum(batch["budget"]["batchBounds"]), batch["budget"]["remainingIntent"])
+        self.assertIn("before dispatch", batch["expected"]["coverage"])
+        for case_id in ("doc-heavy-overrun", "housekeeping-vs-implementation-gap"):
+            with self.subTest(case=case_id):
+                expected = self.cases[case_id]["expected"]
+                self.assertEqual(expected["direction"], "evidence")
+                self.assertIn("Direction not assessed", expected["coverage"])
+                self.assertIn("implementation comparison missing", expected["coverage"])
+                self.assertEqual(expected["proposals"], [])
+        overrun = self.cases["doc-heavy-overrun"]["expected"]
+        self.assertIn("48712 of 40000", overrun["coverage"])
+        self.assertIn("stop collection", overrun["coverage"])
+        self.assertIn("fresh", overrun["next"])
+        housekeeping = self.cases["housekeeping-vs-implementation-gap"]["expected"]
+        self.assertIn("src/export", housekeeping["next"])
+        self.assertNotIn("README", housekeeping["next"])
+        docs = self.cases["docs-config-implementation"]["expected"]
+        self.assertEqual(docs["direction"], "keep")
+        self.assertIn("operative documents/configuration", docs["coverage"])
+        self.assertIn("Execution unassessed", docs["build"])
 
     def test_native_wiring_and_honest_test_notes(self):
         makefile = (ROOT / "Makefile").read_text()

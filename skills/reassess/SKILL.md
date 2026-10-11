@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 disable-model-invocation: true
 model-tier: standard
 effort: high
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 
@@ -74,7 +74,9 @@ Reuse [Beads ownership](../beads/SKILL.md) and
 - Default: only the invoking repository's code/docs and proven tracker scope. At a validated
   workspace root, this means root code/docs, **not member implementations**. A shared root
   store may contain member work: retain that ownership context; do not pretend every bead
-  is root implementation work or expand code scope automatically.
+  is root implementation work or expand code scope automatically. Say upfront that root-only
+  review cannot establish member implementation or overall product direction. Do not silently
+  switch to workspace mode; recommend it only when the missing evidence lives in members.
 - `workspace`: require `workspace: true` from the invoking validated root. Otherwise stop
   and request a switch to that root; do not infer topology from nearby directories. Include
   only the root and registered repositories, subject to the cap below.
@@ -97,16 +99,40 @@ quotas. State any narrower scope before collection; changing the budget needs us
 |---|---|---|
 | Repositories | Root plus 10 registered members | Explicit requested focus, then stable registered name order |
 | Source metadata | 200 records per unique store (50 per stored status) / file inventory | Stable ID/path order; disclose tool caps and unknown totals |
-| Substantive content | 40,000 characters total across docs, code, tracker bodies, artifacts and logs | Intent first; then cited contradictions, dependencies and uncertainty |
+| Substantive content | 40,000 characters total across docs, code, tracker bodies, artifacts and logs | Intent first within its allocation; then cited contradictions, dependencies and uncertainty |
 | Interrupted evidence | 5 artifact/handoff bodies combined | Explicit links to selected work, then stable path order |
 | Remote evidence | 10 read-only requests total | Only explicit in-scope work links and known CI repositories/revisions |
 
-Screen intent, code entry points, unfinished statuses, interrupted evidence and build
-configuration before deepening any one finding. Maintain an in-memory coverage ledger:
-source, scope/revision, total if known, screened/read/omitted counts, full/partial, and
-failure/truncation reason. Bound reads/search output to remaining limits. Do not paginate,
-split calls or use extra agents to evade caps. If inventory itself is capped, say total
-unknown rather than reporting the returned count as exhaustive. Do not persist the ledger.
+Reserve the 40,000 characters before the first evidence read: **8,000 intent**, **12,000
+implementation**, **8,000 unfinished work**, **8,000 interrupted/build evidence**, **4,000
+material follow-up**. Charge each read once to its comparison role, including repeated reads
+and substantive search/command output; a docs/config file is not charged twice merely because
+it serves two roles. Transfer unused allowance only after the donor category has been screened
+or explicitly marked unavailable/outside scope. Never borrow implementation space for more
+background reading before attempting the implementation survey.
+
+Before dispatch, establish an upper bound for every read and reserve the whole parallel batch
+against both category and total remaining limits. Use permitted read-only file sizing (UTF-8
+byte size is a conservative character bound), a size-known excerpt, or an existing tool's
+character cap. **Line counts and line limits alone are not character bounds.** Unknown-size
+reads run only with a trustworthy output cap; otherwise skip them and report the limitation.
+Do not fetch an unrestricted payload into context and count it afterward. Reconcile actual
+returned characters before the next batch; sizing metadata is not substantive evidence.
+If a tool unexpectedly exceeds its reservation, stop collection immediately, report the actual
+usage or a known lower bound, and retain a partial assessment rather than retrospectively
+raising the budget. This is a procedural guard, not runtime enforcement.
+
+Screen intent, implementation entry points, unfinished statuses, interrupted evidence and build
+configuration before deepening any one finding. Prefer current authoritative sources. For a
+large or historical document, inspect only a size-bounded lifecycle/header excerpt first;
+read its inventory/body only to resolve a named material uncertainty. Do not read historical
+inventories just because a documentation index links them.
+
+Maintain an in-memory coverage ledger: source, scope/revision, reserved/actual characters,
+total if known, screened/read/omitted counts, full/partial, and failure/truncation reason.
+Bound reads/search output to remaining limits. Do not paginate, split calls or use extra agents
+to evade caps. If inventory itself is capped, say total unknown rather than reporting the
+returned count as exhaustive. Do not persist the ledger.
 
 ## 2. Compare intent, implementation and unfinished work
 
@@ -205,17 +231,37 @@ dependencies, repair a failure, or turn lack of execution permission into a heal
 ## 5. Recommend direction, then stop
 
 Use facts with citations, hypotheses with falsification steps, and explicit human decisions.
+A directional conclusion requires an explicit outcome compared with inspected implementation
+and the relevant unfinished work/acceptance/dependencies. Empty inventories or a declared
+tracker-unused policy satisfy the tracking side; missing tracking does not. In docs/config
+repositories, inspect the actual operative documents, configuration or recipes against their
+intended contract—application code is not required. Names, inventory metadata, repository
+cleanliness and policy prose alone do not establish implementation elsewhere.
+
+If that comparison is missing, lead with **Direction: evidence needed — direction not assessed**.
+Do not say "keep current direction" or "no changes needed" and qualify it away later. Narrow
+facts, policy conflicts and preservation advice may still be reported, but are not a project
+direction verdict. Unknown CI does not automatically prevent a supported strategic judgment;
+keep build confidence separate and never convert it into a passing execution claim.
+
 Every keep/update/add/retire proposal needs an intended outcome, evidence, concrete benefit or
 contradiction, confidence, and smallest next action. Do not manufacture one of each category.
 Keep may mean no change; update may change an assumption or acceptance; add needs an evidenced
 missing outcome (check existing work first); retire needs evidence it is no longer required or
 already satisfied, plus dependency/acceptance review. Missing coverage weakens the proposal.
 
-Rank: (1) confirmed blocker to an explicit outcome, (2) contradicted assumption or acceptance,
-(3) evidenced missing outcome, (4) material evidence/decision gap, (5) supported no-change.
-Within a rank use recorded priority and impact, then stable source ID/path order. Never invent
-impact from item count, elapsed absence or reviewer taste. When intent is uncertain, a decision
-to clarify intent beats a speculative redesign. No aggregate health score or completion percent.
+Rank: (1) confirmed blocker to an explicit outcome, (2) contradicted assumption or acceptance
+affecting an explicit outcome, (3) evidenced missing outcome, (4) material evidence/decision gap,
+(5) supported no-change. Separate housekeeping (e.g. missing README command entries) from
+strategic proposals unless its effect on an explicit outcome is evidenced. Do not pad the
+proposal table with housekeeping in place of a direction assessment.
+
+While direction is not assessed, Next is the smallest read, scope selection or human decision
+that closes the missing comparison, not incidental cleanup. A confirmed blocker to an explicit
+outcome may take precedence; missing README entries alone are not such a blocker. Within a rank
+use recorded priority and impact, then stable source ID/path order. Never invent impact from
+item count, elapsed absence or reviewer taste. When intent is uncertain, a decision to clarify
+intent beats a speculative redesign. No aggregate health score or completion percent.
 
 Stop when recommendations have enough supporting and opposing evidence, a concrete decision or
 evidence gap prevents them, or the budget is reached. Report omissions; do not claim project-wide
@@ -225,9 +271,9 @@ reviewed scope** is success, not a mandate to find cleanup.
 
 ```markdown
 ## Reassessment — {repository / explicit workspace}
-**Direction:** {keep current direction / selected changes / decision or evidence needed}
+**Direction:** {supported keep/changes / decision needed / evidence needed — direction not assessed}
 **Scope:** {canonical roots, unique stores, assessed revisions and working-copy state}
-**Coverage:** {sources/statuses screened; full/partial reads; omitted counts or unknown totals}
+**Coverage:** {implementation comparison present/missing; characters used/reserved; sources/statuses screened; full/partial reads; omissions or unknown totals}
 **Build evidence:** {historical / exact-head CI / existing local checks, each scoped or unknown}
 | Rank | Proposal | Intended outcome and cited evidence | Confidence | Smallest next action |
 |---|---|---|---|---|

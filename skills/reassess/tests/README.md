@@ -28,10 +28,27 @@ runtime read-only safety. No new collector or semantic classifier is implemented
 | Root default / member workspace request | Root-only code by default; workspace requires validated invoking root | Silently expand scope or fabricate a local store |
 | Missing outcome | Evidence-backed add proposal with existing-work check | Automatically create a bead |
 | Uncertain dependencies | Ambiguous/unavailable owners prevent lifecycle conclusions | Closed blocker proves dependent done |
+| Oversized parallel batch | Reserve the sum before dispatch; protect unread implementation allowance | Each read fits alone, so dispatch both |
+| Doc-heavy overrun | Stop, disclose overrun and lead with direction not assessed | Keep-direction headline qualified away later |
+| Docs/config implementation | Operative documents/configuration can meet the evidence floor | Demand application code or passing CI for a contract judgment |
+| Housekeeping versus evidence gap | Missing implementation comparison determines Next | Let README cleanup replace direction assessment |
 
 The age pair asserts equality of the authored evidence and expected reassessment except for
 absence metadata. It does not run an LLM twice or prove age-invariance of future invocations.
 Term assertions protect key clauses from accidental removal; they do not interpret prose.
+
+## Regression provenance
+
+A same-session root-only dogfood run of v0.1.0 read at least 48,712 document characters
+against its 40,000-character allowance, without inspecting implementation, then recommended
+keeping direction and led with policy/README housekeeping. This is the observed failure,
+not proof of the correction. The new scenarios are sanitized authored expectations derived
+from that run and counterexamples; they are not captured successful model outputs.
+
+The assertions check reservation wording, fixture arithmetic, the evidence-floor clauses and
+expected report distinctions. They do not enforce tool byte limits or test a model's budget
+accounting. A future authorized dogfood run must verify pre-dispatch reservation and the
+implementation-to-outcome comparison before claiming behavioral improvement.
 
 ## Optional manual walkthrough
 

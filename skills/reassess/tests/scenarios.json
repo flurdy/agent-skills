@@ -259,6 +259,84 @@
       "permittedMutations": []
     },
     {
+      "id": "oversized-parallel-batch",
+      "request": "/reassess",
+      "evidence": [
+        {"id": "budget", "text": "Intent allowance has 3000 characters remaining. Two intended parallel reads have measured upper bounds 2000 and 2500. Implementation has not yet been screened."},
+        {"id": "history", "text": "A documentation index links a historical retention inventory; no current question needs its body."}
+      ],
+      "budget": {"remainingIntent": 3000, "batchBounds": [2000, 2500]},
+      "expected": {
+        "direction": "evidence",
+        "confidence": "uncertain",
+        "coverage": "Direction not assessed. Reject the 4500-character batch before dispatch; do not borrow unread implementation allowance. Historical body omitted unless a bounded header reveals a material reason to read it.",
+        "build": "Not assessed.",
+        "proposals": [],
+        "next": "Reserve a smaller intent excerpt, then inspect the corresponding implementation within its protected allowance."
+      },
+      "forbidden": ["dispatch both reads", "count only after reading", "equate line count with character bound", "borrow implementation space early"],
+      "permittedMutations": []
+    },
+    {
+      "id": "doc-heavy-overrun",
+      "request": "/reassess",
+      "evidence": [
+        {"id": "scope", "text": "Root-only assessment at a workspace with member implementations excluded."},
+        {"id": "reads", "text": "Unsized parallel document reads, including a historical inventory, have already consumed at least 48712 characters against a 40000 cap. Root implementation and handoff bodies were not inspected."},
+        {"id": "facts", "text": "A task's standing sync wording conflicts with current approval policy. README omits sync-check. No impact on an explicit product outcome has been established."}
+      ],
+      "expected": {
+        "direction": "evidence",
+        "confidence": "uncertain",
+        "coverage": "Direction not assessed: implementation comparison missing. Budget exceeded: at least 48712 of 40000 characters; stop collection. Root-only review cannot establish member or overall product direction. Preserve narrow policy and README observations, not a keep-direction verdict.",
+        "build": "Unknown; no current root CI or local gate evidence.",
+        "proposals": [],
+        "next": "Select a narrower root outcome or explicitly select workspace scope for a fresh, implementation-led assessment."
+      },
+      "forbidden": ["keep current direction", "no changes needed", "continue reading after overrun", "raise budget retroactively", "make README cleanup Next"],
+      "permittedMutations": []
+    },
+    {
+      "id": "docs-config-implementation",
+      "request": "/reassess",
+      "evidence": [
+        {"id": "intent", "text": "Repository exists solely to define a manual release approval contract; user-level requirement forbids automatic publication."},
+        {"id": "implementation", "text": "Operative release workflow document and configuration fully inspected: all publication paths require confirmation; no automatic trigger exists."},
+        {"id": "tracking", "text": "Local instructions explicitly declare no tracker; no unfinished work is supplied. Implementation and intent fit without application code."},
+        {"id": "budget", "text": "Each document read charged once to its comparison role. Unused interrupted-evidence allowance transferred only after that source was checked and found absent."}
+      ],
+      "expected": {
+        "direction": "keep",
+        "confidence": "medium",
+        "coverage": "Relevant implementation comparison present: operative documents/configuration satisfy the explicit approval outcome; declared tracker-unused policy covers tracking. No application code required.",
+        "build": "Execution unassessed; this conclusion is about the inspected approval contract, not runtime enforcement.",
+        "proposals": [{"kind": "keep", "evidence": ["intent", "implementation", "tracking"], "action": "No changes needed within the inspected approval-contract scope."}],
+        "next": "Nothing required by this contract reassessment."
+      },
+      "forbidden": ["require application code", "invent tracker", "double-charge one read", "claim runtime enforcement proved"],
+      "permittedMutations": []
+    },
+    {
+      "id": "housekeeping-vs-implementation-gap",
+      "request": "/reassess",
+      "evidence": [
+        {"id": "intent", "text": "Explicit outcome: CSV exports must preserve encoding."},
+        {"id": "tracking", "text": "The unfinished encoding item has been read with its acceptance and dependencies."},
+        {"id": "implementation", "text": "src/export exists but its content has not been inspected; sufficient implementation allowance remains."},
+        {"id": "housekeeping", "text": "README omits a convenience command. No blocker to the encoding outcome is evidenced."}
+      ],
+      "expected": {
+        "direction": "evidence",
+        "confidence": "uncertain",
+        "coverage": "Direction not assessed: implementation comparison missing. README omission remains a separate housekeeping observation, not the leading strategic proposal.",
+        "build": "Unknown; no execution claim.",
+        "proposals": [],
+        "next": "Read the bounded encoding implementation in src/export against the explicit acceptance criteria."
+      },
+      "forbidden": ["make README edit Next", "keep direction from file names", "replace reassessment with hygiene"],
+      "permittedMutations": []
+    },
+    {
       "id": "uncertain-dependencies",
       "request": "/reassess",
       "evidence": [
