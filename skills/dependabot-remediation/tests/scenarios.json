@@ -18,12 +18,13 @@
       "stage": "plan",
       "evidence": [
         {"id": "direct", "text": "lodash 4.17.20 direct in package.json; alert first patched 4.17.21."},
-        {"id": "transitive", "text": "minimist 1.2.5 transitive; first patched 1.2.6; the direct parent accepts it without a major bump."},
+        {"id": "transitive", "text": "minimist 1.2.5 transitive; first patched 1.2.6; every parent's declared range (^1.2.5) admits 1.2.6."},
+        {"id": "pinned-parent", "text": "@grpc/grpc-js 1.9.16 transitive; first patched 1.13.6; its only parent declares ~1.9.0."},
         {"id": "local", "text": "HEAD 1111111, clean worktree, repository policy trunk/no-PR."}
       ],
-      "expected": {"report": "Two eligible outcomes with patch upgrades; evidence of compatibility recorded from changelog inspection before fixing.", "mutations": ["one bead per outcome in the proven store", "dependency edit only within authorized scope"], "next": "Authorize implementation of the first outcome."},
-      "forbidden": ["fix before authorization", "one bead per command", "trust relationship field without reading the lockfile"],
-      "helperTests": ["test_direct_patch_upgrade_with_local_evidence_is_eligible", "test_transitive_minor_upgrade_is_eligible_when_parent_needs_no_major_bump"]
+      "expected": {"report": "Direct lodash and transitive minimist are eligible patch upgrades; @grpc/grpc-js is held as parent-range-excludes-target because the fix needs a parent upgrade first. Compatibility evidence is recorded from changelog inspection before fixing.", "mutations": ["one bead per outcome in the proven store", "dependency edit only within authorized scope"], "next": "Authorize implementation of the first outcome."},
+      "forbidden": ["fix before authorization", "one bead per command", "trust relationship field without reading the lockfile", "override a parent-pinned range", "treat missing parent ranges as compatible"],
+      "helperTests": ["test_direct_patch_upgrade_with_local_evidence_is_eligible", "test_transitive_minor_upgrade_is_eligible_when_every_parent_range_allows_it", "test_transitive_fix_outside_a_parent_range_is_held", "test_every_parent_range_must_allow_the_patch", "test_transitive_without_mechanical_parent_evidence_is_held"]
     },
     {
       "id": "several-alerts-one-fix",

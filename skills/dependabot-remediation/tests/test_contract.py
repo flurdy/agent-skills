@@ -59,6 +59,8 @@ class DependabotRemediationContractTests(unittest.TestCase):
             "alert evidence", "implementation revision", "Keep them separate",
             "do not trust the alert's relationship field alone", "`major-upgrade`", "`pre-1.0-uncertain`",
             "`no-patched-version`", "`unsupported-ecosystem`", "`transitive-parent-major`", "`verify-publication`",
+            "`parent-range-excludes-target`", "`parent-range-unknown`", "never assumed compatible",
+            "Missing parent evidence holds",
             "Semver labels are not compatibility proof", "Do not widen a fix, add resolution overrides, or begin a migration",
             "`human` label",
         )

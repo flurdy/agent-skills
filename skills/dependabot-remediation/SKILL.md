@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Skill,Bash(~/.agents/skills/depen
 disable-model-invocation: true
 model-tier: standard
 effort: high
-version: "0.1.1"
+version: "0.1.2"
 author: "flurdy"
 ---
 
@@ -106,15 +106,22 @@ last scanned it; a differing local revision may already contain, or lack, the fi
 
 ## 3. Validate and plan
 
-For each alert, establish the current manifest/lockfile version, the actual direct or
-transitive dependency path, and whether a transitive fix needs a major bump of its direct
-parent. Read repository files; do not trust the alert's relationship field alone. Write that
-evidence as the planner's `--local` input:
+For each alert, establish the current manifest/lockfile version of the vulnerable copy and
+its actual direct or transitive dependency path. Read repository files; do not trust the
+alert's relationship field alone. For a transitive dependency, record the range every parent
+declares for each vulnerable copy: npm `parentRanges` are evaluated mechanically, and any
+range excluding the patch holds the outcome, since the fix would need a parent upgrade first.
+Range syntax outside the supported caret/tilde/exact/x-range/full-version comparator subset is
+unknown, never assumed compatible. Other ecosystems need `parentAllowsTarget` from the
+resolver's own evidence. Missing parent evidence holds. Write that evidence as the planner's
+`--local` input:
 
 ```json
 {"revision": "<HEAD>", "dirty": false, "dependencies": [
   {"ecosystem": "npm", "package": "lodash", "manifestPath": "package.json",
-   "installedVersion": "4.17.20", "relationship": "direct", "parentRequiresMajorBump": false}]}
+   "installedVersion": "4.17.20", "relationship": "direct"},
+  {"ecosystem": "npm", "package": "brace-expansion", "manifestPath": "package-lock.json",
+   "installedVersion": "5.0.9", "relationship": "transitive", "parentRanges": ["^5.0.8", "^5.0.2"]}]}
 ```
 
 ```bash
@@ -127,8 +134,8 @@ outcomes, and classifies each outcome:
 
 | Decision | Meaning |
 |---|---|
-| `eligible` | Patch/minor change to the first patched version with local version evidence |
-| `hold` | `major-upgrade`, `pre-1.0-uncertain`, `no-patched-version`, `uncertain-version`, `unsupported-ecosystem`, `transitive-parent-major`, `local-version-unknown`, `relationship-unknown` |
+| `eligible` | Patch/minor change to the first patched version with local version evidence; transitive only when every parent range allows it |
+| `hold` | `major-upgrade`, `pre-1.0-uncertain`, `no-patched-version`, `uncertain-version`, `unsupported-ecosystem`, `transitive-parent-major`, `parent-range-excludes-target`, `parent-range-unknown`, `local-version-unknown`, `relationship-unknown` |
 | `verify-publication` | Local version already at or above the patch; the alert may lag publication |
 
 Keep the saved plan under an ignored `.artifacts/` path when retained. Semver labels are not

@@ -20,6 +20,7 @@ no dependency is installed, and no model is launched.
 | No alerts versus denied / rate-limited / truncated / malformed / timed-out access | collector suite |
 | Cursor pagination: exact first request, next links on short pages, full final pages, page cap, malformed/foreign/repeated cursors, failed later pages, all-state filtering | collector suite |
 | Valid direct and transitive patch/minor remediation | planner suite |
+| Transitive parent ranges: every range must allow the patch; excluded, missing or unsupported range evidence held | planner suite |
 | Several alerts resolved by one coherent fix; independent fixes stay distinct | planner suite |
 | Severity independent of upgrade size | planner suite |
 | Major / pre-1.0 / breaking / uncertain / no-patched-version / unsupported ecosystem held | planner suite |
@@ -41,5 +42,10 @@ The first authorized Sortingoffice discovery returned HTTP 400 because the colle
 `page=1`. Its original mocks duplicated that unsupported request rather than the API contract.
 The cursor regression fixture now rejects numeric `page`, emits HTTP headers only when
 `--include` is requested, and tests completion from `Link` rather than result count. The tests
-were observed failing before the cursor fix. Live single-page success alone does not prove
+were observed failing before the cursor fix.
+
+An authorized Expire discovery then showed the planner marking `@grpc/grpc-js` 1.9.16 → 1.13.6
+eligible although its only parent pins `~1.9.0`. Transitive outcomes now need parent-range
+evidence that provably admits the patch; that regression and the npm range table were observed
+failing before the fix. Live single-page success alone does not prove
 multi-page behavior; the latter remains covered by offline fixtures.

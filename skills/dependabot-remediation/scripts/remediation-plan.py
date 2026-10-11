@@ -2,9 +2,10 @@
 """Deterministic Dependabot remediation planning and post-publication recheck.
 
 ``plan`` groups collected alerts into independently coherent outcomes and classifies
-each as eligible (compatible patch/minor with local version evidence), hold (major,
-pre-1.0, no patched version, unsupported ecosystem, transitive parent major bump or
-missing local evidence) or verify-publication (locally already patched). Severity
+each as eligible (compatible patch/minor with local version evidence and, for transitive
+dependencies, every parent range proven to allow the patch), hold (major, pre-1.0, no
+patched version, unsupported ecosystem, parent range excluding or not proving the patch,
+or missing local evidence) or verify-publication (locally already patched). Severity
 informs priority only; it never widens eligibility.
 
 ``recheck`` compares a saved plan with a fresh collector read and reports fixed,
@@ -26,6 +27,7 @@ SEMVER_ECOSYSTEMS = {"npm", "pip", "rubygems", "maven", "nuget", "composer", "go
 SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 SEVERITY_PRIORITY = {"critical": "P1", "high": "P2", "medium": "P3", "low": "P3"}
 NUMERIC = re.compile(r"\d+")
+NPM_COMPARATOR = re.compile(r"(\^|~|>=|<=|>|<|=)?v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?")
 EXIT_OK, EXIT_UNAVAILABLE, EXIT_USAGE = 0, 3, 64
 
 
@@ -44,6 +46,68 @@ def parse_version(text) -> tuple[int, ...] | None:
 
 def padded(version: tuple[int, ...]) -> tuple[int, int, int]:
     return tuple((list(version) + [0, 0, 0])[:3])
+
+
+def npm_comparator_allows(token: str, version: tuple[int, int, int]) -> bool | None:
+    """Evaluate one npm comparator; None for syntax outside this deliberately small subset."""
+    match = NPM_COMPARATOR.fullmatch(token)
+    if not match:
+        return None
+    operator = match[1] or "="
+    parts: list[int] = []
+    for raw in match.group(2, 3, 4):
+        if raw is None or raw in "xX*":
+            break
+        parts.append(int(raw))
+    if operator in {">=", "<=", ">", "<"}:
+        if len(parts) != 3:
+            return None
+        bound = tuple(parts)
+        return {">=": version >= bound, "<=": version <= bound, ">": version > bound, "<": version < bound}[operator]
+    if not parts:
+        return True
+    lower = padded(tuple(parts))
+    if operator == "=":
+        if len(parts) == 3:
+            return version == lower
+        index = len(parts) - 1
+    elif operator == "~":
+        index = min(len(parts) - 1, 1)
+    else:
+        index = next((i for i, part in enumerate(parts) if part), len(parts) - 1)
+    upper = padded((*parts[:index], parts[index] + 1))
+    return lower <= version < upper
+
+
+def npm_range_allows(text, version: tuple[int, int, int]) -> bool | None:
+    """True/False when an npm range provably includes/excludes version; None when unknown."""
+    if not isinstance(text, str):
+        return None
+    results = []
+    for alternative in text.split("||"):
+        tokens = alternative.split()
+        checks = [npm_comparator_allows(token, version) for token in tokens] if tokens else [None]
+        # An unsupported token (e.g. a hyphen range) changes its neighbours' meaning.
+        results.append(None if None in checks else False if False in checks else True)
+    return True if True in results else None if None in results else False
+
+
+def parent_reasons(ecosystem: str, dependency: dict, target: tuple[int, int, int]) -> list[str]:
+    if dependency.get("parentRequiresMajorBump"):
+        return ["transitive-parent-major"]
+    if ecosystem == "npm":
+        ranges = dependency.get("parentRanges")
+        if not isinstance(ranges, list) or not ranges:
+            return ["parent-range-unknown"]
+        results = [npm_range_allows(text, target) for text in ranges]
+    else:
+        allowed = dependency.get("parentAllowsTarget")
+        results = [allowed if isinstance(allowed, bool) else None]
+    if False in results:
+        return ["parent-range-excludes-target"]
+    if None in results:
+        return ["parent-range-unknown"]
+    return []
 
 
 def load_json(path: str | None):
@@ -107,8 +171,8 @@ def classify(alerts: list[dict], dependency: dict | None) -> tuple[str, list[str
         reasons.append("major-upgrade")
     upgrade["kind"] = "major" if current[0] != target[0] else "minor" if current[1] != target[1] else "patch"
     relationship = str(sample.get("relationship") or dependency.get("relationship") or "").lower()
-    if relationship == "transitive" and dependency.get("parentRequiresMajorBump"):
-        reasons.append("transitive-parent-major")
+    if relationship == "transitive":
+        reasons.extend(parent_reasons(ecosystem, dependency, target))
     if relationship not in {"direct", "transitive"}:
         reasons.append("relationship-unknown")
     return ("hold" if reasons else "eligible"), reasons, upgrade

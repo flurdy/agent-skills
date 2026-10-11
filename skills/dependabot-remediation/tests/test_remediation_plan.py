@@ -55,10 +55,53 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(outcome["alerts"], [f"{REPO}#1"])
         self.assertEqual(outcome["titleHint"], "Upgrade lodash to >= 4.17.21 (package.json)")
 
-    def test_transitive_minor_upgrade_is_eligible_when_parent_needs_no_major_bump(self):
+    def test_transitive_minor_upgrade_is_eligible_when_every_parent_range_allows_it(self):
         outcome = self.outcome([alert(2, patched="4.18.0", relationship="transitive")],
-                               dependency(relationship="transitive", parentRequiresMajorBump=False))
+                               dependency(relationship="transitive", parentRanges=["^4.17.0"]))
         self.assertEqual((outcome["decision"], outcome["upgrade"]["kind"]), ("eligible", "minor"))
+
+    def test_transitive_fix_outside_a_parent_range_is_held(self):
+        # Expire regression: Firestore pins @grpc/grpc-js ~1.9.0, which excludes the 1.13.6 fix.
+        outcome = self.outcome(
+            [alert(130, package="@grpc/grpc-js", patched="1.13.6", relationship="transitive", manifest="package-lock.json")],
+            dependency(package="@grpc/grpc-js", installed="1.9.16", manifest="package-lock.json",
+                       relationship="transitive", parentRanges=["~1.9.0"]))
+        self.assertEqual((outcome["decision"], outcome["reasons"]), ("hold", ["parent-range-excludes-target"]))
+        self.assertEqual(outcome["upgrade"]["kind"], "minor")
+
+    def test_every_parent_range_must_allow_the_patch(self):
+        def brace(ranges):
+            return self.outcome([alert(128, package="brace-expansion", patched="5.0.10", relationship="transitive")],
+                                dependency(package="brace-expansion", installed="5.0.9", relationship="transitive",
+                                           parentRanges=ranges))
+        self.assertEqual(brace(["^5.0.8", "^5.0.2"])["decision"], "eligible")
+        self.assertEqual(brace(["^5.0.8", "5.0.9"])["reasons"], ["parent-range-excludes-target"])
+        self.assertEqual(brace(["^5.0.8", "latest"])["reasons"], ["parent-range-unknown"])
+
+    def test_transitive_without_mechanical_parent_evidence_is_held(self):
+        cases = {
+            "missing": {}, "empty": {"parentRanges": []}, "not a list": {"parentRanges": "^4.17.0"},
+            "non-string": {"parentRanges": [4]}, "hyphen": {"parentRanges": ["4.17.0 - 4.18.0"]},
+            "tag": {"parentRanges": ["latest"]}, "partial inequality": {"parentRanges": [">=4"]},
+            "prerelease": {"parentRanges": ["^4.17.21-rc.1"]}, "protocol": {"parentRanges": ["workspace:*"]},
+            "major bump flag false only": {"parentRequiresMajorBump": False},
+        }
+        for name, evidence in cases.items():
+            with self.subTest(case=name):
+                outcome = self.outcome([alert(23, relationship="transitive")],
+                                       dependency(relationship="transitive", **evidence))
+                self.assertEqual((outcome["decision"], outcome["reasons"]), ("hold", ["parent-range-unknown"]))
+
+    def test_non_npm_transitive_needs_explicit_parent_evidence(self):
+        def pip(**evidence):
+            return self.outcome([alert(24, package="urllib3", patched="2.2.2", ecosystem="pip",
+                                       manifest="requirements.txt", relationship="transitive")],
+                                dependency(package="urllib3", installed="2.2.1", ecosystem="pip",
+                                           manifest="requirements.txt", relationship="transitive", **evidence))
+        self.assertEqual(pip(parentRanges=["^2.2.0"])["reasons"], ["parent-range-unknown"])
+        self.assertEqual(pip(parentAllowsTarget=True)["decision"], "eligible")
+        self.assertEqual(pip(parentAllowsTarget=False)["reasons"], ["parent-range-excludes-target"])
+        self.assertEqual(pip(parentAllowsTarget="yes")["reasons"], ["parent-range-unknown"])
 
     def test_transitive_fix_requiring_parent_major_bump_is_held(self):
         outcome = self.outcome([alert(2, relationship="transitive")],
@@ -142,6 +185,32 @@ class PlanTests(unittest.TestCase):
             result = subprocess.run([sys.executable, "-I", str(SCRIPT), "plan", "--alerts", str(path)], capture_output=True, text=True, timeout=10)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(result.stdout, "")
+
+
+class NpmRangeTests(unittest.TestCase):
+    def test_supported_ranges_follow_npm_semantics(self):
+        cases = [
+            ("~1.9.0", (1, 13, 6), False), ("~1.9.0", (1, 9, 20), True), ("~1.9", (1, 10, 0), False),
+            ("~1", (1, 13, 6), True), ("^5.0.8", (5, 0, 10), True), ("^5.0.8", (5, 0, 7), False),
+            ("^5.0.8", (6, 0, 0), False), ("^0.2.2", (0, 5, 0), False), ("^0.2.2", (0, 2, 9), True),
+            ("^0.0.3", (0, 0, 4), False), ("^0.0", (0, 0, 9), True), ("^0.0", (0, 1, 0), False),
+            ("^0", (0, 9, 0), True), ("^1.x", (1, 9, 0), True), ("1.2.3", (1, 2, 3), True),
+            ("=1.2.3", (1, 2, 4), False), ("v1.2.3", (1, 2, 3), True), ("1.x", (1, 9, 0), True),
+            ("1.2.x", (1, 3, 0), False), ("1", (2, 0, 0), False), ("*", (9, 9, 9), True), ("x", (0, 0, 1), True),
+            (">=1.2.3 <2.0.0", (1, 9, 0), True), (">=1.2.3 <2.0.0", (2, 0, 0), False),
+            (">1.2.3", (1, 2, 3), False), ("<=1.2.3", (1, 2, 3), True),
+            ("^1.0.0 || ^2.0.0", (2, 1, 0), True), ("^1.0.0 || ^2.0.0", (3, 0, 0), False),
+            ("^1.0.0 || latest", (1, 5, 0), True),
+        ]
+        for text, version, expected in cases:
+            with self.subTest(range=text, version=version):
+                self.assertIs(MODULE.npm_range_allows(text, version), expected)
+
+    def test_unsupported_ranges_are_unknown_never_allowed(self):
+        for text in ("", "latest", "1.2.3 - 2.0.0", ">=1.2", "<2", "^1.0.0-beta.1", "workspace:*",
+                     "npm:foo@^1", "file:../x", "1.2.3.4", ">= 1.2.3", "^1.0.0 || latest", None, 1):
+            with self.subTest(range=text):
+                self.assertIsNone(MODULE.npm_range_allows(text, (3, 0, 0)))
 
 
 class RecheckTests(unittest.TestCase):
