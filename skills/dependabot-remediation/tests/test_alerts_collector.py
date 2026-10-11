@@ -12,7 +12,9 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "gh-dependabot-alerts.py"
 REPO = "acme/widgets"
 ALERTS = f"repos/{REPO}/dependabot/alerts"
-PAGE = ALERTS + "?state=open&per_page=100&page={}"
+FIRST = ALERTS + "?state=open&per_page=100"
+SECOND = FIRST + "&after=opaque%2B%2F%3D%26cursor"
+NEXT_LINK = f'<https://api.github.com/{SECOND}>; rel="next"'
 FAKE_GH = """#!{python}
 import json, os, sys, time
 with open(os.environ["GH_TEST_LOG"], "a") as log:
@@ -21,6 +23,14 @@ responses = json.loads(os.environ.get("GH_TEST_RESPONSES", "{{}}"))
 path = sys.argv[sys.argv.index("--method") + 2] if "--method" in sys.argv else sys.argv[-1]
 response = responses.get(path, {{"exit": 1, "stderr": "gh: Not Found (HTTP 404)\\n"}})
 time.sleep(response.get("sleep", 0))
+if "page=" in path.replace("per_page=", ""):
+    sys.stderr.write("gh: Pagination using the `page` parameter is not supported. (HTTP 400)")
+    sys.exit(1)
+if "--include" in sys.argv and response.get("include_headers", True):
+    newline = response.get("newline", "\\r\\n")
+    headers = [response.get("status_line", "HTTP/2.0 200 OK"), "Content-Type: application/json"]
+    headers.extend(response.get("headers", []))
+    sys.stdout.write(newline.join(headers) + newline * 2)
 sys.stdout.write(response.get("stdout", ""))
 sys.stderr.write(response.get("stderr", ""))
 sys.exit(response.get("exit", 0))
@@ -99,14 +109,16 @@ class CollectorTests(unittest.TestCase):
         return [call[call.index("--method") + 2] for call in calls]
 
     def test_no_alerts_is_complete_and_distinct_from_failures(self):
-        responses = {PAGE.format(1): {"stdout": "[]"}, **head_responses()}
+        responses = {FIRST: {"stdout": "[]"}, **head_responses()}
         result, report, calls = self.run_collector("--repo", REPO, responses=responses)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(report["schemaVersion"], "dependabot-alerts/v1")
         self.assertEqual((report["status"], report["alerts"], report["pages"]), ("complete", [], 1))
         self.assertEqual(report["defaultBranch"], {"name": "main", "headSha": "abc123", "status": "complete", "reason": None})
-        self.assertEqual(calls[0], ["api", "--hostname", "github.com", "--method", "GET", PAGE.format(1)])
-        self.assertEqual(self.paths(calls), [PAGE.format(1), f"repos/{REPO}", f"repos/{REPO}/commits/main"])
+        self.assertEqual(calls[0], ["api", "--hostname", "github.com", "--method", "GET", FIRST, "--include"])
+        self.assertEqual(self.paths(calls), [FIRST, f"repos/{REPO}", f"repos/{REPO}/commits/main"])
+        for call in calls[1:]:
+            self.assertNotIn("--include", call)
 
     def test_denied_rate_limited_and_malformed_reads_are_unavailable_not_empty(self):
         cases = {
@@ -119,7 +131,7 @@ class CollectorTests(unittest.TestCase):
         }
         for expected, response in cases.items():
             with self.subTest(reason=expected):
-                result, report, calls = self.run_collector("--repo", REPO, "--no-head", responses={PAGE.format(1): response})
+                result, report, calls = self.run_collector("--repo", REPO, "--no-head", responses={FIRST: response})
                 self.assertEqual(result.returncode, 3)
                 self.assertEqual(report["status"], "unavailable")
                 self.assertEqual(report["reason"], expected.removesuffix("-auth"))
@@ -127,7 +139,7 @@ class CollectorTests(unittest.TestCase):
                 self.assertEqual(len(calls), 1)
 
     def test_timeout_is_reported_without_retry(self):
-        responses = {PAGE.format(1): {"stdout": "[]", "sleep": 3}}
+        responses = {FIRST: {"stdout": "[]", "sleep": 3}}
         result, report, calls = self.run_collector("--repo", REPO, "--no-head", "--timeout", "1", responses=responses)
         self.assertEqual(result.returncode, 3)
         self.assertEqual((report["status"], report["reason"]), ("unavailable", "timeout"))
@@ -135,19 +147,98 @@ class CollectorTests(unittest.TestCase):
 
     def test_pagination_is_bounded_and_truncation_is_partial(self):
         full_page = json.dumps([raw_alert(n) for n in range(1, 101)])
-        responses = {PAGE.format(1): {"stdout": full_page}, PAGE.format(2): {"stdout": json.dumps([raw_alert(101)])}}
+        responses = {FIRST: {"stdout": full_page, "headers": [f"Link: {NEXT_LINK}"]},
+                     SECOND: {"stdout": json.dumps([raw_alert(101)])}}
         result, report, calls = self.run_collector("--repo", REPO, "--no-head", responses=responses)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((report["status"], report["pages"], len(report["alerts"])), ("complete", 2, 101))
-        self.assertEqual(self.paths(calls), [PAGE.format(1), PAGE.format(2)])
+        self.assertEqual(self.paths(calls), [FIRST, SECOND])
 
         result, report, calls = self.run_collector("--repo", REPO, "--no-head", "--max-pages", "1", responses=responses)
         self.assertEqual(result.returncode, 2)
         self.assertEqual((report["status"], report["reason"], len(report["alerts"])), ("partial", "page-cap-reached", 100))
         self.assertEqual(len(calls), 1)
 
+    def test_full_final_page_is_complete_without_an_extra_request(self):
+        responses = {FIRST: {"stdout": json.dumps([raw_alert(n) for n in range(1, 101)])}}
+        result, report, calls = self.run_collector("--repo", REPO, "--no-head", "--max-pages", "1", responses=responses)
+        self.assertEqual((result.returncode, report["status"], len(calls)), (0, "complete", 1))
+        self.assertEqual(len(report["alerts"]), 100)
+
+    def test_short_page_continues_using_case_insensitive_link_header(self):
+        for newline in ("\r\n", "\n"):
+            with self.subTest(newline=newline):
+                responses = {
+                    FIRST: {"stdout": json.dumps([raw_alert(1)], indent=2), "newline": newline,
+                            "headers": [f'lInK: <https://api.github.com/{FIRST}>; rel="prev", {NEXT_LINK}']},
+                    SECOND: {"stdout": "[]", "headers": [f'Link: <https://api.github.com/{FIRST}>; rel="prev"']},
+                }
+                result, report, calls = self.run_collector("--repo", REPO, "--no-head", responses=responses)
+                self.assertEqual((result.returncode, report["status"], report["pages"]), (0, "complete", 2))
+                self.assertEqual(self.paths(calls), [FIRST, SECOND])
+                self.assertTrue(all("--include" in call for call in calls))
+
+    def test_all_states_omit_the_state_filter_and_preserve_cursor(self):
+        first = ALERTS + "?per_page=100"
+        second = first + "&after=next"
+        responses = {
+            first: {"stdout": "[]", "headers": [f'Link: <https://api.github.com/{second}>; rel="next"']},
+            second: {"stdout": "[]"},
+        }
+        result, report, calls = self.run_collector("--repo", REPO, "--state", "all", "--no-head", responses=responses)
+        self.assertEqual((result.returncode, report["status"]), (0, "complete"))
+        self.assertEqual(self.paths(calls), [first, second])
+
+    def test_invalid_pagination_never_makes_an_unsafe_request(self):
+        urls = [
+            f"https://evil.example/{SECOND}", f"http://api.github.com/{SECOND}",
+            f"https://api.github.com:444/{SECOND}", f"https://user@api.github.com/{SECOND}",
+            "https://api.github.com/repos/other/repo/dependabot/alerts?after=x",
+            f"https://api.github.com/{SECOND}#fragment", f"https://api.github.com/{FIRST}",
+            f"https://api.github.com/{FIRST}&after=", f"https://api.github.com/{FIRST}&after=x&after=y",
+            f"https://api.github.com/{FIRST}&after=%ZZ", f"https://api.github.com/{FIRST}&after=%00",
+        ]
+        headers = [[f'Link: <{url}>; rel="next"'] for url in urls]
+        headers += [["Link: broken"], [f"Link: {NEXT_LINK}, {NEXT_LINK}"]]
+        for values in headers:
+            with self.subTest(headers=values):
+                result, report, calls = self.run_collector("--repo", REPO, "--no-head", responses={
+                    FIRST: {"stdout": "[]", "headers": values},
+                })
+                self.assertEqual((result.returncode, report["status"], report["reason"]),
+                                 (3, "unavailable", "malformed-pagination"))
+                self.assertEqual(self.paths(calls), [FIRST])
+                self.assertEqual(report["alerts"], [])
+
+    def test_repeated_cursor_stops_without_refetching(self):
+        responses = {
+            FIRST: {"stdout": json.dumps([raw_alert(1)]), "headers": [f"Link: {NEXT_LINK}"]},
+            SECOND: {"stdout": json.dumps([raw_alert(2)]), "headers": [f"Link: {NEXT_LINK}"]},
+        }
+        result, report, calls = self.run_collector("--repo", REPO, "--no-head", responses=responses)
+        self.assertEqual((result.returncode, report["reason"], report["pages"]), (3, "malformed-pagination", 2))
+        self.assertEqual(self.paths(calls), [FIRST, SECOND])
+        self.assertEqual(report["alerts"], [])
+
+    def test_second_page_failures_do_not_report_partial_data_as_complete(self):
+        cases = [
+            ({"exit": 1, "stderr": "gh: rate limit (HTTP 429)"}, "rate-limited"),
+            ({"stdout": "[]", "sleep": 3}, "timeout"),
+            ({"stdout": "broken JSON"}, "malformed-response"),
+            ({"stdout": "[]", "include_headers": False}, "malformed-response"),
+            ({"stdout": "[]", "status_line": "HTTP/2.0 304 Not Modified"}, "malformed-response"),
+        ]
+        for response, reason in cases:
+            with self.subTest(reason=reason):
+                responses = {FIRST: {"stdout": json.dumps([raw_alert(1)]), "headers": [f"Link: {NEXT_LINK}"]}, SECOND: response}
+                result, report, calls = self.run_collector("--repo", REPO, "--no-head", "--timeout", "1", responses=responses)
+                self.assertEqual((result.returncode, report["status"], report["reason"], report["pages"]),
+                                 (3, "unavailable", reason, 2))
+                self.assertEqual(report["alerts"], [])
+                self.assertEqual(self.paths(calls), [FIRST, SECOND])
+
     def test_alert_fields_are_normalized_and_free_text_bounded_or_dropped(self):
-        responses = {PAGE.format(1): {"stdout": json.dumps([raw_alert(7)])}}
+        responses = {FIRST: {"stdout": json.dumps([raw_alert(7)])}}
         _, report, _ = self.run_collector("--repo", REPO, "--no-head", responses=responses)
         alert = report["alerts"][0]
         self.assertEqual(alert["identity"], f"{REPO}#7")
@@ -160,7 +251,7 @@ class CollectorTests(unittest.TestCase):
 
     def test_failure_detail_is_bounded_and_token_shapes_are_redacted(self):
         stderr = "gh: boom ghp_" + "A" * 40 + " " + "x" * 500 + "\n"
-        _, report, _ = self.run_collector("--repo", REPO, "--no-head", responses={PAGE.format(1): {"exit": 1, "stderr": stderr}})
+        _, report, _ = self.run_collector("--repo", REPO, "--no-head", responses={FIRST: {"exit": 1, "stderr": stderr}})
         self.assertNotIn("ghp_", report["detail"])
         self.assertIn("[redacted]", report["detail"])
         self.assertLessEqual(len(report["detail"]), 200)
@@ -178,13 +269,14 @@ class CollectorTests(unittest.TestCase):
         self.assertEqual(report["status"], "unavailable")
         self.assertEqual([a["state"] for a in report["alerts"]], ["fixed"])
         self.assertEqual(self.paths(calls), [f"{ALERTS}/12", f"{ALERTS}/14", f"{ALERTS}/15"])
+        self.assertTrue(all("--include" not in call for call in calls))
 
         result, report, _ = self.run_collector("--repo", REPO, "--no-head", "--alert", "12", responses=responses)
         self.assertEqual(result.returncode, 0)
         self.assertEqual((report["status"], report["missing"], report["unavailable"]), ("complete", [], []))
 
     def test_head_lookup_failure_does_not_degrade_alert_evidence(self):
-        responses = {PAGE.format(1): {"stdout": "[]"}, f"repos/{REPO}": {"exit": 1, "stderr": "gh: Not Found (HTTP 404)\n"}}
+        responses = {FIRST: {"stdout": "[]"}, f"repos/{REPO}": {"exit": 1, "stderr": "gh: Not Found (HTTP 404)\n"}}
         result, report, _ = self.run_collector("--repo", REPO, responses=responses)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(report["status"], "complete")
@@ -197,7 +289,7 @@ class CollectorTests(unittest.TestCase):
         git = ["git", "-C", str(checkout)]
         subprocess.run([*git, "init", "-q"], check=True, env={"PATH": str(self.bin), "HOME": str(self.work)})
         subprocess.run([*git, "remote", "add", "origin", f"git@github.com:{REPO}.git"], check=True)
-        responses = {PAGE.format(1): {"stdout": "[]"}}
+        responses = {FIRST: {"stdout": "[]"}}
         result, report, _ = self.run_collector("--no-head", responses=responses, cwd=checkout)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((report["repository"], report["repositorySource"]), (REPO, "origin-remote"))

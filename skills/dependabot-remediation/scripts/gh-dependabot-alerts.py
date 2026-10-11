@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import quote, urlencode
+from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 SCHEMA_VERSION = "dependabot-alerts/v1"
 PER_PAGE = 100
@@ -55,9 +55,11 @@ def classify_failure(stderr: str, returncode: int) -> str:
     return "request-failed"
 
 
-def run_gh(path: str, timeout: float) -> tuple[str | None, str | None, str | None]:
+def run_gh(path: str, timeout: float, *, include: bool = False) -> tuple[str | None, str | None, str | None]:
     """Return (stdout, reason, detail); reason is None on transport success."""
     command = ["gh", "api", "--hostname", "github.com", "--method", "GET", path]
+    if include:
+        command.append("--include")
     try:
         result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
     except FileNotFoundError:
@@ -131,23 +133,81 @@ def normalize_alert(repository: str, raw: dict) -> dict:
     }
 
 
+def list_response(stdout: str) -> tuple[list, list[str]]:
+    """Parse gh --include's HTTP envelope without exposing headers in the report."""
+    header, separator, body = stdout.replace("\r\n", "\n").partition("\n\n")
+    lines = header.splitlines()
+    if not separator or not lines or not re.fullmatch(r"HTTP/[\d.]+ 200(?: .*)?", lines[0]):
+        raise ValueError("malformed-response")
+    links = []
+    for line in lines[1:]:
+        name, colon, value = line.partition(":")
+        if not colon or not re.fullmatch(r"[A-Za-z0-9-]+", name):
+            raise ValueError("malformed-response")
+        if name.lower() == "link":
+            links.append(value.strip())
+    payload, reason = parse_json(body)
+    if reason or not isinstance(payload, list) or any(not isinstance(item, dict) for item in payload):
+        raise ValueError("malformed-response")
+    return payload, links
+
+
+def next_cursor(links: list[str], repository: str) -> str | None:
+    """Only extract a cursor from the exact repository's GitHub API list endpoint."""
+    cursor = None
+    for header in links:
+        for entry in header.split(","):
+            match = re.fullmatch(r'\s*<([^<>\s]+)>\s*;\s*rel="([^"]+)"\s*', entry)
+            if not match:
+                raise ValueError("malformed-pagination")
+            if "next" not in match[2].split():
+                continue
+            if cursor is not None:
+                raise ValueError("malformed-pagination")
+            try:
+                url = urlsplit(match[1])
+                if (url.scheme != "https" or url.netloc != "api.github.com"
+                        or url.path != f"/repos/{repository}/dependabot/alerts" or url.fragment
+                        or re.search(r"%(?![A-Fa-f0-9]{2})", url.query)):
+                    raise ValueError
+                query = parse_qs(url.query, keep_blank_values=True, strict_parsing=True, errors="strict")
+                values = query.get("after", [])
+                if len(values) != 1 or not values[0] or len(values[0]) > 2048:
+                    raise ValueError
+                cursor = values[0]
+                if any(ord(char) < 33 or ord(char) > 126 for char in cursor):
+                    raise ValueError
+            except ValueError:
+                raise ValueError("malformed-pagination") from None
+    return cursor
+
+
 def collect_pages(repository: str, state: str, max_pages: int, timeout: float, report: dict) -> list[dict]:
     alerts: list[dict] = []
+    parameters = {"state": state} if state != "all" else {}
+    parameters["per_page"] = PER_PAGE
+    seen_cursors: set[str] = set()
     for page in range(1, max_pages + 1):
-        query = urlencode({"state": state, "per_page": PER_PAGE, "page": page})
-        stdout, reason, detail = run_gh(f"repos/{repository}/dependabot/alerts?{query}", timeout)
+        query = urlencode(parameters)
+        stdout, reason, detail = run_gh(f"repos/{repository}/dependabot/alerts?{query}", timeout, include=True)
         report["pages"] = page
         if reason:
             report.update(status="unavailable", reason=reason, detail=detail)
             return []
-        payload, reason = parse_json(stdout or "")
-        if reason or not isinstance(payload, list):
-            report.update(status="unavailable", reason=reason or "malformed-response")
+        try:
+            payload, links = list_response(stdout or "")
+            cursor = next_cursor(links, repository)
+            if cursor in seen_cursors:
+                raise ValueError("malformed-pagination")
+        except ValueError as error:
+            report.update(status="unavailable", reason=str(error))
             return []
-        alerts.extend(normalize_alert(repository, item) for item in payload if isinstance(item, dict))
-        if len(payload) < PER_PAGE:
+        alerts.extend(normalize_alert(repository, item) for item in payload)
+        if cursor is None:
             report["status"] = "complete"
             return alerts
+        seen_cursors.add(cursor)
+        parameters["after"] = cursor
     report.update(status="partial", reason="page-cap-reached")
     return alerts
 

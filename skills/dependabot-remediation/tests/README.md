@@ -18,6 +18,7 @@ no dependency is installed, and no model is launched.
 | Acceptance case | Where it is checked |
 |---|---|
 | No alerts versus denied / rate-limited / truncated / malformed / timed-out access | collector suite |
+| Cursor pagination: exact first request, next links on short pages, full final pages, page cap, malformed/foreign/repeated cursors, failed later pages, all-state filtering | collector suite |
 | Valid direct and transitive patch/minor remediation | planner suite |
 | Several alerts resolved by one coherent fix; independent fixes stay distinct | planner suite |
 | Severity independent of upgrade size | planner suite |
@@ -33,3 +34,12 @@ that mechanically cover it, or an empty list when only the instructions and the 
 owner skills (`develop`, `verify-task`, `complete-task`, `artifact-hygiene`) govern it.
 These are not observed model behavior and prove neither live GitHub state nor runtime
 permission enforcement. A real-repository dogfood run is separate, explicitly scoped work.
+
+## Regression provenance
+
+The first authorized Sortingoffice discovery returned HTTP 400 because the collector sent
+`page=1`. Its original mocks duplicated that unsupported request rather than the API contract.
+The cursor regression fixture now rejects numeric `page`, emits HTTP headers only when
+`--include` is requested, and tests completion from `Link` rather than result count. The tests
+were observed failing before the cursor fix. Live single-page success alone does not prove
+multi-page behavior; the latter remains covered by offline fixtures.

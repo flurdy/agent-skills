@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Skill,Bash(~/.agents/skills/depen
 disable-model-invocation: true
 model-tier: standard
 effort: high
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 
@@ -88,11 +88,15 @@ A dirty tree is a blocker for fixing; discovery may continue.
 ~/.agents/skills/dependabot-remediation/scripts/gh-dependabot-alerts.py --repo OWNER/REPO
 ```
 
-Omit `--repo` to derive it from the `origin` remote. The helper pages open alerts with a page
-cap, reads the default-branch head SHA separately, and emits `dependabot-alerts/v1` JSON with
+Omit `--repo` to derive it from the `origin` remote. The helper follows validated `Link`
+header `after` cursors with a page cap, never numeric `page` parameters or unbounded
+pagination. Only a missing next link means complete; page length does not. Malformed or
+repeated cursors fail closed without following a foreign host or repository. `--state all`
+omits the state filter, as defined by the [GitHub API](https://docs.github.com/en/rest/dependabot/alerts#list-dependabot-alerts-for-a-repository).
+It reads the default-branch head SHA separately, and emits `dependabot-alerts/v1` JSON with
 `status` `complete`/`partial`/`unavailable`, a `reason`
 (`permission-denied`, `rate-limited`, `not-found`, `request-failed`, `malformed-response`,
-`timeout`, `page-cap-reached`) and normalized alert fields: identity `OWNER/REPO#N`, state,
+`timeout`, `page-cap-reached`, `malformed-pagination`) and normalized alert fields: identity `OWNER/REPO#N`, state,
 severity, ecosystem, package, manifest path, relationship, vulnerable range, first patched
 version, GHSA/CVE IDs, and a bounded summary. Report `partial`/`unavailable` as exactly that.
 
