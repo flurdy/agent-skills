@@ -12,7 +12,7 @@ grant='Bash(~/.agents/skills/ready-to-merge/scripts/git-unpushed.sh:*)'
   exit 1
 }
 
-for script in gh-branch-view.py gh-branch-delete.py; do
+for script in gh-branch-view.py gh-branch-delete.py merge-timing.py; do
   [[ -x "$skill_dir/scripts/$script" ]] || { echo "$script must be executable" >&2; exit 1; }
   grant="Bash(~/.agents/skills/ready-to-merge/scripts/$script:*)"
   grep -F -- 'allowed-tools:' "$skill_file" | grep -Fq -- "$grant" || {
@@ -40,6 +40,20 @@ for invariant in \
   'standalone tool call' \
   'github.com only'; do
   grep -Fq -- "$invariant" "$skill_file" || { echo "missing cleanup invariant: $invariant" >&2; exit 1; }
+done
+
+for invariant in \
+  'without a policy, timing is never checked or rendered' \
+  'PR cannot relax its own restriction' \
+  'never clear' \
+  'never pass it here' \
+  'still reports applicable timing' \
+  'If timing is `required` or `unknown`, stop here: do not offer the merge' \
+  'Do not wait, sleep, schedule or retry' \
+  'Recheck timing immediately before merging' \
+  'timing change, and a recheck never merges, waits or schedules' \
+  'No override bypasses a `required` restriction'; do
+  grep -Fq -- "$invariant" "$skill_file" || { echo "missing timing invariant: $invariant" >&2; exit 1; }
 done
 
 echo "ready-to-merge skill contract tests passed"

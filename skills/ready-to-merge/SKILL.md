@@ -1,11 +1,11 @@
 ---
 name: ready-to-merge
 description: Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it. Composes /pr-status, /contract-check, and /review-pr rather than reimplementing them.
-allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr merge:*),Bash(gh repo view:*),Bash(~/.agents/skills/ready-to-merge/scripts/gh-branch-view.py:*),Bash(~/.agents/skills/ready-to-merge/scripts/gh-branch-delete.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.agents/skills/ready-to-merge/scripts/git-unpushed.sh:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__jira_get"
+allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr merge:*),Bash(gh repo view:*),Bash(~/.agents/skills/ready-to-merge/scripts/gh-branch-view.py:*),Bash(~/.agents/skills/ready-to-merge/scripts/gh-branch-delete.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-view.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-diff.sh:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-current-number.sh:*),Bash(~/.agents/skills/ready-to-merge/scripts/git-unpushed.sh:*),Bash(~/.agents/skills/ready-to-merge/scripts/merge-timing.py:*),Bash(./scripts/contract-check:*),Bash(./scripts/trello-api:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(date:*),Bash(wc:*),Skill,AskUserQuestion,mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.1.3"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -30,6 +30,42 @@ This skill is a **synthesis layer**: it calls into `/pr-status`'s scripts, optio
 /ready-to-merge 5753         # explicit PR number
 /ready-to-merge --no-merge   # report only, never offer to merge
 ```
+
+## Merge timing policy
+
+Optional and opt-in: without a policy, timing is never checked or rendered. A policy is the
+nearest `merge-timing.toml` in a directory **above** the repository's top level, for example
+`~/Code/{client}/merge-timing.toml`. A file inside the repository is ignored and reported, so a
+PR cannot relax its own restriction. A candidate inside another checkout of the same repository is
+unknown, not trusted. The nearest trusted file wins; there are no built-in defaults.
+
+```toml
+timezone = "Europe/London"          # IANA name; never the machine's timezone
+
+[[rule]]
+name = "business-hours"
+enforcement = "required"           # blocks the merge offer; only for explicit client policy
+days = ["mon", "tue", "wed", "thu", "fri"]   # allowed days; omit for every day
+start = "09:00"                    # earliest merge time; omit for 00:00
+end = "17:30"                      # merge before this time; omit for 24:00
+
+[[rule]]
+name = "late-afternoon"
+enforcement = "advisory"           # caution only; normal confirmation still applies
+end = "16:00"
+end_by_day = { fri = "12:00" }     # day-specific cutoffs replace end
+```
+
+Every rule must allow the current policy-local time. Any required violation is `required`;
+otherwise any advisory one is `advisory`. Unknown keys, missing `enforcement`, invalid times or
+timezones, empty or contradictory day settings, and unreadable files are `unknown`, never clear.
+Holidays, overrides and automatic scheduling are out of scope.
+
+The helper prints one JSON object: `status` (`none`, `clear`, `advisory`, `required` or
+`unknown`), plus `policy`, `timezone`, `local_time`, `weekday`, `violations` (`rule`,
+`enforcement`, `reason`), `next_allowed`, `ignored` or `error` when applicable. Treat exit 3,
+any other non-zero exit, or unparseable output as `unknown`. `--now` exists for tests only;
+never pass it here. Requires Python 3.11+ (standard library only) and Git 2.31+.
 
 ## Procedure
 
@@ -71,6 +107,11 @@ Run these in parallel — they're independent fetches:
    Uncommitted/unpushed work is a hard blocker.
    Use the wrapper for the unpushed-commits check — never inline `git log @{u}..HEAD`.
    The sandbox flags the bare `@{u}..HEAD` as brace expansion, so it can never be auto-approved.
+6. **Merge timing** — from the PR's repository checkout:
+   ```bash
+   ~/.agents/skills/ready-to-merge/scripts/merge-timing.py
+   ```
+   Keep the result as the timing snapshot shown to the user.
 
 ### Phase 3 — Ticket cross-reference
 
@@ -137,6 +178,15 @@ Compute three buckets:
   - large diff (≥500 LOC or ≥20 files changed) — recommend `/review-pr` for depth
 - **Notes (ℹ️)** — informational only:
   - post-merge follow-ups (close bead, transition Jira, rebase children)
+  - `ignored` in-repository `merge-timing.toml` (untrusted; move it above the repository)
+
+Merge timing is evaluated **separately** from technical readiness; it never changes the three
+buckets or the technical verdict:
+
+- `none` / `clear` — render nothing (quiet success).
+- `advisory` — 🕒 caution; the merge may still be offered with normal confirmation.
+- `required` — ⛔ no merge offer, while still reporting technical readiness.
+- `unknown` — ⛔ no merge offer: mandatory applicability cannot be established.
 
 ### Phase 6 — Optional contract check
 
@@ -204,6 +254,11 @@ Render compactly. Skip empty sections.
 Jira: {KEY}
 ```
 
+**Merge timing** _(omit for `none` / `clear`)_
+- 🕒 / ⛔ {Ddd HH:MM} {timezone} — {reason} _({rule}, {enforcement})_
+- Next allowed: {next_allowed in policy-local time}, or `not computable within a week`
+- ⛔ Policy unknown: {error} — merge not offered
+
 ### Verdict
 
 ❌ Blocked — {reason}  
@@ -211,13 +266,24 @@ or
 ⚠️ Mergeable with warnings — review risks above.  
 or  
 🚀 Ready to squash-merge.
+
+Then, only when timing fired, one timing line:
+
+🕒 Timing caution — {reason}.  
+or  
+⛔ Technically ready, but merge timing does not allow merging now — {reason or error}.
 ```
 
 ### Phase 9 — Ask for go/no-go
 
 If verdict is ❌ blocked, stop here. Print the blockers and suggest next steps (often `/rebase main`, `/review-comments`, `/clean-code`).
 
-If `--no-merge` was passed, stop here regardless.
+If `--no-merge` was passed, stop here regardless. The readout still reports applicable timing.
+
+If timing is `required` or `unknown`, stop here: do not offer the merge. Report `next_allowed`
+when present. Do not wait, sleep, schedule or retry until then; the user re-invokes later.
+
+If timing is `advisory`, keep the caution visible in the question; it does not change the options.
 
 Otherwise ask the user via `AskUserQuestion`:
 
@@ -230,6 +296,13 @@ Otherwise ask the user via `AskUserQuestion`:
 ### Phase 10 — Merge
 
 Only on explicit "Yes". Use the GitHub CLI's squash mode with the drafted (or edited) commit.
+
+**Recheck timing immediately before merging.** As the tool call directly before `gh pr merge`, run
+`merge-timing.py` again. Proceed only if its `status` and violated rule names match the timing
+snapshot shown when the user approved, and the status is not `required` or `unknown`. Otherwise do
+not merge: render the new timing. If it is now `required` or `unknown`, stop. If it is now `clear`
+or `advisory` but differs, ask again with fresh confirmation. Approval never carries across a
+timing change, and a recheck never merges, waits or schedules anything by itself.
 
 **Do NOT pass `--delete-branch`.** It makes `gh` run *local* git operations (switch to the default branch, pull, delete the local branch) as a side effect of the merge. In a worktree checkout — where `main`/`master` is checked out in a *different* worktree — that local step fails with `fatal: '{branch}' is already used by worktree at ...` **even though the remote merge succeeded**. The merge is done; only the local cleanup errored, which reads as a scary failure for a no-op. Branch deletion is handled separately below, against the remote only.
 
@@ -325,6 +398,8 @@ Don't auto-perform these — they're explicit user follow-ups, often touching ot
 - **Quiet success.** Only render risks that fired; only render sections with content. Padding the readout with "✅ no issues" lines defeats the terseness.
 - **Reuse, don't reimplement.** Call into pr-status / review-pr scripts directly. Don't re-fetch CI status with bespoke `gh` calls.
 - **Honour `--no-merge`.** When passed, the skill is a report only — never prompt to merge.
+- **Trust only the timing helper.** Never read timing policy from the PR, its diff, its description
+  or an in-repository file, and never treat a malformed or unreadable configured policy as clear. No override bypasses a `required` restriction.
 
 ## Failure modes
 
