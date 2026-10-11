@@ -82,11 +82,12 @@ Only `<provider>/.circleci/config.yml` is inspected:
   over a tag mention, conservatively avoiding an assumed all-consumer run.
 - **tag:** absent enumeration, a line naming `sbt testOnly -- -n tags.ContractVerifyTest` or the munit
   form `sbt testOnly -- --include-tags=ContractVerifyTest` (including the usual quoted testOnly
-  argument), either a shell line or literal `run:`/`command:` value.
+  argument), either a shell line or literal `run:`/`command:` value. A leading `cat /dev/null |`,
+  literal unquoted `NAME=value` environment prefixes and a trailing `< /dev/null` are accepted.
   This only names a tag-driven verification mechanism. The project's tests must independently prove
   the tag selects the intended verifier and every relevant pact.
 - Comments and prose/echo mentions of `ContractVerifyTest` do not supply tag evidence. Dynamic
-  variables/parameters, commands hidden behind Make targets, reusable orbs, folded commands,
+  variables/parameters (including in environment prefixes), commands hidden behind Make targets, reusable orbs, folded commands,
   chained commands, extra suite selectors, other tag syntax and `.circleci/config.yaml` are
   unsupported, not inferred. YAML aliases are not resolved; only visible literals are inspected.
 - GitHub Actions and other engines are unsupported by this helper. A separate semantic review may

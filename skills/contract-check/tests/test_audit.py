@@ -184,6 +184,29 @@ class AuditTests(unittest.TestCase):
         self.ci.write_text('    sbt "testOnly -- --include-tags=ContractConsumerTest"\n')
         self.assertIn("style=unsupported", self.run_audit("coverage"))
 
+    def test_literal_env_prefixes_and_null_stdin_redirection_are_static_matches(self):
+        for line in ('SBT_OPTS=-Xmx2g sbt "testOnly -- -n tags.ContractVerifyTest"',
+                     '- run: CI=true JAVA_OPTS=-Xss4m sbt testOnly -- -n tags.ContractVerifyTest',
+                     'command: cat /dev/null | SBT_OPTS=-Xmx2g sbt "testOnly -- --include-tags=ContractVerifyTest"',
+                     'sbt "testOnly -- --include-tags=ContractVerifyTest" < /dev/null',
+                     "- run: sbt 'testOnly -- -n tags.ContractVerifyTest' </dev/null"):
+            with self.subTest(line=line):
+                self.ci.write_text("    " + line + "\n")
+                self.assertIn("OK   api  style=tag", self.run_audit("coverage"))
+
+    def test_dynamic_or_chained_wrappers_are_unknown(self):
+        for line in ('SBT_OPTS=$OPTS sbt "testOnly -- -n tags.ContractVerifyTest"',
+                     'FLAG=$(make flag) sbt "testOnly -- -n tags.ContractVerifyTest"',
+                     'SBT_OPTS="-Xmx2g -Xss4m" sbt "testOnly -- -n tags.ContractVerifyTest"',
+                     'FLAG=x; sbt "testOnly -- -n tags.ContractVerifyTest"',
+                     'sbt "testOnly -- -n tags.ContractVerifyTest" < other.txt',
+                     'sbt "testOnly -- -n tags.ContractVerifyTest" < /dev/null && echo done'):
+            with self.subTest(line=line):
+                self.ci.write_text("    " + line + "\n")
+                output = self.run_audit("coverage")
+                self.assertNotIn("style=tag", output)
+                self.assertIn("style=unsupported", output)
+
     def test_src_provider_layout_and_single_quoted_enum(self):
         self.provider.unlink()
         self.put("api/src/test/resources/pacts/web-consumer-api-provider.json", "{}\n")

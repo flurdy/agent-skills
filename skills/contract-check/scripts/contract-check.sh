@@ -341,6 +341,9 @@ check_coverage() {
 
         local style="" ; local -a unverified=()
         local tag_selector='testOnly[[:space:]]+--[[:space:]]+(-n[[:space:]]+tags\.ContractVerifyTest|--include-tags=ContractVerifyTest)'
+        local null_stdin_pipe='(cat[[:space:]]+/dev/null[[:space:]]*\|[[:space:]]*)?'
+        local literal_env='([A-Za-z_][A-Za-z0-9_]*=[A-Za-z0-9_./:,+@%=-]*[[:space:]]+)*'
+        local null_stdin_redirect='([[:space:]]*<[[:space:]]*/dev/null)?'
         if $invalid; then
             style="unsupported"
         elif [[ ${#active[@]} -gt 0 ]]; then
@@ -351,7 +354,7 @@ check_coverage() {
                 for a in "${active[@]}"; do [[ "$a" == "$c" ]] && found=true && break; done
                 $found || unverified+=("$c")
             done
-        elif grep -Eq "^[[:space:]]*((-[[:space:]]*)?(run|command):[[:space:]]*)?(cat[[:space:]]+/dev/null[[:space:]]*\|[[:space:]]*)?sbt[[:space:]]+(\"$tag_selector\"|'$tag_selector'|$tag_selector)[[:space:]]*$" <<< "$active_cfg"; then
+        elif grep -Eq "^[[:space:]]*((-[[:space:]]*)?(run|command):[[:space:]]*)?$null_stdin_pipe${literal_env}sbt[[:space:]]+(\"$tag_selector\"|'$tag_selector'|$tag_selector)${null_stdin_redirect}[[:space:]]*$" <<< "$active_cfg"; then
             style="tag"
         else
             style="unsupported"
