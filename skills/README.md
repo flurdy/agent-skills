@@ -19,6 +19,7 @@
 | contract-test | Execute existing scoped Pact-lite generation, local sync and provider verification; status delegates to contract-check |
 | create-pr | Audit publication artifacts, then create a separately confirmed pull request following project conventions and close the associated bead; can offer an opt-in, approved Jira review move |
 | delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
+| dependabot-remediation | Explicit per-repository Dependabot security-alert remediation: bounded read-only discovery, semver eligibility with held major/uncertain cases, one bead per outcome, fixes through the normal develop/verify/finalize owners, one confirmed push, observed alert state |
 | develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | do-i-need-this | Explicit read-only necessity check for one idea or task; weighs doing nothing and smaller alternatives, labels insufficient evidence, and stops after advice |
