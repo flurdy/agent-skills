@@ -37,7 +37,7 @@
 | outstanding-work | Ticket-scoped, read-only blocker-first dashboard for unmet requirements, check evidence, working-copy state, tracking drift, and concrete untracked follow-ups |
 | pair-programming | Opt-in conversational pairing with agent-written code: discuss small agreed steps and their evidence, allow redirection, and preserve normal workflow and safety gates |
 | pedantic-review | Read-only craft and test-design review; requirements, coverage sufficiency, execution, and fixes stay with their separate owners |
-| peer-session | Send one human-approved live ask or instruction through Orca to a local or remote peer; verify correlated evidence without automatic retries, spawning or offline queueing |
+| peer-session | Send one human-approved live ask or instruction to a peer via native Claude Code messaging for local sessions or Orca otherwise; verify correlated evidence without automatic retries, transport switching, spawning or offline queueing |
 | pi-spend | Read-only estimate of Pi model cost by provider and model for today, this week, this month, and all recorded history, separating metered credit usage from flat-rate subscription usage |
 | pickup | Read-only shortlist of unassigned, ready Jira tickets for the team (active sprint, next sprint, top of backlog) with flagged or blocked tickets listed separately; scoped by a workspace `pickup.toml` |
 | plan-day | Render today's plan from a My PA workspace: ranked Jira, Trello, Beads and Thoughtbox items assigned to work, project-session, evening or skip blocks, flagged when delegable to an unattended session, written to a dated ephemeral plan file |

@@ -51,6 +51,7 @@ help:
 	@echo "make test-sanity-check"
 	@echo "make test-reassess"
 	@echo "make test-pair-programming"
+	@echo "make test-peer-session"
 	@echo "make test-plan-to-backlog"
 	@echo "make test-thoughtbox"
 	@echo "make test-beads"
@@ -112,7 +113,7 @@ clean-code:
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
 TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-contract-check test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
-  test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
+  test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
   test-pi-spend test-pickup test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
   test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check
@@ -180,7 +181,7 @@ test-project-brief:
 test-skill-pilot:
 	@python3 -m unittest discover -s tests -p 'test_run_skill_pilot.py'
 
-.PHONY: test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming
+.PHONY: test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session
 
 test-architect:
 	@bash skills/architect/tests/test-skill-contract.sh
@@ -202,6 +203,9 @@ test-reassess:
 
 test-pair-programming:
 	@python3 -B -m unittest discover -s skills/pair-programming/tests
+
+test-peer-session:
+	@python3 -B -m unittest discover -s skills/peer-session/tests
 
 .PHONY: test-dependabot-remediation
 test-dependabot-remediation:
