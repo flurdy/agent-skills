@@ -322,8 +322,9 @@ numbered ping batch to two candidates, user selection, and fresh approval of the
 turn after sending did not prevent the selected recipient from reading the final message.
 
 The pilot also offered an unrelated `ping all sessions` option, which the user did not
-choose. The scope wording was tightened afterwards; that approval-screen correction
-still needs live retesting. Exact runtime versions and raw tool payloads were not
+choose. After tightening the scope wording, a fresh approval-screen retest offered only
+the two user-named candidates, labelled withheld project-directory evidence as unconfirmed,
+and stopped without sending. Exact runtime versions and raw tool payloads were not
 captured. Hold/refusal, missing-self identity and other-machine paths were not exercised.
 `make test-peer-session` checks this file's static contract and is not live-delivery
 evidence. The manual pilot is in [tests/README.md](tests/README.md).
