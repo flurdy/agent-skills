@@ -79,6 +79,7 @@
 | watch-review-requests | Schedule the read-only inbound PR request dashboard; adaptive/fixed cadence, unattended, manual review only |
 | watch-rollout | Choose between implemented rollout stacks, then delegate unchanged arguments to the GitHub Actions or CircleCI/Flux specialist without weakening stack-specific safety |
 | watch-telemetry | Query opt-in local watcher-execution counters with partial coverage, fixed privacy-safe fields, and bounded active retention; explicitly enable, disable, or prune collection |
+| workspace-sync | Explicit attended Git and Beads synchronization using validated workspace targets, accurate previews and separate fresh approvals; no automatic sync, retries or recovery |
 | wrap-up | Report session activity, artifact hygiene and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |
 
 ## Model routing
