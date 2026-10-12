@@ -9,7 +9,8 @@ apply it rather than carrying their own thresholds.
 A bead owns one independently valuable outcome. Coding, tests, review, documentation of the
 same change, rollout, commits, retries, agent handoffs, and sequencing steps stay inside that
 bead's description, design, or execution checklist. Estimated size alone never justifies a
-split: a large single outcome is still one bead.
+split: a large single outcome is still one bead. The only evidence-only split exception is the
+[declared-boundary case below](#deferred-verification-exception).
 
 ## Child test
 
@@ -22,7 +23,19 @@ A proposed child earns its own bead only when it passes all five tests:
 4. **Independent lifecycle:** it can be closed, reprioritized, or assigned separately.
 5. **Outcome language:** it describes delivered capability or evidence, not a work phase.
 
-A candidate that fails any test folds back into its parent.
+A candidate that fails any test folds back into its parent, except for the narrow case below.
+
+## Deferred-verification exception
+
+After committed implementation reaches an explicitly declared delivery boundary, allow at most one
+dated, evidence-only verification follow-up when a future rollout/job check is the only unmet
+acceptance. Its independent value is the remaining evidence after separately delivered implementation;
+it still needs its own observable pass criteria and lifecycle. Follow the
+[Beads lifecycle gate and checklist](../SKILL.md#deferred-verification), including confirmation,
+creation before closure, and failure disposition. Use `discovered-from`, not parent membership or a
+blocking dependency; do not convert the original to an epic or split tests/review into phases.
+Without that declaration and reached boundary, rollout otherwise stays inside the original bead;
+snooze that bead with the dated verification note instead.
 
 ## Epic threshold
 

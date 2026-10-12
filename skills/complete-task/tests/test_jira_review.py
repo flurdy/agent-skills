@@ -250,6 +250,16 @@ class PlanTests(Fixture):
                 self.assertEqual((result["status"], result["reason"]), ("skip", "remaining-work"))
                 self.assertEqual(result["remaining"], ["local:ab-2"])
 
+    def test_deferred_verification_follow_up_blocks_review(self):
+        follow_up = issue(
+            "ab-check", "deferred", defer_until="2030-02-01T10:00:00Z",
+            dependencies=[{"depends_on_id": "ab-1", "type": "discovered-from"}],
+        )
+        repo = self.standalone(issues=(issue("ab-1"), follow_up))
+        result = self.run_helper(repo)
+        self.assertEqual((result["status"], result["reason"]), ("skip", "remaining-work"))
+        self.assertEqual(result["remaining"], ["local:ab-check"])
+
     def test_only_an_exact_external_ref_associates(self):
         repo = self.standalone()
         self.issues(repo, issue("ab-1"), issue("ab-2", "open", ref=None, title="Mentions AB-1"))
@@ -390,6 +400,10 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("mcp__jira__", create)
         self.assertOrder(complete, "bd -C <directory> close <bead-id>", "--milestone trunk-commit")
         self.assertIn("**Close the bead anyway**", complete.split("### 6a.", 1)[1])
+        jira_offer = " ".join(complete.split("### 6a.", 1)[1].split("### 7.", 1)[0].split())
+        for term in ("Deferred-verification", "skip", "never claim verification", "no Jira comment"):
+            self.assertIn(term, jira_offer)
+        self.assertOrder(complete, "#### A. Close implementation", "#### B. Snooze", "### 6a.")
         for term in ("--milestone pr-created", "--expected-key", "--draft", "--stacked"):
             self.assertIn(term, create)
         self.assertOrder(create, "Confirm PR creation", "bd -C <directory> close <bead-id>", "--milestone pr-created")

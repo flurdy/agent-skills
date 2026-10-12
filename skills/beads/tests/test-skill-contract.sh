@@ -80,6 +80,15 @@ assert_contains "$SKILL" 'add the `human` label'
 assert_contains "$SKILL" '`bd human list`'
 assert_contains "$SKILL" '`bd supersede`'
 assert_contains "$SKILL" '`bd defer --until`'
+# Deferred verification is a narrow lifecycle exception, not a test waiver.
+TEXT=$(tr '\n' ' ' < "$SKILL")
+for invariant in '### Deferred verification' 'only unmet acceptance' 'future rollout or scheduled job' 'failed checks' 'explicit project declaration' 'boundary has been reached' 'Snooze the original' 'Create the follow-up first' 'discovered-from' 'not parent membership' 'concrete future wake date' 'does not detect the event' 'implemented at <sha>; <check> unverified, tracked in <follow-up>' 'completion claim' 'linked bug' 'No new implementation commit'; do
+    grep -Fq -- "$invariant" <<< "$TEXT" || fail "missing deferred-verification invariant: $invariant"
+done
+SIZING="$ROOT_DIR/skills/beads/references/sizing.md"
+for invariant in 'Deferred-verification exception' 'evidence-only' 'declared delivery boundary' 'at most one' 'rollout otherwise stays inside the original bead'; do
+    grep -Fq -- "$invariant" "$SIZING" || fail "missing sizing invariant: $invariant"
+done
 assert_contains "$SKILL" 'Do not use `bd remember`'
 assert_contains "$SKILL" '`bd where`'
 assert_contains "$SKILL" 'existing-bead ownership still requires the shared resolver.'

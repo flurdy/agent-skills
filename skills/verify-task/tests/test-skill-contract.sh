@@ -11,4 +11,11 @@ if grep -Eq 'Bash\((make|npm|npx|git):\*\)|^make test$|^bd (show|list)|__tests__
     fail 'verification retains a guessed runner, layout, requirement, or blanket grant'
 fi
 grep -Fq 'references/evidence.md' "$SKILL" || fail 'verification must reuse the existing exact-scope evidence contract'
+for invariant in 'unavailable-pending-<event>' 'reason `pending-event`' 'Incomplete evidence' 'only missing evidence' 'failed, stale, not-run' 'still blocks finalization' 'deferred-verification tracking handoff' 'Never create, defer or close' '../beads/SKILL.md#deferred-verification'; do
+    grep -Fq -- "$invariant" <<< "$TEXT" || fail "missing pending-event verification invariant: $invariant"
+done
+metadata=$(awk 'NR == 1 { next } /^---$/ { exit } { print }' "$SKILL")
+if grep -Eq 'Bash\(bd[^)]* (create|defer|close|update)|Skill\(complete-task\)' <<< "$metadata"; then
+    fail 'pending-event handoff must not grant tracker writes or automatic finalization'
+fi
 printf '%s\n' 'verify task native evidence contract tests passed'

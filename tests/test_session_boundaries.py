@@ -79,7 +79,12 @@ class SessionBoundaries(unittest.TestCase):
             "owning workflow, not this verification pass",
             "without requiring another user message solely to continue",
             "existing scope and approval gates",
-            "Partial or stale proof cannot authorize `complete-task`",
+            "Partial or stale proof still blocks finalization",
+            "deferred-verification tracking handoff",
+            "only when every other requirement is met",
+            "Any failed, stale, not-run check",
+            "Never create, defer or close a bead in verification",
+            "not completion approval",
             "No automatic fixes",
         ):
             with self.subTest(boundary=boundary):

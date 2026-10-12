@@ -33,10 +33,17 @@ for skill in complete-task create-pr; do
     for outcome in '`resolved`' '`ambiguous`' '`unavailable`' '`not-found`'; do
         assert_contains "$file" "$outcome"
     done
-    if code_lines "$file" | grep -Eq '^\s*bd (close|update|create|dep) '; then
+    if code_lines "$file" | grep -Eq '^\s*bd (close|update|create|dep|defer) '; then
         fail "$skill: unqualified mutating bd call in code; use bd -C <directory>"
     fi
     code_lines "$file" | grep -Eq '^\s*bd -C <directory> close ' || fail "$skill: close must use bd -C <directory>"
+done
+
+# New follow-ups share the original's proven store; no unqualified deferred writes.
+complete="$ROOT_DIR/skills/complete-task/SKILL.md"
+for command in create defer; do
+    frontmatter "$complete" | grep -Fq -- "Bash(bd -C * $command:*)" || fail "complete-task: missing scoped $command grant"
+    code_lines "$complete" | grep -Eq "^\s*bd -C <directory> $command " || fail "complete-task: missing scoped $command call"
 done
 
 # Skills that create new work: store listing used and every create/dep in code qualified.

@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select re
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.0.2"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -18,8 +18,10 @@ generated output, but that is not permission to rewrite source, snapshots, lockf
 
 `architect` owns design, `develop` / `implement-solution` own authorized changes, `pedantic-review`
 owns craft/test design, and `second-opinion` supplies advisory independent claims. This skill does
-not duplicate those reviews or infer correctness from their approval. `complete-task` may finalize
-only after requirements, applicable evidence, and current-scope stability are established.
+not duplicate those reviews or infer correctness from their approval. `complete-task` may normally
+finalize only after requirements, applicable evidence, and current-scope stability are established.
+The narrowly qualified future-event handoff in §6 permits a tracking disposition, not a verification
+pass or waiver of failed checks.
 
 ## Usage
 
@@ -157,15 +159,44 @@ ignored private `.artifacts/` run directory when requested; otherwise keep it in
 
 Ready to finalize requires met requirements, sufficient applicable coverage, completed required
 checks, and unchanged scope. Show skipped/unavailable/failed checks; do not substitute an all-green
-summary for missing evidence. Partial or stale proof cannot authorize `complete-task`.
+summary for missing evidence. Partial or stale proof still blocks finalization; only the specific
+tracking handoff below is allowed for future-event-only evidence.
+
+### Future-event-only evidence
+
+If the only missing evidence depends on a named future rollout or scheduled job, display the
+acceptance row as **unavailable-pending-<event>**. In the shared result vocabulary it remains
+`unavailable`, with reason `pending-event`; it is not a new pass state. Retain **Requirements: partial**,
+the actual coverage limitation and **Verdict: Incomplete evidence**, even where the project declares
+implementation delivered at commit/merge.
+
+Offer a **deferred-verification tracking handoff** to `complete-task` only when every other requirement
+is met, all presently executable required checks pass, and scope is unchanged. Any failed, stale,
+not-run check, missing local coverage, or other unavailable evidence still blocks this handoff. Do not
+reinterpret missing tools, credentials, a failure, or an unexecuted available check as a future event.
+
+Include the [shared packet](../beads/SKILL.md#deferred-verification): implementation revision,
+remaining check and exact command/URL/job, environment and revision-matching rule, pass criteria,
+named event, proposed wake date (or explicitly missing), evidence destination and failure disposition.
+Cite applicable project delivery guidance if present and evidence whether its boundary has been
+reached; do not infer a declaration from a commit or branch. Missing fields remain missing for the
+finalizer to resolve before asking for confirmation. Without a declared/reached boundary the default
+is to snooze the original, not claim delivery and split it.
+
+Never create, defer or close a bead in verification. This is a recommendation for a confirmed
+tracking disposition, not completion approval. When asked later to verify the dated follow-up, check
+its recorded event, environment and revision first; absent event stays unavailable, wrong revision
+cannot satisfy acceptance, and failed verification remains failed.
 
 Never write the fix, claim or close the Bead, stage/commit, or start another workflow merely
 because verification finished. Hand back according to the caller's authorization:
 
 - **Standalone (default):** end with the report and one useful handoff: a concrete coding request
   for missing behavior/tests, prerequisite setup for unavailable evidence, or `complete-task` for
-  verified work. Do not infer permission to implement or finalize from a verification-only request.
+  verified work or the explicitly qualified deferred-verification tracking handoff. Do not infer
+  permission to implement or finalize from a verification-only request.
 - **Composed:** when the caller invoked verification as a step of an already-authorized broader task,
   return the evidence to that caller. The owning workflow, not this verification pass, resumes its
   authorized next step without requiring another user message solely to continue. Preserve existing
-  scope and approval gates; failed, incomplete, or stale evidence still blocks finalization.
+  scope and approval gates; failed, incomplete, or stale evidence still blocks ordinary finalization.
+  The future-event-only exception permits only the confirmed tracking handoff above.

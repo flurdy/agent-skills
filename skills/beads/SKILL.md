@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cle
 model-tier: economy
 model: haiku
 effort: medium
-version: "0.10.0"
+version: "0.11.0"
 author: "flurdy"
 ---
 
@@ -217,6 +217,68 @@ Before reporting a tracked item as done, close it in its owning store.
 
 Do not use `bd remember` for cross-session notes; the harness's own memory owns those, and Beads
 holds only tracked work.
+
+### Deferred verification
+
+Use this narrow exception when implementation is committed and the only unmet acceptance is
+verification that must wait for a future rollout or scheduled job. All presently executable
+checks must pass against the recorded implementation; failed checks, missing local coverage,
+stale evidence, unavailable tooling or an unowned detached commit do not qualify. Do not silently
+leave eligible work `in_progress` while waiting; offer the dated lifecycle choice through
+[complete-task](../complete-task/SKILL.md#6-finalize-the-bead). [verify-task](../verify-task/SKILL.md)
+reports the pending evidence and hands back without tracker writes or a verification pass.
+
+| Path | Gate | Tracking outcome |
+|---|---|---|
+| **Snooze the original** (default) | No explicit project declaration, boundary not reached, or user chooses to retain one bead | Defer the original with a verification note and wake date; do not close or split it. |
+| **Close implementation + deferred follow-up** | Applicable project guidance explicitly declares commit/merge as delivery, that boundary has been reached, and the user confirms the exact proposal | Create the follow-up first, verify it was saved, then close implementation with its evidence gap and follow-up ID. |
+
+A branch name, trunk workflow, commit alone, or generic permission to close does not establish the
+second gate. Cite the applicable project declaration and proof of reaching its boundary (for example,
+commit reachability from local `main`, or the required merge evidence). Guidance must distinguish
+implementation delivery from the later check. Do not edit project or user-level guidance to make a
+case eligible. Example declaration for a project's own `AGENTS.md` (adapt only with authorization):
+
+```text
+Implementation delivery boundary: the verified implementation commit is reachable from local main.
+Future-event verification may remain outstanding in one dated, evidence-only follow-up.
+Verify after the next scheduled staging job using <exact job URL/command>; require its deployed
+revision to contain the recorded commit and <specific pass criteria>. Record the evidence on the
+verification bead. Closing implementation does not claim rollout or runtime verification.
+```
+
+Both paths require a concrete future wake date agreed with the user, with timezone when a time is
+specified. Use a dated snooze, not a dateless icebox or P4 parking. The wake date is a reminder:
+`bd defer --until` does not detect the event or run a check. If timing is unknown, agree on a review
+date and retain the event condition. Missing date or declined confirmation means no lifecycle writes;
+report the unresolved decision, not a successful deferral.
+
+The verification note or follow-up must contain:
+
+- What remains unverified, with the exact command, URL or job to check.
+- Target environment and immutable implementation revision; how to establish the deployed/job revision.
+- Observable pass criteria, the wake date, and the event to confirm before attempting the check.
+- An evidence destination (normally the owning bead), and failure disposition.
+
+Create at most one evidence-only follow-up in the same owning store, linked by `discovered-from`,
+not parent membership or a blocking edge. Preserve relevant provenance, including an exact Jira
+`external_ref` when present; no guessed associations. On rerun, inspect existing links and reuse a
+matching follow-up rather than duplicate it. A failed/uncertain create or unverified saved record
+leaves the original open; never close first and promise to create later. Close with an honest reason:
+`implemented at <sha>; <check> unverified, tracked in <follow-up>`.
+
+When the snooze wakes, confirm the event and revision first. If the event has not happened, obtain
+confirmation for a new dated snooze on the same bead; no automatic polling or replacement follow-up.
+After explicitly authorized verification passes, close the verification follow-up (or snoozed
+original) in its proven store with checked evidence and revision. No new implementation commit is
+required for an evidence-only closure; do not manufacture one via `complete-task`. Verification alone
+still cannot write tracking. Jira remains a separate explicitly requested, approved action.
+
+On verification failure, never close it as verified. Reopen the original only when the failure
+invalidates its recorded completion claim; otherwise track a new linked bug under the normal
+confirmation/ownership rules. Preserve the failed evidence and explicit disposition on the verification
+record; no automatic reopen or bug creation. This is not a general exception to
+[one outcome, one bead](references/sizing.md#deferred-verification-exception).
 
 ## Use current CLI guidance
 
