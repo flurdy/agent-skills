@@ -4,7 +4,7 @@ description: Ask or instruct an existing live agent session through native Claud
 allowed-tools: "Read,AskUserQuestion,ToolSearch,ListAgents,SendMessage,Skill(orca-cli)"
 model-tier: standard
 effort: high
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 
@@ -92,10 +92,16 @@ nothing here may override them.
 
 #### Optional identification pings
 
-When the user cannot choose from the listing, offer one batch of numbered pings. First
-approve the exact candidate subset, the fixed text and a fresh ping ID, noting that each
-ping may start a turn and use that session's quota. Send one ping per approved candidate,
-without `notify_when_idle`:
+When the user cannot choose from the listing, offer one batch of numbered pings.
+Only offer candidates within the user's requested project/session scope. Never offer a
+`ping all sessions` option or include unrelated rows. When working directories are
+withheld, confirm the candidate subset with the user rather than infer project
+membership from generic names.
+
+Approve the exact candidate subset, the fixed text and a fresh ping ID, noting that each
+ping may start a turn and use that session's quota. Apply section 3's native binding
+checks to revalidate each bound address before its ping; any change invalidates approval.
+Send one ping per approved candidate, without `notify_when_idle`:
 
 ```text
 peer-session ping #<N> <ping-id>: identification only, no action needed.
@@ -308,8 +314,17 @@ task locally.
 ## Maintainer evidence
 
 The native transport follows Claude Code's documented cross-session messaging
-(v2.1.224+ on macOS and Linux; idle notices need v2.1.236+ in both sessions). It is
-unpiloted: no live send, ping batch, hold/refusal or correlated reply has been observed.
+(v2.1.224+ on macOS and Linux; idle notices need v2.1.236+ in both sessions). A
+human-operated native pilot on 2026-10-12, reviewed through sender/receiver screenshots,
+exercised named-recipient `tell`, request-ID-correlated `ask`, a separately approved
+numbered ping batch to two candidates, user selection, and fresh approval of the final
+`tell`. The sender treated idle notices separately from answers. An interrupted sender
+turn after sending did not prevent the selected recipient from reading the final message.
+
+The pilot also offered an unrelated `ping all sessions` option, which the user did not
+choose. The scope wording was tightened afterwards; that approval-screen correction
+still needs live retesting. Exact runtime versions and raw tool payloads were not
+captured. Hold/refusal, missing-self identity and other-machine paths were not exercised.
 `make test-peer-session` checks this file's static contract and is not live-delivery
 evidence. The manual pilot is in [tests/README.md](tests/README.md).
 

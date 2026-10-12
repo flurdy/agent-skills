@@ -14,6 +14,9 @@ pings included, keeps the skill's per-send approval.
 
 1. From a third session, run `/peer-session tell <project> <status>`. Confirm self is
    excluded, nothing is guessed, and the numbered ping batch is approved before it is sent.
+   With unrelated sessions also listed, confirm the approval offers only the intended
+   project/session subset and stop—not a broader `ping all sessions` option. If working
+   directories are withheld, confirm the subset explicitly before approving pings.
 2. Choose one candidate and approve the final message. Confirm exactly one `SendMessage`,
    with no automatic resend or Orca fallback.
 3. Run `/peer-session ask <project> <question>`. Confirm the reply's first line carries

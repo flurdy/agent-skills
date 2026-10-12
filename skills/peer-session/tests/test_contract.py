@@ -74,6 +74,18 @@ class PeerSessionContractTests(unittest.TestCase):
             "no second batch",
         )
 
+    def test_ping_choices_cannot_expand_to_unrelated_sessions(self):
+        pings = self.text.split("#### Optional identification pings", 1)[1].split("### Orca", 1)[0]
+        flat = " ".join(pings.split())
+        for phrase in (
+            "Only offer candidates within the user's requested project/session scope",
+            "Never offer a `ping all sessions` option",
+            "confirm the candidate subset with the user",
+            "revalidate each bound address before its ping",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertTrue(phrase in flat, f"missing: {phrase}")
+
     def test_native_message_is_bounded_and_cannot_launder_permissions(self):
         self.assert_phrases(
             "**4 KiB UTF-8**",
@@ -122,7 +134,7 @@ class PeerSessionContractTests(unittest.TestCase):
         self.assertIn("test-peer-session", targets)
         self.assertIn("-s skills/peer-session/tests", makefile)
         self.assertTrue((SKILL / "tests/README.md").is_file())
-        self.assert_phrases("unpiloted", "not live-delivery evidence")
+        self.assert_phrases("human-operated native pilot", "not live-delivery evidence")
 
 
 if __name__ == "__main__":
