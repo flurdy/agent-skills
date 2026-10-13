@@ -9,7 +9,9 @@ alongside user-owned content.
 2. Add frontmatter and focused agent instructions.
 3. Declare a semantic `model-tier` and `effort`; see
    [MODEL_ROUTING.md](MODEL_ROUTING.md).
-4. Add one alphabetical description row to [skills/README.md](skills/README.md).
+4. Add a description row to [skills/README.md](skills/README.md) under the topic matching
+   the skill's primary use, keeping that table alphabetical. Cross-list it under a second
+   topic only when it genuinely serves that use case, with an identical description.
 5. Run `make validate-skills`.
 6. Run `make apply` and confirm the canonical skill and Claude alias links.
 

@@ -33,7 +33,7 @@ Optional upstream runtime:
 - **Prompt templates** — shared Pi and Claude Code slash commands stored in
   `prompts/`, installed into `~/.agents/prompts/` with Pi and Claude Code aliases.
 
-Browse the [skills catalog](skills/README.md) for the complete list.
+Browse the [skills catalog](skills/README.md), grouped by topic, for the complete list.
 
 For a mid-session direction checkpoint, invoke `/skill:sanity-check` in Pi or
 `/sanity-check` in Claude Code. It labels its self-assessment, reports one next step,

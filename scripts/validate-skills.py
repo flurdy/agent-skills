@@ -126,24 +126,30 @@ def normalized_header(cells: list[str]) -> list[str]:
     return [re.sub(r"\s*[¹²³⁴⁵⁶⁷⁸⁹⁰]+$", "", cell) for cell in cells]
 
 
-def catalog_rows(readme: Path) -> list[list[str]]:
+def catalog_tables(readme: Path) -> list[tuple[str | None, list[list[str]]]]:
+    """Return each Skill/Description table with its nearest '## ' topic heading."""
     if not readme.is_file():
         return []
-    description_rows: list[list[str]] = []
+    tables: list[tuple[str | None, list[list[str]]]] = []
+    topic: str | None = None
     in_description_table = False
     for line in readme.read_text(encoding="utf-8").splitlines():
+        heading = re.match(r"^(#{1,2})\s+(.+?)\s*$", line)
+        if heading:
+            topic = heading.group(2) if len(heading.group(1)) == 2 else None
         if not line.startswith("|"):
             in_description_table = False
             continue
         cells = split_table_row(line)
         if normalized_header(cells) == ["Skill", "Description"]:
             in_description_table = True
+            tables.append((topic, []))
             continue
         if not cells or set(cells[0]) <= {"-", ":"}:
             continue
         if in_description_table and len(cells) >= 2:
-            description_rows.append(cells)
-    return description_rows
+            tables[-1][1].append(cells)
+    return tables
 
 
 def catalog_name(cell: str) -> str:
@@ -269,6 +275,36 @@ def validate_allowed_tools(fields: dict[str, str], skill_file: Path, root: Path)
     return errors
 
 
+def validate_catalog(readme: Path, skill_names: set[str]) -> list[str]:
+    """Topic tables: every skill listed, alphabetical per topic, consistent cross-listing."""
+    errors: list[str] = []
+    descriptions: dict[str, set[str]] = {}
+    for topic, rows in catalog_tables(readme):
+        if topic is None:
+            errors.append(f"{readme}: description table has no '## ' topic heading")
+        names = [catalog_name(row[0]) for row in rows]
+        for name, count in Counter(names).items():
+            if count > 1:
+                errors.append(
+                    f"{readme}: duplicate description rows for skill '{name}' in topic '{topic}'"
+                )
+        if names != sorted(names):
+            errors.append(f"{readme}: topic '{topic}' table is not alphabetical by skill name")
+        for row in rows:
+            descriptions.setdefault(catalog_name(row[0]), set()).add(row[1])
+
+    for name in sorted(skill_names - set(descriptions)):
+        errors.append(
+            f"{readme}: skill '{name}' has no description row; list it under at least one topic"
+        )
+    for name in sorted(set(descriptions) - skill_names):
+        errors.append(f"{readme}: description row references unknown skill '{name}'")
+    for name, variants in sorted(descriptions.items()):
+        if len(variants) > 1:
+            errors.append(f"{readme}: skill '{name}' has differing descriptions across topics")
+    return errors
+
+
 def validate(root: Path) -> list[str]:
     errors: list[str] = []
     skills_root = root / "skills"
@@ -354,27 +390,10 @@ def validate(root: Path) -> list[str]:
         if count > 1:
             errors.append(f"duplicate frontmatter skill name '{name}' appears {count} times")
 
-    description_rows = catalog_rows(readme)
     if not readme.is_file():
         errors.append(f"{readme}: catalog not found")
         return errors
-
-    description_names = [catalog_name(row[0]) for row in description_rows]
-    skill_names = sorted(metadata)
-    counts = Counter(description_names)
-    for name in skill_names:
-        if counts[name] != 1:
-            errors.append(
-                f"{readme}: skill '{name}' has {counts[name]} description rows; expected exactly 1"
-            )
-    for name in sorted(set(description_names) - set(skill_names)):
-        errors.append(f"{readme}: description row references unknown skill '{name}'")
-    for name, count in counts.items():
-        if count > 1:
-            errors.append(f"{readme}: duplicate description rows for skill '{name}'")
-
-    if description_names != sorted(description_names):
-        errors.append(f"{readme}: description table is not alphabetical by skill name")
+    errors.extend(validate_catalog(readme, set(metadata)))
 
     markdown_files = sorted(skills_root.glob("**/*.md"))
     for markdown in markdown_files:

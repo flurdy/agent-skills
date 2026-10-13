@@ -28,6 +28,8 @@ See [reference](REFERENCE.md).
 
 VALID_README = """# Shared Skills
 
+## Fixtures
+
 | Skill | Description |
 |-------|-------------|
 | alpha | A valid fixture skill |
@@ -81,6 +83,71 @@ class ValidateSkillsTest(unittest.TestCase):
 
     def errors(self) -> list[str]:
         return VALIDATOR.validate(self.root)
+
+    def add_skill(self, name: str) -> None:
+        skill = self.root / "skills" / name
+        skill.mkdir()
+        (skill / "SKILL.md").write_text(
+            VALID_SKILL.replace("name: alpha", f"name: {name}")
+            .replace("skills/alpha/", f"skills/{name}/")
+            .replace("See [reference](REFERENCE.md).\n", ""),
+            encoding="utf-8",
+        )
+        (skill / "scripts").mkdir()
+        (skill / "scripts" / "check.sh").write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+
+    def write_catalog(self, body: str) -> None:
+        (self.root / "skills" / "README.md").write_text(
+            "# Shared Skills\n\n" + body + "\n## Model routing\n\nSee the policy.\n",
+            encoding="utf-8",
+        )
+
+    @staticmethod
+    def topic(title: str, *rows: str) -> str:
+        return (
+            f"## {title}\n\n| Skill | Description |\n|-------|-------------|\n"
+            + "".join(f"| {row} |\n" for row in rows)
+            + "\n"
+        )
+
+    def test_cross_listed_skill_with_identical_description_passes(self) -> None:
+        self.add_skill("beta")
+        self.write_catalog(
+            self.topic("First", "alpha | A valid fixture skill", "beta | Second")
+            + self.topic("Second", "alpha | A valid fixture skill")
+        )
+        self.assertEqual([], self.errors())
+
+    def test_cross_listed_skill_with_different_description_fails(self) -> None:
+        self.write_catalog(
+            self.topic("First", "alpha | A valid fixture skill")
+            + self.topic("Second", "alpha | A drifted description")
+        )
+        self.assert_error_contains("skill 'alpha' has differing descriptions across topics")
+
+    def test_duplicate_row_within_topic_fails(self) -> None:
+        self.write_catalog(
+            self.topic("First", "alpha | A valid fixture skill", "alpha | A valid fixture skill")
+        )
+        self.assert_error_contains("duplicate description rows for skill 'alpha' in topic 'First'")
+
+    def test_topic_table_must_be_alphabetical(self) -> None:
+        self.add_skill("beta")
+        self.write_catalog(self.topic("First", "beta | Second", "alpha | A valid fixture skill"))
+        self.assert_error_contains("topic 'First' table is not alphabetical by skill name")
+
+    def test_topics_need_not_be_globally_alphabetical(self) -> None:
+        self.add_skill("beta")
+        self.write_catalog(
+            self.topic("First", "beta | Second") + self.topic("Second", "alpha | A valid fixture skill")
+        )
+        self.assertEqual([], self.errors())
+
+    def test_catalog_table_requires_topic_heading(self) -> None:
+        self.write_catalog(
+            "| Skill | Description |\n|-------|-------------|\n| alpha | A valid fixture skill |\n"
+        )
+        self.assert_error_contains("description table has no '## ' topic heading")
 
     def assert_error_contains(self, expected: str) -> None:
         errors = self.errors()
@@ -223,7 +290,7 @@ class ValidateSkillsTest(unittest.TestCase):
         readme.write_text(VALID_README.replace(
             "| alpha | A valid fixture skill |\n", ""
         ), encoding="utf-8")
-        self.assert_error_contains("has 0 description rows; expected exactly 1")
+        self.assert_error_contains("skill 'alpha' has no description row; list it under at least one topic")
 
     def test_old_model_tier_fails(self) -> None:
         path = self.root / "skills" / "alpha" / "SKILL.md"

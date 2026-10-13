@@ -39,7 +39,10 @@ not a generic archive folder.
   is an optional floating `model:` alias (`haiku`/`sonnet`/`opus`/`fable`) as a Claude Code
   routing hint; agents omit it because Pi may honor `model:` in agent files. See
   `MODEL_ROUTING.md` and `README.md` for the add-a-skill steps.
-- Add one alphabetical description row to `skills/README.md` for every new skill.
+- List every new skill in `skills/README.md` under the one topic matching its primary use,
+  alphabetically within that table. Cross-list it under a second topic only when it genuinely
+  serves that use case too, with an identical description. Prefer an existing topic; add a new
+  `##` topic only when none fits. `make validate-skills` enforces these rules.
 - Prefer small executable shell scripts for simple command wrappers and orchestration. Use
   Python 3.10+ when structured-data processing, state management, subprocess control, or
   shell quoting would otherwise make the implementation difficult to test or maintain.
