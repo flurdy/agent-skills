@@ -4,7 +4,7 @@ description: Generate, compare, refine, and export image assets from a single cr
 allowed-tools: "Read,Write,Grep,Glob,AskUserQuestion,ToolSearch,Bash(curl:*),Bash(file:*),Bash(mkdir:*),mcp__recraft__*"
 model-tier: standard
 effort: high
-version: "1.0.1"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -25,6 +25,9 @@ Generate project-ready icons, illustrations, backgrounds, and raster imagery fro
 
 - Do not generate or call a provider until the user has confirmed the provider set and number of variants for this run. Treat provider billing as unknown unless the runtime proves otherwise. An explicit current-run command such as `--providers recraft --variants 2` is confirmation; otherwise ask immediately before generation.
 - Never infer that OpenAI, Google, or another provider is configured, available, or free. Use only tools actually available in the current runtime, and do not perform hidden retries or extra generations.
+- Billing routes differ per provider; see [providers](references/providers.md). The Recraft hosted MCP server spends Studio subscription credits, not API Units. A tool that needs no API key is still subscription-billed and usage-limited.
+- Refinements (upscale, vectorize, background, variations, edits) are billed operations. Run one only when the user asks for it in this run, and name the operation before calling it; a confirmed generation does not cover later refinements.
+- When a provider reports exhausted credits or quota, stop and report it. Never fall back to another provider, an API-key route, or a top-up without fresh confirmation.
 - Keep one shared brief across providers. State unavoidable provider-specific changes before generating.
 - Do not claim outputs are equivalent. Compare them against the brief, not against each other as a technical benchmark.
 - Do not use third-party logos, characters, or living-artist imitation unless the user confirms they have the necessary rights. Flag uncertainty rather than making a legal claim.
@@ -51,7 +54,7 @@ Convert the brief into a concise provider-neutral prompt. Preserve negative cons
 
 ## 2. Select providers and generation plan
 
-1. Use `ToolSearch` to discover image-capable MCP tools in the current runtime when they are not already loaded. A missing search result means the provider is unavailable for this run.
+1. Use `ToolSearch` to discover image-capable MCP tools in the current runtime when they are not already loaded. A missing search result means the provider is unavailable for this run. A runtime-native image tool (for example Codex's built-in one) counts as available only when it is actually exposed in this run; `ToolSearch` does not find it.
 2. Propose the smallest useful run: provider names, model where relevant, variants per provider, requested ratio, style, and total expected images.
 3. Ask for confirmation if the user has not already specified the providers and variant count.
 4. Record this run's metadata in the response: brief/prompt, provider, model, style, requested ratio, and timestamp. Do not expose credentials or opaque account data.
@@ -67,7 +70,7 @@ Use an adapter only when its tools are configured. Each adapter must support, or
 - output URL or downloadable output;
 - provider and model metadata.
 
-If an adapter cannot meet a hard requirement, exclude it from the run and explain why. Do not invent a common API or add provider configuration while using this skill.
+If an adapter cannot meet a hard requirement, exclude it from the run and explain why. Do not invent a common API or add provider configuration while using this skill. Adapter decisions per provider are recorded in [providers](references/providers.md).
 
 ## 3. Recraft adapter
 
