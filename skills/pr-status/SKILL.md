@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.13.4"
+version: "1.14.0"
 author: "flurdy"
 ---
 
@@ -77,6 +77,7 @@ Output is a JSON array, one object per PR:
     "mergeState": "CLEAN",
     "reviewDecision": "APPROVED",
     "approvers": ["alice"],
+    "reviewRequestCount": 0,
     "unresolvedThreads": 2,
     "checksState": "SUCCESS",
     "lastPush": "2026-04-15T09:30:00Z",
@@ -90,7 +91,16 @@ Output is a JSON array, one object per PR:
 
 Map `checksState` values: `SUCCESS` → ✅ / `FAILURE` or `ERROR` → ❌ / `PENDING` or `EXPECTED` → ⏳ / null → `—`
 
-If the batch script is unavailable, the per-PR scripts in the same directory (`gh-pr-checks.sh`, `gh-pr-reviews.sh`, `gh-pr-threads.sh`, `gh-pr-merge-state.sh`) or plain `gh pr view/checks` cover the same fields.
+`reviewRequestCount` is the exact number of outstanding review requests, from the request
+connection's `totalCount` rather than a capped page: each requested user or team counts once, with
+no team expansion. It excludes submitted reviews, approvals or withdrawn requests. `null` means
+unknown (missing field or unavailable data) — never treat it as zero.
+
+If the batch script is unavailable, the per-PR scripts in the same directory (`gh-pr-checks.sh`,
+`gh-pr-reviews.sh`, `gh-pr-threads.sh`, `gh-pr-merge-state.sh`) or plain `gh pr view/checks` cover
+the other fields but not an exact request count: treat `reviewRequestCount` as unknown. Do not
+derive it from the length of a capped `gh pr view` reviewer list, historical reviews, request
+timeline events, or the viewer-specific inbound review-request queue (`gh-pr-review-requests.py`).
 
 ### 2b. Fetch the normalized feedback inventory
 
@@ -166,15 +176,32 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 - **CI**: ✅ / ❌ / ⏳ — emoji only
 - **Ready**: 🚧 if `isDraft`, else relative time since `readyAt`
 - **Push**: relative time since `lastPush`
-- **Approved**: one ✅ per approver when `reviewDecision` is `APPROVED`. `REVIEW_REQUIRED` with approvers → stale approvals, one ☑️ each. `CHANGES_REQUESTED` → 👎. No approvers, no changes requested → 🔔 (awaiting review; `—` for drafts)
+- **Approved**: from the table below
 - **Threads**: `💬 N` if N > 0, else `—`
 - **LGTM**: 🚀 if not draft, `APPROVED`, CI `SUCCESS`, sync ✅, zero threads, and `mergeState` `CLEAN`; else 🚧
+
+**Approved cell** — first matching row wins:
+
+| Evidence | Cell |
+|---|---|
+| `reviewDecision` `APPROVED` | one ✅ per approver |
+| `REVIEW_REQUIRED` with approvers | one ☑️ per approver (stale approvals) |
+| `CHANGES_REQUESTED` | 👎 |
+| Draft with no approvers | `—` |
+| Awaiting review, `reviewRequestCount` 0 | ⚠️ 0 |
+| Awaiting review, `reviewRequestCount` N > 0 | 🔔 N (e.g. 🔔 2) |
+| Awaiting review, `reviewRequestCount` null or missing | 🔔 |
+
+Awaiting review means not draft, no approvers and no changes requested. Render one bell with the
+count — never a bell per reviewer — and no question mark: unknown stays a bare 🔔, distinct from
+⚠️ 0 in session state. The column keeps its width; the count never changes the ✅, ☑️, 👎 or
+LGTM rules.
 
 Truncate titles: ~50 chars in the closed table, ~25 in the open table (13 columns — wide rows break Claude Code's table renderer).
 
 ### 5. Summarise changes
 
-After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update.
+After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`, `#6150 requests: 🔔 2 → ⚠️ 0`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update.
 
 For PR feedback, compare the inventory by `identity`; the same identity with a later `updatedAt` is
 an edit, not a second comment. Use `stateKey` to detect lifecycle-only changes such as resolution or
@@ -195,9 +222,14 @@ Fire on transitions, not standing state: on the first check of a session list th
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
 | new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
 | → ⚠️ behind (fell behind base) | `/rebase main` (on that PR's branch) |
-| → 🔔 awaiting review (no longer draft, still no reviewers) | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
+| → ⚠️ 0 awaiting review with no requests | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
 
-Order most actionable first (🚀 → 💬 → ⚠️ → 🔔); omit the section when no PR changed state.
+Fire the reviewer suggestion only for a known zero: a PR enters that state when it leaves draft with
+no requests, or its last outstanding request is withdrawn or answered without approval. 🔔 N means
+requests are already pending and a bare 🔔 means the count is unknown — suggest nothing for either.
+
+Order most actionable first (🚀 → 💬 → ⚠️ behind → ⚠️ 0 no requests); omit the section when no PR
+changed state.
 
 Use the normalized record's author and bounded gist in the bullet. Keep its `identity` and
 `updatedAt` in session state so later polls distinguish an edit from a duplicate. Do not issue a

@@ -115,7 +115,7 @@ assert_order "$CREATE" \
 
 assert_not_contains "$STATUS" '/request-review'
 assert_contains "$STATUS" 'gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>'
-assert_contains "$STATUS" '| → 🔔 awaiting review'
+assert_contains "$STATUS" '| → ⚠️ 0 awaiting review with no requests'
 
 assert_contains "$COMPLETE" 'git symbolic-ref --quiet --short HEAD'
 assert_contains "$COMPLETE" '**Detached mode**'

@@ -64,6 +64,7 @@ help:
 	@echo "make test-pi-spend"
 	@echo "make test-pickup"
 	@echo "make test-review-pr"
+	@echo "make test-pr-status"
 	@echo "make test-review-requests"
 	@echo "make test-pr-feedback"
 	@echo "make test-pr-feedback-actions"
@@ -115,7 +116,7 @@ clean-code:
 TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-contract-check test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
   test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
-  test-pi-spend test-pickup test-review-pr test-thoughtbox test-review-requests test-pr-feedback \
+  test-pi-spend test-pickup test-review-pr test-thoughtbox test-pr-status test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-status \
   test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check
 
@@ -265,6 +266,10 @@ test-review-pr:
 	@python3 -m unittest discover -s skills/review-pr/tests -p 'test_snapshot.py'
 	@bash skills/review-pr/tests/test-wrappers.sh
 	@bash skills/review-pr/tests/test-skill-contract.sh
+
+.PHONY: test-pr-status
+test-pr-status:
+	@python3 -B -m unittest discover -s skills/pr-status/tests -p 'test_pr_details.py'
 
 test-review-requests:
 	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_request_feedback.py'

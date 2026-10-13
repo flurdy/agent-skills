@@ -21,6 +21,7 @@ for PR in "$@"; do
       reviews(first: 50, states: [APPROVED]) {
         nodes { author { login } }
       }
+      reviewRequests { totalCount }
       reviewThreads(first: 100) {
         nodes { isResolved }
       }
@@ -59,6 +60,7 @@ gh api graphql \
     mergeState: .mergeStateStatus,
     reviewDecision: .reviewDecision,
     approvers: ([.reviews.nodes[].author.login] | unique),
+    reviewRequestCount: .reviewRequests.totalCount,
     unresolvedThreads: ([.reviewThreads.nodes[] | select(.isResolved == false)] | length),
     checksState: .commits.nodes[0].commit.statusCheckRollup.state,
     lastPush: .commits.nodes[0].commit.committedDate,
