@@ -5,10 +5,10 @@ description: >
   restart, or evidence-backed rollout acknowledgement. Requires explicit invocation;
   never runs inside a release watch tick.
 allowed-tools: "Read,Write,AskUserQuestion,Bash(./scripts/release-order:*),Bash(./scripts/mgit status:*),Bash(./scripts/mgit diff:*),Bash(./scripts/mgit log:*),Bash(./scripts/mgit show:*),Bash(kubectl get:*),Bash(~/.agents/skills/ready-to-release/scripts/release-gates:*)"
-model-tier: premium
-model: opus
+model-tier: standard
+model: sonnet
 effort: high
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 

@@ -2,10 +2,10 @@
 name: contract-test
 description: "Execute existing Pact-lite consumer generation, local sync, normalization and provider verification in an explicit scope. Status delegates to contract-check; setup and repairs are separate."
 allowed-tools: "Read,Grep,Glob,Skill(contract-check),AskUserQuestion"
-model-tier: premium
-model: opus
-effort: high
-version: "3.0.0"
+model-tier: standard
+model: sonnet
+effort: medium
+version: "3.0.1"
 author: "flurdy"
 ---
 

@@ -4,8 +4,8 @@ description: "Verify explicit requirements and coverage against a fixed implemen
 allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(git status:*),Bash(git diff:*),Bash(git show:*),Bash(git log:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),AskUserQuestion"
 model-tier: premium
 model: opus
-effort: xhigh
-version: "2.1.0"
+effort: high
+version: "2.1.1"
 author: "flurdy"
 ---
 

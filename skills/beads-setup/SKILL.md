@@ -2,9 +2,10 @@
 name: beads-setup
 description: Preview and separately confirm a fresh repository Beads store with a dedicated private GitHub Dolt remote. Refuses existing state; keeps initialization, creation, and first publication individually gated.
 allowed-tools: "Read,AskUserQuestion,Bash(python3 ~/.agents/skills/beads-setup/scripts/github_state.py:*)"
-model-tier: premium
+model-tier: standard
+model: sonnet
 effort: high
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 
