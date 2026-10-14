@@ -7,8 +7,8 @@ description: >
 allowed-tools: "Read,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/run-jobs.sh:*),Bash(~/.agents/skills/watch-actions-rollout/scripts/default-head-sha.sh:*),Bash(gh pr view:*),Bash(gh run list:*),Bash(gh run view:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "2.1.1"
+effort: high
+version: "2.1.2"
 author: "flurdy"
 ---
 

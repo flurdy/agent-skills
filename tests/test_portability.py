@@ -251,6 +251,26 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
 
+    def test_watch_and_release_routing(self):
+        expected = {
+            "watch-prs": ("standard", "medium"),
+            "watch-release": ("standard", "medium"),
+            "watch-actions-rollout": ("standard", "high"),
+            "watch-flux-rollout": ("standard", "high"),
+            "pr-status": ("standard", "high"),
+            "release-manager": ("standard", "high"),
+            "release-status": ("standard", "medium"),
+            "ready-to-release": ("economy", "high"),
+            "outstanding-work": ("standard", "high"),
+            "tracking-sweep": ("standard", "high"),
+        }
+        for name, (tier, effort) in expected.items():
+            with self.subTest(name=name):
+                front = skill(name).split("---", 2)[1]
+                self.assertRegex(front, rf"(?m)^model-tier: {tier}$")
+                self.assertRegex(front, r"(?m)^model: sonnet$")
+                self.assertRegex(front, rf"(?m)^effort: {effort}$")
+
     def test_dashboard_and_handoff_routing(self):
         expected = {
             "jira-comment": ("economy", "sonnet", "medium"),

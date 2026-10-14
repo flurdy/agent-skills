@@ -5,10 +5,10 @@ description: >
   contract, ordering, toggle, and deployment evidence through one shared evaluator;
   renders its gate table and verdict without prompting or changing state.
 allowed-tools: "Read,Bash(~/.agents/skills/ready-to-release/scripts/release-gates:*)"
-model-tier: standard
+model-tier: economy
 model: sonnet
-effort: medium
-version: "2.0.0"
+effort: high
+version: "2.0.1"
 author: "flurdy"
 ---
 

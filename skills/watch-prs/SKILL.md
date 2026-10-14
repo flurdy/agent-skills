@@ -6,8 +6,9 @@ description: >
   renders tables and suggested next actions, never prompts or blocks.
 allowed-tools: "Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*)"
 model-tier: standard
+model: sonnet
 effort: medium
-version: "2.6.0"
+version: "2.6.1"
 author: "flurdy"
 ---
 
@@ -123,8 +124,8 @@ watcher in a tab launched with `claude --model sonnet` (session-only, leaves the
 alone), or use fixed mode (`/watch-prs 10m`), whose cron ticks carry no scheduling duty and work
 on any model. Sonnet- and Opus-class sessions pass this guard.
 
-(This skill deliberately has no `model:` pin — the guard must run on the session model to be able
-to name it.)
+This skill selects Sonnet for coordination. Retain the adaptive guard as a fallback if the runtime
+uses another model; the hint alone is not proof of the effective model.
 
 #### Adaptive mode (default)
 

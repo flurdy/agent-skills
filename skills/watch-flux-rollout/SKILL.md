@@ -7,8 +7,8 @@ description: >
 allowed-tools: "Read,Grep,Glob,Write,AskUserQuestion,Skill,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/rollout-status.sh:*),Bash(~/.agents/skills/watch-flux-rollout/scripts/default-head-sha.sh:*),Bash(~/.agents/skills/circleci-status/scripts/status.sh:*),Bash(git fetch:*),Bash(git rev-parse:*),Bash(curl:*),Bash(date:*),Bash(kubectl get:*),Bash(kubectl config current-context:*),mcp__claude-in-chrome__*,mcp__playwright__*"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "1.3.0"
+effort: high
+version: "1.3.1"
 author: "flurdy"
 ---
 

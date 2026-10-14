@@ -30,6 +30,9 @@ line_of() {
 [[ -f "$SKILL" ]] || fail "missing watch-prs skill"
 
 for invariant in \
+    'model-tier: standard' \
+    'model: sonnet' \
+    'effort: medium' \
     'default `18`' \
     'at or past' \
     '### Pi protocol v1' \
@@ -75,6 +78,7 @@ guard_line=$(line_of '**Session-model guard (adaptive mode only).**')
 
 assert_not_contains '/skill:pr-status'
 assert_not_contains 'allowIndefinite: true'
+assert_not_contains 'deliberately has no `model:` pin'
 
 # Both Claude modes must start through /loop. A standalone ScheduleWakeup call is
 # accepted by the harness but never fires, so the watcher must never advise one.
