@@ -2,10 +2,10 @@
 name: name-session
 description: Derive a conventional session name from the branch ticket, active bead, open PR, and current work, then print the paste-ready rename command for the active client. Use when a session's auto-name is generic.
 allowed-tools: "Read,Bash(git rev-parse:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(bd -C * show:*),Bash(gh pr view:*)"
-model-tier: standard
-model: sonnet
+model-tier: economy
+model: haiku
 effort: low
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 

@@ -251,6 +251,25 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
 
+    def test_dashboard_and_handoff_routing(self):
+        expected = {
+            "jira-comment": ("economy", "sonnet", "medium"),
+            "pr-review-requests": ("standard", "sonnet", "high"),
+            "pr-reviewers": ("economy", "haiku", "medium"),
+            "watch-review-requests": ("standard", "sonnet", "medium"),
+            "watch-rollout": ("economy", "haiku", "medium"),
+            "watch-telemetry": ("economy", "haiku", "medium"),
+            "handoffs-tidy": ("standard", "sonnet", "medium"),
+            "name-session": ("economy", "haiku", "low"),
+            "handoffs": ("standard", "sonnet", "high"),
+            "landscape": ("standard", "sonnet", "high"),
+        }
+        for name, settings in expected.items():
+            with self.subTest(name=name):
+                front = skill(name).split("---", 2)[1]
+                for field, value in zip(("model-tier", "model", "effort"), settings, strict=True):
+                    self.assertRegex(front, rf"(?m)^{field}: {value}$")
+
     def test_economy_effort_matches_workflow_decisions(self):
         high_effort = {"beads", "beads-check-dolt-migration", "next", "start-ticket"}
         names = (

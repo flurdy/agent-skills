@@ -4,8 +4,8 @@ description: "Review handoffs for confirmed archiving: superseded, done or stale
 allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: low
-version: "0.7.0"
+effort: medium
+version: "0.7.1"
 author: "flurdy"
 ---
 

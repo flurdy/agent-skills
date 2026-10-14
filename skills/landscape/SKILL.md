@@ -4,8 +4,8 @@ description: Read-only session orientation. Full/quick views show Jira, PRs, bea
 allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-bd:*), Bash(date:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/landscape/scripts/beads.sh:*), Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.13.0"
+effort: high
+version: "0.13.1"
 author: "flurdy"
 ---
 

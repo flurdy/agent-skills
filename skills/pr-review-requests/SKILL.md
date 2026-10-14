@@ -2,9 +2,10 @@
 name: pr-review-requests
 description: Show a read-only inbound PR dashboard with request/update times, exact-head CI, merge state, your and others reviews, feedback, and manual next steps.
 allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(python3 ~/.agents/skills/pr-review-requests/scripts/request-feedback.py:*),Bash(date:*)"
-model-tier: economy
-effort: medium
-version: "1.1.1"
+model-tier: standard
+model: sonnet
+effort: high
+version: "1.1.2"
 author: "flurdy"
 ---
 

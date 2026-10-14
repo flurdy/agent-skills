@@ -11,7 +11,7 @@ import sys
 
 watch = Path(sys.argv[1]).read_text()
 for invariant in (
-    'name: watch-review-requests', 'model-tier: economy', 'effort: medium',
+    'name: watch-review-requests', 'model-tier: standard', 'model: sonnet', 'effort: medium',
     'Skill(pr-review-requests)', '### Pi protocol v1', 'protocolVersion: 1',
     'action: status', 'action: start', 'action: complete',
     '`armed`, `running`, or `paused`', 'mode: adaptive', 'mode: fixed',
@@ -25,6 +25,7 @@ for invariant in (
     'sole local-write exception', 'never stores feedback, queue state, or review content',
     'Reject legacy scheduled prompts', 'request-dashboard-v1', 'watchId/generation',
     'pending display', 'commit comparison state only after rendering',
+    'No premium route preflight or ad-hoc model switching.',
 ):
     assert invariant in watch, f'missing watcher invariant: {invariant}'
 for forbidden in ('Skill(review-pr)', 'gh pr review', 'AskUserQuestion', '--reviews',
@@ -37,7 +38,7 @@ summary_path = Path(sys.argv[2])
 assert summary_path.is_file(), 'missing standalone request dashboard'
 summary = summary_path.read_text()
 for invariant in (
-    'name: pr-review-requests', 'model-tier: economy', 'effort: medium',
+    'name: pr-review-requests', 'model-tier: standard', 'model: sonnet', 'effort: high',
     'gh-pr-review-requests.py', 'gh-pr-feedback.py', 'Python 3.10+',
     'current repository plus registered workspace repositories',
     'No account-wide fallback', 'requests', 'available', 'changedFields',

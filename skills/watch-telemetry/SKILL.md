@@ -3,8 +3,9 @@ name: watch-telemetry
 description: "Query opt-in local watcher-execution counters, labelled partial and agent-reported. Separately enable, disable, or prune collection without retaining transcripts or target identities."
 allowed-tools: "Read,AskUserQuestion,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py counts:*)"
 model-tier: economy
+model: haiku
 effort: medium
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 

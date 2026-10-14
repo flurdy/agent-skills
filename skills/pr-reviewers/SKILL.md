@@ -3,8 +3,9 @@ name: pr-reviewers
 description: Recommend GitHub reviewers from the authenticated user's previous PRs in one repository, with distinct-PR counts and evidence links. Read-only; never requests reviews.
 allowed-tools: "Bash(python3 ~/.agents/skills/pr-reviewers/scripts/pr-reviewers.py:*)"
 model-tier: economy
+model: haiku
 effort: medium
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 

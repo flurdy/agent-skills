@@ -4,8 +4,8 @@ description: Browse and load current-repo or workspace-member handoffs, includin
 allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.22.0"
+effort: high
+version: "0.22.1"
 author: "flurdy"
 ---
 
