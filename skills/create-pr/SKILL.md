@@ -4,8 +4,8 @@ description: Create a pull request from the current branch following project con
 allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/complete-task/scripts/jira-review.py:*),Bash(bd close:*),Bash(bd list:*),Bash(bd show:*),Bash(bd update:*),Bash(~/.agents/skills/create-pr/scripts/gh-pr-create.sh:*),Bash(~/.agents/skills/create-pr/scripts/pr-required-sections.sh:*),Bash(gh pr create:*),Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "2.6.0"
+effort: high
+version: "2.6.1"
 author: "flurdy"
 ---
 

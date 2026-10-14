@@ -4,8 +4,8 @@ description: "Complete an in-progress task by running clean-code, staging, and c
 allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/complete-task/scripts/jira-review.py:*),Bash(bd -C * close:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(bd -C * create:*),Bash(bd -C * defer:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "2.2.0"
+effort: high
+version: "2.2.1"
 author: "flurdy"
 ---
 

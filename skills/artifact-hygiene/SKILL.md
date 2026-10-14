@@ -2,10 +2,10 @@
 name: artifact-hygiene
 description: Run a local-only, read-only advisory audit of publishable working-tree files and unpublished branch history with redaction-safe findings.
 allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*)"
-model-tier: standard
+model-tier: economy
 model: sonnet
 effort: high
-version: "0.6.3"
+version: "0.6.4"
 author: "flurdy"
 ---
 

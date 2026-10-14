@@ -4,8 +4,8 @@ description: Safely publish prepared PR-feedback outcomes through separately con
 allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-current-info.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-inline-comments.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-review-threads.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-reply-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-conversation-comment.sh:*),Bash(~/.agents/skills/reply-comments/scripts/gh-pr-resolve-thread.sh:*),Bash(gh pr view:*),Bash(git:*),AskUserQuestion"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "1.2.2"
+effort: high
+version: "1.2.3"
 author: "flurdy"
 ---
 

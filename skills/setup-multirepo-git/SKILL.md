@@ -4,8 +4,8 @@ description: Multi-repo git workflow rules and setup. Provides mgit wrapper for 
 allowed-tools: "Read,Write,Bash(git:*),Bash(ln:*),Bash(mkdir:*),Bash(cat:*),Bash(./scripts/mgit:*),Bash(readlink:*),AskUserQuestion"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "1.2.0"
+effort: high
+version: "1.2.1"
 author: "flurdy"
 ---
 

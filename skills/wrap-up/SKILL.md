@@ -4,8 +4,8 @@ description: Summarise session activity, artifact-hygiene coverage, and working-
 allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*), Bash(~/.agents/skills/wrap-up/scripts/multirepo.sh:*), Bash(~/.agents/skills/wrap-up/scripts/save-handoff.py:*), Bash(~/.agents/skills/landscape/scripts/working-copy.sh:*), Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*), Read, AskUserQuestion, save_handoff, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.16.0"
+effort: high
+version: "0.16.1"
 author: "flurdy"
 ---
 

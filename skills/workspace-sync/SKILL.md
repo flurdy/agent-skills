@@ -4,8 +4,9 @@ description: Guide attended Git and Beads synchronization at a validated workspa
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select stores:*),Skill(beads),Skill(setup-multirepo-git)"
 disable-model-invocation: true
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 

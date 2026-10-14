@@ -251,6 +251,21 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
 
+    def test_finalisation_and_git_routing(self):
+        economy = {"artifact-hygiene", "stack-branch"}
+        names = (
+            "artifact-hygiene", "clean-code", "complete-task", "create-pr",
+            "ready-to-merge", "reply-comments", "setup-multirepo-git",
+            "stack-branch", "workspace-sync", "wrap-up",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                front = skill(name).split("---", 2)[1]
+                tier = "economy" if name in economy else "standard"
+                self.assertRegex(front, rf"(?m)^model-tier: {tier}$")
+                self.assertRegex(front, r"(?m)^model: sonnet$")
+                self.assertRegex(front, r"(?m)^effort: high$")
+
     def test_watch_and_release_routing(self):
         expected = {
             "watch-prs": ("standard", "medium"),

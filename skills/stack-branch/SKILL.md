@@ -2,10 +2,10 @@
 name: stack-branch
 description: Create a new branch stacked on another PR. Use when you want to start work that depends on an existing PR that hasn't been merged yet.
 allowed-tools: "Read,Bash(git:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Skill,AskUserQuestion"
-model-tier: standard
+model-tier: economy
 model: sonnet
-effort: medium
-version: "2.1.0"
+effort: high
+version: "2.1.1"
 author: "flurdy"
 ---
 
