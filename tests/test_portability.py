@@ -251,6 +251,30 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
 
+    def test_claude_model_hints_preserve_coding_layers(self):
+        expected = {
+            "breakdown": ("sonnet", "medium"),
+            "dependabot-remediation": ("sonnet", "high"),
+            "develop": (None, "high"),
+            "do-i-need-this": ("sonnet", "high"),
+            "image-studio": ("sonnet", "high"),
+            "pair-programming": (None, "high"),
+            "peer-session": ("sonnet", "high"),
+            "reassess": ("sonnet", "high"),
+            "refine": ("opus", "high"),
+            "sanity-check": ("sonnet", "high"),
+        }
+        for name, (model, effort) in expected.items():
+            with self.subTest(name=name):
+                front = skill(name).split("---", 2)[1]
+                self.assertRegex(front, r"(?m)^model-tier: standard$")
+                self.assertRegex(front, rf"(?m)^effort: {effort}$")
+                if model is None:
+                    self.assertNotRegex(front, r"(?m)^model:")
+                else:
+                    self.assertRegex(front, rf"(?m)^model: {model}$")
+        self.assertNotIn("no `model:` pin on purpose", skill("image-studio"))
+
     def test_breakdown_keeps_a_read_only_overview_contract(self):
         text = skill("breakdown")
         metadata = text.split("---", 2)[1]

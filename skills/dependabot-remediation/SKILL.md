@@ -4,8 +4,9 @@ description: Discover and validate Dependabot security alerts for one bound repo
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Skill,Bash(~/.agents/skills/dependabot-remediation/scripts/gh-dependabot-alerts.py:*),Bash(~/.agents/skills/dependabot-remediation/scripts/remediation-plan.py:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select start:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * create:*),Bash(bd -C * update:*),Bash(bd -C * comments:*),Bash(git status:*),Bash(git rev-parse:*),Bash(git remote get-url:*),Bash(git log:*),Bash(git diff:*),Bash(git ls-files:*)"
 disable-model-invocation: true
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.1.2"
+version: "0.1.3"
 author: "flurdy"
 ---
 

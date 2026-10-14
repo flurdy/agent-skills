@@ -58,7 +58,7 @@ class SanityCheckContractTests(unittest.TestCase):
         self.assertIn("disable-model-invocation: true", front)
         self.assertIn("model-tier: standard", front)
         self.assertIn("effort: high", front)
-        self.assertNotRegex(front, r"(?m)^model:")
+        self.assertRegex(front, r"(?m)^model: sonnet$")
         grants = re.search(r'^allowed-tools: "(.*)"$', front, re.M).group(1)
         self.assertEqual(grants, "Read,AskUserQuestion,Skill(second-opinion)")
         for required in ("/sanity-check", "/skill:sanity-check", "unnamed", "without a bead"):

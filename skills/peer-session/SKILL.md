@@ -3,8 +3,9 @@ name: peer-session
 description: Ask or instruct an existing live agent session through native Claude Code messaging or Orca, locally or remotely. Requires exact recipient/message approval and correlated evidence; no automatic retries, transport switching, spawning or queueing.
 allowed-tools: "Read,AskUserQuestion,ToolSearch,ListAgents,SendMessage,Skill(orca-cli)"
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.2.1"
+version: "0.2.2"
 author: "flurdy"
 ---
 

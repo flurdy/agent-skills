@@ -26,10 +26,10 @@ class ReassessContractTests(unittest.TestCase):
         front = self.raw.split("---", 2)[1]
         for field in (
             "name: reassess", "disable-model-invocation: true", "model-tier: standard",
-            "effort: high", 'version: "0.1.1"', 'author: "flurdy"',
+            "effort: high", 'version: "0.1.2"', 'author: "flurdy"',
         ):
             self.assertIn(field, front)
-        self.assertNotRegex(front, r"(?m)^model:")
+        self.assertRegex(front, r"(?m)^model: sonnet$")
         grants = re.search(r'^allowed-tools: "(.*)"$', front, re.M).group(1)
         self.assertEqual(grants, "Read,Grep,Glob,AskUserQuestion,"
                          "Bash(~/.agents/skills/next/scripts/next-select stores:*),"

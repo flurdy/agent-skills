@@ -4,8 +4,9 @@ description: "Read-only sizing assessment of one existing bead: keep whole, clar
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(bd -C * show:*),Bash(bd -C * children:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * comments:*)"
 disable-model-invocation: true
 model-tier: standard
+model: opus
 effort: high
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 

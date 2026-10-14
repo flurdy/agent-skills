@@ -4,8 +4,9 @@ description: Explicit, read-only necessity assessment of one idea, proposed chan
 allowed-tools: "Read,Grep,Glob,AskUserQuestion"
 disable-model-invocation: true
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 

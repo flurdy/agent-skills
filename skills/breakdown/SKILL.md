@@ -3,8 +3,9 @@ name: breakdown
 description: "Read-only overview for one Jira ticket, grounded in relevant code: Problem, Solution, Steps, and Open questions. Use before implementation; recommend architect for complex or high-blast-radius work."
 allowed-tools: "Read,Grep,Glob,Bash(pwd:*),Bash(ls:*),Bash(rg:*),Bash(git status:*),Bash(git branch --show-current:*),Skill(jira-ticket),Skill(confluence),AskUserQuestion"
 model-tier: standard
+model: sonnet
 effort: medium
-version: "1.0.0"
+version: "1.0.1"
 author: "flurdy"
 ---
 

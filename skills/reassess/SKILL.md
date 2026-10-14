@@ -4,8 +4,9 @@ description: Explicit read-only project reassessment. Compare intended outcomes,
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*)"
 disable-model-invocation: true
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.1.1"
+version: "0.1.2"
 author: "flurdy"
 ---
 
