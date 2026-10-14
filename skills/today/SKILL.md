@@ -2,10 +2,10 @@
 name: today
 description: Read-only activity recap for today or the previous workday across commits, PRs, Jira touches, and Beads in validated repositories; same-day mode adds current-session context.
 allowed-tools: "Read,Bash(~/.agents/skills/wrap-up/scripts/activity.sh:*),mcp__jira__jira_get"
-model-tier: standard
+model-tier: economy
 model: sonnet
-effort: medium
-version: "0.2.1"
+effort: high
+version: "0.2.2"
 author: "flurdy"
 ---
 

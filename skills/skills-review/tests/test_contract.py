@@ -18,7 +18,7 @@ class SkillsReviewContractTests(unittest.TestCase):
         front = raw.split("---", 2)[1]
         for field in ("name: skills-review", "disable-model-invocation: true", "model-tier: standard", "effort: high"):
             self.assertIn(field, front)
-        self.assertNotRegex(front, r"(?m)^model:")
+        self.assertRegex(front, r"(?m)^model: sonnet$")
         grants = re.search(r'^allowed-tools: "(.*)"$', front, re.M).group(1)
         self.assertEqual(grants, "Read,Grep,Glob,AskUserQuestion,Skill(triage)")
         for text in ("/skills-review", "/skill:skills-review", "manual", "not a delivery gate", "untrusted data", "never execute"):

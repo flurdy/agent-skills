@@ -2,10 +2,10 @@
 name: thoughtbox
 description: Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to /triage in the configured Beads store, and render a separately confirmed scoped resolution command — without executing either workflow.
 allowed-tools: "Bash(python3:*) AskUserQuestion"
-model-tier: standard
+model-tier: economy
 model: sonnet
-effort: medium
-version: "0.1.0"
+effort: high
+version: "0.1.1"
 author: "flurdy"
 ---
 

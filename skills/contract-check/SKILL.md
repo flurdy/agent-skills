@@ -4,8 +4,8 @@ description: "Read-only Pact-lite health audit: content drift, uncommitted pacts
 allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/contract-check/scripts/contract-check.sh:*)"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "2.2.1"
+effort: high
+version: "2.2.2"
 author: "flurdy"
 ---
 

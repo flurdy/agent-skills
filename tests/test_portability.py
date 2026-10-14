@@ -251,6 +251,22 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
 
+    def test_audit_planning_and_capture_routing(self):
+        economy = {"pickup", "thoughtbox", "today"}
+        names = (
+            "contract-check", "eas-build-error", "model-update-check", "pickup",
+            "plan-day", "second-opinion", "skills-review", "thoughtbox",
+            "today", "trello-beads",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                front = skill(name).split("---", 2)[1]
+                tier = "economy" if name in economy else "standard"
+                effort = "medium" if name == "eas-build-error" else "high"
+                self.assertRegex(front, rf"(?m)^model-tier: {tier}$")
+                self.assertRegex(front, r"(?m)^model: sonnet$")
+                self.assertRegex(front, rf"(?m)^effort: {effort}$")
+
     def test_finalisation_and_git_routing(self):
         economy = {"artifact-hygiene", "stack-branch"}
         names = (

@@ -2,10 +2,10 @@
 name: pickup
 description: Read-only shortlist of unassigned, ready Jira tickets your team could pick up next — active sprint first, then the next sprint and top of backlog — with flagged or blocked ones listed separately. Scoped by a workspace pickup.toml.
 allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*), mcp__jira__jira_get"
-model-tier: standard
+model-tier: economy
 model: sonnet
-effort: medium
-version: "0.6.0"
+effort: high
+version: "0.6.1"
 author: "flurdy"
 ---
 

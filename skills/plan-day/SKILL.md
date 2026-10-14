@@ -4,8 +4,8 @@ description: Render today's plan from a My PA workspace — ranked Jira, Trello,
 allowed-tools: "Read, Bash(date:*), Bash(python3 ~/.agents/skills/plan-day/scripts/plan_day.py:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
-effort: medium
-version: "0.1.0"
+effort: high
+version: "0.1.1"
 author: "flurdy"
 ---
 

@@ -4,8 +4,9 @@ description: Explicit, conservative review of a source skill collection. Screens
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Skill(triage)"
 disable-model-invocation: true
 model-tier: standard
+model: sonnet
 effort: high
-version: "0.1.0"
+version: "0.1.1"
 author: "flurdy"
 ---
 
