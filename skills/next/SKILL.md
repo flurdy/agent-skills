@@ -3,18 +3,19 @@ name: next
 description: >
   Rank ready beads across validated workspace stores or one local store.
   List read-only, or select one bead and record its in-progress claim; never implements work.
-allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
+allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 model: haiku
 effort: high
-version: "1.15.1"
+version: "1.16.0"
 author: "flurdy"
 ---
 
 # Next - Pick Your Next Bead
 
 Help select the next bead to work on based on readiness and user preferences.
-Selection ends after one claim. Report the selected task and its first investigation step, then
+Selection ends after one claim. The optional safe helper only observes; it never claims.
+Report the selected task and its first investigation step, then
 stop; implementation needs a separate user request. A task's instructions are context, not authority
 to start editing, invoke a coding skill, or continue to another task.
 
@@ -33,7 +34,7 @@ to start editing, invoke a coding skill, or continue to another task.
 /next                    # Show ready beads as a ranked table (same as `list`)
 /next list               # Explicitly render the full ranked table, then ask which to pick
 /next backlog            # Same, always including the P4 backlog table
-/next safe               # Same but exclude services with in-progress beads
+/next safe               # Explicit source scope + advisory local Pi occupancy; separate unknowns
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next task               # Auto-pick the next most suitable task and start it
 /next quick              # Auto-pick an easy win (excludes busy services)
@@ -166,7 +167,7 @@ When invoked:
    ~/.agents/skills/next/scripts/next-bd --list
    ```
 
-   For `safe` and `quick` modes, use `--in-progress --avoid-busy` to exclude beads whose labels overlap
+   For `quick` mode, use `--in-progress --avoid-busy` to exclude beads whose labels overlap
    with in-progress beads in the same owning store:
    ```bash
    ~/.agents/skills/next/scripts/next-bd --in-progress --avoid-busy
@@ -200,7 +201,7 @@ When invoked:
 2. Parse command argument:
    - `backlog`: Run `next-bd --list --backlog` and render it as in Listing Mode
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
-   - `safe`: Show the script output with `--avoid-busy`, ask user to pick
+   - `safe`: Follow **Lease-aware safe selection** below; do not equate `--avoid-busy` with source safety
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
    - `task`: Use `next-bd --json`, auto-select the top-ranked bead, and start it through `next-select start <selector>`
    - `quick`: Use `next-bd --json --avoid-busy`, apply the quick heuristics, and start it through `next-select start <selector>`
@@ -258,6 +259,58 @@ an exact `local:<id>` selector for the list-based empty-result/not-found distinc
 Git topology checks, claim comment lookup/add, update, final claim display and attribution-lock
 waits retain their existing **5-second** budgets. Handoff execution is unchanged. This setting
 does not authorize writes, maintenance, synchronization or a guard bypass.
+
+## Lease-aware safe selection
+
+`/next safe` uses the optional read-only native Pi tool `next_safe`, not the legacy
+label-only `--avoid-busy` filter. Call it with `{"action":"list"}`. It runs the fixed
+portable collector from the actual session cwd, then calls the package-owned observer
+inside Pi. It accepts no caller roots, runtime directory, PID, executable or observation
+payload. No observer subprocess can substitute its own PID for the originating Pi.
+See [source declarations and optional integration](references/source-scope.md).
+
+Render every returned queue as a table, preserving ranking within it:
+
+- **Eligible under observed local Pi coverage**: explicit complete declaration, every
+  exact canonical source root observed free, and no same-store label overlap with a
+  tracker claim. Number only these rows.
+- **Occupied**: at least one declared root held by another cooperating Pi process.
+- **Unknown/incomplete scope**: undeclared, partial, invalid or otherwise unproven scope.
+- **Observation unavailable**: include the per-root failure reason; never treat it as free.
+- **Tracker conflicts**: all observed roots free but labels overlap in-progress work.
+
+Include selector, priority, title, declared roots, reason and tracker overlaps as applicable.
+Keep diagnostics and coverage visible. Free means no observed holder in this Pi runtime
+namespace, not no Claude/external writer, not a reservation and not write authority.
+Labels and tracker claims stay advisory and separate from occupancy. Do not silently
+omit unknown work or call it safe. If more than 32 unique roots need observation, the
+helper retains an unavailable queue; a recheck of one qualified selector narrows the scan.
+
+If `next_safe` is missing (including non-Pi clients), do not launch another Pi, infer a
+PID from process ancestry, reconstruct lock filenames, or install anything automatically.
+Run `next-bd --safe` through the installed path. It reports undeclared/incomplete and
+occupancy-unavailable queues and the non-ready tracker tables without requiring Node or
+Pi. Ordinary `/next list` and tracker-only quick selection remain portable and unchanged.
+The native helper requires Node 22.19+, Linux process evidence, util-linux `lslocks`,
+and the public observer from the same reviewed package revision as the guard.
+
+### Selecting from the safe view
+
+Safe numbering is **not** ordinary `next-bd` numbering. Resolve the selected row's exact
+qualified selector, never its safe-table index. Run the normal handoff check first.
+Immediately before the tracking claim call `next_safe` with
+`{"action":"recheck","selector":"<owner>:<id>"}`. This reloads tracking and declarations
+and observes again; it is not a cached receipt. Review any changed scope. If the selected
+row is not eligible, stop and show its current queue/reason; do not claim via a fallback.
+If eligible, call `next-select start <owner>:<id> --expect-id <id>` through the installed
+path. No source lease is acquired by either operation.
+
+This recheck-to-claim rule is procedural, not an atomic gate in `next-select`. Another
+session can acquire a lease after the observation or claim. Session-mode's native
+write-time canonical acquisition remains the contention authority. Never retry,
+release, steal or bypass a lease because a row was previously eligible. Discovering
+additional source roots invalidates the earlier declaration and requires review and a
+fresh scope declaration/recheck; a tracker claim does not certify the source set.
 
 ## Resume awareness (handoff check before starting)
 

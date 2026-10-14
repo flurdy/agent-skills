@@ -60,6 +60,7 @@ help:
 	@echo "make test-beads-migrate"
 	@echo "make test-beads-migrate-cli  # optional installed CLI help only"
 	@echo "make test-next"
+	@echo "make test-next-pi (optional Node/public lease observer fixtures)"
 	@echo "make test-handoffs"
 	@echo "make test-pi-spend"
 	@echo "make test-pickup"
@@ -245,6 +246,11 @@ test-beads-migrate-cli:
 
 test-next:
 	@python3 -m unittest discover -s skills/next/tests -p 'test_*.py'
+
+.PHONY: test-next-pi
+test-next-pi:
+	@node --check skills/next/pi/index.ts
+	@node --test skills/next/tests/lease-*.test.mjs
 
 test-pickup:
 	@python3 -m unittest discover -s skills/pickup/tests -p 'test_*.py'

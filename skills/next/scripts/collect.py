@@ -337,7 +337,48 @@ def owned_issues(
     ]
 
 
-def collect(root: Path) -> dict[str, Any]:
+def declared_source_scope(issue: dict[str, Any], source: Source) -> dict[str, Any]:
+    def result(state: str, reason: str, roots: list[str] | None = None) -> dict[str, Any]:
+        return {"state": state, "reason": reason, "roots": roots or []}
+
+    metadata = issue.get("metadata")
+    if metadata is None or isinstance(metadata, dict) and "source_scope" not in metadata:
+        return result("unknown", "source scope is undeclared")
+    scope = metadata.get("source_scope") if isinstance(metadata, dict) else None
+    if not isinstance(scope, dict) or set(scope) != {"version", "complete", "roots"}:
+        return result("invalid", "expected source_scope version, complete and roots")
+    roots = scope["roots"]
+    if (
+        type(scope["version"]) is not int or scope["version"] != 1
+        or type(scope["complete"]) is not bool
+        or not isinstance(roots, list) or not 1 <= len(roots) <= 32
+        or any(not isinstance(root, str) or not root or len(root) > 4096
+               or Path(root).is_absolute() or root.startswith("~")
+               or any(ord(char) < 32 or 127 <= ord(char) <= 159 for char in root)
+               for root in roots)
+    ):
+        return result("invalid", "invalid or oversized source_scope v1 declaration")
+    if store_error(source) is not None or os.path.lexists(source.directory / ".beads" / "redirect"):
+        return result("unavailable", "source-scope base is not a usable non-redirected store root")
+    canonical = []
+    try:
+        for root in roots:
+            path = (source.directory.resolve() / root).resolve(strict=True)
+            if not path.is_dir():
+                return result("invalid", "source roots must be directories")
+            if str(path) not in canonical:
+                canonical.append(str(path))
+    except (OSError, RuntimeError):
+        return result("unavailable", "a declared source path cannot be resolved")
+    return result(
+        "declared" if scope["complete"] else "partial",
+        "explicit complete declaration; Git roots not yet observed" if scope["complete"]
+        else "source scope is explicitly incomplete",
+        canonical,
+    )
+
+
+def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
     beads_read_timeout()
     workspace, sources = discover_sources(root)
     payload: dict[str, Any] = {
@@ -368,6 +409,12 @@ def collect(root: Path) -> dict[str, Any]:
                 payload["diagnostics"].append(f"{source.name}: {key}: {error}")
                 break
             collected[key] = owned_issues(source, issues, workspace)
+            if source_scope:
+                collected[key] = [
+                    {**issue, "repository": source.name, "selector": f"{source.name}:{issue['id']}",
+                     "source_scope": declared_source_scope(issue, source)}
+                    for issue in collected[key]
+                ]
         else:
             for key, issues in collected.items():
                 payload[key].extend(issues)
@@ -376,7 +423,7 @@ def collect(root: Path) -> dict[str, Any]:
 
 def main() -> int:
     try:
-        payload = collect(Path.cwd())
+        payload = collect(Path.cwd(), source_scope="--source-scope" in sys.argv[1:])
     except ValueError as error:
         print(f"next-bd: {error}", file=sys.stderr)
         return 2

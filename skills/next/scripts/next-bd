@@ -12,7 +12,9 @@ Options:
                  plus a P4 backlog table when fewer than 3 beads are ready
   --backlog      Always include the P4 backlog table with --list
   --in-progress  Include a compact in-progress summary (ignored with --list)
-  --avoid-busy   Exclude ready beads whose labels are busy in their store
+  --avoid-busy   Exclude ready beads whose labels are busy in their store (tracker-only)
+  --safe         Show scope/occupancy-unavailable queues without certifying safety
+  --safe-json    Read-only candidate/scope packet for the optional in-process Pi helper
   --json         Print ranked candidates as JSON
   --type=TYPE    Include only candidates of the given issue type
   --help         Show this help and exit
@@ -25,6 +27,8 @@ BACKLOG_THRESHOLD=3
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
 JSON_OUTPUT=false
+SAFE_OUTPUT=false
+SAFE_JSON=false
 TYPE_FILTER=""
 for arg in "$@"; do
   case "$arg" in
@@ -33,13 +37,20 @@ for arg in "$@"; do
     --in-progress) SHOW_IN_PROGRESS=true ;;
     --avoid-busy)  AVOID_BUSY=true ;;
     --json)        JSON_OUTPUT=true ;;
+    --safe)        SAFE_OUTPUT=true ;;
+    --safe-json)   SAFE_OUTPUT=true; SAFE_JSON=true ;;
     --type=*)      TYPE_FILTER=${arg#--type=} ;;
     --help)        usage; exit 0 ;;
   esac
 done
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-payload=$("$SCRIPT_DIR/collect.py")
+collector_args=()
+if "$SAFE_OUTPUT"; then
+  collector_args+=(--source-scope)
+  AVOID_BUSY=false
+fi
+payload=$("$SCRIPT_DIR/collect.py" "${collector_args[@]}")
 
 if "$JSON_OUTPUT"; then
   jq -r '.diagnostics[] | "next-bd: \(.)"' <<< "$payload" >&2
@@ -52,6 +63,8 @@ jq -r \
   --argjson backlog_threshold "$BACKLOG_THRESHOLD" \
   --arg avoid_busy "$AVOID_BUSY" \
   --arg json_output "$JSON_OUTPUT" \
+  --arg safe_output "$SAFE_OUTPUT" \
+  --arg safe_json "$SAFE_JSON" \
   --arg type_filter "$TYPE_FILTER" '
   def cell: (. // "—") | tostring | gsub("[\\r\\n]+"; " ") | gsub("\\|"; "&#124;");
   def row: "| " + (map(cell) | join(" | ")) + " |";
@@ -73,6 +86,7 @@ jq -r \
            .issue_type, (.labels // [] | if length == 0 then "-" else join(", ") end), .title] +
           (if $extra == "Blocked by" then [blocker_context]
            elif $extra == "Defer until" then [.defer_until]
+           elif $extra == "Source scope" then ["\(.source_scope.state): \(.source_scope.reason)"]
            elif $extra == "Updated" then [(.updated_at // .created_at // "—")[0:10]]
            else [] end)) | row
       ) | join("\n"))
@@ -135,7 +149,22 @@ jq -r \
     sort_by(.rank, .created_at, (.repository // ""), .id)
   ) as $ranked |
 
-  if $json_output == "true" then
+  if $safe_json == "true" then
+    {version: 1, workspace: $workspace, candidates: $ranked,
+     in_progress: $in_progress, blocked: $payload.blocked, deferred: $payload.deferred,
+     diagnostics: $diagnostics}
+  elif $safe_output == "true" then
+    "## Lease-aware selection unavailable\n\nNo candidates certified: no in-process Pi observer. Ordinary listing remains available.\n" +
+    "Claims and labels do not prove source occupancy; no lease was acquired.\n" +
+    non_ready_table("Unknown or incomplete source scope"; "beads; not safe-selectable";
+      ($ranked | map(select(.source_scope.state != "declared"))); $workspace; "Source scope") +
+    non_ready_table("Occupancy unavailable"; "beads; not safe-selectable";
+      ($ranked | map(select(.source_scope.state == "declared"))); $workspace; "Source scope") +
+    non_ready_table("In Progress"; "beads; not selectable"; $in_progress; $workspace; "") +
+    non_ready_table("Blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") +
+    non_ready_table("Deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") +
+    (if ($diagnostics | length) > 0 then "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + .) | join("\n")) else "" end)
+  elif $json_output == "true" then
     $ranked
   else
     "## Ready to Work (\($ranked | length) beads)\n" +
