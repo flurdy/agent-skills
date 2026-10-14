@@ -4,8 +4,8 @@ description: Initialize work on a Jira ticket. Creates a new branch with convent
 allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Bash(~/.agents/skills/start-ticket/scripts/git-branch-preflight.sh:*),Read,Skill,AskUserQuestion"
 model-tier: economy
 model: haiku
-effort: medium
-version: "2.2.0"
+effort: high
+version: "2.2.1"
 author: "flurdy"
 ---
 

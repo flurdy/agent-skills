@@ -7,8 +7,8 @@ description: >
 allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cleanup.py:*),Bash(bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Skill(next),Skill(triage),Skill(refine),Skill(plan-to-backlog),Skill(backlog-groom),Skill(tracking-sweep),Skill(trello-beads),Skill(beads-check-dolt-migration),Skill(beads-migrate-to-dolt),Skill(beads-setup),AskUserQuestion"
 model-tier: economy
 model: haiku
-effort: medium
-version: "0.11.0"
+effort: high
+version: "0.11.1"
 author: "flurdy"
 ---
 

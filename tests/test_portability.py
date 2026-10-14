@@ -251,6 +251,21 @@ class WorkflowContracts(unittest.TestCase):
                 self.assertNotIn("mcp__jira__", text)
                 self.assertNotIn("Jira MCP tools directly", text)
 
+    def test_economy_effort_matches_workflow_decisions(self):
+        high_effort = {"beads", "beads-check-dolt-migration", "next", "start-ticket"}
+        names = (
+            "beads", "beads-check-dolt-migration", "browser-screenshot",
+            "circleci-status", "confluence", "jira-ticket", "next",
+            "pi-spend", "start-ticket", "token-dashboard",
+        )
+        for name in names:
+            with self.subTest(name=name):
+                front = skill(name).split("---", 2)[1]
+                effort = "high" if name in high_effort else "medium"
+                self.assertRegex(front, r"(?m)^model-tier: economy$")
+                self.assertRegex(front, r"(?m)^model: haiku$")
+                self.assertRegex(front, rf"(?m)^effort: {effort}$")
+
     def test_claude_model_hints_preserve_coding_layers(self):
         expected = {
             "breakdown": ("sonnet", "medium"),

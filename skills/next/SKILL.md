@@ -6,8 +6,8 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get"
 model-tier: economy
 model: haiku
-effort: medium
-version: "1.15.0"
+effort: high
+version: "1.15.1"
 author: "flurdy"
 ---
 

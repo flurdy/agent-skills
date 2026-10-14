@@ -4,8 +4,8 @@ description: "Detect whether a beads repository needs classic-to-Dolt migration 
 allowed-tools: "Read,Bash(bd:*),Bash(git:*),Bash(ls:*),Bash(test:*),Bash(cat:*)"
 model-tier: economy
 model: haiku
-effort: medium
-version: "1.1.0"
+effort: high
+version: "1.1.1"
 author: "flurdy"
 ---
 
