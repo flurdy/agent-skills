@@ -3,9 +3,9 @@ name: backlog-groom
 description: "Auto-detects workspace unfinished backlogs across unique stores; otherwise local open beads. Flags thin prose, missing labels, drift, lifecycle and duplicates. Report-only; mutations need approval, destructive ones individually."
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(bd -C * status:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * comments:*),Bash(bd -C * lint:*),Bash(bd -C * stale:*),Bash(bd -C * find-duplicates:*),Bash(bd -C * children:*),Bash(bd -C * epic:*),Bash(bd -C * label:*),Bash(bd -C * priority:*),Bash(bd -C * update:*),Bash(bd -C * note:*),Bash(bd -C * close:*),Bash(bd -C * supersede:*),Bash(bd -C * dep:*),mcp__jira__jira_get"
 model-tier: standard
-model: opus
+model: sonnet
 effort: high
-version: "0.2.1"
+version: "0.2.2"
 author: "flurdy"
 ---
 

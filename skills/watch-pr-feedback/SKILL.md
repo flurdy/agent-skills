@@ -5,10 +5,10 @@ description: >
   actionable item once, and render a bounded decision queue. Read-only by default; attended
   mode pauses only when the queue needs acknowledgment.
 allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*),Bash(~/.agents/skills/pr-status/scripts/gh-pr-checkout.py:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr checks:*),Bash(date:*),mcp__jira__jira_get,AskUserQuestion"
-model-tier: premium
-model: opus
+model-tier: standard
+model: sonnet
 effort: high
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 

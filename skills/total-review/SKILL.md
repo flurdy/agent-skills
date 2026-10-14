@@ -4,8 +4,8 @@ description: "Portable pre-PR quality gauntlet: cleanup, verification, craft, co
 allowed-tools: "Read,Write,Edit,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git ls-files:*),Bash(git rev-parse:*),Bash(git symbolic-ref:*),Bash(git merge-base:*),Bash(git remote get-url:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * search:*),Bash(bd -C * create:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.py:*),Skill(clean-code),Skill(verify-task),Skill(pedantic-review),Skill(second-opinion),AskUserQuestion"
 model-tier: premium
 model: fable
-effort: xhigh
-version: "1.1.2"
+effort: high
+version: "1.1.3"
 author: "flurdy"
 ---
 
