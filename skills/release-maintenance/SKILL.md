@@ -4,11 +4,11 @@ description: >
   Separately confirmed manifest reconciliation, scoped config synchronization, workload
   restart, or evidence-backed rollout acknowledgement. Requires explicit invocation;
   never runs inside a release watch tick.
-allowed-tools: "Read,Write,AskUserQuestion,Bash(./scripts/release-order:*),Bash(./scripts/mgit status:*),Bash(./scripts/mgit diff:*),Bash(./scripts/mgit log:*),Bash(./scripts/mgit show:*),Bash(kubectl get:*),Bash(~/.agents/skills/ready-to-release/scripts/release-gates:*)"
+allowed-tools: "Read,AskUserQuestion,Bash(~/.agents/skills/release-manager/scripts/release-state:*),Bash(./scripts/release-order:*),Bash(./scripts/mgit status:*),Bash(./scripts/mgit diff:*),Bash(./scripts/mgit log:*),Bash(./scripts/mgit show:*),Bash(kubectl get:*),Bash(~/.agents/skills/ready-to-release/scripts/release-gates:*)"
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.0.1"
+version: "1.1.0"
 author: "flurdy"
 ---
 
@@ -25,6 +25,7 @@ invocation but cannot dispatch it. A push answer is not maintenance authorizatio
 /release-maintenance config-sync <repository>
 /release-maintenance restart <service>
 /release-maintenance acknowledge-rollout <service>
+/release-maintenance resolve-publication <service>
 ```
 
 Require an explicit operation and target. A missing/ambiguous argument is a clarification, not a
@@ -36,7 +37,10 @@ consumer sets. Unsupported project capabilities require a handoff, not generic f
 
 1. Identify the exact repository/worktree or Kubernetes context/namespace/resource and current
    evidence. Preserve unrelated edits and state. One writer per state file; pause the attended
-   manager before any shared-state update. Malformed or concurrently changed state stops writes.
+   manager before any shared-state update. Change `.release-state.json` only through
+   `~/.agents/skills/release-manager/scripts/release-state`: `update --owner maintenance` may patch
+   `rolloutWatch` and the legacy keys, with the hash read before asking. Malformed state, a refusal
+   or a conflict stops the write; never edit the file directly or reset it.
 2. Show the diff or operation, target, production consequence, and **one visible command**. Ask
    immediately before each remote or destructive action; this skill also confirms local manifest
    rewrites and state acknowledgements. Dismissal/no answer means do nothing. Every subsequent
@@ -114,15 +118,42 @@ to success using age or elapsed time. Require independent project deployment evi
 saved pushed revision to the currently settled workload (for example immutable image provenance
 and the controller's observed revision), including explicit context/resource identity.
 
-Show that evidence and the exact `rolloutWatch[service]` entry proposed for removal. Ask for a
-current acknowledgement, re-read state, and remove **only that unchanged entry** after confirmation.
+Show that evidence and the exact `rolloutWatch[service]` entry proposed for removal. Read state
+first and keep its hash, ask for a current acknowledgement, then remove **only that unchanged entry**:
+
+```bash
+~/.agents/skills/release-manager/scripts/release-state update --owner maintenance --expect <hash> --patch '{"rolloutWatch":{"<service>":null}}'
+```
+
+A conflict means the entry or state changed; read again and re-ask rather than retrying.
 If provenance is unavailable, keep it and report HOLD; do not add an expiry that fabricates readiness.
 Re-run the read-only authority afterwards. This is a local tracking update, not a deployment.
+
+## Resolve a pending publication
+
+A `publishing[service]` record is written before a push is confirmed. One marked `uncertain`, or
+left behind by an interrupted run, holds every further release push for the project. Never clear it
+by age or because readiness looks green.
+
+Read state and show the exact record: commit, pre-push tag, session, deploying flag and whether it
+is uncertain. Show the current shared readiness evidence for that service, for example whether its
+upstream revision now equals the recorded commit. This skill does not authorize an extra remote
+read; use only evidence already collected or separately confirmed. Ask whether that exact commit was
+published, then run exactly one command with the hash read before asking:
+
+```bash
+~/.agents/skills/release-manager/scripts/release-state resolve-publication --service <service> --sha <sha> --published --expect <hash>
+~/.agents/skills/release-manager/scripts/release-state resolve-publication --service <service> --sha <sha> --not-published --expect <hash>
+```
+
+`--published` records a rollout watch from the saved pre-push tag for deploying services;
+`--not-published` only clears the record. No answer, or unclear evidence, keeps the hold.
 
 ## Legacy maintenance state
 
 `configApply`, `restartPending`, and `restartWatch` from older managers are preserved, not migrated
 or advanced automatically. They are hints to investigate, not proof of application or startup
 requirements. For the explicitly selected operation, inspect current project evidence and propose
-only a separately confirmed update to the relevant unchanged entry. Preserve every unrelated key;
+only a separately confirmed `release-state update --owner maintenance` to the relevant unchanged
+entry. Preserve every unrelated key;
 never clear the whole state file or resurrect the old resourceVersion/pod-age heuristics.

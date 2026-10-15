@@ -1,0 +1,337 @@
+#!/usr/bin/env python3
+"""Coordinate local .release-state.json updates without source-writer leases.
+
+Every write holds a per-file runtime lock, requires the caller's expected content hash
+(or a publication-record invariant), preserves unrelated keys and replaces the file
+atomically. Exit codes: 0 ok, 2 refused/error, 3 conflict, 4 held by a pending publication.
+"""
+
+import argparse
+from datetime import datetime, timezone
+import errno
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+import subprocess
+import sys
+import time
+
+
+SCHEMA = "release-state/v1"
+STATE_NAME = ".release-state.json"
+MAX_BYTES = 1024 * 1024
+LOCK_TIMEOUT_SECONDS = 10
+SHA = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})")
+EXPECT = re.compile(r"(?:[0-9a-f]{64}|missing)")
+SERVICE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
+SESSION = re.compile(r"[^\x00-\x1f\x7f]{1,200}")
+MAP_KEYS = ("deferred", "cancelled", "ciBeads", "rolloutWatch", "publishing")
+OWNED_KEYS = {
+    "manager": {"deferred", "cancelled", "ciBeads", "rolloutWatch", "quietStreak"},
+    "maintenance": {"rolloutWatch", "configApply", "restartPending", "restartWatch"},
+}
+OUTCOMES = {"ok", "uptodate", "rejected", "failed", "stale", "declined", "unknown"}
+
+
+class Refused(Exception):
+    pass
+
+
+class Conflict(Exception):
+    def __init__(self, digest):
+        super().__init__("state changed since it was read")
+        self.digest = digest
+
+
+class Held(Exception):
+    def __init__(self, pending):
+        super().__init__("a publication record is pending")
+        self.pending = pending
+
+
+def git(root, *args):
+    return subprocess.run(["git", *args], cwd=root, capture_output=True, text=True, timeout=10, check=False)
+
+
+def project_root():
+    result = git(Path.cwd(), "rev-parse", "--show-toplevel")
+    if result.returncode != 0:
+        raise Refused("run from inside the project's Git worktree")
+    return Path(result.stdout.strip()).resolve()
+
+
+def validate(state):
+    if not isinstance(state, dict):
+        raise Refused("state must be a JSON object")
+    for key in MAP_KEYS:
+        if key in state and not isinstance(state[key], dict):
+            raise Refused(f"{key} must be an object")
+    streak = state.get("quietStreak", 0)
+    if type(streak) is not int or streak < 0:
+        raise Refused("quietStreak must be a non-negative integer")
+    for service, record in state.get("publishing", {}).items():
+        if (
+            not SERVICE.fullmatch(service) or not isinstance(record, dict)
+            or not isinstance(record.get("sha"), str) or not SHA.fullmatch(record["sha"])
+            or not (record.get("fromTag") is None or isinstance(record.get("fromTag"), str))
+            or not isinstance(record.get("session"), str) or not record["session"]
+            or type(record.get("deploying")) is not bool
+            or type(record.get("uncertain", False)) is not bool
+        ):
+            raise Refused(f"invalid publishing record for {service!r}")
+    return state
+
+
+def read_bytes(path):
+    try:
+        info = os.lstat(path)
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+        raise Refused(f"{STATE_NAME} must be a regular file, not a symlink or special node")
+    if info.st_nlink != 1:
+        raise Refused(f"{STATE_NAME} must not be hard-linked")
+    if info.st_size > MAX_BYTES:
+        raise Refused(f"{STATE_NAME} exceeds {MAX_BYTES} bytes")
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, "rb") as handle:
+        data = handle.read(MAX_BYTES + 1)
+    if len(data) > MAX_BYTES:
+        raise Refused(f"{STATE_NAME} exceeds {MAX_BYTES} bytes")
+    return data
+
+
+def load(path):
+    data = read_bytes(path)
+    if data is None:
+        return "missing", {}, False
+    try:
+        state = json.loads(data)
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise Refused(f"{STATE_NAME} is not valid JSON; repair it by hand, never reset it") from None
+    return hashlib.sha256(data).hexdigest(), validate(state), True
+
+
+def runtime_dir():
+    base = os.environ.get("XDG_RUNTIME_DIR")
+    # Predictable fallback is safe only because lstat below rejects links and foreign or shared modes.
+    directory = Path(base, "release-state") if base else Path(f"/tmp/release-state-{os.getuid()}")  # noqa: S108
+    directory.mkdir(mode=0o700, parents=bool(base), exist_ok=True)
+    info = os.lstat(directory)
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o022:
+        raise Refused("release-state lock directory is not private to this user")
+    return directory
+
+
+class Locked:
+    """Exclusive lock keyed by canonical state identity; never stolen or expired by age."""
+
+    def __init__(self, path):
+        self.name = runtime_dir() / f"{hashlib.sha256(str(path).encode()).hexdigest()}.lock"
+
+    def __enter__(self):
+        self.handle = open(self.name, "a", encoding="utf-8")
+        deadline = time.monotonic() + LOCK_TIMEOUT_SECONDS
+        while True:
+            try:
+                fcntl.flock(self.handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return self
+            except OSError as error:
+                if error.errno not in (errno.EAGAIN, errno.EACCES) or time.monotonic() > deadline:
+                    self.handle.close()
+                    raise Refused("release-state lock is busy; nothing was written") from None
+                time.sleep(0.05)
+
+    def __exit__(self, *_):
+        self.handle.close()
+
+
+def require_writable(root, path):
+    if git(root, "check-ignore", "-q", STATE_NAME).returncode != 0:
+        raise Refused(f"{STATE_NAME} must be gitignored and untracked before it is written")
+    if path.parent.resolve() != root:
+        raise Refused("project root identity changed")
+
+
+def write(path, state):
+    data = (json.dumps(state, indent=2, sort_keys=True) + "\n").encode()
+    temporary = path.with_name(f"{STATE_NAME}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    return hashlib.sha256(data).hexdigest()
+
+
+def apply_patch(state, patch):
+    """Two-level patch: object values merge per entry; entries are replaced whole; null deletes.
+
+    Entries stay whole so documented values such as rolloutWatch fromTag null survive.
+    """
+    for key, value in patch.items():
+        if value is None:
+            state.pop(key, None)
+        elif isinstance(value, dict):
+            current = state.get(key)
+            merged = dict(current) if isinstance(current, dict) else {}
+            for entry, entry_value in value.items():
+                if entry_value is None:
+                    merged.pop(entry, None)
+                else:
+                    merged[entry] = entry_value
+            state[key] = merged
+        else:
+            state[key] = value
+    return state
+
+
+def transact(expect, change):
+    root = project_root()
+    path = root / STATE_NAME
+    require_writable(root, path)
+    with Locked(path):
+        digest, state, _ = load(path)
+        if expect is not None and expect != digest:
+            raise Conflict(digest)
+        updated = validate(change(json.loads(json.dumps(state))))
+        new_digest = write(path, updated)
+    return {"status": "updated", "path": str(path), "sha256": new_digest, "state": updated}
+
+
+def record_for(state, service, sha):
+    record = state.get("publishing", {}).get(service)
+    if not record or record["sha"] != sha:
+        raise Refused(f"no publication record for {service} at that commit")
+    return record
+
+
+def settle(state, service, record, published):
+    if published and record["deploying"]:
+        state.setdefault("rolloutWatch", {})[service] = {"sha": record["sha"], "fromTag": record["fromTag"]}
+    del state["publishing"][service]
+    return state
+
+
+def command_update(args):
+    owned = OWNED_KEYS[args.owner]
+    try:
+        patch = json.loads(args.patch)
+    except json.JSONDecodeError:
+        raise Refused("patch must be valid JSON") from None
+    if not isinstance(patch, dict):
+        raise Refused("patch must be a JSON object")
+    foreign = sorted(set(patch) - owned)
+    if foreign:
+        raise Refused(f"{args.owner} may not patch: {', '.join(foreign)}")
+    return transact(args.expect, lambda state: apply_patch(state, patch))
+
+
+def command_begin(args):
+    def change(state):
+        pending = sorted(state.get("publishing", {}))
+        if pending:
+            raise Held(pending)
+        state.setdefault("publishing", {})[args.service] = {
+            "sha": args.sha, "fromTag": args.from_tag or None, "session": args.session,
+            "deploying": args.deploying, "startedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        return state
+    return transact(args.expect, change)
+
+
+def command_finish(args):
+    def change(state):
+        record = record_for(state, args.service, args.sha)
+        if record.get("uncertain"):
+            raise Refused("this publication is already uncertain; resolve it explicitly")
+        if args.status == "unknown":
+            record["uncertain"] = True
+            return state
+        return settle(state, args.service, record, args.status == "ok")
+    return transact(None, change)
+
+
+def command_resolve(args):
+    return transact(args.expect, lambda state: settle(state, args.service, record_for(state, args.service, args.sha), args.published))
+
+
+def pattern(regex, label):
+    def parse(value):
+        if not regex.fullmatch(value):
+            raise argparse.ArgumentTypeError(f"invalid {label}")
+        return value
+    return parse
+
+
+def parser():
+    root = argparse.ArgumentParser(prog="release-state", description=__doc__)
+    commands = root.add_subparsers(dest="command", required=True)
+    commands.add_parser("read", help="print state and its content hash")
+    update = commands.add_parser("update", help="apply an owner-restricted two-level patch")
+    update.add_argument("--owner", choices=sorted(OWNED_KEYS), required=True)
+    update.add_argument("--patch", required=True)
+    begin = commands.add_parser("begin-publication", help="save a write-ahead record before confirmation")
+    begin.add_argument("--from-tag", default="")
+    begin.add_argument("--session", type=pattern(SESSION, "session (1-200 printable characters)"), required=True)
+    deploying = begin.add_mutually_exclusive_group(required=True)
+    deploying.add_argument("--deploying", dest="deploying", action="store_true")
+    deploying.add_argument("--no-deploying", dest="deploying", action="store_false")
+    finish = commands.add_parser("finish-publication", help="record a publish_commit receipt")
+    finish.add_argument("--status", choices=sorted(OUTCOMES), required=True)
+    resolve = commands.add_parser("resolve-publication", help="explicit human resolution of a pending record")
+    published = resolve.add_mutually_exclusive_group(required=True)
+    published.add_argument("--published", dest="published", action="store_true")
+    published.add_argument("--not-published", dest="published", action="store_false")
+    for command in (begin, finish, resolve):
+        command.add_argument("--service", type=pattern(SERVICE, "service"), required=True)
+        command.add_argument("--sha", type=pattern(SHA, "full commit SHA"), required=True)
+    for command in (update, begin, resolve):
+        command.add_argument("--expect", type=pattern(EXPECT, "expected sha256 or 'missing'"), required=True)
+    return root
+
+
+def main():
+    args = parser().parse_args()
+    try:
+        if args.command == "read":
+            root = project_root()
+            path = root / STATE_NAME
+            digest, state, exists = load(path)
+            payload = {"path": str(path), "exists": exists, "sha256": digest, "state": state}
+        else:
+            payload = {"update": command_update, "begin-publication": command_begin,
+                       "finish-publication": command_finish, "resolve-publication": command_resolve}[args.command](args)
+        print(json.dumps({"schemaVersion": SCHEMA, **payload}))
+        return 0
+    except Conflict as error:
+        print(json.dumps({"schemaVersion": SCHEMA, "status": "conflict", "sha256": error.digest}))
+        print(f"release-state: {error}; read again and redecide", file=sys.stderr)
+        return 3
+    except Held as error:
+        print(json.dumps({"schemaVersion": SCHEMA, "status": "held", "pending": error.pending}))
+        print(f"release-state: {error}: {', '.join(error.pending)}", file=sys.stderr)
+        return 4
+    except (Refused, OSError, subprocess.SubprocessError) as error:
+        print(json.dumps({"schemaVersion": SCHEMA, "status": "error"}))
+        print(f"release-state: {error}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

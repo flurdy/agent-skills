@@ -2,7 +2,7 @@
 set -euo pipefail
 SKILL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
-for script in release-order release-ci pact-graph; do
+for script in release-order release-ci pact-graph release-state; do
     [ -x "$SKILL_DIR/scripts/$script" ] || fail "missing executable $script adapter"
 done
 grep -Fq pact-graph "$SKILL_DIR/scripts/release-order" || fail 'order adapter must compose Pact'
@@ -17,6 +17,20 @@ if grep -Eq 'ln -sfn|chmod \+x|resourceVersion.*moves|ageBaseline.*fresh' "$skil
     fail 'recurring manager retains setup repair or heuristic restart confirmation'
 fi
 maintenance="$SKILL_DIR/../release-maintenance/SKILL.md"
+for file in "$skill" "$maintenance"; do
+    allowed=$(grep -m1 '^allowed-tools:' "$file")
+    if printf '%s' "$allowed" | grep -Eq '"Write,|,Write,|,Write"'; then
+        fail "$(basename "$(dirname "$file")") must write release state only through release-state"
+    fi
+    printf '%s' "$allowed" | grep -Fq 'Bash(~/.agents/skills/release-manager/scripts/release-state:*)' \
+        || fail "$(basename "$(dirname "$file")") must allow the release-state helper"
+done
+for required in 'release-state update --owner manager' 'publishing' 'conflict'; do
+    grep -Fq -- "$required" "$skill" || fail "missing coordinated state invariant: $required"
+done
+for required in 'release-state update --owner maintenance' 'resolve-publication'; do
+    grep -Fq -- "$required" "$maintenance" || fail "missing maintenance state invariant: $required"
+done
 for required in './scripts/release-order --write' 'never invoked by' 'one visible command' '--context' 'generation' 'Legacy maintenance state' 'acknowledge-rollout'; do
     grep -Fq -- "$required" "$maintenance" || fail "missing isolated maintenance invariant: $required"
 done
