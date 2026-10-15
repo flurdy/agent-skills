@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.1.3"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -61,7 +61,7 @@ stopping the watch; keep healthy sources and retained state visible.
 ## Command execution contract
 
 Run each documented helper as its own tool call, with its documented arguments. The workflow is:
-`date` → request collector → `date` and one feedback collector per repository group → JSON reducer
+`date` → request collector → installed feedback helper with `--collect`
 → display-time `date` → rendered dashboard. Omit feedback calls for an empty scope. Keep orchestration
 and deadline decisions in reasoning, not a generated program.
 
@@ -72,8 +72,9 @@ that JSON directly to the documented collector or reducer. Preserve returned sta
 Do not reconstruct state from counts, prose, or hand-copied tuples. If exact required state is
 unavailable, follow the state-loss stop rule instead of synthesizing a replacement.
 
-For a watch deadline check, call `date '+%Y-%m-%dT%H:%M:%S%z'` separately before each collection
-phase/group. Compare the returned time with the deadline in reasoning. Do not put comparisons such
+For a watch deadline check, call `date '+%Y-%m-%dT%H:%M:%S%z'` separately before the request
+collection phase. Compare the returned time with the deadline in reasoning. Pass that immutable
+deadline to the installed feedback helper; it checks time internally before each repository group. Do not put comparisons such
 as `>=` into executable heredocs: a conservative shell guard may interpret them as write redirects.
 
 Do not retry a guard-denied command with alternate quoting, a different interpreter, or another
@@ -114,30 +115,32 @@ A commit change is not a re-request. Triage acknowledgement is never GitHub appr
 
 ## 2. Reuse normalized feedback
 
-Group available, visible requests by repository and fetch once per group:
+Use the installed feedback helper's collect-and-reduce mode once for available, visible requests:
 
 ```bash
-~/.agents/skills/pr-status/scripts/gh-pr-feedback.py OWNER REPO NUMBER1 NUMBER2 \
-  --body-limit 200 --max-source-items 100 --max-records-per-pr 500
-```
-
-The helper has bounded pages and a 60-second per-request timeout; it is not a single overall
-60-second operation. Do not start another group after the watch deadline. If a running call
-returns after it, render the result and stop scheduling. Failed groups remain unknown. Feedback
-is separately observed metadata, not an immutable code-review snapshot.
-
-Reduce the returned inventories with the pure JSON helper in a separate tool call (stdin, no files).
-The heredoc below is a JSON payload for the installed script, not a Python program:
-
-```bash
-python3 ~/.agents/skills/pr-review-requests/scripts/request-feedback.py <<'REQUEST_FEEDBACK'
-{"keys":["owner/repo#123"],"previous":{},"inventories":[]}
+python3 ~/.agents/skills/pr-review-requests/scripts/request-feedback.py --collect \
+  --deadline 'IMMUTABLE_ISO_DEADLINE' <<'REQUEST_FEEDBACK'
+{"keys":["owner/repo#123"],"previous":{}}
 REQUEST_FEEDBACK
 ```
 
-Substitute all currently visible request keys, prior feedback state, and actual fetched envelopes;
-include available sources only. Use a quoted delimiter absent from the JSON. Missing inventories
-produce incomplete summaries. The reducer returns `summaries`, `deltas`, `errors`, and `state`.
+Omit `--deadline` for one-shot dashboards. Substitute collector-qualified request keys and exact
+prior feedback state (empty only for a fresh baseline). Use a quoted delimiter absent from the JSON.
+Do not include fetched `inventories`, bodies, or gists in the command. Do not call `gh-pr-feedback.py`
+separately or copy its output into a reducer invocation. The installed helper groups PRs by repository,
+invokes the shared `gh-pr-feedback.py` internally once per group with 200-character bodies,
+100 source items, and 500 records per PR, and reduces the raw data without exposing it to the agent.
+No cache, temporary file, or persisted comparison state is written. The pure reducer mode remains
+available for existing callers but is not this dashboard's collection path.
+
+Collect mode requires a POSIX host for process-group cleanup and validates all scope/state before
+fetching. Each group has a 120-second overall subprocess timeout, bounded further by remaining watch
+time; timeouts terminate the collector and its descendants. No group starts at or past the supplied deadline.
+API failures, timeouts, malformed outputs, and unstarted groups remain incomplete, preserving prior
+identities rather than claiming empty feedback. Healthy groups still render. The helper returns only
+`summaries`, `deltas`, `errors`, `state`, and `deadlineReached`; bodies and full inventories stay internal.
+On `deadlineReached: true`, render returned results and stop the watch. Feedback is separately observed
+metadata, not an immutable code-review snapshot. Do not echo the returned state as a prose summary.
 Retain state after visible output. Keys use repository plus number, records use stable `identity`,
 `updatedAt`, and `stateKey`: a later update is an edit, a lifecycle-only change is not a new comment.
 Partial fetches retain missing identities and never treat absent feedback as handled. Cap breaches

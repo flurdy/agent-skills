@@ -40,7 +40,8 @@ assert len(prompts) == 2, 'expected Pi and fixed Claude tick prompts'
 for prompt in prompts:
     for invariant in ('Use only the documented direct helper calls',
                       'Never generate inline Python or shell orchestration wrappers',
-                      'JSON-only stdin', 'Do not retry a guard-denied command'):
+                      'JSON-only stdin', 'Do not retry a guard-denied command',
+                      'request-feedback.py --collect', 'never print or copy raw inventories'):
         assert invariant in prompt, f'tick prompt missing direct-call safeguard: {invariant}'
 summary_path = Path(sys.argv[2])
 assert summary_path.is_file(), 'missing standalone request dashboard'
@@ -76,6 +77,9 @@ for invariant in (
     'Do not retry a guard-denied command',
     'Do not request `/implement` for this read-only dashboard',
     'Do not reconstruct state from counts, prose, or hand-copied tuples',
+    'request-feedback.py --collect', 'deadlineReached: true',
+    'Do not include fetched `inventories`, bodies, or gists in the command',
+    'No cache, temporary file, or persisted comparison state is written',
 ):
     assert invariant in summary, f'missing direct-call safeguard: {invariant}'
 tools = summary.split('---', 2)[1]

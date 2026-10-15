@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.15.0"
+version: "1.16.0"
 author: "flurdy"
 ---
 
@@ -133,6 +133,16 @@ repository scope, PRs, caps, and all partial/error evidence. It reduces output/c
 bodies, gists, locations, author names, and response targets are absent, not empty. Classification
 hints must not justify semantic suppression without reading new/edited bodies. The normal inventory
 above is unchanged and remains this dashboard's source of gists.
+
+Complete compact polls also return `fingerprint`, `recordCount`, and `unchanged: false`. A caller
+with an intact, fully processed session-local snapshot may pass `--if-fingerprint SHA256` with
+`--compact`. If a fresh complete inventory matches, the response has `unchanged: true`, the same
+fingerprint/count, and omits `records` entirely (not an empty list). The digest covers the full
+bounded inventory including content, scope, lifecycle, self-replies, and caps, before projection.
+A changed snapshot returns compact rows. Partial responses always return available rows/errors and
+never a reusable fingerprint. No state is written to disk. Never use conditional omission for a
+baseline, explicit recheck, lost/pruned ledger, or pending unprocessed work; the feedback watcher
+owns the exact eligibility rules. Default full inventory and focused selection remain unchanged.
 
 The feedback watcher uses compact polls, then hydrates selected new/edited records with:
 

@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/watch-telemetry/scripts/wat
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.3.0"
+version: "1.4.0"
 author: "flurdy"
 ---
 
@@ -130,7 +130,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. Use `--compact` for inventory polls; fetch bodies only for new/edited records or explicit rechecks, after factual suppression and within the skill's 20-fetch bound. Never filter or dump full bodies on unchanged polls. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. Use `--compact` for inventory polls and `--if-fingerprint` only with an eligible fully processed snapshot as defined by the skill; fetch bodies only for new/edited records or explicit rechecks, after factual suppression and within the skill's 20-fetch bound. Never filter or dump full bodies on unchanged polls. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -227,6 +227,29 @@ Bodies, gists, author names, locations, and response targets are intentionally a
 This reduces tool output and context, not the collector's GitHub API requests. Do not use `--pretty`.
 Do not pipe the inventory through ad-hoc Python or jq filters or request full inventory bodies as a
 fallback. An unsupported compact mode is a fetch failure, not permission to dump the full inventory.
+
+### Conditional quiet polls
+
+A complete compact inventory includes a `fingerprint`, `recordCount`, and `unchanged: false`.
+Retain the fingerprint per exact repository/PR group only after all its records have been processed
+and rendered, with the full bounded identity ledger still available. Never promote a fingerprint
+while any candidate, failed/stale selection, attended acknowledgment/recheck, capacity/pruning notice,
+or failure remains, or if a focused result's state differs from its polled row. A fingerprint is a
+comparison optimization, not acknowledgment, validation evidence, or a replacement for the ledger.
+
+On a subsequent ordinary tick, when that group and ledger are intact and there is no pending work,
+append `--if-fingerprint FINGERPRINT` to its compact poll. Omit the flag on a baseline, explicit
+recheck, pending attended recheck, scope change, or lost/pruned ledger. The helper still fetches fresh
+GitHub data; a matching complete snapshot returns `unchanged: true` and `recordCount` with **no
+`records` field**. Accept that receipt only if its fingerprint and count match the retained processed
+snapshot, its scope matches, and `partial` is false with no errors. It means all retained records
+are unchanged, not that the inventory is empty; retain the ledger and make no focused body calls.
+A receipt without eligible retained state is a fetch failure, never a basis for claiming quiet.
+
+Changed snapshots return the compact records normally. Partial snapshots always return available
+records/errors, `unchanged: false`, and no reusable fingerprint. Missing `records` is valid only
+for the verified unchanged receipt above; other missing/malformed envelopes remain failures.
+Do not print the ledger, fingerprint, or receipt as a prose recap; use the existing quiet summary.
 
 Compare keys before fetching any bodies. Unchanged duplicate rows need no focused calls; lifecycle-only
 transitions use factual fields without revalidation. Baseline, recheck, and pending attended rechecks

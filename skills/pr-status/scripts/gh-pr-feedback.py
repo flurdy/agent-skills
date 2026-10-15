@@ -944,20 +944,30 @@ def inventory_envelope(
     }
 
 
-def compact_inventory(inventory: dict) -> dict:
+def compact_inventory(inventory: dict, if_fingerprint: str | None = None) -> dict:
     fields = {
         "identity", "updateKey", "stateKey", "pr", "source", "lifecycle",
         "selfAuthored", "hasLaterSelfReply", "authorKind", "reviewState",
         "semanticType", "actionability",
     }
-    return {
+    result = {
         **inventory,
         "recordFormat": "compact",
-        "records": [
+        "recordCount": len(inventory["records"]),
+        "unchanged": False,
+    }
+    if not inventory["partial"]:
+        serialized = json.dumps(inventory, sort_keys=True, separators=(",", ":"))
+        result["fingerprint"] = hashlib.sha256(serialized.encode()).hexdigest()
+        result["unchanged"] = result["fingerprint"] == if_fingerprint
+    if result["unchanged"]:
+        del result["records"]
+    else:
+        result["records"] = [
             {key: value for key, value in record.items() if key in fields}
             for record in inventory["records"]
-        ],
-    }
+        ]
+    return result
 
 
 def select_inventory_record(
@@ -1005,8 +1015,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--identity")
     parser.add_argument("--expected-update-key")
     parser.add_argument("--compact", action="store_true", help="emit body-free polling records")
+    parser.add_argument("--if-fingerprint", help="omit records when a complete compact poll matches this SHA-256")
     parser.add_argument("--pretty", action="store_true")
     arguments = parser.parse_args(argv)
+    if arguments.if_fingerprint is not None:
+        if not arguments.compact or not re.fullmatch(r"[0-9a-f]{64}", arguments.if_fingerprint):
+            parser.error("--if-fingerprint requires --compact and a lowercase SHA-256 digest")
     identity_supplied = arguments.identity is not None
     update_key_supplied = arguments.expected_update_key is not None
     if arguments.compact and identity_supplied:
@@ -1031,7 +1045,7 @@ def main(argv: list[str]) -> int:
     if args.identity is not None:
         result = select_inventory_record(result, args.identity, args.expected_update_key)
     if args.compact:
-        result = compact_inventory(result)
+        result = compact_inventory(result, args.if_fingerprint)
     json.dump(
         result, sys.stdout, indent=2 if args.pretty else None, sort_keys=args.pretty,
         separators=(",", ":") if args.compact and not args.pretty else None,

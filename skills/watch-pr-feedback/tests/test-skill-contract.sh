@@ -38,6 +38,14 @@ for invariant in \
     'gh-pr-feedback.py OWNER REPO PR_NUMBER' \
     'gh-pr-feedback.py {owner} {repo} {number1} {number2} ... --compact' \
     '`recordFormat: compact`' \
+    '--if-fingerprint FINGERPRINT' \
+    'A fingerprint is a' \
+    'comparison optimization, not acknowledgment' \
+    'with the full bounded identity ledger still available' \
+    'Omit the flag on a baseline' \
+    'A receipt without eligible retained state is a fetch failure' \
+    'Partial snapshots always return available' \
+    'or if a focused result' \
     'Do not pipe the inventory through ad-hoc Python or jq filters' \
     'Never suppress a new or edited record solely from semantic hints' \
     'at most 20 focused body fetches per tick' \

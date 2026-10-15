@@ -76,6 +76,9 @@ class FeedbackInventoryTests(unittest.TestCase):
         compact = self.run_cli(fixture, "42", "--compact")
 
         self.assertEqual("compact", compact.pop("recordFormat"))
+        self.assertFalse(compact.pop("unchanged"))
+        self.assertEqual(len(full["records"]), compact.pop("recordCount"))
+        self.assertRegex(compact.pop("fingerprint"), r"^[0-9a-f]{64}$")
         full_records = full.pop("records")
         compact_records = compact.pop("records")
         self.assertEqual(full, compact, "poll must preserve caps and fetch completeness")
@@ -90,6 +93,55 @@ class FeedbackInventoryTests(unittest.TestCase):
             self.assertNotIn("rawBody", polled)
             self.assertNotIn("gist", polled)
             self.assertNotIn("targets", polled)
+
+    def test_matching_complete_poll_returns_only_receipt(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        first = self.run_cli(fixture, "42", "--compact")
+        second = self.run_cli(fixture, "42", "--compact", "--if-fingerprint", first["fingerprint"])
+        self.assertTrue(second["unchanged"])
+        self.assertNotIn("records", second, "omitted records are not an empty inventory")
+        self.assertEqual(first["recordCount"], second["recordCount"])
+        self.assertEqual(first["fingerprint"], second["fingerprint"])
+        self.assertLess(len(json.dumps(second)), 600)
+
+    def test_conditional_poll_cannot_hide_edits_lifecycle_or_scope_changes(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        original = self.run_cli(fixture, "42", "--compact")
+        for kind in ("body", "lifecycle", "self-reply", "scope", "limits"):
+            with self.subTest(change=kind):
+                changed = copy.deepcopy(fixture)
+                thread = changed["initial"]["data"]["repository"]["pr0"]["reviewThreads"]["nodes"][0]
+                flags = []
+                if kind == "body":
+                    thread["comments"]["nodes"][0]["body"] = "New detail even with unchanged timestamp"
+                elif kind == "lifecycle":
+                    thread["isResolved"] = True
+                elif kind == "self-reply":
+                    changed["initial"]["data"]["viewer"]["login"] = "different-viewer"
+                elif kind == "limits":
+                    flags = ["--body-limit", "100"]
+                result = self.run_cli(
+                    changed, "43" if kind == "scope" else "42", "--compact",
+                    "--if-fingerprint", original["fingerprint"], *flags,
+                )
+                self.assertFalse(result["unchanged"])
+                self.assertIn("records", result)
+                self.assertNotEqual(original["fingerprint"], result["fingerprint"])
+
+    def test_partial_poll_never_returns_reusable_fingerprint(self) -> None:
+        fixture = load_fixture("partial-failure.json")
+        result = self.run_cli(fixture, "9", "--compact", "--if-fingerprint", "0" * 64)
+        self.assertTrue(result["partial"])
+        self.assertFalse(result["unchanged"])
+        self.assertNotIn("fingerprint", result)
+        self.assertIn("records", result)
+        self.assertTrue(result["errors"])
+
+    def test_conditional_cli_requires_compact_and_valid_fingerprint(self) -> None:
+        for flags in (["--if-fingerprint", "0" * 64], ["--compact", "--if-fingerprint", "bad"]):
+            with self.subTest(flags=flags), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit):
+                    feedback.parse_args(["acme", "widgets", "42", *flags])
 
     def test_default_cli_keeps_full_inventory_contract(self) -> None:
         fixture = load_fixture("all-sources.json")
