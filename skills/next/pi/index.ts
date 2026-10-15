@@ -8,7 +8,12 @@ export function registerNextSafe(pi: ExtensionAPI, loadObserver: () => Promise<O
 	pi.registerTool({
 		name: "next_safe",
 		label: "Inspect task source leases",
-		description: "Read-only /next safe listing or fresh recheck of a qualified selector. Uses explicit bead source_scope declarations and the public in-process Pi lease observer. Never claims work or acquires/releases leases. Free observations are advisory, not reservations or source authority.",
+		description: "Read-only /next safe listing or fresh recheck of a qualified selector. Uses explicit bead source_scope declarations and the public in-process Pi lease observer. Never claims work or acquires/releases leases. Free observations are advisory, not reservations or source authority. For list, reproduce returned Markdown verbatim; do not reconstruct it from details.",
+		promptGuidelines: [
+			"For next_safe action=list, reproduce its returned Markdown verbatim in the final answer. This is the rendered report, not input for another summary.",
+			"Do not summarize, reorder, drop columns or rows, recompute counts, add empty sections, or rebuild the list from tool details. Keep its numbering and Lease check column.",
+			"For next_safe action=recheck, inspect the machine-readable queues; only eligible permits a safe tracking claim. A numbered review row does not authorize claiming unknown work.",
+		],
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("list"), Type.Literal("recheck")]),
 			selector: Type.Optional(Type.String({ maxLength: 512 })),

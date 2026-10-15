@@ -9,6 +9,14 @@ from workspace_fixture import SKILL_DIR, WorkspaceFixture, issue
 
 
 class SourceScopeTest(WorkspaceFixture):
+    def test_skill_requires_verbatim_report_and_preserves_recheck_gate(self) -> None:
+        skill = (SKILL_DIR / "SKILL.md").read_text()
+        self.assertIn("Reproduce the successful list", skill)
+        self.assertIn("returned Markdown verbatim", skill)
+        self.assertIn("recompute", skill)
+        self.assertIn("do not claim via a fallback", skill)
+        self.assertIn("Numbers identify rows for review only", skill)
+
     def test_safe_packet_keeps_undeclared_and_label_conflicts(self) -> None:
         free = issue("free", 2, "task", "2026-01-01")
         free["metadata"] = {"source_scope": {"version": 1, "complete": True, "roots": ["repos/api"]}}

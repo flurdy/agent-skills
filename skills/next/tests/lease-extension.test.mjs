@@ -21,6 +21,10 @@ test('installed Pi loader registers only the read-only next_safe tool', {
   const tool = tools.get('next_safe').definition;
   assert.equal(tool.annotations.readOnlyHint, true);
   assert.equal(tool.parameters.additionalProperties, false);
+  assert.match(tool.description, /list.*verbatim/i);
+  assert.ok(tool.promptGuidelines.some(line => /list/.test(line) && /verbatim/.test(line)));
+  assert.ok(tool.promptGuidelines.some(line => /Do not/.test(line) && /counts/.test(line)));
+  assert.ok(tool.promptGuidelines.some(line => /recheck/.test(line) && /eligible/.test(line)));
   assert.deepEqual(Object.keys(tool.parameters.properties), ['action', 'selector']);
   await assert.rejects(tool.execute('fixture', { action: 'recheck' }, undefined, undefined, {}), /qualified selector/);
   await assert.rejects(tool.execute('fixture', { action: 'list', selector: 'local:a' }, undefined, undefined, {}), /qualified selector/);

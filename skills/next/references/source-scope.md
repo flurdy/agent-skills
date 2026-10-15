@@ -121,7 +121,14 @@ session ID, diagnostics and an explicit coverage statement. Each row retains per
 observations and separate same-store `tracker_overlap` evidence. No names/labels imply
 scope, liveness, or authorization.
 
-List tool content is compact Markdown, while tool details retain those machine queues,
+List tool content is the finished Markdown report: reproduce it verbatim, without
+summarizing, changing columns, reordering rows or recomputing counts. The skill and native
+tool prompt guidelines both state this rule so stale conversation formats do not take
+precedence. This guides model behavior; it is not deterministic enforcement of its final
+prose. Explicit verbatim prompting was confirmed in an attended user trial; ordinary
+`/next safe` output after this guidance change still needs a live-session check.
+
+Tool details retain those machine queues,
 source declarations and per-root observations. Each row also carries its original packet
 position so merging statuses for display cannot change the ranking. The familiar table
 uses ordinary IDs (plus Repo only for workspaces), not repeated `local:` prefixes. Its

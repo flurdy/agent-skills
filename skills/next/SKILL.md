@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: high
-version: "1.16.2"
+version: "1.16.3"
 author: "flurdy"
 ---
 
@@ -269,7 +269,16 @@ inside Pi. It accepts no caller roots, runtime directory, PID, executable or obs
 payload. No observer subprocess can substitute its own PID for the originating Pi.
 See [source declarations and optional integration](references/source-scope.md).
 
-Show the helper's compact Markdown as the familiar **Ready to review** ranked table,
+On every `/next safe` invocation, use this current rendering contract even if an older
+queue-based format appears earlier in the conversation. **Reproduce the successful list
+tool's returned Markdown verbatim in the final answer.** It is the finished report, not
+input for another summary. Do not summarize, reorder, drop columns or rows, recompute
+counts, add empty sections, or reconstruct it from tool details. Do not run a second
+ordinary listing to replace it. The native tool also publishes this rule in its prompt
+guidelines. If the helper is unavailable, reproduce the portable `next-bd --safe` report
+unchanged instead; do not invent observations.
+
+The helper's compact Markdown is the familiar **Ready to review** ranked table,
 not five diagnostic queues. Preserve its original ranking and all rows. Use the ordinary
 columns (`#`, optional `Repo`, `ID`, `Pri`, `Type`, `Labels`, `Title`) plus one **Lease check**
 column: `Checked free (local Pi)`, `Not checked: scope unknown`, `Not checked: scope
