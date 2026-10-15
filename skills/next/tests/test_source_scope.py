@@ -66,7 +66,7 @@ class SourceScopeTest(WorkspaceFixture):
         row["metadata"] = {"source_scope": {"version": 1, "complete": True, "roots": ["."]}}
         root = self.base / "native"
         self.create_store(root, ready=[row])
-        module = (SKILL_DIR / "pi/lease-selection.mjs").as_uri()
+        module = (SKILL_DIR / "pi/lease-selection.ts").as_uri()
         code = f"""
           import assert from 'node:assert/strict';
           import {{readFile,writeFile}} from 'node:fs/promises';

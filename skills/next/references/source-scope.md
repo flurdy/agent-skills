@@ -58,7 +58,7 @@ ordinary selector index or an automatically claimable queue.
 ## Optional Pi integration
 
 The helper is **not installed by skill assembly**. `pi/index.ts` registers the read-only
-`next_safe` tool; `pi/lease-selection.mjs` owns collection and classification. This is
+`next_safe` tool; `pi/lease-selection.ts` owns collection and classification. This is
 optional user-level runtime code, not something a project manifest can enable implicitly.
 Review it and separately approve installation. No settings or dependency installation is
 performed by `/next`.
@@ -84,6 +84,12 @@ as `@flurdy/pi-session-mode/lease-observer`, not a copied lock implementation. K
 and observer on the same reviewed revision and reload together. Do not enable both the
 wrapper and the default extension. User wiring is trusted runtime configuration; this
 helper cannot attest which guard revision is active or certify a custom guard namespace.
+
+Keep the local helper as `.ts`: Pi 1.1.0 reloads it through Jiti. Native `.mjs` imports
+can remain cached across `/reload`, leaving a new entry point bound to old exports.
+No global cache deletion, environment override or guard change is required. The existing
+user wrapper still points to `pi/index.ts`; `/reload` picks up the `.mjs` to `.ts` migration.
+A full Pi restart is only a fallback if running an older, unverified loader.
 
 The observer runs **inside Pi**, not in the collector child. It receives no `selfPid` or
 `runtimeDir` override: the public API uses this process's PID and live runtime environment,
@@ -153,7 +159,12 @@ lease based on advisory output. No helper action creates, updates or closes Bead
   production selection code imports only the public observer. This proves self-exclusion,
   a foreign-holder race and independent nested roots, not a live user-session installation.
 - Add `NEXT_TEST_PI_PACKAGE_DIR=/absolute/installed/pi-package` to run the optional
-  host-loader registration/schema test against that exact installed Pi distribution.
+  host-loader registration/schema and same-process warm-reload tests against that exact
+  installed Pi distribution. These cover a new helper export and the old `.mjs` migration
+  through a nested user wrapper, using the production helper and an isolated collector.
+  Pi 1.1.0 is verified; re-run this opt-in gate for loader upgrades rather than assuming
+  all Pi/Jiti versions share cache behavior. Node 22.19+ supports the direct `.ts` imports
+  used by the portable optional test harness; Jiti may create ordinary temporary caches.
 - `make validate-skills` and `make doctor`: authoring and installed-link checks.
 
 Without their explicit test paths, real-kernel and host-loader coverage report skipped. Tests do not

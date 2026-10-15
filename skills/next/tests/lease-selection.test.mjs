@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyCandidates, renderSafeList } from '../pi/lease-selection.mjs';
+import { classifyCandidates, renderSafeList } from '../pi/lease-selection.ts';
 
 const candidate = (id, roots = ['/api'], state = 'declared', labels = []) => ({
   id, selector: `workspace:${id}`, repository: 'workspace', title: id, priority: 2, issue_type: 'task', labels,

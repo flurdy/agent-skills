@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import { classifyCandidates } from '../pi/lease-selection.mjs';
+import { classifyCandidates } from '../pi/lease-selection.ts';
 
 const packageDir = process.env.NEXT_TEST_SESSION_MODE_DIR;
 
