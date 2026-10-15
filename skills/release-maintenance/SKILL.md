@@ -135,15 +135,15 @@ A `publishing[service]` record is written before a push is confirmed. One marked
 left behind by an interrupted run, holds every further release push for the project. Never clear it
 by age or because readiness looks green.
 
-Read state and show the exact record: commit, pre-push tag, session, deploying flag and whether it
-is uncertain. Show the current shared readiness evidence for that service, for example whether its
+Read state and show the exact record: attempt id, commit, pre-push tag, session, deploying flag and
+whether it is uncertain. Show the current shared readiness evidence for that service, for example whether its
 upstream revision now equals the recorded commit. This skill does not authorize an extra remote
 read; use only evidence already collected or separately confirmed. Ask whether that exact commit was
 published, then run exactly one command with the hash read before asking:
 
 ```bash
-~/.agents/skills/release-manager/scripts/release-state resolve-publication --service <service> --sha <sha> --published --expect <hash>
-~/.agents/skills/release-manager/scripts/release-state resolve-publication --service <service> --sha <sha> --not-published --expect <hash>
+~/.agents/skills/release-manager/scripts/release-state resolve-publication --service <service> --sha <sha> --id <id> --published --expect <hash>
+~/.agents/skills/release-manager/scripts/release-state resolve-publication --service <service> --sha <sha> --id <id> --not-published --expect <hash>
 ```
 
 `--published` records a rollout watch from the saved pre-push tag for deploying services;

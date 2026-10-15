@@ -28,6 +28,7 @@ class ReleaseStateTest(unittest.TestCase):
         self.state = self.root / ".release-state.json"
         self.env = {**os.environ, "XDG_RUNTIME_DIR": str(Path(self.temp_dir.name, "runtime"))}
         Path(self.env["XDG_RUNTIME_DIR"]).mkdir(mode=0o700)
+        self.ids = {}
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -163,11 +164,20 @@ class ReleaseStateTest(unittest.TestCase):
         self.assertEqual([path.name for path in self.root.iterdir() if path.name.startswith(".release-state.json.")], [])
 
     def begin(self, service, sha=SHA, deploying=True, expect=None):
-        return self.helper(
+        code, payload, stderr = self.helper(
             "begin-publication", "--service", service, "--sha", sha, "--from-tag", "v1.2.3",
             "--session", "session-1", "--deploying" if deploying else "--no-deploying",
             "--expect", expect or self.read()["sha256"],
         )
+        if code == 0:
+            self.ids[service] = payload["id"]
+        return code, payload, stderr
+
+    def finish(self, service, status, sha=SHA, attempt=None):
+        return self.helper("finish-publication", "--service", service, "--sha", sha, "--id", attempt or self.ids[service], "--status", status)
+
+    def resolve(self, service, flag, sha=SHA, attempt=None):
+        return self.helper("resolve-publication", "--service", service, "--sha", sha, "--id", attempt or self.ids[service], flag, "--expect", self.read()["sha256"])
 
     def test_write_ahead_publication_record_serializes_and_records_outcomes(self):
         self.write_state({"rolloutWatch": {}})
@@ -176,50 +186,90 @@ class ReleaseStateTest(unittest.TestCase):
         record = result["state"]["publishing"]["web"]
         self.assertEqual({key: record[key] for key in ("sha", "fromTag", "session", "deploying")}, {"sha": SHA, "fromTag": "v1.2.3", "session": "session-1", "deploying": True})
         self.assertIn("startedAt", record)
+        self.assertRegex(record["id"], r"^[0-9a-f]{32}$")
+        self.assertEqual(result["id"], record["id"])
         code, result, _ = self.begin("api", sha=OTHER)
         self.assertEqual(code, 4)
         self.assertEqual(result["status"], "held")
         self.assertEqual(result["pending"], ["web"])
-        self.assertEqual(self.helper("finish-publication", "--service", "web", "--sha", OTHER, "--status", "ok")[0], 2)
-        code, result, stderr = self.helper("finish-publication", "--service", "web", "--sha", SHA, "--status", "ok")
+        self.assertEqual(self.finish("web", "ok", sha=OTHER)[0], 2)
+        self.assertEqual(self.finish("web", "ok", attempt="0" * 32)[0], 2)
+        code, result, stderr = self.finish("web", "ok")
         self.assertEqual(code, 0, stderr)
         self.assertEqual(result["state"], {"rolloutWatch": {"web": {"sha": SHA, "fromTag": "v1.2.3"}}, "publishing": {}})
         self.assertEqual(self.begin("api", sha=OTHER, deploying=False)[0], 0)
-        code, result, _ = self.helper("finish-publication", "--service", "api", "--sha", OTHER, "--status", "ok")
+        code, result, _ = self.finish("api", "ok", sha=OTHER)
         self.assertNotIn("api", result["state"]["rolloutWatch"])
         for status in ("uptodate", "rejected", "failed", "stale", "declined"):
             self.assertEqual(self.begin("api", sha=OTHER)[0], 0)
-            code, result, _ = self.helper("finish-publication", "--service", "api", "--sha", OTHER, "--status", status)
+            code, result, _ = self.finish("api", status, sha=OTHER)
             self.assertEqual(code, 0, status)
             self.assertEqual(result["state"]["publishing"], {}, status)
             self.assertNotIn("api", result["state"]["rolloutWatch"], status)
-        self.assertEqual(self.helper("finish-publication", "--service", "api", "--sha", OTHER, "--status", "ok")[0], 2)
+        self.assertEqual(self.finish("api", "ok", sha=OTHER)[0], 2)
 
     def test_unknown_outcomes_hold_until_an_explicit_resolution(self):
         self.write_state({})
         self.assertEqual(self.begin("web")[0], 0)
-        code, result, _ = self.helper("finish-publication", "--service", "web", "--sha", SHA, "--status", "unknown")
+        code, result, _ = self.finish("web", "unknown")
         self.assertEqual(code, 0)
         self.assertTrue(result["state"]["publishing"]["web"]["uncertain"])
         self.assertEqual(self.begin("web")[0], 4)
         self.assertEqual(self.helper("update", "--owner", "maintenance", "--expect", self.read()["sha256"], "--patch", '{"publishing": null}')[0], 2)
-        code, _, _ = self.helper("resolve-publication", "--service", "web", "--sha", OTHER, "--published", "--expect", self.read()["sha256"])
-        self.assertEqual(code, 2)
-        code, result, stderr = self.helper("resolve-publication", "--service", "web", "--sha", SHA, "--published", "--expect", self.read()["sha256"])
+        self.assertEqual(self.resolve("web", "--published", sha=OTHER)[0], 2)
+        first = self.ids["web"]
+        code, result, stderr = self.resolve("web", "--published")
         self.assertEqual(code, 0, stderr)
         self.assertEqual(result["state"], {"publishing": {}, "rolloutWatch": {"web": {"sha": SHA, "fromTag": "v1.2.3"}}})
         self.assertEqual(self.begin("web")[0], 0)
-        self.helper("finish-publication", "--service", "web", "--sha", SHA, "--status", "unknown")
-        code, result, _ = self.helper("resolve-publication", "--service", "web", "--sha", SHA, "--not-published", "--expect", self.read()["sha256"])
+        self.assertNotEqual(self.ids["web"], first)
+        self.assertEqual(self.finish("web", "ok", attempt=first)[0], 2, "a delayed completion cannot settle a newer attempt")
+        self.finish("web", "unknown")
+        code, result, _ = self.resolve("web", "--not-published")
         self.assertEqual(code, 0)
         self.assertEqual(result["state"]["publishing"], {})
+
+    def test_lock_identity_does_not_depend_on_the_environment(self):
+        self.write_state({"quietStreak": 0})
+        expect = self.read()["sha256"]
+        environments = [{**self.env, "XDG_RUNTIME_DIR": str(Path(self.temp_dir.name, f"rt{index}"))} for index in range(4)]
+        for environment in environments:
+            Path(environment["XDG_RUNTIME_DIR"]).mkdir(mode=0o700)
+        environments += [{key: value for key, value in self.env.items() if key != "XDG_RUNTIME_DIR"}] * 4
+        processes = [
+            subprocess.Popen(
+                [str(RELEASE_STATE), "update", "--owner", "manager", "--expect", expect, "--patch", json.dumps({"quietStreak": index + 1})],
+                cwd=self.root, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            for index, environment in enumerate(environments)
+        ]
+        self.assertEqual(sorted(process.wait(timeout=30) for process in processes), [0] + [3] * 7)
+
+    def test_oversized_results_are_refused_before_writing(self):
+        limit = 1024 * 1024
+        count = 1
+        while True:
+            beads = {f"svc{index}@main": "x" * 100 for index in range(count)}
+            compact = json.dumps({"ciBeads": beads}, separators=(",", ":"))
+            pretty = json.dumps({"ciBeads": beads, "quietStreak": 1}, indent=2, sort_keys=True) + "\n"
+            if len(pretty) > limit:
+                break
+            count += 500
+        self.assertLessEqual(len(compact), limit)
+        self.state.write_text(compact, encoding="utf-8")
+        before = self.state.read_bytes()
+        code, _, stderr = self.update({"quietStreak": 1})
+        self.assertEqual(code, 2)
+        self.assertIn("exceeds", stderr)
+        self.assertEqual(self.state.read_bytes(), before)
 
     def test_invalid_arguments_are_refused(self):
         self.write_state({})
         for args in (
             ("begin-publication", "--service", "../web", "--sha", SHA, "--session", "s", "--deploying", "--expect", self.read()["sha256"]),
             ("begin-publication", "--service", "web", "--sha", "HEAD", "--session", "s", "--deploying", "--expect", self.read()["sha256"]),
-            ("finish-publication", "--service", "web", "--sha", SHA, "--status", "maybe"),
+            ("finish-publication", "--service", "web", "--sha", SHA, "--id", "0" * 32, "--status", "maybe"),
+            ("finish-publication", "--service", "web", "--sha", SHA, "--id", "short", "--status", "ok"),
             ("update", "--owner", "root", "--expect", "missing", "--patch", "{}"),
             ("update", "--owner", "manager", "--expect", "nothex", "--patch", "{}"),
         ):

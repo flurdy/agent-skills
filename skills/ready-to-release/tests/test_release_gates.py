@@ -217,6 +217,32 @@ class ReleaseGatesTests(unittest.TestCase):
         data["state"] = evidence(json.dumps({"publishing": []}))
         self.assertEqual(self.web(data)["verdict"], "HOLD")
 
+    def test_own_publication_record_can_be_excluded_without_hiding_others(self):
+        record = {"id": "1" * 32, "sha": "a" * 40, "fromTag": "v1", "session": "s", "deploying": True}
+        data = add_api(snapshot())
+        data["state"] = evidence(json.dumps({"publishing": {"web": record}}))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "snapshot.json"
+            path.write_text(json.dumps(data))
+            run = lambda *extra: json.loads(subprocess.run([str(AUTHORITY), "--snapshot", str(path), *extra], capture_output=True, text=True, check=True).stdout)
+            self.assertEqual(next(row for row in run()["services"] if row["service"] == "web")["verdict"], "HOLD")
+            web = next(row for row in run("--exclude-publication", "1" * 32)["services"] if row["service"] == "web")
+            self.assertEqual(web["verdict"], "READY")
+            self.assertNotIn("publication", web["gates"])
+            data["state"] = evidence(json.dumps({"publishing": {"web": record, "api": {**record, "id": "2" * 32}}}))
+            path.write_text(json.dumps(data))
+            web = next(row for row in run("--exclude-publication", "1" * 32)["services"] if row["service"] == "web")
+            self.assertEqual(web["verdict"], "HOLD")
+
+    def test_unreadable_publication_state_holds_non_deploying_services(self):
+        manifest = "non_deploying: [web]\n"
+        for text in ("not json", json.dumps({"rolloutWatch": {"api": "broken"}, "publishing": {"api": {"sha": "a" * 40}}})):
+            data = snapshot(manifest=manifest)
+            data["state"] = evidence(text)
+            web = self.web(data)
+            self.assertEqual(web["verdict"], "HOLD", text)
+            self.assertEqual(web["gates"]["publication"]["result"], "hold", text)
+
     def test_missing_order_metadata_and_unsupported_policy_fail_closed(self):
         data = snapshot()
         data["order"]["text"] = data["order"]["text"].replace("graph=none\n", "")

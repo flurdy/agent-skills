@@ -108,7 +108,9 @@ movement alone do not prove desired configuration applied or a restart completed
 2. **Refresh local tracking.** Read state with the helper and keep its sha256. Clear this tick's
    expired deferrals and cancellations whose head changed. Remove a rollout entry only from the
    helper's `confirmed` observation and only if its recorded sha/fromTag still match the state
-   read for this snapshot. No legacy maintenance transitions.
+   read for this snapshot. No legacy maintenance transitions. Persist these step-2 changes at once
+   in their own `release-state update --owner manager`, before any publication, so a later write in
+   this tick cannot delete a watch that a new push records.
 
 3. **Track failures without taking over repairs.** Exact upstream `ci=failed|error` and applicable
    contract coverage GAP may create deduplicated local Beads records. Load the `beads` skill;
@@ -147,14 +149,15 @@ movement alone do not prove desired configuration applied or a restart completed
      1. Record intent first: `release-state begin-publication --service <service> --sha <full head>
         --from-tag <pre-push tag, or omit when unknown> --session <session> --deploying|--no-deploying
         --expect <hash>`. Use `printenv PI_SESSION_ID` in Pi, otherwise a short harness label.
-        `held` or `conflict` stops publication for this tick; report it.
-        Every later `finish-publication` passes the same `--service` and `--sha`.
+        `held` or `conflict` stops publication for this tick; report it. Every later
+        `finish-publication` passes the same `--service` and `--sha` plus the printed attempt `--id`.
      2. **Pi:** call `publish_commit` with `action: confirm`, `root` = `realpath <service dir>`,
         `commit` = the full head and a short `context`. Its native dialog is the authorization; the
         earlier answer was intent only. Declined → `finish-publication --status declined`; refused
-        before a token → `--status failed`. After an approval, recollect once more and compare as
-        above, including that the confirmed commit is still the head. Ignore only the `publication`
-        gate naming this service's own in-progress record from step 1. Any change → do not execute;
+        before a token → `--status failed`. After an approval, recollect once more with
+        `release-gates --exclude-publication <id>`, which evaluates as if only this attempt's own
+        record were absent, and compare as above, including that the confirmed commit is still the
+        head. Any change → do not execute;
         `finish-publication --status stale`. Otherwise call `publish_commit` with `action: execute`
         and only the returned `token`, then `finish-publication --status <receipt status>`.
         **Other harnesses:** run only the exact command `make git-push <service>`; exit 0 →
@@ -172,6 +175,7 @@ movement alone do not prove desired configuration applied or a restart completed
 
 6. **Persist and summarise.** Send this tick's owned changes in one `release-state update --owner
    manager` using the newest hash: publication commands change the file and print the new one.
+   This final write never deletes `rolloutWatch` entries; step 2 already persisted those.
    On conflict, read again and recompute only from fresh state; never force or clobber. Unrelated
    and legacy fields stay untouched. Print pushed/deferred/waiting counts, tracking outcomes,
    activation notes, and any maintenance handoff. Never claim a deploy

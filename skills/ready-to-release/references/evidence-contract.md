@@ -107,8 +107,11 @@ acknowledge-rollout <service>` is the explicit evidence-backed recovery path. De
 use the full snapshot, even for a single-service display, including ignored prerequisite rows.
 
 Any saved `publishing` record adds a `publication` HOLD to every service: a push is in progress or
-its outcome is uncertain, so further publication waits. Only the release-state helper settles it,
-or `/release-maintenance resolve-publication <service>` after an explicit human answer.
+its outcome is uncertain, so further publication waits. Unreadable state holds every service the
+same way, including non-deploying ones. Only the release-state helper settles a record, or
+`/release-maintenance resolve-publication <service>` after an explicit human answer.
+`--exclude-publication <id>` evaluates as if that single attempt's record were absent; the
+manager uses it only to recheck readiness for its own in-progress attempt.
 
 ## JSON output and fixtures
 

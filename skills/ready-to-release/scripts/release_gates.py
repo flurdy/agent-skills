@@ -392,7 +392,7 @@ def validate_snapshot(data):
             raise ValueError("invalid evidence reason")
 
 
-def evaluate(data, selected=None):
+def evaluate(data, selected=None, exclude_publication=None):
     result = {"schemaVersion": 1, "observedAt": datetime.now(timezone.utc).isoformat(), "context": "unknown", "drift": [], "services": [], "errors": [], "verdict": "HOLD"}
     try:
         validate_snapshot(data)
@@ -425,24 +425,34 @@ def evaluate(data, selected=None):
     if provider == "pact":
         known.update(graph)
         known.update(name for names in graph.values() for name in names)
-    watches, publishing = {}, {}
+    watches, publishing, publication_error = {}, {}, None
     if data["state"]["status"] == "ok":
         try:
             state = json.loads(data["state"]["text"])
-            if not isinstance(state, dict) or not isinstance(state.get("rolloutWatch", {}), dict) or not isinstance(state.get("publishing", {}), dict):
+        except ValueError:
+            state = None
+        # Publication records are parsed independently so a bad rollout entry cannot hide them.
+        if not isinstance(state, dict) or not isinstance(state.get("publishing", {}), dict) or any(
+                not isinstance(entry, dict) for entry in state.get("publishing", {}).values()):
+            publication_error = "publication state unreadable; resolve before publishing"
+        else:
+            publishing = {service: entry for service, entry in state.get("publishing", {}).items()
+                          if not exclude_publication or entry.get("id") != exclude_publication}
+        try:
+            if not isinstance(state, dict) or not isinstance(state.get("rolloutWatch", {}), dict):
                 raise ValueError("invalid state")
             watches = state.get("rolloutWatch", {})
-            publishing = state.get("publishing", {})
             if any(not isinstance(entry, dict) or not isinstance(entry.get("sha"), str)
                    or entry["sha"] in SENTINELS or "fromTag" not in entry
                    or (entry["fromTag"] is not None and not isinstance(entry["fromTag"], str))
                    for entry in watches.values()):
                 raise ValueError("invalid rollout entry")
         except ValueError:
-            watches, publishing = {}, {}
+            watches = {}
             errors["state"] = "saved rollout state malformed; evidence required"
     elif data["state"]["status"] == "unavailable":
         errors["state"] = "saved rollout state unreadable; evidence required"
+        publication_error = "publication state unreadable; resolve before publishing"
     result["errors"].extend(f"{source}: {reason}" for source, reason in errors.items())
     if selected and selected not in services:
         result["errors"].append("requested service absent from full digest")
@@ -504,7 +514,9 @@ def evaluate(data, selected=None):
         progress = rollout(row, watches)
         live = deployment(row["deploy"])
         gates["deployment"] = gate("na", "non-deploying repository") if non_deploying else gate("hold", "rollout in progress") if progress == "rolling" else gate("hold", "saved rollout needs deployment evidence or explicit acknowledgement") if progress == "unknown" else gate("pass", row["deploy"], row["tag"], row["age"]) if live == "settled" else gate("na", "deployment evidence unavailable")
-        if publishing:
+        if publication_error:
+            gates["publication"] = gate("hold", publication_error)
+        elif publishing:
             # A write-ahead publication record serializes every push until it settles or a human resolves it.
             gates["publication"] = gate("hold", *(
                 f"{service}: {'uncertain outcome; resolve via /release-maintenance' if isinstance(entry, dict) and entry.get('uncertain') else 'publication in progress'}"
@@ -526,6 +538,7 @@ def main():
     parser.add_argument("service", nargs="?")
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument("--snapshot", type=Path, help="evaluate captured raw evidence; run no collectors")
+    parser.add_argument("--exclude-publication", metavar="ID", help="evaluate as if this one in-progress publication record were absent")
     args = parser.parse_args()
     if args.snapshot:
         evidence = read_evidence(args.snapshot)
@@ -535,4 +548,6 @@ def main():
             data = None
     else:
         data = collect(args.project_root.resolve())
-    print(json.dumps(evaluate(data, args.service), ensure_ascii=True))
+    if args.exclude_publication is not None and not re.fullmatch(r"[0-9a-f]{32}", args.exclude_publication):
+        parser.error("--exclude-publication expects a 32-character publication attempt id")
+    print(json.dumps(evaluate(data, args.service, args.exclude_publication), ensure_ascii=True))
