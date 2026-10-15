@@ -378,6 +378,27 @@ def declared_source_scope(issue: dict[str, Any], source: Source) -> dict[str, An
     )
 
 
+def service_names(source: Source, workspace: bool) -> set[str]:
+    directories = [source.directory]
+    if workspace and source.relative_path == ".":
+        directories += [source.directory / "repos", source.directory / "infrastructure"]
+    names: set[str] = set()
+    for directory in directories:
+        try:
+            names.update(child.name for child in directory.iterdir()
+                          if child.is_dir() and not child.name.startswith("."))
+        except OSError:
+            continue
+    return names
+
+
+def service_labels(issue: dict[str, Any], services: set[str]) -> list[str]:
+    labels = issue.get("labels")
+    if not isinstance(labels, list):
+        return []
+    return [label for label in labels if isinstance(label, str) and label in services]
+
+
 def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
     beads_read_timeout()
     workspace, sources = discover_sources(root)
@@ -403,6 +424,7 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
         if source.store == "workspace":
             continue
         collected: dict[str, list[dict[str, Any]]] = {}
+        services = service_names(source, workspace) if source_scope else set()
         for key, arguments in commands.items():
             issues, error = load_issues(source, arguments)
             if error is not None:
@@ -412,7 +434,8 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
             if source_scope:
                 collected[key] = [
                     {**issue, "repository": source.name, "selector": f"{source.name}:{issue['id']}",
-                     "source_scope": declared_source_scope(issue, source)}
+                     "source_scope": declared_source_scope(issue, source),
+                     "services": service_labels(issue, services)}
                     for issue in collected[key]
                 ]
         else:

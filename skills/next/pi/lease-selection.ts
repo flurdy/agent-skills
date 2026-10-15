@@ -55,8 +55,8 @@ function validatePacket(packet) {
   if (!packet || packet.version !== 1 || !Array.isArray(packet.candidates) || packet.candidates.length > 1000 ||
       !Array.isArray(packet.in_progress) || !Array.isArray(packet.diagnostics)) throw new Error('Invalid or oversized selection packet');
   for (const row of [...packet.candidates, ...packet.in_progress]) {
-    if (!row || typeof row !== 'object' || !Array.isArray(row.labels ?? []) ||
-        (row.labels ?? []).some(label => typeof label !== 'string')) throw new Error('Invalid tracker labels');
+    if (!row || typeof row !== 'object' || [row.labels ?? [], row.services ?? []].some(values =>
+        !Array.isArray(values) || values.some(label => typeof label !== 'string'))) throw new Error('Invalid tracker labels');
   }
   if (packet.candidates.some(row => typeof row.id !== 'string' || typeof row.selector !== 'string' ||
       !row.source_scope || !['declared', 'partial', 'unknown', 'invalid', 'unavailable'].includes(row.source_scope.state) ||
@@ -108,14 +108,16 @@ export async function classifyCandidates(packet, observer, signal) {
   for (const [position, candidate] of packet.candidates.entries()) {
     const scope = candidate.source_scope;
     const occupancy = scope.roots.map(root => ({ root, ...byRoot.get(root) }));
-    const conflicts = packet.in_progress.filter(row =>
-      (row.repository ?? 'local') === (candidate.repository ?? 'local') &&
-      (row.labels ?? []).some(label => (candidate.labels ?? []).includes(label)),
-    ).map(row => row.id);
+    const overlaps = packet.in_progress
+      .filter(row => (row.repository ?? 'local') === (candidate.repository ?? 'local'))
+      .map(row => ({ id: row.id, services: (row.services ?? []).filter(service => (candidate.services ?? []).includes(service)) }))
+      .filter(row => row.services.length > 0);
+    const conflicts = overlaps.map(row => row.id);
     const row = {
       position, selector: candidate.selector, id: candidate.id, repository: candidate.repository ?? 'local',
       priority: candidate.priority, issue_type: candidate.issue_type, title: candidate.title,
       labels: candidate.labels ?? [], source_scope: scope, occupancy, tracker_overlap: conflicts,
+      shared_services: [...new Set(overlaps.flatMap(row => row.services))].sort(),
     };
     const queue = occupancy.some(item => item.kind === 'held') ? 'occupied'
       : ['unknown', 'partial', 'invalid'].includes(scope.state) ? 'unknown'
@@ -157,15 +159,16 @@ export function renderSafeList(result) {
   const headers = [...repoHeaders, 'ID', 'Pri', 'Type', 'Labels', 'Title'];
   const parts = [`## Ready to review (${ready.length} beads)`,
     ready.length ? table(['#', ...headers, 'Lease check'], ready.map((row, index) => [index + 1, ...fields(row), leaseCheck(row)]))
-      : '_No candidates without known occupancy or tracker-label overlap._'];
+      : '_No candidates without known occupancy or a shared in-progress service._'];
   const checked = ready.filter(row => leaseCheck(row).startsWith('Checked free')).length;
   parts.push(`Lease check: ${checked} checked free, ${ready.length - checked} not checked. Unknown does not mean occupied. Local Pi only; no reservation.`);
-  if (occupied.length) parts.push(`## Occupied (${occupied.length} ${occupied.length === 1 ? 'bead' : 'beads'})`,
+  if (occupied.length) parts.push(`## Occupied — source held by another Pi session (${occupied.length} ${occupied.length === 1 ? 'bead' : 'beads'})`,
     table([...headers, 'Held roots'], occupied.map(row => [...fields(row), row.occupancy.filter(item => item.kind === 'held').map(item => item.root).join(', ')])));
-  if (overlaps.length) parts.push(`## Tracker label overlap (${overlaps.length} ${overlaps.length === 1 ? 'bead' : 'beads'})`,
-    'Shared labels with tracker claims, not proof of occupied source worktrees.',
-    table([...headers, 'Lease check', 'Overlap with'], overlaps.map(row => [...fields(row), leaseCheck(row), row.tracker_overlap.join(', ')])));
-  for (const [key, title, extra] of [['in_progress', 'In Progress', ''], ['blocked', 'Blocked', 'Blocked by'], ['deferred', 'Deferred', 'Defer until']]) {
+  if (overlaps.length) parts.push(`## Held back — same service as in-progress work (${overlaps.length} ${overlaps.length === 1 ? 'bead' : 'beads'})`,
+    'May collide with claimed work; labels only, not lease evidence.',
+    table([...headers, 'Lease check', 'Shared service'], overlaps.map(row => [...fields(row), leaseCheck(row),
+      `${row.shared_services.join(', ')} (${row.tracker_overlap.join(', ')})`])));
+  for (const [key, title, extra] of [['in_progress', 'Claimed — in progress', ''], ['blocked', 'Waiting — blocked', 'Blocked by'], ['deferred', 'Later — deferred', 'Defer until']]) {
     if (!result[key]?.length) continue;
     parts.push(`## ${title} (${result[key].length}; not selectable)`);
     if (key === 'in_progress') parts.push('Tracker claims; session activity unverified.');

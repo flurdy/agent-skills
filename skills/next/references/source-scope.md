@@ -50,7 +50,11 @@ supersede `--avoid-busy`; ordinary `--json` retains its existing array contract.
 `next-bd --safe` is the no-native-helper fallback. It keeps the familiar ranked review
 table with one Lease check column: scope unknown/incomplete/invalid or observation
 unavailable. Complete declarations are still not checked without a native observer.
-Tracker-label overlaps remain inspectable in their own unnumbered table.
+Candidates sharing a *service label* with in-progress work in the same store remain
+inspectable in their own unnumbered **Held back** table. A service label names a
+top-level directory of the store's repository, or for the workspace root a registered
+repository/infrastructure name; safe packets carry it per issue as `services`. Topical
+labels are ignored. Ordinary `--avoid-busy` keeps its all-label tracker filter.
 Python 3.10+, Bash, jq, Git and the existing compatible `bd` are sufficient. It never
 imports Node or Pi. `--safe-json` is an integration packet, not a replacement for the
 ordinary selector index or an automatically claimable queue.
@@ -118,7 +122,7 @@ observations. Alias deduplication never drops any task's additional roots.
 recheck. It runs collection afresh for each call and produces ranked `eligible`, `occupied`,
 `unknown`, `unavailable`, and `tracker_conflicts` queues, with observation time, native cwd,
 session ID, diagnostics and an explicit coverage statement. Each row retains per-root
-observations and separate same-store `tracker_overlap` evidence. No names/labels imply
+observations and separate same-store `tracker_overlap` IDs with `shared_services`. No names/labels imply
 scope, liveness, or authorization.
 
 List tool content is the finished Markdown report: reproduce it verbatim, without
@@ -133,7 +137,7 @@ source declarations and per-root observations. Each row also carries its origina
 position so merging statuses for display cannot change the ranking. The familiar table
 uses ordinary IDs (plus Repo only for workspaces), not repeated `local:` prefixes. Its
 footer explains how Repo/ID maps to an exact selector. Known occupied rows and all
-tracker-label overlaps are unnumbered and separate, with occupied taking precedence.
+same-service rows are unnumbered and separate, with occupied taking precedence.
 The safe view suppresses empty auxiliary headings; ordinary list output is unchanged.
 
 Numbered rows are **for review**, including unknown and unavailable scope; the number is

@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: high
-version: "1.16.3"
+version: "1.16.4"
 author: "flurdy"
 ---
 
@@ -84,7 +84,7 @@ to start editing, invoke a coding skill, or continue to another task.
 # Render the full table and always include the P4 backlog
 /next backlog
 
-# Show ranked work with lease-check status; separate occupied work and tracker overlaps
+# Show ranked work with lease-check status; separate occupied and same-service work
 /next safe
 
 # Show ready work, sorted by Jira sprint (active → future → no-sprint → no-Jira)
@@ -286,9 +286,13 @@ incomplete`, `Not checked: scope invalid`, or `Not checked: unavailable`.
 
 Numbers identify rows for review only, **not permission to claim unchecked work as safe**.
 Keep unknown/incomplete scope visible in that table, without calling it free or occupied.
-Move known **Occupied** work to a separate unnumbered table. Also show **Tracker label
-overlap** separately, even when scope is unknown: shared labels with an in-progress
-tracker claim remain the old advisory filter, not proof that its source is occupied.
+Move known **Occupied** work to a separate unnumbered table. Also show **Held back —
+same service as in-progress work** separately, even when scope is unknown. Only
+*service labels* count: labels naming a top-level directory of the owning store's
+repository, or for the workspace root a registered repository/infrastructure name.
+Topical labels such as `marketing` never hold work back. A shared service is an advisory
+collision hint, not proof that its source is occupied. In-progress, blocked and deferred
+tables are titled **Claimed — in progress**, **Waiting — blocked** and **Later — deferred**.
 A row that is both occupied and overlapping appears only in Occupied. Suppress empty
 auxiliary sections in this safe view only; ordinary `/next list` stays unchanged.
 
@@ -318,7 +322,7 @@ qualified selector shown by its Repo/ID, never pass that number to `next-select`
 For a not-checked row, offer a read-only scope review or ask for explicit approval of an
 ordinary selection with the coverage gap disclosed. Do not infer either approval from
 choosing a review row, and never claim it as safe. Declarations still require separate
-explicit approval; no automatic metadata backfill. A tracker-overlap row likewise needs
+explicit approval; no automatic metadata backfill. A held-back row likewise needs
 its advisory conflict reviewed rather than being silently reintroduced.
 
 For a checked-free candidate, run the normal handoff check first.

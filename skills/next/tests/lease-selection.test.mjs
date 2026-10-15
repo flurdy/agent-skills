@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { classifyCandidates, renderSafeList } from '../pi/lease-selection.ts';
 
-const candidate = (id, roots = ['/api'], state = 'declared', labels = []) => ({
-  id, selector: `workspace:${id}`, repository: 'workspace', title: id, priority: 2, issue_type: 'task', labels,
+const candidate = (id, roots = ['/api'], state = 'declared', labels = [], services = labels) => ({
+  id, selector: `workspace:${id}`, repository: 'workspace', title: id, priority: 2, issue_type: 'task', labels, services,
   source_scope: { state, roots, reason: 'fixture declaration' },
 });
 const packet = (candidates, in_progress = []) => ({ version: 1, workspace: true, candidates, in_progress, diagnostics: [] });
@@ -19,11 +19,13 @@ test('keeps proven free unlabelled work eligible, separates held, unknown and tr
   const result = await classifyCandidates(packet([
     candidate('free'), candidate('multi', ['/api', '/busy']), candidate('unknown', [], 'unknown'),
     candidate('partial', ['/api'], 'partial'), candidate('claimed', ['/api'], 'declared', ['web']),
-  ], [{ repository: 'workspace', labels: ['web'] }]), observer);
-  assert.deepEqual(result.eligible.map(row => row.id), ['free']);
+    candidate('topical', ['/api'], 'declared', ['marketing'], []),
+  ], [{ id: 'active', repository: 'workspace', labels: ['web', 'marketing'], services: ['web'] }]), observer);
+  assert.deepEqual(result.eligible.map(row => row.id), ['free', 'topical']);
   assert.deepEqual(result.occupied.map(row => row.id), ['multi']);
   assert.deepEqual(result.unknown.map(row => row.id), ['unknown', 'partial']);
   assert.deepEqual(result.tracker_conflicts.map(row => row.id), ['claimed']);
+  assert.deepEqual(result.tracker_conflicts[0].shared_services, ['web']);
   assert.equal(seen.length, 1);
   assert.deepEqual(seen[0], ['/api', '/busy']);
   assert.match(result.coverage, /not a reservation/);
@@ -35,7 +37,7 @@ test('safe display keeps the familiar ranking with explicit lease checks, no emp
   const unavailable = candidate('unavailable', ['/missing']);
   const overlap = candidate('overlap', [], 'unknown', ['web']);
   const held = candidate('held', ['/busy'], 'declared', ['web']);
-  const data = packet([unknown, free, unavailable, overlap, held], [{ id: 'active', repository: 'workspace', labels: ['web'] }]);
+  const data = packet([unknown, free, unavailable, overlap, held], [{ id: 'active', repository: 'workspace', labels: ['web'], services: ['web'] }]);
   const result = await classifyCandidates(data, async roots => roots.map(root => root === '/missing'
     ? { kind: 'unavailable', reason: 'no observation' } : { kind: root === '/busy' ? 'held' : 'free', root }));
   const output = renderSafeList(result);
@@ -46,9 +48,13 @@ test('safe display keeps the familiar ranking with explicit lease checks, no emp
   assert.match(output, /\| 3 \| workspace \| unavailable .*Not checked: unavailable/);
   const main = output.split('## Occupied')[0];
   assert.doesNotMatch(main, /\| held \||\| overlap \|/);
-  assert.match(output, /## Occupied \(1 bead\)/);
-  assert.match(output, /## Tracker label overlap \(1 bead\)/);
-  assert.match(output, /overlap.*active/);
+  assert.match(output, /## Occupied — source held by another Pi session \(1 bead\)/);
+  assert.match(output, /## Held back — same service as in-progress work \(1 bead\)/);
+  assert.match(output, /labels only, not lease evidence/);
+  assert.match(output, /\| Lease check \| Shared service \|/);
+  assert.match(output, /\| overlap \|.*\| web \(active\) \|/);
+  assert.match(output, /## Claimed — in progress \(1; not selectable\)/);
+  assert.doesNotMatch(output, /Tracker label overlap/);
   assert.doesNotMatch(output, /Eligible under observed|## Unknown|## Observation unavailable|_None\._/);
   assert.match(output, /Numbers are for review/);
   assert.match(output, /Selector = Repo:ID/);

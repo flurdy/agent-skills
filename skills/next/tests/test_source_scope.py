@@ -34,22 +34,39 @@ class SourceScopeTest(WorkspaceFixture):
         self.assertEqual(rows[0]["source_scope"]["roots"], [str((workspace / "repos/api").resolve())])
         self.assertEqual(rows[1]["source_scope"]["state"], "unknown")
         self.assertEqual(packet["in_progress"][0]["id"], "active")
+        self.assertEqual(rows[1]["services"], [])
         self.assertTrue(all("--readonly" in row["arguments"] for row in self.recorded_calls()))
 
-    def test_safe_display_separates_label_overlaps_even_with_unknown_scope(self) -> None:
+    def test_safe_display_holds_back_only_shared_services(self) -> None:
         root = self.base / "safe-display"
         self.create_store(root, ready=[
-            issue("review", 2, "task", "2026-01-01"),
-            issue("overlap", 2, "task", "2026-01-02", labels=["human"]),
-        ], in_progress=[issue("active", 2, "task", "2026-01-01", labels=["human"])])
+            issue("review", 2, "task", "2026-01-01", labels=["marketing"]),
+            issue("clash", 2, "task", "2026-01-02", labels=["hosted", "seo"]),
+        ], in_progress=[issue("active", 2, "task", "2026-01-01", labels=["marketing", "hosted"])])
+        (root / "hosted").mkdir()
+        (root / ".hidden").mkdir()
+        packet = json.loads(self.run_script(SKILL_DIR / "scripts/next-bd", root, "--safe-json").stdout)
+        self.assertEqual([row["services"] for row in packet["candidates"]], [[], ["hosted"]])
+        self.assertEqual(packet["in_progress"][0]["services"], ["hosted"])
         output = self.run_script(SKILL_DIR / "scripts/next-bd", root, "--safe").stdout
         self.assertIn("## Ready to review (1 beads)", output)
         self.assertIn("| 1 | review |", output)
-        main = output.split("## Tracker label overlap")[0]
-        self.assertNotIn("| overlap |", main)
-        self.assertIn("Shared labels with tracker claims", output)
-        self.assertIn("| overlap |", output)
-        self.assertIn("active", output)
+        main, held = output.split("## Held back — same service as in-progress work (1 beads)")
+        self.assertNotIn("| clash |", main)
+        self.assertIn("labels only, not lease evidence", held)
+        self.assertIn("| Shared service |", held)
+        self.assertIn("| hosted (active) |", held)
+        self.assertIn("## Claimed — in progress (1 beads; not selectable)", held)
+        self.assertIn("Tracker claims; session activity unverified.", held)
+        self.assertNotIn("Tracker label overlap", output)
+
+    def test_workspace_root_services_include_registered_repositories(self) -> None:
+        workspace = self.create_workspace(root_data={
+            "ready": [issue("root", 2, "task", "2026-01-01", labels=["api", "docs", "topic"])],
+        }, repositories={"api": {"ready": [issue("member", 2, "task", "2026-01-01", labels=["api"])]}})
+        packet = json.loads(self.run_script(SKILL_DIR / "scripts/next-bd", workspace, "--safe-json").stdout)
+        services = {row["id"]: row["services"] for row in packet["candidates"]}
+        self.assertEqual(services, {"root": ["api", "docs"], "member": []})
 
     def test_workspace_owned_scope_is_explicit_and_redirected_bases_are_unknown(self) -> None:
         declared = issue("declared", 2, "task", "2026-01-01")

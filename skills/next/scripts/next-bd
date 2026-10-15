@@ -72,19 +72,26 @@ jq -r \
     . as $candidate |
     [$claims[] | select((.repository // "") == ($candidate.repository // "")) |
       select(any(.labels[]?; . as $label | ($candidate.labels // []) | index($label))) | .id];
+  def service_overlap($claims):
+    . as $candidate |
+    [$claims[] | select((.repository // "") == ($candidate.repository // "")) |
+      {id, services: [(.services // [])[] | select(. as $service | ($candidate.services // []) | index($service))]} |
+      select(.services | length > 0)];
   def issue_fields($workspace):
     (if $workspace then [.repository] else [] end) +
     [.id, "P\(.priority)", .issue_type, (.labels // [] | if length == 0 then "-" else join(", ") end), .title];
   def safe_table($title; $rows; $workspace; $numbered; $overlap):
     ((if $numbered then ["#"] else [] end) + (if $workspace then ["Repo"] else [] end) +
       ["ID", "Pri", "Type", "Labels", "Title", "Lease check"] +
-      (if $overlap then ["Overlap with"] else [] end)) as $headers |
+      (if $overlap then ["Shared service"] else [] end)) as $headers |
     "## \($title) (\($rows | length) beads)\n\n" +
-    (if ($rows | length) == 0 then "_No candidates without tracker-label overlap._" else
+    (if $overlap then "May collide with claimed work; labels only, not lease evidence.\n\n" else "" end) +
+    (if ($rows | length) == 0 then "_No candidates without a shared in-progress service._" else
       ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
       ($rows | to_entries | map(
         (if $numbered then [.key + 1] else [] end) + (.value | issue_fields($workspace)) +
-        [.value.lease_check] + (if $overlap then [(.value.tracker_overlap | join(", "))] else [] end) | row
+        [.value.lease_check] +
+        (if $overlap then ["\(.value.shared_services | join(", ")) (\(.value.tracker_overlap | join(", ")))"] else [] end) | row
       ) | join("\n")) end);
   def blocker_context:
     if (.blocked_by // [] | length) > 0 then .blocked_by | join(", ")
@@ -95,7 +102,7 @@ jq -r \
       ["ID", "Pri", "Type", "Labels", "Title"] +
       (if $extra == "" then [] else [$extra] end)) as $headers |
     "\n\n## \($title) (\($rows | length) \($status))\n" +
-    (if $title == "In Progress" then "\nTracker claims; session activity unverified.\n" else "" end) +
+    (if $title | ascii_downcase | contains("in progress") then "\nTracker claims; session activity unverified.\n" else "" end) +
     (if ($rows | length) == 0 then "\n_None._" else
       "\n" + ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
       ($rows | sort_by(.priority, .created_at, (.repository // ""), .id) | map(
@@ -155,8 +162,9 @@ jq -r \
      in_progress: $in_progress, blocked: $payload.blocked, deferred: $payload.deferred,
      diagnostics: $diagnostics}
   elif $safe_output == "true" then
-    ($ranked | map(. + {
-      tracker_overlap: overlap_ids($in_progress),
+    ($ranked | map(service_overlap($in_progress) as $overlap | . + {
+      tracker_overlap: ($overlap | map(.id)),
+      shared_services: ($overlap | map(.services[]) | unique),
       lease_check: (if .source_scope.state == "unknown" then "Not checked: scope unknown"
         elif .source_scope.state == "partial" then "Not checked: scope incomplete"
         elif .source_scope.state == "invalid" then "Not checked: scope invalid"
@@ -167,12 +175,11 @@ jq -r \
     safe_table("Ready to review"; $review; $workspace; true; false) +
     "\n\nLease check: 0 checked free, \($review | length) not checked; no in-process Pi observer. Unknown does not mean occupied. No lease was acquired." +
     (if ($overlaps | length) > 0 then
-      "\n\n" + safe_table("Tracker label overlap"; $overlaps; $workspace; false; true) +
-      "\n\nShared labels with tracker claims, not proof of occupied source worktrees."
+      "\n\n" + safe_table("Held back — same service as in-progress work"; $overlaps; $workspace; false; true)
     else "" end) +
-    (if ($in_progress | length) > 0 then non_ready_table("In Progress"; "beads; not selectable"; $in_progress; $workspace; "") else "" end) +
-    (if ($payload.blocked | length) > 0 then non_ready_table("Blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") else "" end) +
-    (if ($payload.deferred | length) > 0 then non_ready_table("Deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") else "" end) +
+    (if ($in_progress | length) > 0 then non_ready_table("Claimed — in progress"; "beads; not selectable"; $in_progress; $workspace; "") else "" end) +
+    (if ($payload.blocked | length) > 0 then non_ready_table("Waiting — blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") else "" end) +
+    (if ($payload.deferred | length) > 0 then non_ready_table("Later — deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") else "" end) +
     (if ($diagnostics | length) > 0 then "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + cell) | join("\n")) else "" end) +
     "\n\nNumbers are for review, not safe claims. Selector = \(if $workspace then "Repo:ID" else "local:ID" end). Only a fresh eligible recheck permits a safe claim."
   elif $json_output == "true" then
