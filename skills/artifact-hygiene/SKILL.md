@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: economy
 model: sonnet
 effort: high
-version: "0.6.4"
+version: "0.6.5"
 author: "flurdy"
 ---
 
@@ -79,8 +79,15 @@ unscoped npm `package@version` tokens enclosed in single backticks are excluded 
 the token is at most 512 bytes, its version is strict SemVer, and the email-like domain's
 last label starts with a digit. Alphabetic-ending prerelease domains remain reportable,
 even in scoped specs; bare specs, ranges, malformed tokens, and adjacent email matches
-receive no exemption. This does not skip whole lines or arbitrary code spans. Personal-name matches stop
-at identifier boundaries, and paths under
+receive no exemption. In unpublished history only, the detector also recognizes strictly
+versioned `uses:` references on added lines in top-level `.github/workflows/*.yml` or
+`.yaml` files. This is bounded lexical recognition, not full YAML parsing: the entire
+owner/repository/path plus SemVer token must fit the limit. Only email-shaped spans
+contained in a validated reference are exempt. Adjacent comments, expressions, malformed
+references, other paths, and secret scanning remain unchanged. The detector sees added
+lines rather than full YAML, so it does not validate surrounding YAML context. This does not
+skip whole lines or arbitrary code spans. Personal-name matches stop at identifier boundaries,
+and paths under
 an `artifact-hygiene/` directory are exempt from the non-secret detectors because the audit's own
 source and fixtures necessarily contain canary shapes; secret scanning still covers them.
 

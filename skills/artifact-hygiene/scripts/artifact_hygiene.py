@@ -25,7 +25,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v2"
-HELPER_VERSION = "0.6.3-poc"
+HELPER_VERSION = "0.6.4-poc"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -81,6 +81,15 @@ SEMVER_NUMBER = rb"(?:0|[1-9][0-9]*)"
 SEMVER_PRERELEASE = rb"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
 NPM_EXACT_VERSION = re.compile(
     rb"(?:@" + NPM_NAME + rb"/)?" + NPM_NAME + rb"@"
+    + SEMVER_NUMBER + rb"\." + SEMVER_NUMBER + rb"\." + SEMVER_NUMBER
+    + rb"(?:-" + SEMVER_PRERELEASE + rb"(?:\." + SEMVER_PRERELEASE + rb")*)?"
+    + rb"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
+)
+WORKFLOW_ACTION_LINE = re.compile(rb"^ *(?:-[ ]+)?uses:[ ]+(?P<value>.+)$")
+WORKFLOW_ACTION_SEGMENT = rb"[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}"
+WORKFLOW_ACTION_REFERENCE = re.compile(
+    rb"(?:" + WORKFLOW_ACTION_SEGMENT + rb"/){1,}"
+    + WORKFLOW_ACTION_SEGMENT + rb"@v?"
     + SEMVER_NUMBER + rb"\." + SEMVER_NUMBER + rb"\." + SEMVER_NUMBER
     + rb"(?:-" + SEMVER_PRERELEASE + rb"(?:\." + SEMVER_PRERELEASE + rb")*)?"
     + rb"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?"
@@ -1419,6 +1428,59 @@ def beads_attribution_email_spans(data: bytes) -> frozenset[tuple[int, int]]:
     return frozenset(spans)
 
 
+def workflow_action_email_spans(data: bytes, path: str) -> frozenset[tuple[int, int]]:
+    """Return email-shaped suffix spans inside strict action refs on workflow uses lines."""
+    if not path.startswith(".github/workflows/"):
+        return frozenset()
+    name = path.removeprefix(".github/workflows/")
+    if not name or "/" in name or not name.endswith((".yml", ".yaml")):
+        return frozenset()
+
+    spans: set[tuple[int, int]] = set()
+    offset = 0
+    for raw_line in data.split(b"\n"):
+        line = raw_line[:-1] if raw_line.endswith(b"\r") else raw_line
+        match = WORKFLOW_ACTION_LINE.fullmatch(line)
+        if match is None:
+            offset += len(raw_line) + 1
+            continue
+
+        value = match.group("value")
+        value_start = match.start("value")
+        if not value or len(value) > 512:
+            offset += len(raw_line) + 1
+            continue
+        quote = value[:1] if value[:1] in {b"'", b'"'} else b""
+        if quote:
+            close = value.find(quote, 1)
+            if close < 0:
+                offset += len(raw_line) + 1
+                continue
+            reference = value[1:close]
+            suffix = value[close + 1 :]
+            value_start += 1
+        else:
+            reference = value
+            suffix = b""
+            for index, byte in enumerate(value):
+                if byte in b" \t":
+                    reference = value[:index]
+                    suffix = value[index:]
+                    break
+
+        if suffix and re.fullmatch(rb"[ \t]+#.*", suffix) is None:
+            offset += len(raw_line) + 1
+            continue
+        segments = reference.split(b"/")
+        if any(segment in {b".", b".."} for segment in segments):
+            offset += len(raw_line) + 1
+            continue
+        if WORKFLOW_ACTION_REFERENCE.fullmatch(reference) is not None:
+            spans.add((offset + value_start, offset + value_start + len(reference)))
+        offset += len(raw_line) + 1
+    return frozenset(spans)
+
+
 def detect_non_secret(
     data: bytes,
     *,
@@ -1438,6 +1500,7 @@ def detect_non_secret(
         if path == ".beads/issues.jsonl"
         else frozenset()
     )
+    action_email_spans = workflow_action_email_spans(data, path)
 
     def append_matches(detector: CustomDetector) -> bool:
         if detector.category in allowed_categories or audit_self:
@@ -1467,6 +1530,21 @@ def detect_non_secret(
                 continue
             if detector.detector == "pii.email":
                 if match.span() in beads_email_spans:
+                    continue
+                if any(
+                    (
+                        action_start <= match.start()
+                        and match.end() <= action_end
+                        and match.end() > action_start
+                    )
+                    or (
+                        action_start > 0
+                        and match.start() == action_start - 1
+                        and data[match.start() : action_start] in {b"'", b'"'}
+                        and match.end() <= action_end
+                    )
+                    for action_start, action_end in action_email_spans
+                ):
                     continue
                 if data[match.end() : match.end() + 1] == b":":
                     continue

@@ -1334,6 +1334,131 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(source, "configured")
         self.assertEqual(prefixes, ("router", "agents", "inbox", "skills", "ai-tools"))
 
+    def test_workflow_action_email_spans_are_narrow(self) -> None:
+        helper = load_helper_module()
+        reference = b"invented-org/sample-action@v9.8.7"
+        email = b"nobody" + b"@reserved.zzsynthetic"
+        cases = [
+            (b"        uses: " + reference, 0),
+            (b"      - uses: " + reference, 0),
+            (b"uses: '" + reference + b"'", 0),
+            (b'uses: "' + reference + b'"', 0),
+            (b"uses: invented-org/sample-action/subdir@1.2.3", 0),
+            (b"uses: invented-org/sample-action@v1.2.3-rc.1+build.05", 0),
+            (b"uses: invented-org/sample-action@v9", 0),
+            (b"uses: " + reference + b" # ordinary comment", 0),
+            (b"uses: " + reference + b" # " + email, 1),
+            (b'uses: "' + reference + b'" # ' + email, 1),
+            (b"uses: " + email, 1),
+            (b"# uses: " + reference, 1),
+            (b"description: " + reference, 1),
+            (b"run: |\n  uses: " + email, 1),
+            (b"uses: ${{ '" + reference + b"' }}", 1),
+            (b"uses: " + reference + b"@reserved.zzsynthetic", 1),
+            (b"uses: " + reference + b".tld", 1),
+            (b"uses: invented-org/sample-action@v1.2.3-alpha.tld", 0),
+            (b"uses: /sample-action@v9.8.7", 1),
+            (b"uses: invented-org//sample-action@v9.8.7", 1),
+            (b"uses: invented-org/sample-action/../x@v9.8.7", 1),
+            (b"uses: ./sample-action@v9.8.7", 1),
+            (b"uses: docker://invented-org/sample-action@v9.8.7", 0),
+            (b"uses: invented-org/sample-action@v09.8.7", 1),
+            (b"uses: invented-org/sample-action@v9.08.7", 1),
+            (b"uses: invented-org/sample-action@v9.8.07", 1),
+            (b"uses: invented-org/sample-action@v9.8.7.6", 1),
+            (b"uses: invented-org/sample-action@v9.8.7-rc.01", 1),
+            (b"uses: '" + reference + b'"', 1),
+            (b"uses: '" + reference, 1),
+            (b"uses: " + reference + b"#comment", 1),
+            (b"uses:\t" + reference, 1),
+            (b"uses- " + reference, 1),
+            (b"-uses: " + reference, 1),
+            (b"\tuses: " + reference, 1),
+            (b"uses: " + reference + b"\rjunk", 1),
+            (b"uses: " + reference + b"\0", 1),
+            (b"uses: " + reference + b" uses: " + reference, 2),
+            (b"uses: " + reference + b"+" + b"x" * 512, 1),
+            (b"uses: " + reference + b"\r\n" + email, 1),
+        ]
+        for data, expected in cases:
+            with self.subTest(data=data):
+                coverage = helper.Coverage("branch-history")
+                findings = helper.detect_non_secret(
+                    data,
+                    source="branch-history",
+                    path=".github/workflows/synthetic.yml",
+                    deadline=helper.monotonic() + 5,
+                    coverage=coverage,
+                )
+                emails = [item for item in findings if item["detector"] == "pii.email"]
+                self.assertEqual(len(emails), expected)
+                self.assertEqual(coverage.status, "complete")
+                self.assertNotIn(reference.decode(), json.dumps(findings))
+                self.assertNotIn(email.decode(), json.dumps(findings))
+
+    def test_workflow_action_recognition_is_path_scoped(self) -> None:
+        helper = load_helper_module()
+        data = b"uses: invented-org/sample-action@v9.8.7\n"
+        paths = [
+            (".github/workflows/synthetic.yml", 0),
+            (".github/workflows/synthetic.yaml", 0),
+            ("notes.md", 1),
+            (".github/workflows/nested/synthetic.yml", 1),
+            (".github/workflows/../synthetic.yml", 1),
+            (".github/workflows/synthetic.YML", 1),
+            ("other/.github/workflows/synthetic.yml", 1),
+        ]
+        for path, expected in paths:
+            with self.subTest(path=path):
+                coverage = helper.Coverage("branch-history")
+                findings = helper.detect_non_secret(
+                    data,
+                    source="branch-history",
+                    path=path,
+                    deadline=helper.monotonic() + 5,
+                    coverage=coverage,
+                )
+                self.assertEqual(
+                    len([item for item in findings if item["detector"] == "pii.email"]),
+                    expected,
+                )
+
+    def test_workflow_action_history_keeps_adjacent_email_and_secret_scanning(self) -> None:
+        self.repository.write("README.md", "# Synthetic\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        path = ".github/workflows/synthetic.yml"
+        reference = "invented-org/sample-action@v9.8.7"
+        workflow = "name: Synthetic\non: push\njobs:\n  check:\n    steps:\n      - uses: "
+        self.repository.write(path, workflow + reference + "\n")
+        self.repository.commit_all("ci: add synthetic action")
+        before = self.repository.state()
+        clean = self.run_audit()
+        report = json.loads(clean.stdout)
+        self.assertEqual(clean.returncode, 0)
+        self.assertEqual((report["status"], report["verdict"]), ("complete", "clean"))
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(self.repository.state(), before)
+
+        email = "nobody" + "@reserved.zzsynthetic"
+        self.repository.write(path, workflow + reference + " # " + email + " FINDING_MARKER\n")
+        self.repository.commit_all("ci: add synthetic scanner controls")
+        before = self.repository.state()
+        blocked = self.run_audit()
+        report = json.loads(blocked.stdout)
+        self.assertEqual(blocked.returncode, 0)
+        self.assertEqual((report["status"], report["verdict"]), ("complete", "block"))
+        emails = [item for item in report["findings"] if item["detector"] == "pii.email"]
+        self.assertEqual(len(emails), 1)
+        self.assertTrue(any(
+            item["category"] == "secret" and item["location"]["source"] == "branch-history"
+            for item in report["findings"]
+        ))
+        self.assertNotIn(reference, blocked.stdout)
+        self.assertNotIn(email, blocked.stdout)
+        self.assertNotIn("FINDING_MARKER", blocked.stdout)
+        self.assertEqual(self.repository.state(), before)
+
     def test_email_detector_skips_only_bounded_numeric_npm_versions(self) -> None:
         helper = load_helper_module()
         cases = [
