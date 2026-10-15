@@ -2,13 +2,13 @@
 name: release-manager
 description: >
   Attended release gatekeeper: consume shared readiness verdicts, offer confirmed
-  single-service pushes, track CI failures and observed rollouts, and recommend the next
-  watch cadence. Configuration maintenance and restarts are separately owned.
-allowed-tools: "Read,Skill,AskUserQuestion,Bash(~/.agents/skills/ready-to-release/scripts/release-gates:*),Bash(~/.agents/skills/release-manager/scripts/release-state:*),Bash(make git-push:*),Bash(./scripts/mgit log:*),Bash(bd:*)"
+  single-service pushes (publish_commit in Pi), track CI failures and rollouts, and
+  recommend watch cadence. Maintenance and restarts are separately owned.
+allowed-tools: "Read,Skill,AskUserQuestion,Bash(~/.agents/skills/ready-to-release/scripts/release-gates:*),Bash(~/.agents/skills/release-manager/scripts/release-state:*),Bash(realpath:*),Bash(printenv PI_SESSION_ID),Bash(make git-push:*),Bash(./scripts/mgit log:*),Bash(bd:*)"
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.1.0"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -121,13 +121,19 @@ movement alone do not prove desired configuration applied or a restart completed
 4. **Select only `READY` rows.** Apply defer/cancel suppression after evaluation; suppression
    changes the prompt queue, never the verdict. Prefer prerequisites/providers before consumers;
    non-deploying repositories last. Cap at three services per tick and report remaining candidates.
-   Inspect the project's `git-push` recipe before first use: it must push only the selected
-   service, without hidden extra remote actions or history rewrites. Unsupported composite recipes
-   require an explicit handoff, not a permission bypass.
+   Any `publishing` record holds every push offer. Choose the publication path:
+   - **Pi:** the `publish_commit` tool, which publishes one exact commit without a source-writer
+     lease. If it is unavailable or refuses the service's configuration, offer no push and give a
+     manual handoff. Never ask for `/implement` scopes to publish, and never fall back to
+     `make git-push`, Bash `git push`, wrappers or dummy edits.
+   - **Other harnesses:** the project's `make git-push <service>` recipe. Inspect it before first
+     use: it must push only the selected service, without hidden extra remote actions or history
+     rewrites. Unsupported composite recipes require an explicit handoff, not a permission bypass.
 
 5. **Prompt and push one at a time.** Obtain a **fresh authority result** immediately before each
    question. If the service is no longer READY, show the new gates and skip its push offer.
-   Show the exact command `make git-push <service>`, candidate head/count, upstream revision,
+   Show the publication path (the exact command `make git-push <service>`, or `publish_commit`
+   for the service's canonical root and full head SHA), candidate head/count, upstream revision,
    pre-push tag, and consequence. A deploying push may trigger production deployment; upstream
    green has **not** tested these unpushed commits. Non-deploying pushes publish commits but
    do not trigger the deployment workflow.
@@ -136,22 +142,39 @@ movement alone do not prove desired configuration applied or a restart completed
    - `push`: after the answer, recollect once more. Compare the complete selected service row,
      relevant prerequisite rows, and gate/policy evidence to the question's snapshot (ignore only
      observation timestamps and display age). If anything relevant changed, discard the answer
-     and ask again against fresh evidence. Otherwise run only the confirmed exact command, with
-     no intervening unrelated action, shell loop, pipe, substitution, or `&&` chain.
-   - On command failure, report it and stop mutation for this service; do not assume nothing
-     reached the remote and do not retry automatically. Recollect before further decisions.
-   - On success, print the verified command outcome. For deploying services, save sha/fromTag
-     from the confirmation snapshot; non-deploying repositories get no rollout entry. Recollect
-     after each push before selecting another candidate, so an old same-tick approval cannot
-     release a dependent consumer before its prerequisite settles.
+     and ask again against fresh evidence. Otherwise publish with no intervening unrelated action,
+     shell loop, pipe, substitution, or `&&` chain:
+     1. Record intent first: `release-state begin-publication --service <service> --sha <full head>
+        --from-tag <pre-push tag, or omit when unknown> --session <session> --deploying|--no-deploying
+        --expect <hash>`. Use `printenv PI_SESSION_ID` in Pi, otherwise a short harness label.
+        `held` or `conflict` stops publication for this tick; report it.
+        Every later `finish-publication` passes the same `--service` and `--sha`.
+     2. **Pi:** call `publish_commit` with `action: confirm`, `root` = `realpath <service dir>`,
+        `commit` = the full head and a short `context`. Its native dialog is the authorization; the
+        earlier answer was intent only. Declined → `finish-publication --status declined`; refused
+        before a token → `--status failed`. After an approval, recollect once more and compare as
+        above, including that the confirmed commit is still the head. Ignore only the `publication`
+        gate naming this service's own in-progress record from step 1. Any change → do not execute;
+        `finish-publication --status stale`. Otherwise call `publish_commit` with `action: execute`
+        and only the returned `token`, then `finish-publication --status <receipt status>`.
+        **Other harnesses:** run only the exact command `make git-push <service>`; exit 0 →
+        `finish-publication --status ok`, anything else → `--status unknown`.
+     3. Report the receipt. `ok` lets the helper save the rollout watch for deploying services from
+        the recorded pre-push tag; `uptodate` adds no baseline; `rejected`, `failed`, `stale` and
+        `declined` stop this service without retry. `unknown` stays recorded as uncertain and holds
+        every push: hand off `/release-maintenance resolve-publication <service>`. Never assume
+        nothing reached the remote, and never retry automatically.
+   - Recollect after each push before selecting another candidate, so an old same-tick approval
+     cannot release a dependent consumer before its prerequisite settles.
    - `defer`: suppress for this tick only. `cancel`: suppress this exact head until it changes.
    - `why?`: show returned gate evidence and optionally the single read-only command
      `./scripts/mgit log <service> --oneline @{u}..HEAD`, then obtain a fresh result and re-ask.
 
 6. **Persist and summarise.** Send this tick's owned changes in one `release-state update --owner
-   manager` using the hash from your latest read. On conflict, read again and recompute only from
-   fresh state; never force or clobber. Unrelated and legacy fields stay untouched. Print pushed/deferred/waiting
-   counts, tracking outcomes, activation notes, and any maintenance handoff. Never claim a deploy
+   manager` using the newest hash: publication commands change the file and print the new one.
+   On conflict, read again and recompute only from fresh state; never force or clobber. Unrelated
+   and legacy fields stay untouched. Print pushed/deferred/waiting counts, tracking outcomes,
+   activation notes, and any maintenance handoff. Never claim a deploy
    or config uptake merely because the push command succeeded.
 
 7. **Cadence, last.** Use the helper's observations, not a second rollout/CI evaluator:

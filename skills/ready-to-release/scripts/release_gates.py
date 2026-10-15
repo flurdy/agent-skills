@@ -425,20 +425,21 @@ def evaluate(data, selected=None):
     if provider == "pact":
         known.update(graph)
         known.update(name for names in graph.values() for name in names)
-    watches = {}
+    watches, publishing = {}, {}
     if data["state"]["status"] == "ok":
         try:
             state = json.loads(data["state"]["text"])
-            if not isinstance(state, dict) or not isinstance(state.get("rolloutWatch", {}), dict):
+            if not isinstance(state, dict) or not isinstance(state.get("rolloutWatch", {}), dict) or not isinstance(state.get("publishing", {}), dict):
                 raise ValueError("invalid state")
             watches = state.get("rolloutWatch", {})
+            publishing = state.get("publishing", {})
             if any(not isinstance(entry, dict) or not isinstance(entry.get("sha"), str)
                    or entry["sha"] in SENTINELS or "fromTag" not in entry
                    or (entry["fromTag"] is not None and not isinstance(entry["fromTag"], str))
                    for entry in watches.values()):
                 raise ValueError("invalid rollout entry")
         except ValueError:
-            watches = {}
+            watches, publishing = {}, {}
             errors["state"] = "saved rollout state malformed; evidence required"
     elif data["state"]["status"] == "unavailable":
         errors["state"] = "saved rollout state unreadable; evidence required"
@@ -503,6 +504,11 @@ def evaluate(data, selected=None):
         progress = rollout(row, watches)
         live = deployment(row["deploy"])
         gates["deployment"] = gate("na", "non-deploying repository") if non_deploying else gate("hold", "rollout in progress") if progress == "rolling" else gate("hold", "saved rollout needs deployment evidence or explicit acknowledgement") if progress == "unknown" else gate("pass", row["deploy"], row["tag"], row["age"]) if live == "settled" else gate("na", "deployment evidence unavailable")
+        if publishing:
+            # A write-ahead publication record serializes every push until it settles or a human resolves it.
+            gates["publication"] = gate("hold", *(
+                f"{service}: {'uncertain outcome; resolve via /release-maintenance' if isinstance(entry, dict) and entry.get('uncertain') else 'publication in progress'}"
+                for service, entry in sorted(publishing.items())))
         if "policy" in errors:
             gates["policy"] = gate("hold", errors["policy"])
         if "state" in errors and not non_deploying:

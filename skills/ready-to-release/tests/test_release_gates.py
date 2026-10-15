@@ -202,6 +202,21 @@ class ReleaseGatesTests(unittest.TestCase):
             data["state"] = evidence(state)
             self.assertEqual(self.web(data)["verdict"], "HOLD")
 
+    def test_pending_publication_record_holds_every_service(self):
+        record = {"sha": "a" * 40, "fromTag": "v1", "session": "s", "deploying": True}
+        for entry in (record, {**record, "uncertain": True}):
+            data = add_api(snapshot())
+            data["state"] = evidence(json.dumps({"publishing": {"api": entry}}))
+            web = self.web(data)
+            self.assertEqual(web["verdict"], "HOLD")
+            self.assertEqual(web["gates"]["publication"]["result"], "hold")
+            self.assertIn("api", " ".join(web["gates"]["publication"]["evidence"]))
+        data = add_api(snapshot())
+        data["state"] = evidence(json.dumps({"publishing": {}}))
+        self.assertNotIn("publication", self.web(data)["gates"])
+        data["state"] = evidence(json.dumps({"publishing": []}))
+        self.assertEqual(self.web(data)["verdict"], "HOLD")
+
     def test_missing_order_metadata_and_unsupported_policy_fail_closed(self):
         data = snapshot()
         data["order"]["text"] = data["order"]["text"].replace("graph=none\n", "")

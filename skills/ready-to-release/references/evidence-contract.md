@@ -106,6 +106,10 @@ remain unknown; never substitute pod age or assume completion. `/release-mainten
 acknowledge-rollout <service>` is the explicit evidence-backed recovery path. Dependency checks
 use the full snapshot, even for a single-service display, including ignored prerequisite rows.
 
+Any saved `publishing` record adds a `publication` HOLD to every service: a push is in progress or
+its outcome is uncertain, so further publication waits. Only the release-state helper settles it,
+or `/release-maintenance resolve-publication <service>` after an explicit human answer.
+
 ## JSON output and fixtures
 
 Output schema version 1 includes `observedAt`, `context`, `services`, `drift`, `errors`, and an

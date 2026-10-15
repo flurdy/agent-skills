@@ -25,7 +25,7 @@ for file in "$skill" "$maintenance"; do
     printf '%s' "$allowed" | grep -Fq 'Bash(~/.agents/skills/release-manager/scripts/release-state:*)' \
         || fail "$(basename "$(dirname "$file")") must allow the release-state helper"
 done
-for required in 'release-state update --owner manager' 'publishing' 'conflict'; do
+for required in 'release-state update --owner manager' 'publishing' 'conflict' 'begin-publication' 'finish-publication' 'publish_commit' 'token' 'ask for `/implement`' 'make git-push'; do
     grep -Fq -- "$required" "$skill" || fail "missing coordinated state invariant: $required"
 done
 for required in 'release-state update --owner maintenance' 'resolve-publication'; do
