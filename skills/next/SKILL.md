@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: high
-version: "1.16.0"
+version: "1.16.1"
 author: "flurdy"
 ---
 
@@ -84,7 +84,7 @@ to start editing, invoke a coding skill, or continue to another task.
 # Render the full table and always include the P4 backlog
 /next backlog
 
-# Show ready work, excluding services with in-progress beads
+# Show ranked work with lease-check status; separate occupied work and tracker overlaps
 /next safe
 
 # Show ready work, sorted by Jira sprint (active → future → no-sprint → no-Jira)
@@ -269,35 +269,50 @@ inside Pi. It accepts no caller roots, runtime directory, PID, executable or obs
 payload. No observer subprocess can substitute its own PID for the originating Pi.
 See [source declarations and optional integration](references/source-scope.md).
 
-Render every returned queue as a table, preserving ranking within it:
+Show the helper's compact Markdown as the familiar **Ready to review** ranked table,
+not five diagnostic queues. Preserve its original ranking and all rows. Use the ordinary
+columns (`#`, optional `Repo`, `ID`, `Pri`, `Type`, `Labels`, `Title`) plus one **Lease check**
+column: `Checked free (local Pi)`, `Not checked: scope unknown`, `Not checked: scope
+incomplete`, `Not checked: scope invalid`, or `Not checked: unavailable`.
 
-- **Eligible under observed local Pi coverage**: explicit complete declaration, every
-  exact canonical source root observed free, and no same-store label overlap with a
-  tracker claim. Number only these rows.
-- **Occupied**: at least one declared root held by another cooperating Pi process.
-- **Unknown/incomplete scope**: undeclared, partial, invalid or otherwise unproven scope.
-- **Observation unavailable**: include the per-root failure reason; never treat it as free.
-- **Tracker conflicts**: all observed roots free but labels overlap in-progress work.
+Numbers identify rows for review only, **not permission to claim unchecked work as safe**.
+Keep unknown/incomplete scope visible in that table, without calling it free or occupied.
+Move known **Occupied** work to a separate unnumbered table. Also show **Tracker label
+overlap** separately, even when scope is unknown: shared labels with an in-progress
+tracker claim remain the old advisory filter, not proof that its source is occupied.
+A row that is both occupied and overlapping appears only in Occupied. Suppress empty
+auxiliary sections in this safe view only; ordinary `/next list` stays unchanged.
 
-Include selector, priority, title, declared roots, reason and tracker overlaps as applicable.
-Keep diagnostics and coverage visible. Free means no observed holder in this Pi runtime
-namespace, not no Claude/external writer, not a reservation and not write authority.
-Labels and tracker claims stay advisory and separate from occupancy. Do not silently
-omit unknown work or call it safe. If more than 32 unique roots need observation, the
-helper retains an unavailable queue; a recheck of one qualified selector narrows the scan.
+Include the helper's short checked/not-checked summary and selector mapping (`Repo:ID`,
+or `local:ID`). Retain non-empty In Progress, Blocked and Deferred tables and diagnostics;
+do not add a second ordinary listing or dump roots/internal selectors on every row. Full
+machine queues and per-root observations remain in tool details. Recheck still returns
+machine-readable JSON and must be assessed by queue, not by the display label.
+
+Free means no observed holder in this Pi runtime namespace, not no Claude/external writer,
+not a reservation and not write authority. Unknown does not mean occupied. If more than 32
+unique roots need observation, status stays unavailable; rechecking one exact qualified
+selector narrows the scan.
 
 If `next_safe` is missing (including non-Pi clients), do not launch another Pi, infer a
 PID from process ancestry, reconstruct lock filenames, or install anything automatically.
-Run `next-bd --safe` through the installed path. It reports undeclared/incomplete and
-occupancy-unavailable queues and the non-ready tracker tables without requiring Node or
+Run `next-bd --safe` through the installed path. It shows the same ranked review table
+with not-checked lease statuses and non-empty tracker tables without requiring Node or
 Pi. Ordinary `/next list` and tracker-only quick selection remain portable and unchanged.
 The native helper requires Node 22.19+, Linux process evidence, util-linux `lslocks`,
 and the public observer from the same reviewed package revision as the guard.
 
 ### Selecting from the safe view
 
-Safe numbering is **not** ordinary `next-bd` numbering. Resolve the selected row's exact
-qualified selector, never its safe-table index. Run the normal handoff check first.
+Safe numbering is **not** ordinary `next-bd` numbering. Map a review number to the exact
+qualified selector shown by its Repo/ID, never pass that number to `next-select`.
+For a not-checked row, offer a read-only scope review or ask for explicit approval of an
+ordinary selection with the coverage gap disclosed. Do not infer either approval from
+choosing a review row, and never claim it as safe. Declarations still require separate
+explicit approval; no automatic metadata backfill. A tracker-overlap row likewise needs
+its advisory conflict reviewed rather than being silently reintroduced.
+
+For a checked-free candidate, run the normal handoff check first.
 Immediately before the tracking claim call `next_safe` with
 `{"action":"recheck","selector":"<owner>:<id>"}`. This reloads tracking and declarations
 and observes again; it is not a cached receipt. Review any changed scope. If the selected

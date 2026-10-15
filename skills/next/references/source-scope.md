@@ -47,8 +47,10 @@ ranking and each has its owning `selector`, `repository` and a normalized `sourc
 It intentionally retains label-conflicting candidates for separate reporting. Safe flags
 supersede `--avoid-busy`; ordinary `--json` retains its existing array contract.
 
-`next-bd --safe` is the no-native-helper fallback. It shows scope-unknown and occupancy-
-unavailable queues, including complete declarations, without labelling anything safe.
+`next-bd --safe` is the no-native-helper fallback. It keeps the familiar ranked review
+table with one Lease check column: scope unknown/incomplete/invalid or observation
+unavailable. Complete declarations are still not checked without a native observer.
+Tracker-label overlaps remain inspectable in their own unnumbered table.
 Python 3.10+, Bash, jq, Git and the existing compatible `bd` are sufficient. It never
 imports Node or Pi. `--safe-json` is an integration packet, not a replacement for the
 ordinary selector index or an automatically claimable queue.
@@ -113,13 +115,29 @@ session ID, diagnostics and an explicit coverage statement. Each row retains per
 observations and separate same-store `tracker_overlap` evidence. No names/labels imply
 scope, liveness, or authorization.
 
-Recheck uses fresh declarations and tracker state, then observes again. A selector that is
-no longer ready or whose source cannot be read fails closed. After the normal handoff check,
+List tool content is compact Markdown, while tool details retain those machine queues,
+source declarations and per-root observations. Each row also carries its original packet
+position so merging statuses for display cannot change the ranking. The familiar table
+uses ordinary IDs (plus Repo only for workspaces), not repeated `local:` prefixes. Its
+footer explains how Repo/ID maps to an exact selector. Known occupied rows and all
+tracker-label overlaps are unnumbered and separate, with occupied taking precedence.
+The safe view suppresses empty auxiliary headings; ordinary list output is unchanged.
+
+Numbered rows are **for review**, including unknown and unavailable scope; the number is
+not claim permission. Checked-free labels cover only local cooperating Pi processes.
+Not-checked rows require a source-scope review or separately confirmed ordinary selection;
+neither an ordinary claim nor metadata backfill is inferred from choosing a review number.
+The short summary distinguishes not checked from occupied, with diagnostic reasons kept
+where observation failed rather than a wall of empty queues.
+
+Recheck content remains full JSON with the actual queue, so display wording never becomes
+eligibility evidence. It uses fresh declarations and tracker state, then observes again.
+A selector that is no longer ready or whose source cannot be read fails closed. After the normal handoff check,
 recheck immediately before the existing qualified `next-select start` claim. This is a
 procedural two-call sequence, not a claim lock or reservation; do not substitute the safe
 view's numbers for ordinary ranked indexes. Missing helper or non-eligible recheck means
-no safe claim. The user may separately choose an ordinary selection, with the coverage
-limit disclosed; never silently fall back.
+no safe claim. The user may separately approve an ordinary selection after its coverage
+limit is disclosed; never silently fall back or treat a review-table number as that approval.
 
 Only the subsequent concrete native write attempts acquisition. It can still lose a race
 after a free observation or successful tracking claim. Never release, steal or bypass a

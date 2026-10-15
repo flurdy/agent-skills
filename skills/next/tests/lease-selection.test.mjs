@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { classifyCandidates } from '../pi/lease-selection.mjs';
+import { classifyCandidates, renderSafeList } from '../pi/lease-selection.mjs';
 
 const candidate = (id, roots = ['/api'], state = 'declared', labels = []) => ({
   id, selector: `workspace:${id}`, repository: 'workspace', title: id, priority: 2, issue_type: 'task', labels,
@@ -27,6 +27,58 @@ test('keeps proven free unlabelled work eligible, separates held, unknown and tr
   assert.equal(seen.length, 1);
   assert.deepEqual(seen[0], ['/api', '/busy']);
   assert.match(result.coverage, /not a reservation/);
+});
+
+test('safe display keeps the familiar ranking with explicit lease checks, no empty diagnostics', async () => {
+  const unknown = candidate('unknown', [], 'unknown');
+  const free = candidate('free');
+  const unavailable = candidate('unavailable', ['/missing']);
+  const overlap = candidate('overlap', [], 'unknown', ['web']);
+  const held = candidate('held', ['/busy'], 'declared', ['web']);
+  const data = packet([unknown, free, unavailable, overlap, held], [{ id: 'active', repository: 'workspace', labels: ['web'] }]);
+  const result = await classifyCandidates(data, async roots => roots.map(root => root === '/missing'
+    ? { kind: 'unavailable', reason: 'no observation' } : { kind: root === '/busy' ? 'held' : 'free', root }));
+  const output = renderSafeList(result);
+  assert.match(output, /## Ready to review \(3 beads\)/);
+  assert.match(output, /\| # \| Repo \| ID \| Pri \| Type \| Labels \| Title \| Lease check \|/);
+  assert.match(output, /\| 1 \| workspace \| unknown \| P2 \| task \| - \| unknown \| Not checked: scope unknown \|/);
+  assert.match(output, /\| 2 \| workspace \| free .*Checked free/);
+  assert.match(output, /\| 3 \| workspace \| unavailable .*Not checked: unavailable/);
+  const main = output.split('## Occupied')[0];
+  assert.doesNotMatch(main, /\| held \||\| overlap \|/);
+  assert.match(output, /## Occupied \(1 bead\)/);
+  assert.match(output, /## Tracker label overlap \(1 bead\)/);
+  assert.match(output, /overlap.*active/);
+  assert.doesNotMatch(output, /Eligible under observed|## Unknown|## Observation unavailable|_None\._/);
+  assert.match(output, /Numbers are for review/);
+  assert.match(output, /Selector = Repo:ID/);
+  assert.match(output, /no observation|observer unavailable/);
+});
+
+test('local unknown-only display does not pretend no work or expose selector boilerplate in each row', async () => {
+  const data = packet([candidate('a', [], 'unknown'), candidate('b', [], 'partial')]);
+  data.workspace = false;
+  data.candidates[1].source_scope.roots = ['/partial'];
+  for (const row of data.candidates) { row.repository = 'local'; row.selector = `local:${row.id}`; }
+  const result = await classifyCandidates(data);
+  const output = renderSafeList(result);
+  assert.match(output, /\| # \| ID \| Pri \| Type \| Labels \| Title \| Lease check \|/);
+  assert.match(output, /\| 1 \| a .*Not checked: scope unknown/);
+  assert.match(output, /\| 2 \| b .*Not checked: scope incomplete/);
+  assert.doesNotMatch(output, /\| local:a \||None eligible|## Occupied/);
+  assert.match(output, /local:ID/);
+  assert.match(output, /Unknown does not mean occupied/);
+});
+
+test('rendering escapes tracker text and preserves typed unknown queues', async () => {
+  const row = candidate('a', [], 'unknown');
+  row.title = 'a|b\n\u001b[31m';
+  const result = await classifyCandidates(packet([row]));
+  assert.deepEqual(result.unknown.map(r => r.id), ['a']);
+  assert.deepEqual(result.eligible, []);
+  const output = renderSafeList(result);
+  assert.match(output, /a&#124;b/);
+  assert.doesNotMatch(output, /\u001b/);
 });
 
 test('malformed, missing, partial and wrong-root observations cannot certify safety', async () => {

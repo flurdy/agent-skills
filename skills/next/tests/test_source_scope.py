@@ -28,6 +28,21 @@ class SourceScopeTest(WorkspaceFixture):
         self.assertEqual(packet["in_progress"][0]["id"], "active")
         self.assertTrue(all("--readonly" in row["arguments"] for row in self.recorded_calls()))
 
+    def test_safe_display_separates_label_overlaps_even_with_unknown_scope(self) -> None:
+        root = self.base / "safe-display"
+        self.create_store(root, ready=[
+            issue("review", 2, "task", "2026-01-01"),
+            issue("overlap", 2, "task", "2026-01-02", labels=["human"]),
+        ], in_progress=[issue("active", 2, "task", "2026-01-01", labels=["human"])])
+        output = self.run_script(SKILL_DIR / "scripts/next-bd", root, "--safe").stdout
+        self.assertIn("## Ready to review (1 beads)", output)
+        self.assertIn("| 1 | review |", output)
+        main = output.split("## Tracker label overlap")[0]
+        self.assertNotIn("| overlap |", main)
+        self.assertIn("Shared labels with tracker claims", output)
+        self.assertIn("| overlap |", output)
+        self.assertIn("active", output)
+
     def test_workspace_owned_scope_is_explicit_and_redirected_bases_are_unknown(self) -> None:
         declared = issue("declared", 2, "task", "2026-01-01")
         declared["metadata"] = {"source_scope": {"version": 1, "complete": True, "roots": ["repos/api"]}}
@@ -104,6 +119,13 @@ class SourceScopeTest(WorkspaceFixture):
         fallback = self.run_script(SKILL_DIR / "scripts/next-bd", root, "--safe")
         self.assertIn("no in-process Pi observer", fallback.stdout)
         self.assertIn("case-2", fallback.stdout)
-        self.assertIn("No candidates certified", fallback.stdout)
+        self.assertIn("## Ready to review (6 beads)", fallback.stdout)
+        self.assertIn("| # | ID | Pri | Type | Labels | Title | Lease check |", fallback.stdout)
+        self.assertIn("Not checked: scope unknown", fallback.stdout)
+        self.assertIn("Not checked: unavailable", fallback.stdout)
+        self.assertNotIn("## Occupancy unavailable", fallback.stdout)
+        self.assertNotIn("## Unknown", fallback.stdout)
+        self.assertNotIn("_None._", fallback.stdout)
+        self.assertIn("Numbers are for review", fallback.stdout)
         ordinary = json.loads(self.run_script(SKILL_DIR / "scripts/next-bd", root, "--json").stdout)
         self.assertTrue(all("source_scope" not in row for row in ordinary))

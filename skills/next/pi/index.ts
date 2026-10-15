@@ -1,6 +1,6 @@
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { inspectCandidates } from "./lease-selection.mjs";
+import { inspectCandidates, renderSafeList } from "./lease-selection.mjs";
 
 type Observer = (roots: string[], options: { timeoutMs: number; signal: AbortSignal }) => Promise<unknown[]>;
 
@@ -18,7 +18,8 @@ export function registerNextSafe(pi: ExtensionAPI, loadObserver: () => Promise<O
 			if ((params.action === "recheck") !== Boolean(params.selector)) throw new Error("Only recheck requires a qualified selector");
 			const result = await inspectCandidates(ctx.cwd, { selector: params.selector, signal, loadObserver });
 			const details = { ...result, sessionId: ctx.sessionManager.getSessionId(), cwd: ctx.cwd };
-			return { content: [{ type: "text", text: JSON.stringify(details) }], details };
+			const text = params.action === "list" ? renderSafeList(result) : JSON.stringify(details);
+			return { content: [{ type: "text", text }], details };
 		},
 	});
 }
