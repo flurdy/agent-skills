@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.1.2"
+version: "1.1.3"
 author: "flurdy"
 ---
 
@@ -58,6 +58,28 @@ a manual new start may explicitly establish a fresh baseline. `reset` clears onl
 not GitHub or the watcher deadline. Three consecutive failures for the same source recommend
 stopping the watch; keep healthy sources and retained state visible.
 
+## Command execution contract
+
+Run each documented helper as its own tool call, with its documented arguments. The workflow is:
+`date` → request collector → `date` and one feedback collector per repository group → JSON reducer
+→ display-time `date` → rendered dashboard. Omit feedback calls for an empty scope. Keep orchestration
+and deadline decisions in reasoning, not a generated program.
+
+Never generate inline Python or shell orchestration wrappers around these helpers.
+Do not use `python3 -`, `python3 -c`, `subprocess`, shell loops, or command substitution to collect,
+combine, compare, or reduce results. Heredocs carry literal JSON only, never executable code; pass
+that JSON directly to the documented collector or reducer. Preserve returned state verbatim.
+Do not reconstruct state from counts, prose, or hand-copied tuples. If exact required state is
+unavailable, follow the state-loss stop rule instead of synthesizing a replacement.
+
+For a watch deadline check, call `date '+%Y-%m-%dT%H:%M:%S%z'` separately before each collection
+phase/group. Compare the returned time with the deadline in reasoning. Do not put comparisons such
+as `>=` into executable heredocs: a conservative shell guard may interpret them as write redirects.
+
+Do not retry a guard-denied command with alternate quoting, a different interpreter, or another
+wrapper. Retain prior comparison state, label blocked feedback stale/unknown, render available
+results, and stop the watch with the matching runtime tokens. Do not request `/implement` for this read-only dashboard.
+
 ## 1. Collect current requests
 
 In watch context, check the supplied immutable deadline before each collection phase using `date`;
@@ -104,7 +126,8 @@ The helper has bounded pages and a 60-second per-request timeout; it is not a si
 returns after it, render the result and stop scheduling. Failed groups remain unknown. Feedback
 is separately observed metadata, not an immutable code-review snapshot.
 
-Reduce the returned inventories with the pure JSON helper (stdin, no files):
+Reduce the returned inventories with the pure JSON helper in a separate tool call (stdin, no files).
+The heredoc below is a JSON payload for the installed script, not a Python program:
 
 ```bash
 python3 ~/.agents/skills/pr-review-requests/scripts/request-feedback.py <<'REQUEST_FEEDBACK'

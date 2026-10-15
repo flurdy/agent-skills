@@ -34,6 +34,14 @@ for forbidden in ('Skill(review-pr)', 'gh pr review', 'AskUserQuestion', '--revi
                   'Bash(git', 'Bash(gh', 'missedCompletionPolicy: retry'):
     assert forbidden not in watch, f'unexpected watcher authority: {forbidden}'
 assert watch.index('### Pi protocol v1') < watch.index('### Claude Code fallback')
+prompts = [line for line in watch.splitlines()
+           if 'request-dashboard-v1 tick' in line and ('When already permitted' in line)]
+assert len(prompts) == 2, 'expected Pi and fixed Claude tick prompts'
+for prompt in prompts:
+    for invariant in ('Use only the documented direct helper calls',
+                      'Never generate inline Python or shell orchestration wrappers',
+                      'JSON-only stdin', 'Do not retry a guard-denied command'):
+        assert invariant in prompt, f'tick prompt missing direct-call safeguard: {invariant}'
 summary_path = Path(sys.argv[2])
 assert summary_path.is_file(), 'missing standalone request dashboard'
 summary = summary_path.read_text()
@@ -58,6 +66,18 @@ for invariant in (
 for invariant in ('schemaVersion 2', '--state-stdin', 'pending display', 'legacy state',
                   'only after rendering', 'terminal controls'):
     assert invariant in summary, f'missing retained upstream safeguard: {invariant}'
+for invariant in (
+    '## Command execution contract',
+    'Run each documented helper as its own tool call',
+    'Never generate inline Python or shell orchestration wrappers',
+    'Do not use `python3 -`, `python3 -c`, `subprocess`, shell loops, or command substitution',
+    'Heredocs carry literal JSON only, never executable code',
+    'Compare the returned time with the deadline in reasoning',
+    'Do not retry a guard-denied command',
+    'Do not request `/implement` for this read-only dashboard',
+    'Do not reconstruct state from counts, prose, or hand-copied tuples',
+):
+    assert invariant in summary, f'missing direct-call safeguard: {invariant}'
 tools = summary.split('---', 2)[1]
 for forbidden in ('Skill(review-pr)', 'AskUserQuestion', 'Bash(gh', 'Bash(git'):
     assert forbidden not in tools, f'unexpected summary authority: {forbidden}'
