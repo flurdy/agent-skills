@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.14.1"
+version: "1.15.0"
 author: "flurdy"
 ---
 
@@ -122,6 +122,29 @@ and bot feedback still needs agent judgment against the code and requirements. S
 self-authored, resolved, outdated, dismissed, approval, and automated-status records from suggested
 actions while retaining them in the factual inventory. When `partial` is true, render the available
 data, name each failed source, and do not mark absent feedback as handled.
+
+The helper requires Python 3.10+ and authenticated `gh`. Argument errors exit nonzero; API failures
+return a machine-readable partial envelope, so consumers must inspect `partial` and `errors`.
+
+For body-free polling, `--compact` adds `recordFormat: compact` and projects each record to
+`identity`, `updateKey`, `stateKey`, `pr`, `source`, `lifecycle`, `selfAuthored`, `hasLaterSelfReply`
+when present, `authorKind`, `reviewState`, `semanticType`, and `actionability`. The envelope retains
+repository scope, PRs, caps, and all partial/error evidence. It reduces output/context, not API traffic;
+bodies, gists, locations, author names, and response targets are absent, not empty. Classification
+hints must not justify semantic suppression without reading new/edited bodies. The normal inventory
+above is unchanged and remains this dashboard's source of gists.
+
+The feedback watcher uses compact polls, then hydrates selected new/edited records with:
+
+```bash
+~/.agents/skills/pr-status/scripts/gh-pr-feedback.py OWNER REPO PR_NUMBER \
+  --identity IDENTITY --expected-update-key UPDATE_KEY
+```
+
+Focused selection is incompatible with `--compact`, requires one PR, and returns a full record with
+a body cap of 65,536 characters only when its update key matches. Inspect `partial`, require
+`selection.status: matched` and `bodyTruncated: false`, and recheck fresh lifecycle/self-reply facts
+before using its body. Missing/edited identities return no selected record; never validate old text.
 
 The existing `unresolvedThreads` detail remains a compatibility fallback for other status consumers;
 this skill uses inventory identities and update times—not count changes—to detect feedback events.

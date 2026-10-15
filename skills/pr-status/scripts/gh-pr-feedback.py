@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Read-only, bounded GitHub PR feedback inventory.
 
-Usage: gh-pr-feedback.py <owner> <repo> <number> [<number> ...]
+Usage: gh-pr-feedback.py <owner> <repo> <number> [<number> ...] [--compact]
        gh-pr-feedback.py <owner> <repo> <number> --identity <identity> \\
          --expected-update-key <update-key>
 
+Compact polls omit bodies and response targets, retaining comparison keys and triage hints.
+They reduce output, not GitHub API requests; fetch new/edited bodies with focused selection.
 Focused identity selection reuses the same inventory path, raises the body cap to GitHub's maximum,
 and withholds missing or changed records. The JSON envelope is deterministic for an unchanged GitHub response. Consumers compare
 `identity` plus `updatedAt`/`updateKey`, and use `stateKey` for lifecycle-only changes.
@@ -942,6 +944,22 @@ def inventory_envelope(
     }
 
 
+def compact_inventory(inventory: dict) -> dict:
+    fields = {
+        "identity", "updateKey", "stateKey", "pr", "source", "lifecycle",
+        "selfAuthored", "hasLaterSelfReply", "authorKind", "reviewState",
+        "semanticType", "actionability",
+    }
+    return {
+        **inventory,
+        "recordFormat": "compact",
+        "records": [
+            {key: value for key, value in record.items() if key in fields}
+            for record in inventory["records"]
+        ],
+    }
+
+
 def select_inventory_record(
     inventory: dict,
     identity: str,
@@ -986,10 +1004,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-records-per-pr", type=int, default=500)
     parser.add_argument("--identity")
     parser.add_argument("--expected-update-key")
+    parser.add_argument("--compact", action="store_true", help="emit body-free polling records")
     parser.add_argument("--pretty", action="store_true")
     arguments = parser.parse_args(argv)
     identity_supplied = arguments.identity is not None
     update_key_supplied = arguments.expected_update_key is not None
+    if arguments.compact and identity_supplied:
+        parser.error("--compact cannot be used with --identity")
     if identity_supplied != update_key_supplied:
         parser.error("--identity and --expected-update-key must be used together")
     if identity_supplied and (not arguments.identity or not arguments.expected_update_key):
@@ -1009,7 +1030,12 @@ def main(argv: list[str]) -> int:
     result = collect_inventory(GhClient(), args.owner, args.repo, args.numbers, config)
     if args.identity is not None:
         result = select_inventory_record(result, args.identity, args.expected_update_key)
-    json.dump(result, sys.stdout, indent=2 if args.pretty else None, sort_keys=args.pretty)
+    if args.compact:
+        result = compact_inventory(result)
+    json.dump(
+        result, sys.stdout, indent=2 if args.pretty else None, sort_keys=args.pretty,
+        separators=(",", ":") if args.compact and not args.pretty else None,
+    )
     sys.stdout.write("\n")
     return 0
 

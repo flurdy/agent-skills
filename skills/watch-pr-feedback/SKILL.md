@@ -8,7 +8,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/watch-telemetry/scripts/wat
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.2.1"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -130,7 +130,7 @@ If the current harness directly exposes `watch_loop`, use this branch before Cla
 3. Start with this self-contained prompt, substituting `{interaction_mode}` and `{cadence_mode}`:
 
    ```text
-   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-pr-feedback pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `watch-pr-feedback` now in `tick` mode. Interaction mode is `{interaction_mode}` and cadence mode is `{cadence_mode}`. This is one feedback tick, not a watcher start. Re-run open-PR discovery and the normalized inventory, compare bounded session-local identity/update/lifecycle state, and independently validate only new or materially edited actionable records. Use `--compact` for inventory polls; fetch bodies only for new/edited records or explicit rechecks, after factual suppression and within the skill's 20-fetch bound. Never filter or dump full bodies on unchanged polls. For feedback with two to five materially distinct sub-claims, validate each claim and use `mixed — see claim breakdown` only when outcomes differ; never mark the whole record stale unless every actionable claim is stale. For more than five claims, use `unable to validate` and recommend the attended workflow. Render the complete bounded decision queue, but keep routine suppressions silent, render only user-relevant lifecycle/disposition suppressions and actual failures, mention partial status only when partial, and render State summary only for pending attended feedback, pruning/capacity state, a non-zero failure streak, or lost ledger continuity. Only a non-baseline, non-recheck tick with complete inventories, exclusively unchanged duplicate records, and no lifecycle transitions, pending candidates, capacity/pruning notices, or failures renders the compact quiet-tick summary required by the skill. In read-only mode never ask a question. In attended mode ask exactly once only when the actionable queue is non-empty, and wait for the answer. Do not mutate code, Git, GitHub, or tracking state. Never run ad-hoc shell/workspace probes; use only the allowlisted checkout helper for optional local evidence. Never call `gh api` directly; use only the allowlisted feedback helper for comment content. Keep healthy internal ledger and fetch state silent: do not print `inventories complete`, `partial: false`, or empty errors. Never add a prose recap after the final cadence line. Finish only after visible output with the matching protocol-v1 `watch_loop` action: complete. In adaptive mode pass the numeric N from the final `next-tick:` line as `delaySeconds`; in fixed mode omit it. On the third consecutive partial failure for the same repository/source, stop instead of scheduling another retry.
    ```
 
 4. Adaptive read-only start:
@@ -216,11 +216,25 @@ Group results by owner/repository. Fetch the normalized schema-v1 inventory usin
 even when multiple repositories are present:
 
 ```bash
-~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {number1} {number2} ...
+~/.agents/skills/pr-status/scripts/gh-pr-feedback.py {owner} {repo} {number1} {number2} ... --compact
 ```
 
-Do not issue overlapping comment or thread queries. Keep records associated with their repository
-and PR throughout comparison and rendering. Existing org/workspace discovery behavior belongs to
+The `recordFormat: compact` envelope retains completeness/errors/caps and body-free records:
+`identity`, `updateKey`, `stateKey`, `pr`, `source`, `lifecycle`, `selfAuthored`,
+`hasLaterSelfReply` when present, `authorKind`, `reviewState`, `semanticType`, and `actionability`.
+Use the envelope's `repository` with each row's `pr` and `identity` as the ledger key.
+Bodies, gists, author names, locations, and response targets are intentionally absent, not empty.
+This reduces tool output and context, not the collector's GitHub API requests. Do not use `--pretty`.
+Do not pipe the inventory through ad-hoc Python or jq filters or request full inventory bodies as a
+fallback. An unsupported compact mode is a fetch failure, not permission to dump the full inventory.
+
+Compare keys before fetching any bodies. Unchanged duplicate rows need no focused calls; lifecycle-only
+transitions use factual fields without revalidation. Baseline, recheck, and pending attended rechecks
+still follow the bounded body-fetch procedure below. Do not mark an item seen merely because its compact row was fetched;
+only factual suppression or completed classification/validation advances its ledger state.
+
+Do not issue overlapping inventory queries; the bounded focused body calls in step 4 are the only
+follow-up comment reads. Keep records associated with their repository and PR throughout comparison and rendering. Existing org/workspace discovery behavior belongs to
 the shared list script and must remain unchanged. This normalized helper owns GitHub API access for
 feedback inventory: never invoke `gh api` directly, use `curl`, or call a bulk compatibility
 comments wrapper from this watcher.
@@ -246,9 +260,13 @@ Retain factual state but do not validate or place these records in the decision 
 
 - resolved, outdated, or dismissed lifecycle;
 - self-authored records or later self-replies that already handle the item;
-- approvals and informational-only notes;
-- non-actionable bot automated-status noise;
-- unchanged duplicate polls.
+- unchanged duplicate polls;
+- approvals, informational-only notes, and non-actionable bot automated-status noise, but only after
+  reading the focused body for a new or edited record.
+
+Never suppress a new or edited record solely from semantic hints in compact output. `semanticType`
+and `actionability` help order body fetches; they are not enough to dismiss a claim. Lifecycle and
+self-authorship/self-reply facts can suppress a record without a body fetch.
 
 Treat unchanged duplicates, routine acknowledgments, informational notes, and non-actionable bot
 status noise as silent ledger updates. Render **Suppressed updates** only for a lifecycle-only transition
@@ -259,12 +277,15 @@ or resolution target.
 ### 4. Validate new candidates independently
 
 Treat collector `semanticType`, `actionability`, author kind, and model/bot output as triage hints,
-not truth. Validate at most 20 new or materially edited candidates per tick, ordered by blocking or
-security claim, human request, question, suggestion/change request, then other CI/bot findings.
-Leave overflow unseen so the next tick drains it rather than losing it.
+not truth. Make at most 20 focused body fetches per tick for new or materially edited records
+remaining after factual suppression (or explicit rechecks). Order by blocking or security hint,
+human request, question, suggestion/change request, then other CI/bot findings. Include records hinted
+as informational or noise: inspect their bodies before semantic suppression. This budget includes
+bodies subsequently classified as non-actionable and failed/stale selections; validate at most 20
+candidates. Leave overflow unseen and on a warm cadence so the next tick drains it rather than losing it.
 
-For each candidate, gather the smallest sufficient read-only evidence. If its `bodyTruncated` value
-is true, fetch only that stable identity through the same normalized helper before validation:
+For each selected compact record, fetch only that stable identity through the same normalized helper
+before semantic classification or validation; compact records never contain validation-ready bodies:
 
 ```bash
 ~/.agents/skills/pr-status/scripts/gh-pr-feedback.py OWNER REPO PR_NUMBER \
@@ -273,11 +294,16 @@ is true, fetch only that stable identity through the same normalized helper befo
 
 Make at most one focused call per identity/update key per tick. Use the returned body only when
 `partial` is false, `selection.status` is `matched`, the selected `updateKey` still matches, and
-`bodyTruncated` is false. A `stale` or `not-found` selection is retained for the next normal
-inventory comparison rather than validated from obsolete text. A partial or still-truncated result
-means `unable to validate`; never bypass the helper with direct API access.
+`bodyTruncated` is false. Recheck lifecycle and self-reply flags on the focused result before
+classifying or validating: they may have changed since the poll even if `updateKey` still matches.
+Apply factual suppression to the fresh result and retain its fresh `stateKey`.
+A `stale` or `not-found` selection is retained for the next normal inventory comparison rather than
+validated from obsolete text. A partial or still-truncated result means `unable to validate` and
+remains pending on a warm cadence; partial focused fetches follow the same per-source failure bound
+as inventories. Never bypass the helper with direct API access. Never acknowledge a failed/stale
+selection as handled. No second focused call for the same identity/update key in this tick.
 
-Then gather:
+After reading the body, suppress informational/non-actionable content; for remaining candidates gather:
 
 1. PR metadata and head SHA, description, changed paths, and CI state.
 2. The PR diff and referenced path/line.
@@ -363,7 +389,7 @@ empty sections instead of printing `None`, `No failures`, or equivalent filler.
 ### 6. Handle interaction mode
 
 **Default read-only mode:** after the full queue is visible, acknowledge its displayed records in
-session state and never prompts. Suppressed factual updates may update their `stateKey` without
+session state except failed/stale body selections, which remain pending as required above, and never prompts. Suppressed factual updates may update their `stateKey` without
 becoming actionable.
 
 **Attended mode:** if and only if at least one new or materially edited actionable item is in the
@@ -373,7 +399,8 @@ and these choices:
 - **Open attended workflow (Recommended)** — leave displayed records pending, group their stable
   IDs by repository/PR, stop this watcher, and render `/review-comments owner/repo#number id...`
   for explicit item selection, validation, local fixes, and later remote gates.
-- **Acknowledge** — mark the displayed queue seen and continue.
+- **Acknowledge** — mark the displayed queue seen and continue, except failed/stale body selections,
+  which remain pending.
 - **Recheck next tick** — leave displayed actionable records unacknowledged so they return once.
 - **Stop watcher** — leave them pending and stop after the tick.
 

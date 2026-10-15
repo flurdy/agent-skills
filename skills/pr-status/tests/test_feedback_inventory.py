@@ -63,6 +63,88 @@ def by_identity(result: dict) -> dict[str, dict]:
 
 
 class FeedbackInventoryTests(unittest.TestCase):
+    def run_cli(self, fixture: dict, *arguments: str) -> dict:
+        output = io.StringIO()
+        with mock.patch.object(feedback, "GhClient", return_value=FixtureClient(fixture)):
+            with contextlib.redirect_stdout(output):
+                self.assertEqual(0, feedback.main(["acme", "widgets", *arguments]))
+        return json.loads(output.getvalue())
+
+    def test_compact_poll_preserves_comparison_and_triage_without_content(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        full = self.run_cli(fixture, "42")
+        compact = self.run_cli(fixture, "42", "--compact")
+
+        self.assertEqual("compact", compact.pop("recordFormat"))
+        full_records = full.pop("records")
+        compact_records = compact.pop("records")
+        self.assertEqual(full, compact, "poll must preserve caps and fetch completeness")
+        self.assertEqual(len(full_records), len(compact_records))
+        fields = {
+            "identity", "updateKey", "stateKey", "pr", "source", "lifecycle",
+            "selfAuthored", "hasLaterSelfReply", "authorKind", "reviewState",
+            "semanticType", "actionability",
+        }
+        for original, polled in zip(full_records, compact_records, strict=True):
+            self.assertEqual({key: value for key, value in original.items() if key in fields}, polled)
+            self.assertNotIn("rawBody", polled)
+            self.assertNotIn("gist", polled)
+            self.assertNotIn("targets", polled)
+
+    def test_default_cli_keeps_full_inventory_contract(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        expected = feedback.collect_inventory(FixtureClient(fixture), "acme", "widgets", [42])
+        self.assertEqual(expected, self.run_cli(fixture, "42"))
+
+    def test_compact_poll_preserves_partial_errors_and_available_records(self) -> None:
+        for fixture_name, number, options in (
+            ("partial-failure.json", "9", []),
+            ("pagination.json", "7", ["--max-source-items", "1"]),
+            ("all-sources.json", "42", ["--max-records-per-pr", "1"]),
+        ):
+            with self.subTest(fixture=fixture_name):
+                fixture = load_fixture(fixture_name)
+                full = self.run_cli(fixture, number, *options)
+                compact = self.run_cli(fixture, number, *options, "--compact")
+                self.assertTrue(compact["partial"])
+                self.assertEqual(full["errors"], compact["errors"])
+                self.assertEqual(full["limits"], compact["limits"])
+                self.assertEqual(list(by_identity(full)), list(by_identity(compact)))
+
+    def test_compact_poll_retains_pr_identity_in_batch(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        repository = fixture["initial"]["data"]["repository"]
+        repository["pr1"] = copy.deepcopy(repository["pr0"])
+        result = self.run_cli(fixture, "42", "43", "--compact")
+        self.assertFalse(result["partial"])
+        self.assertEqual([42, 43], result["pullRequests"])
+        self.assertEqual({42, 43}, {record["pr"] for record in result["records"]})
+
+    def test_compact_poll_can_hydrate_an_exact_update_without_body_loss(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        comment = fixture["initial"]["data"]["repository"]["pr0"]["comments"]["nodes"][0]
+        comment["body"] = "Review detail. " * 300
+        poll = self.run_cli(fixture, "42", "--compact")
+        record = by_identity(poll)[f"conversation:{comment['id']}"]
+        selected = self.run_cli(
+            fixture, "42", "--identity", record["identity"],
+            "--expected-update-key", record["updateKey"],
+        )
+        self.assertEqual("matched", selected["selection"]["status"])
+        self.assertEqual(comment["body"], selected["records"][0]["rawBody"])
+        self.assertFalse(selected["records"][0]["bodyTruncated"])
+
+    def test_compact_and_focused_modes_are_mutually_exclusive(self) -> None:
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            with self.assertRaises(SystemExit) as raised:
+                feedback.parse_args([
+                    "acme", "widgets", "42", "--compact", "--identity", "conversation:C1",
+                    "--expected-update-key", "conversation:C1@one",
+                ])
+        self.assertEqual(2, raised.exception.code)
+        self.assertIn("--compact cannot be used with --identity", errors.getvalue())
+
     def test_caps_body_limit_at_githubs_maximum_comment_size(self) -> None:
         config = feedback.InventoryConfig(body_limit=1_000_000)
 

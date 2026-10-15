@@ -36,6 +36,13 @@ for invariant in \
     'gh-pr-list-open.sh' \
     'gh-pr-feedback.py' \
     'gh-pr-feedback.py OWNER REPO PR_NUMBER' \
+    'gh-pr-feedback.py {owner} {repo} {number1} {number2} ... --compact' \
+    '`recordFormat: compact`' \
+    'Do not pipe the inventory through ad-hoc Python or jq filters' \
+    'Never suppress a new or edited record solely from semantic hints' \
+    'at most 20 focused body fetches per tick' \
+    'Recheck lifecycle and self-reply flags on the focused result' \
+    'Do not mark an item seen merely because its compact row was fetched' \
     '--identity IDENTITY --expected-update-key UPDATE_KEY' \
     '`selection.status` is `matched`' \
     'never invoke `gh api` directly' \
@@ -152,6 +159,8 @@ done
 
 tick_prompt=$(grep -F -- 'Load and follow the skill named `watch-pr-feedback`' "$SKILL")
 for prompt_invariant in \
+    'Use `--compact` for inventory polls' \
+    'fetch bodies only for new/edited records or explicit rechecks' \
     'two to five materially distinct sub-claims' \
     'validate each claim' \
     'use `mixed — see claim breakdown` only when outcomes differ' \
