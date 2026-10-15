@@ -165,15 +165,15 @@ jq -r \
     ($ranked | map(service_overlap($in_progress) as $overlap | . + {
       tracker_overlap: ($overlap | map(.id)),
       shared_services: ($overlap | map(.services[]) | unique),
-      lease_check: (if .source_scope.state == "unknown" then "Not checked: scope unknown"
-        elif .source_scope.state == "partial" then "Not checked: scope incomplete"
-        elif .source_scope.state == "invalid" then "Not checked: scope invalid"
-        else "Not checked: unavailable" end)
+      lease_check: (if .source_scope.state == "unknown" then "unknown"
+        elif .source_scope.state == "partial" then "partial"
+        elif .source_scope.state == "invalid" then "invalid"
+        else "n/a" end)
     })) as $safe_rows |
     ($safe_rows | map(select(.tracker_overlap | length == 0))) as $review |
     ($safe_rows | map(select(.tracker_overlap | length > 0))) as $overlaps |
     safe_table("Ready to review"; $review; $workspace; true; false) +
-    "\n\nLease check: 0 checked free, \($review | length) not checked; no in-process Pi observer. Unknown does not mean occupied. No lease was acquired." +
+    "\n\nLease check: 0 free, \($review | length) not checked; no in-process Pi observer. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. No lease was acquired." +
     (if ($overlaps | length) > 0 then
       "\n\n" + safe_table("Held back — same service as in-progress work"; $overlaps; $workspace; false; true)
     else "" end) +

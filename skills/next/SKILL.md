@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: high
-version: "1.16.4"
+version: "1.17.0"
 author: "flurdy"
 ---
 
@@ -281,12 +281,15 @@ unchanged instead; do not invent observations.
 The helper's compact Markdown is the familiar **Ready to review** ranked table,
 not five diagnostic queues. Preserve its original ranking and all rows. Use the ordinary
 columns (`#`, optional `Repo`, `ID`, `Pri`, `Type`, `Labels`, `Title`) plus one **Lease check**
-column: `Checked free (local Pi)`, `Not checked: scope unknown`, `Not checked: scope
-incomplete`, `Not checked: scope invalid`, or `Not checked: unavailable`.
+column: `free`, `unknown` (no declaration), `partial`, `invalid`, or `n/a` (observer
+unavailable); Occupied rows show `held` or `held (label)`. A legend line follows the table.
 
 Numbers identify rows for review only, **not permission to claim unchecked work as safe**.
 Keep unknown/incomplete scope visible in that table, without calling it free or occupied.
-Move known **Occupied** work to a separate unnumbered table. Also show **Held back —
+Move known **Occupied** work to a separate unnumbered table. A service label naming a
+directory another local Pi session leases also marks its task `held (label)` there, even
+without a declaration. Label evidence only demotes: `free` still needs a complete
+`source_scope`. Also show **Held back —
 same service as in-progress work** separately, even when scope is unknown. Only
 *service labels* count: labels naming a top-level directory of the owning store's
 repository, or for the workspace root a registered repository/infrastructure name.

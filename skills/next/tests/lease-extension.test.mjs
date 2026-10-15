@@ -93,7 +93,7 @@ test('Pi list returns the compact table but recheck retains exact machine eligib
     const ctx = { cwd, sessionManager: { getSessionId: () => 'display-fixture' } };
     const list = await tool.execute('list-fixture', { action: 'list' }, undefined, undefined, ctx);
     assert.match(list.content[0].text, /## Ready to review \(1 beads\)/);
-    assert.match(list.content[0].text, /\| 1 \| review-me .*Not checked: scope unknown/);
+    assert.match(list.content[0].text, /\| 1 \| review-me .*\| unknown \|/);
     assert.doesNotMatch(list.content[0].text, /## Unknown|Eligible under observed/);
     assert.equal(list.details.unknown[0].selector, 'local:review-me');
     const recheck = await tool.execute('recheck-fixture', { action: 'recheck', selector: 'local:review-me' }, undefined, undefined, ctx);

@@ -378,21 +378,22 @@ def declared_source_scope(issue: dict[str, Any], source: Source) -> dict[str, An
     )
 
 
-def service_names(source: Source, workspace: bool) -> set[str]:
+def service_names(source: Source, workspace: bool) -> dict[str, str]:
     directories = [source.directory]
     if workspace and source.relative_path == ".":
         directories += [source.directory / "repos", source.directory / "infrastructure"]
-    names: set[str] = set()
+    names: dict[str, str] = {}
     for directory in directories:
         try:
-            names.update(child.name for child in directory.iterdir()
-                          if child.is_dir() and not child.name.startswith("."))
+            for child in directory.iterdir():
+                if child.is_dir() and not child.name.startswith("."):
+                    names.setdefault(child.name, str(child.resolve()))
         except OSError:
             continue
     return names
 
 
-def service_labels(issue: dict[str, Any], services: set[str]) -> list[str]:
+def service_labels(issue: dict[str, Any], services: dict[str, str]) -> list[str]:
     labels = issue.get("labels")
     if not isinstance(labels, list):
         return []
@@ -424,7 +425,7 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
         if source.store == "workspace":
             continue
         collected: dict[str, list[dict[str, Any]]] = {}
-        services = service_names(source, workspace) if source_scope else set()
+        services = service_names(source, workspace) if source_scope else {}
         for key, arguments in commands.items():
             issues, error = load_issues(source, arguments)
             if error is not None:
@@ -435,7 +436,8 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
                 collected[key] = [
                     {**issue, "repository": source.name, "selector": f"{source.name}:{issue['id']}",
                      "source_scope": declared_source_scope(issue, source),
-                     "services": service_labels(issue, services)}
+                     "services": service_labels(issue, services),
+                     "service_roots": [services[label] for label in service_labels(issue, services)]}
                     for issue in collected[key]
                 ]
         else:

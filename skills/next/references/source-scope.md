@@ -53,8 +53,10 @@ unavailable. Complete declarations are still not checked without a native observ
 Candidates sharing a *service label* with in-progress work in the same store remain
 inspectable in their own unnumbered **Held back** table. A service label names a
 top-level directory of the store's repository, or for the workspace root a registered
-repository/infrastructure name; safe packets carry it per issue as `services`. Topical
-labels are ignored. Ordinary `--avoid-busy` keeps its all-label tracker filter.
+repository/infrastructure name; safe packets carry it per issue as `services`, with the
+matching canonical directories in parallel `service_roots`. Topical labels are ignored.
+Ordinary `--avoid-busy` keeps its all-label tracker filter. Fallback Lease check values
+are `unknown`, `partial`, `invalid` and `n/a`, explained by a legend line.
 Python 3.10+, Bash, jq, Git and the existing compatible `bd` are sufficient. It never
 imports Node or Pi. `--safe-json` is an integration packet, not a replacement for the
 ordinary selector index or an automatically claimable queue.
@@ -110,8 +112,12 @@ fails explicitly; no truncated result is eligible. Observer calls share one four
 cancellation budget and use the public two-second per-command timeout. Its process cleanup
 is owned by session-mode; the helper does not manipulate lock-holder processes.
 
-One deduplicated union of at most 32 roots uses one public batch observation. Larger unions
-remain unavailable, not partly certified; rechecking one exact qualified selector narrows
+One deduplicated union of at most 32 roots uses one public batch observation. Declared
+roots take priority; `service_roots` fill any remaining capacity, and unobserved label
+roots are reported as a diagnostic. A held label root moves its candidate to `occupied`
+(`label_occupancy`, shown as `held (label)`); free, unavailable or non-Git label
+observations never change a row. Labels can therefore only demote work, never certify
+it. Larger declared unions remain unavailable, not partly certified; rechecking one exact qualified selector narrows
 the scan. Wrong roots, missing rows, unsupported states, cancellation and errors cannot
 produce eligible work. A known held root excludes its candidate even alongside missing
 observations. Alias deduplication never drops any task's additional roots.

@@ -48,6 +48,7 @@ class SourceScopeTest(WorkspaceFixture):
         packet = json.loads(self.run_script(SKILL_DIR / "scripts/next-bd", root, "--safe-json").stdout)
         self.assertEqual([row["services"] for row in packet["candidates"]], [[], ["hosted"]])
         self.assertEqual(packet["in_progress"][0]["services"], ["hosted"])
+        self.assertEqual([row["service_roots"] for row in packet["candidates"]], [[], [str((root / "hosted").resolve())]])
         output = self.run_script(SKILL_DIR / "scripts/next-bd", root, "--safe").stdout
         self.assertIn("## Ready to review (1 beads)", output)
         self.assertIn("| 1 | review |", output)
@@ -67,6 +68,8 @@ class SourceScopeTest(WorkspaceFixture):
         packet = json.loads(self.run_script(SKILL_DIR / "scripts/next-bd", workspace, "--safe-json").stdout)
         services = {row["id"]: row["services"] for row in packet["candidates"]}
         self.assertEqual(services, {"root": ["api", "docs"], "member": []})
+        roots = next(row["service_roots"] for row in packet["candidates"] if row["id"] == "root")
+        self.assertEqual(roots, [str((workspace / "repos/api").resolve()), str((workspace / "docs").resolve())])
 
     def test_workspace_owned_scope_is_explicit_and_redirected_bases_are_unknown(self) -> None:
         declared = issue("declared", 2, "task", "2026-01-01")
@@ -146,8 +149,9 @@ class SourceScopeTest(WorkspaceFixture):
         self.assertIn("case-2", fallback.stdout)
         self.assertIn("## Ready to review (6 beads)", fallback.stdout)
         self.assertIn("| # | ID | Pri | Type | Labels | Title | Lease check |", fallback.stdout)
-        self.assertIn("Not checked: scope unknown", fallback.stdout)
-        self.assertIn("Not checked: unavailable", fallback.stdout)
+        self.assertIn("| unknown |", fallback.stdout)
+        self.assertIn("| n/a |", fallback.stdout)
+        self.assertIn("n/a = observer unavailable", fallback.stdout)
         self.assertNotIn("## Occupancy unavailable", fallback.stdout)
         self.assertNotIn("## Unknown", fallback.stdout)
         self.assertNotIn("_None._", fallback.stdout)

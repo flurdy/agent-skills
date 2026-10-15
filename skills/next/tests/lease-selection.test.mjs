@@ -43,9 +43,9 @@ test('safe display keeps the familiar ranking with explicit lease checks, no emp
   const output = renderSafeList(result);
   assert.match(output, /## Ready to review \(3 beads\)/);
   assert.match(output, /\| # \| Repo \| ID \| Pri \| Type \| Labels \| Title \| Lease check \|/);
-  assert.match(output, /\| 1 \| workspace \| unknown \| P2 \| task \| - \| unknown \| Not checked: scope unknown \|/);
-  assert.match(output, /\| 2 \| workspace \| free .*Checked free/);
-  assert.match(output, /\| 3 \| workspace \| unavailable .*Not checked: unavailable/);
+  assert.match(output, /\| 1 \| workspace \| unknown \| P2 \| task \| - \| unknown \| unknown \|/);
+  assert.match(output, /\| 2 \| workspace \| free .*\| free \|/);
+  assert.match(output, /\| 3 \| workspace \| unavailable .*\| n\/a \|/);
   const main = output.split('## Occupied')[0];
   assert.doesNotMatch(main, /\| held \||\| overlap \|/);
   assert.match(output, /## Occupied — source held by another Pi session \(1 bead\)/);
@@ -69,11 +69,11 @@ test('local unknown-only display does not pretend no work or expose selector boi
   const result = await classifyCandidates(data);
   const output = renderSafeList(result);
   assert.match(output, /\| # \| ID \| Pri \| Type \| Labels \| Title \| Lease check \|/);
-  assert.match(output, /\| 1 \| a .*Not checked: scope unknown/);
-  assert.match(output, /\| 2 \| b .*Not checked: scope incomplete/);
+  assert.match(output, /\| 1 \| a .*\| unknown \|/);
+  assert.match(output, /\| 2 \| b .*\| partial \|/);
   assert.doesNotMatch(output, /\| local:a \||None eligible|## Occupied/);
   assert.match(output, /local:ID/);
-  assert.match(output, /Unknown does not mean occupied/);
+  assert.match(output, /unknown = no source_scope declaration/);
 });
 
 test('rendering escapes tracker text and preserves typed unknown queues', async () => {
@@ -134,4 +134,43 @@ test('a fresh selected observation can reject work which was previously free', a
   assert.equal((await classifyCandidates(data, observer)).eligible.length, 1);
   held = true;
   assert.equal((await classifyCandidates(data, observer)).occupied.length, 1);
+});
+
+test('a held service-label root demotes undeclared work; other label observations never change it', async () => {
+  const labelled = (id, serviceRoots) => ({ ...candidate(id, [], 'unknown', ['svc'], ['svc']), service_roots: serviceRoots });
+  const declared = { ...candidate('declared', ['/api'], 'declared', ['svc'], ['svc']), service_roots: ['/free-svc'] };
+  const data = packet([labelled('busy', ['/held-svc']), labelled('quiet', ['/free-svc']), labelled('odd', ['/plain-dir']), declared]);
+  const seen = [];
+  const result = await classifyCandidates(data, async roots => {
+    seen.push(roots);
+    return roots.map(root => root === '/plain-dir' ? { kind: 'unavailable', reason: 'not a Git root' }
+      : { root, kind: root === '/held-svc' ? 'held' : 'free' });
+  });
+  assert.deepEqual(seen, [['/api', '/held-svc', '/free-svc', '/plain-dir']]);
+  assert.deepEqual(result.occupied.map(row => row.id), ['busy']);
+  assert.deepEqual(result.occupied[0].label_occupancy, [{ root: '/held-svc', kind: 'held', service: 'svc' }]);
+  assert.deepEqual(result.unknown.map(row => row.id), ['quiet', 'odd']);
+  assert.deepEqual(result.eligible.map(row => row.id), ['declared']);
+  const output = renderSafeList(result);
+  assert.match(output, /## Occupied — source held by another Pi session \(1 bead\)/);
+  assert.match(output, /\| busy \|.*\| held \(label\) \| svc \|/);
+  assert.doesNotMatch(output, /plain-dir|not a Git root/);
+});
+
+test('mismatched service labels and roots are rejected', async () => {
+  const bad = { ...candidate('bad', [], 'unknown', ['a'], ['a']), service_roots: ['/a', '/b'] };
+  await assert.rejects(classifyCandidates(packet([bad])), /Invalid source-scope packet/);
+});
+
+test('declared roots keep observer priority; label overflow is reported, not treated as free', async () => {
+  const declaredRoots = Array.from({ length: 31 }, (_, index) => `/d${index}`);
+  const data = packet([
+    { ...candidate('declared', declaredRoots), service_roots: [] },
+    { ...candidate('labelled', [], 'unknown', ['a', 'b'], ['a', 'b']), service_roots: ['/a', '/b'] },
+  ]);
+  const seen = [];
+  const result = await classifyCandidates(data, async roots => { seen.push(roots); return roots.map(root => ({ root, kind: 'free' })); });
+  assert.deepEqual(seen[0], [...declaredRoots, '/a']);
+  assert.deepEqual(result.eligible.map(row => row.id), ['declared']);
+  assert.match(result.diagnostics.join('\n'), /1 service-label root not observed/);
 });

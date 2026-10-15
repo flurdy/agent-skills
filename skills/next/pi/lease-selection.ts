@@ -62,6 +62,9 @@ function validatePacket(packet) {
       !row.source_scope || !['declared', 'partial', 'unknown', 'invalid', 'unavailable'].includes(row.source_scope.state) ||
       !Array.isArray(row.source_scope.roots) || row.source_scope.roots.length > MAX_ROOTS ||
       row.source_scope.roots.some(root => typeof root !== 'string' || !root.startsWith('/')) ||
+      !Array.isArray(row.service_roots ?? []) || (row.service_roots ?? []).length > MAX_ROOTS ||
+      (row.service_roots ?? []).some(root => typeof root !== 'string' || !root.startsWith('/')) ||
+      (row.service_roots !== undefined && row.service_roots.length !== (row.services ?? []).length) ||
       (['declared', 'partial'].includes(row.source_scope.state) && row.source_scope.roots.length === 0))) {
     throw new Error('Invalid source-scope packet');
   }
@@ -70,10 +73,15 @@ function validatePacket(packet) {
 
 export async function classifyCandidates(packet, observer, signal) {
   validatePacket(packet);
-  const roots = [...new Set(packet.candidates.flatMap(row => row.source_scope.roots))];
+  const declared = [...new Set(packet.candidates.flatMap(row => row.source_scope.roots))];
+  const labelRoots = [...new Set(packet.candidates.flatMap(row => row.service_roots ?? []))]
+    .filter(root => !declared.includes(root));
+  const capacity = declared.length > MAX_ROOTS ? 0 : MAX_ROOTS - declared.length;
+  const roots = [...declared, ...labelRoots.slice(0, capacity)];
+  const skippedLabels = labelRoots.length - Math.min(labelRoots.length, capacity);
   let observations;
   let reason = 'no in-process Pi observer';
-  if (roots.length > MAX_ROOTS) reason = 'more than 32 unique roots; recheck a single qualified selector';
+  if (declared.length > MAX_ROOTS) reason = 'more than 32 unique roots; recheck a single qualified selector';
   else if (typeof observer === 'function' && roots.length > 0) {
     const deadline = AbortSignal.timeout(4000);
     const bounded = signal ? AbortSignal.any([signal, deadline]) : deadline;
@@ -103,11 +111,16 @@ export async function classifyCandidates(packet, observer, signal) {
     version: 1, workspace: packet.workspace, observedAt: new Date().toISOString(), coverage: COVERAGE,
     eligible: [], occupied: [], unknown: [], unavailable: [], tracker_conflicts: [],
     in_progress: packet.in_progress, blocked: packet.blocked ?? [], deferred: packet.deferred ?? [],
-    diagnostics: packet.diagnostics,
+    diagnostics: skippedLabels && typeof observer === 'function'
+      ? [...packet.diagnostics, `${skippedLabels} service-label root${skippedLabels === 1 ? '' : 's'} not observed (32-root limit)`]
+      : packet.diagnostics,
   };
   for (const [position, candidate] of packet.candidates.entries()) {
     const scope = candidate.source_scope;
     const occupancy = scope.roots.map(root => ({ root, ...byRoot.get(root) }));
+    const labelOccupancy = (candidate.service_roots ?? [])
+      .map((root, index) => ({ root, kind: 'held', service: candidate.services?.[index] ?? root }))
+      .filter(item => byRoot.get(item.root)?.kind === 'held');
     const overlaps = packet.in_progress
       .filter(row => (row.repository ?? 'local') === (candidate.repository ?? 'local'))
       .map(row => ({ id: row.id, services: (row.services ?? []).filter(service => (candidate.services ?? []).includes(service)) }))
@@ -118,8 +131,9 @@ export async function classifyCandidates(packet, observer, signal) {
       priority: candidate.priority, issue_type: candidate.issue_type, title: candidate.title,
       labels: candidate.labels ?? [], source_scope: scope, occupancy, tracker_overlap: conflicts,
       shared_services: [...new Set(overlaps.flatMap(row => row.services))].sort(),
+      label_occupancy: labelOccupancy,
     };
-    const queue = occupancy.some(item => item.kind === 'held') ? 'occupied'
+    const queue = occupancy.some(item => item.kind === 'held') || labelOccupancy.length ? 'occupied'
       : ['unknown', 'partial', 'invalid'].includes(scope.state) ? 'unknown'
       : scope.state === 'unavailable' || occupancy.some(item => item.kind !== 'free') ? 'unavailable'
       : conflicts.length ? 'tracker_conflicts' : 'eligible';
@@ -137,20 +151,24 @@ function table(headers, rows) {
   return [line(headers), line(headers.map(() => '---')), ...rows.map(line)].join('\n');
 }
 
+const heldRoots = row => row.occupancy.filter(item => item.kind === 'held');
+const isOccupied = row => heldRoots(row).length > 0 || (row.label_occupancy ?? []).length > 0;
+
 function leaseCheck(row) {
-  if (row.occupancy.some(item => item.kind === 'held')) return 'Occupied';
+  if (heldRoots(row).length) return 'held';
+  if ((row.label_occupancy ?? []).length) return 'held (label)';
   const scope = row.source_scope.state;
-  if (scope === 'unknown') return 'Not checked: scope unknown';
-  if (scope === 'partial') return 'Not checked: scope incomplete';
-  if (scope === 'invalid') return 'Not checked: scope invalid';
-  if (scope === 'unavailable' || row.occupancy.some(item => item.kind !== 'free')) return 'Not checked: unavailable';
-  return 'Checked free (local Pi)';
+  if (['unknown', 'partial', 'invalid'].includes(scope)) return scope;
+  if (scope === 'unavailable' || row.occupancy.some(item => item.kind !== 'free')) return 'n/a';
+  return 'free';
 }
+
+const shortRoot = root => root.split('/').filter(Boolean).at(-1) ?? root;
 
 export function renderSafeList(result) {
   const rows = ['eligible', 'occupied', 'unknown', 'unavailable', 'tracker_conflicts']
     .flatMap(queue => result[queue]).sort((a, b) => a.position - b.position);
-  const occupied = rows.filter(row => row.occupancy.some(item => item.kind === 'held'));
+  const occupied = rows.filter(isOccupied);
   const overlaps = rows.filter(row => !occupied.includes(row) && row.tracker_overlap.length > 0);
   const ready = rows.filter(row => !occupied.includes(row) && row.tracker_overlap.length === 0);
   const repoHeaders = result.workspace ? ['Repo'] : [];
@@ -160,10 +178,12 @@ export function renderSafeList(result) {
   const parts = [`## Ready to review (${ready.length} beads)`,
     ready.length ? table(['#', ...headers, 'Lease check'], ready.map((row, index) => [index + 1, ...fields(row), leaseCheck(row)]))
       : '_No candidates without known occupancy or a shared in-progress service._'];
-  const checked = ready.filter(row => leaseCheck(row).startsWith('Checked free')).length;
-  parts.push(`Lease check: ${checked} checked free, ${ready.length - checked} not checked. Unknown does not mean occupied. Local Pi only; no reservation.`);
+  const checked = ready.filter(row => leaseCheck(row) === 'free').length;
+  parts.push(`Lease check: ${checked} free, ${ready.length - checked} not checked. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. Local Pi only; no reservation.`);
   if (occupied.length) parts.push(`## Occupied — source held by another Pi session (${occupied.length} ${occupied.length === 1 ? 'bead' : 'beads'})`,
-    table([...headers, 'Held roots'], occupied.map(row => [...fields(row), row.occupancy.filter(item => item.kind === 'held').map(item => item.root).join(', ')])));
+    'held = a declared root is leased; held (label) = a label names a service directory another session leases.',
+    table([...headers, 'Lease check', 'Held roots'], occupied.map(row => [...fields(row), leaseCheck(row),
+      [...new Set([...heldRoots(row).map(item => shortRoot(item.root)), ...(row.label_occupancy ?? []).map(item => item.service)])].join(', ')])));
   if (overlaps.length) parts.push(`## Held back — same service as in-progress work (${overlaps.length} ${overlaps.length === 1 ? 'bead' : 'beads'})`,
     'May collide with claimed work; labels only, not lease evidence.',
     table([...headers, 'Lease check', 'Shared service'], overlaps.map(row => [...fields(row), leaseCheck(row),
