@@ -8,7 +8,7 @@ allowed-tools: "Read,Skill,AskUserQuestion,Bash(~/.agents/skills/ready-to-releas
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.2.0"
+version: "2.3.0"
 author: "flurdy"
 ---
 
@@ -73,7 +73,9 @@ malformed JSON.
 ```
 
 - `deferred[service]`: do not re-prompt this tick; clear at the next tick.
-- `cancelled[service] = {"sha": "<head>"}`: suppress only while that exact head remains current.
+- `cancelled[service] = {"sha": "<head>", "reason": "cancel" | "unanswered"}`: suppress the push
+  offer only while that exact head remains current. `unanswered` rows stay visible as READY in the
+  dashboard; an explicit chat reply naming the service lifts them (step 5).
 - `ciBeads`: deduplicate exact upstream CI failures by `<service>@<ref>` and coverage findings by
   `coverage:<provider>`. Resolve and verify existing entries before using them.
 - `rolloutWatch[service] = {"sha": "<pushed head>", "fromTag": "<pre-push live tag>"}`: record only
@@ -140,6 +142,18 @@ movement alone do not prove desired configuration applied or a restart completed
    green has **not** tested these unpushed commits. Non-deploying pushes publish commits but
    do not trigger the deployment workflow.
 
+   Before the blocking question, render its permission request as ordinary visible text, so the
+   request survives a prompt that never returns a real answer:
+
+   | Service | Proposed action | Candidate head | Consequence | Response | Executed |
+   |---|---|---|---|---|---|
+   | web | `make git-push web` | `<full sha>` | deploys to production | awaiting answer | not executed |
+
+   Only questions actually shown get a row; READY candidates not offered this tick are listed
+   separately as waiting. After the tool returns, update the row's response (`push`, `defer`,
+   `cancel`, `unanswered`, `dismissed`) separately from its execution outcome (`not executed` or
+   the receipt status). No row may imply that an unissued action was approved or executed.
+
    Offer `push` / `defer` / `cancel` / `why?` (one question per service):
    - `push`: after the answer, recollect once more. Compare the complete selected service row,
      relevant prerequisite rows, and gate/policy evidence to the question's snapshot (ignore only
@@ -169,7 +183,23 @@ movement alone do not prove desired configuration applied or a restart completed
         nothing reached the remote, and never retry automatically.
    - Recollect after each push before selecting another candidate, so an old same-tick approval
      cannot release a dependent consumer before its prerequisite settles.
-   - `defer`: suppress for this tick only. `cancel`: suppress this exact head until it changes.
+   - `defer`: suppress for this tick only. `cancel`: record `cancelled[service]` with
+     `reason: "cancel"` and suppress this exact head until it changes.
+   - **Unanswered:** any result that is not an explicit current answer counts as no answer: an
+     expiry or auto-continue result (for example
+     `No response after 60s — the user may be away from keyboard`), a dismissed or cancelled
+     dialog, a partial or auto-submitted selection, a validation error, or a tool failure. A
+     preselected `push` inside such a result is not an answer. Record `cancelled[service] = {"sha": "<head>", "reason": "unanswered"}` so the
+     same head is not re-asked next tick, ask no further push question this tick, report the
+     remaining candidates as waiting, and continue to step 6. Never push, repeat the question, or
+     shorten the next prompt to regain attention; an unanswered user keeps the harness timeout
+     they chose.
+   - **Chat reply after an unanswered offer:** a later chat message naming the service
+     (`push <service>`) is the explicit answer for the exact head that offer showed. Remove that
+     service's `unanswered` suppression, then recollect and continue exactly as for `push`,
+     including the Pi native `publish_commit` confirmation. A changed head, a reply naming no
+     service, or `push all` is not an answer: show the fresh gates and make a new single-service
+     offer instead.
    - `why?`: show returned gate evidence and optionally the single read-only command
      `./scripts/mgit log <service> --oneline @{u}..HEAD`, then obtain a fresh result and re-ask.
 
@@ -177,13 +207,15 @@ movement alone do not prove desired configuration applied or a restart completed
    manager` using the newest hash: publication commands change the file and print the new one.
    This final write never deletes `rolloutWatch` entries; step 2 already persisted those.
    On conflict, read again and recompute only from fresh state; never force or clobber. Unrelated
-   and legacy fields stay untouched. Print pushed/deferred/waiting counts, tracking outcomes,
+   and legacy fields stay untouched. Print pushed, deferred, unanswered and waiting counts, the
+   updated permission-request rows, tracking outcomes,
    activation notes, and any maintenance handoff. Never claim a deploy
    or config uptake merely because the push command succeeded.
 
 7. **Cadence, last.** Use the helper's observations, not a second rollout/CI evaluator:
    - **hot (~180s):** observable rollout/CI running, or a push this tick.
-   - **warm (~600s):** held/ready/deferred unpushed work, unknown rollout evidence, or order drift.
+   - **warm (~600s):** held/ready/deferred/unanswered unpushed work, unknown rollout evidence, or
+     order drift.
    - **cold:** none of those; increment quietStreak, then use 1200 / 1500 / 1800 seconds (cap 1800).
      Hot/warm reset quietStreak. Persist with the owned state update.
 
@@ -194,8 +226,10 @@ movement alone do not prove desired configuration applied or a restart completed
    ```
 
    Fixed watches ignore it. Even failed/paused ticks render their errors and use a conservative
-   warm recommendation; no prompt can remain unanswered when the tick completes.
+   warm recommendation; no prompt can remain open when the tick completes.
 
-An `ask_user_question` blocks the attended tick until answered. No response, dismissal, cancellation,
-old permission, READY row, or scheduled wake authorizes a push. Use `/release-status` for unattended
-observation. Repository-specific remote/destructive-action confirmation rules remain authoritative.
+An `ask_user_question` blocks the attended tick until answered or until the harness closes it. No
+response, expiry, auto-continue, dismissal, cancellation, old permission, READY row, or scheduled
+wake authorizes a push; only an explicit current answer, or a later chat reply naming the service,
+does, and both still pass the fresh recheck. Use `/release-status` for unattended observation.
+Repository-specific remote/destructive-action confirmation rules remain authoritative.

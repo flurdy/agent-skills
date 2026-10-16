@@ -10,6 +10,16 @@ skill="$SKILL_DIR/SKILL.md"
 for required in 'Do not recompute' 'fresh authority result' 'exact command' 'only `READY`' 'Legacy maintenance state' 'next-tick:' 'upstream' 'malformed' 'one active manager'; do
     grep -Fq "$required" "$skill" || fail "missing manager invariant: $required"
 done
+for required in 'away from keyboard' '"reason": "unanswered"' 'is not an answer' 'ask no further push question this tick' 'push <service>' '| Response | Executed |' 'Before the blocking question' 'explicit current answer'; do
+    grep -Fq -- "$required" "$skill" || fail "missing unanswered-prompt invariant: $required"
+done
+unanswered_line=$(grep -nF -- '**Unanswered:**' "$skill" | head -1 | cut -d: -f1)
+table_line=$(grep -nF -- '| Response | Executed |' "$skill" | head -1 | cut -d: -f1)
+[ -n "$unanswered_line" ] && [ -n "$table_line" ] && [ "$table_line" -lt "$unanswered_line" ] \
+    || fail 'permission-request table must precede the unanswered outcome rules'
+if grep -Eiq 'preselected[^.]*(counts|authoriz)' "$skill"; then
+    fail 'a preselected option must never count as an answer'
+fi
 if grep -Eq 'Bash\((kubectl|make k8s-sync|make feature-toggles-disabled|\./scripts/release-order)' "$skill"; then
     fail 'recurring manager retains infrastructure mutation authority'
 fi

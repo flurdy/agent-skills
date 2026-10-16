@@ -64,7 +64,13 @@ for invariant in \
     '/loop {interval} When already permitted' \
     'Then run /release-manager' \
     'If neither `watch_loop` nor the required' \
-    'Claude scheduling capability is available'; do
+    'Claude scheduling capability is available' \
+    '## Unanswered questions' \
+    'askUserQuestionTimeout' \
+    'never pushes' \
+    'push <service>' \
+    'pause` policy pauses the watch' \
+    'A resume pushes nothing'; do
     assert_contains "$invariant"
 done
 

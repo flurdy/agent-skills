@@ -8,7 +8,7 @@ allowed-tools: "Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.4.0"
+version: "1.5.0"
 author: "flurdy"
 ---
 
@@ -165,6 +165,22 @@ fixed ticks):
 Tell the loop to stop at `{stop_hour}:00` local time. If neither `watch_loop` nor the required
 Claude scheduling capability is available, explain that recurring watches are unsupported and
 stop.
+
+## Unanswered questions
+
+Some harnesses close an idle question on their own. Claude Code does so only when
+`askUserQuestionTimeout` is set (`60s`, `5m`, `10m`; default `never`) and the terminal window is
+unfocused, the normal state of a dedicated watch tab, returning `No response after 60s — the user
+may be away from keyboard`. Pi's `ask_user_question` has no timeout and waits. Either way
+`/release-manager` treats anything but an explicit current answer as unanswered: it defers the
+service, stops re-offering that exact head on later ticks, keeps observing, and never pushes. To
+release such a service, reply `push <service>` in the watch tab; the manager rechecks the gates
+first and, in Pi, still asks for the native `publish_commit` confirmation. Keep or change the
+timeout as you prefer; the loop stays safe at any value.
+
+In Pi, a tick whose model turn fails (for example a dropped provider connection) settles without
+`watch_loop complete`, and the `pause` policy pauses the watch. `/watch-status` shows the paused
+state; `/watch-resume` runs one immediate tick. A resume pushes nothing by itself.
 
 ## Note
 
