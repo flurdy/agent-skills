@@ -406,6 +406,55 @@ class ReleaseCiTest(unittest.TestCase):
         self.assertEqual(["unknown", "-", "-", bad_sha], evidence["bad"][1:5])
         self.assertEqual("provider-error", evidence["bad"][6])
 
+    def test_provider_requests_run_bounded_in_parallel_with_stable_order(self):
+        services = [f"svc{index}" for index in range(8)]
+        shas = {name: self.create_service(name) for name in services}
+        self.write_manifest("github-actions")
+        slots = self.root / "slots"
+        slots.mkdir()
+        self.write_command(
+            "gh",
+            f"""
+            #!/usr/bin/env python3
+            import json, os, sys, time
+            slots = "{slots}"
+            held = None
+            for index in range(4):
+                try:
+                    os.close(os.open(os.path.join(slots, f"slot-{{index}}"), os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+                    held = index
+                    break
+                except FileExistsError:
+                    continue
+            if held is None:
+                open(os.path.join(slots, "overflow"), "w").close()
+            elif held > 0:
+                open(os.path.join(slots, "parallel"), "w").close()
+            sha = next(arg.split("=", 1)[1] for arg in sys.argv if arg.startswith("head_sha="))
+            service = next(arg for arg in sys.argv if arg.startswith("repos/")).split("/")[2]
+            time.sleep(0.5 - 0.05 * int(service[3:]))
+            if held is not None:
+                os.remove(os.path.join(slots, f"slot-{{held}}"))
+            print(json.dumps({{"workflow_runs": [{{
+                "head_sha": sha,
+                "head_branch": "main",
+                "status": "completed",
+                "conclusion": "success",
+                "html_url": "https://github.com/acme/" + service + "/actions/runs/1"
+            }}]}}))
+            """,
+        )
+        requested = list(reversed(services))
+
+        result = self.run_ci(*requested)
+
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual("available", metadata(result.stdout)["availability"])
+        self.assertEqual(requested, [row[0] for row in rows(result.stdout)])
+        self.assertEqual([shas[name] for name in requested], [row[3] for row in rows(result.stdout)])
+        self.assertTrue((slots / "parallel").exists(), "provider requests never overlapped")
+        self.assertFalse((slots / "overflow").exists(), "more than four provider requests overlapped")
+
     def test_missing_credentials_command_and_malformed_output_fail_safely(self):
         sha = self.create_service("web")
         self.write_manifest("circleci")

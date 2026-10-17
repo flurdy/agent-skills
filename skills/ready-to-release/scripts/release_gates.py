@@ -14,6 +14,8 @@ LIMIT = 1024 * 1024
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]*")
 HEADER = "service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age|ciRevision|ciExpectedRevision"
 SOURCES = ("digest", "order", "contracts", "manifest", "state")
+BUDGETS = {"release-digest": 90, "release-order": 20, "contract-check": 20}
+MAX_BUDGET = 120
 HARD_CONTRACTS = {"STALE", "DIFFERS", "MISSING_PROVIDER", "UNCOMMITTED", "NOT_BUILT", "NOT_SYNCED"}
 SENTINELS = {"", "-", "unknown", "notfound", "not-applicable"}
 
@@ -35,10 +37,18 @@ def read_evidence(path):
         return unavailable("evidence unreadable")
 
 
-def collect_command(root, name, args, timeout):
+def budget_seconds(name):
+    try:
+        return min(MAX_BUDGET, max(1, int(os.environ["RELEASE_GATES_TIMEOUT"])))
+    except (KeyError, ValueError):
+        return BUDGETS[name]
+
+
+def collect_command(root, name, args):
     command = root / "scripts" / name
     if not command.is_file():
         return unavailable(f"{name} adapter missing", "absent")
+    timeout = budget_seconds(name)
     try:
         with tempfile.TemporaryFile() as output:
             process = subprocess.Popen([str(command), *args], cwd=root, stdout=output,
@@ -49,7 +59,7 @@ def collect_command(root, name, args, timeout):
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 process.wait()
-                return unavailable(f"{name} timeout")
+                return unavailable(f"{name} timeout after {timeout}s budget")
             if code:
                 return unavailable(f"{name} exited {code}")
             output.seek(0)
@@ -62,15 +72,11 @@ def collect_command(root, name, args, timeout):
 
 
 def collect(root):
-    try:
-        timeout = min(120, max(1, int(os.environ.get("RELEASE_GATES_TIMEOUT", "20"))))
-    except ValueError:
-        timeout = 20
     return {
         "schemaVersion": 1,
-        "digest": collect_command(root, "release-digest", [], timeout),
-        "order": collect_command(root, "release-order", [], timeout),
-        "contracts": collect_command(root, "contract-check", ["all"], timeout),
+        "digest": collect_command(root, "release-digest", []),
+        "order": collect_command(root, "release-order", []),
+        "contracts": collect_command(root, "contract-check", ["all"]),
         "manifest": read_evidence(root / "docs" / "release-manifest.yaml"),
         "state": read_evidence(root / ".release-state.json"),
     }

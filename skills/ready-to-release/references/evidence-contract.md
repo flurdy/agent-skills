@@ -18,12 +18,16 @@ The helper invokes only these project adapters, with the full project in scope:
 It also reads optional `docs/release-manifest.yaml` and `.release-state.json`. It never creates,
 rewrites, or repairs either, never passes `--write`, and never runs provider commands itself.
 Adapters are trusted project read-only commands; this helper is not a sandbox for arbitrary scripts.
-Each command has a 20-second timeout (bounded 1–120 via `RELEASE_GATES_TIMEOUT`) and a 1 MiB accepted
-output limit. Diagnostics do not echo raw command stderr or configuration contents.
+`release-digest` has a 90-second budget and the other commands 20 seconds each, so one collection
+may take up to 130 seconds; `RELEASE_GATES_TIMEOUT` overrides every budget (bounded 1–120). An
+expired budget kills the adapter's process group and reports `<command> timeout after <N>s budget`
+in top-level `errors`, which consumers render as a prominent incomplete-check heading, never as a
+verdict. Each command also has a 1 MiB accepted output limit. Diagnostics do not echo raw command
+stderr or configuration contents.
 
 `release-order` and `release-ci` remain installed under `release-manager/scripts/`. The former
 composes Pact with manual/suppressed edges; the latter supplies exact upstream CI evidence to the
-project digest. Setup belongs to an explicitly requested project setup task, not any release tick.
+project digest, polling at most four services concurrently in stable input order. Setup belongs to an explicitly requested project setup task, not any release tick.
 See their `--help` and tests for adapter-specific configuration; do not bypass them in consumers.
 
 Digest header:

@@ -3,12 +3,16 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 SKILL = Path(__file__).resolve().parents[1]
 AUTHORITY = SKILL / "scripts" / "release-gates"
+sys.path.insert(0, str(SKILL / "scripts"))
+import release_gates  # noqa: E402
 HEADER = "service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age|ciRevision|ciExpectedRevision"
 ORDER = "---SOURCE---\nprovider=none\ngraph=none\n---GRAPH---\n---DRIFT---\nstatus: not-applicable\n"
 CONTRACTS = """## Staleness Report
@@ -323,7 +327,17 @@ class ReleaseGatesTests(unittest.TestCase):
             path.chmod(0o755)
             result = subprocess.run(args, env={**os.environ, "RELEASE_GATES_TIMEOUT": "1"}, capture_output=True, text=True, timeout=4, check=False)
             self.assertEqual(json.loads(result.stdout)["verdict"], "HOLD")
-            self.assertIn("timeout", result.stdout)
+            self.assertIn("release-digest timeout after 1s budget", json.loads(result.stdout)["errors"])
+
+    def test_collection_budgets_default_per_source_and_clamp_overrides(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("RELEASE_GATES_TIMEOUT", None)
+            self.assertEqual(release_gates.budget_seconds("release-digest"), 90)
+            self.assertEqual(release_gates.budget_seconds("release-order"), 20)
+            self.assertEqual(release_gates.budget_seconds("contract-check"), 20)
+        for value, expected in [("5", 5), ("500", 120), ("0", 1), ("nope", 90)]:
+            with self.subTest(value=value), mock.patch.dict(os.environ, {"RELEASE_GATES_TIMEOUT": value}):
+                self.assertEqual(release_gates.budget_seconds("release-digest"), expected)
 
 
 if __name__ == "__main__":

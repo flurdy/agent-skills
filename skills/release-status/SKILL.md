@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/ready-to-release/scripts/release-gate
 model-tier: standard
 model: sonnet
 effort: medium
-version: "2.0.0"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -55,6 +55,9 @@ Open with the observation time and context, then a compact table:
 - List dependency drift without offering reconciliation. Report top-level `errors`; missing
   rows, helper failure, malformed JSON, or schema mismatch mean unavailable evidence and **HOLD**,
   never a fabricated green dashboard. If nothing is eligible, say so.
+- When `errors` reports a collection failure (for example `release-digest timeout after 90s
+  budget`), open with `## ⚠️ RELEASE CHECK INCOMPLETE — <source>: <reason>` before the table and
+  state that readiness is unknown. Allow the helper at least 150 seconds.
 - `rollout=unknown` is not completed. Legacy maintenance work requires an explicit separate
   `/release-maintenance` invocation; this dashboard does not own its state or infer config uptake.
 

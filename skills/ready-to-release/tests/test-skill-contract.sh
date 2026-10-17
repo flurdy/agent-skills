@@ -7,6 +7,7 @@ for consumer in ready-to-release release-status release-manager; do
     skill="$SKILL_DIR/../$consumer/SKILL.md"
     grep -Fq '/skills/ready-to-release/scripts/release-gates' "$skill" || fail "$consumer must call the shared authority"
     grep -Fq 'Do not recompute' "$skill" || fail "$consumer must not duplicate verdict policy"
+    grep -Fq 'RELEASE CHECK INCOMPLETE' "$skill" || fail "$consumer must render collection failures prominently"
     if grep -Eq 'Bash\(\./scripts/(release-digest|release-order|contract-check):' "$skill"; then
         fail "$consumer still collects release evidence independently"
     fi
