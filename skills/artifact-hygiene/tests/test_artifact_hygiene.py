@@ -1356,7 +1356,15 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             (b"uses: ${{ '" + reference + b"' }}", 1),
             (b"uses: " + reference + b"@reserved.zzsynthetic", 1),
             (b"uses: " + reference + b".tld", 1),
-            (b"uses: invented-org/sample-action@v1.2.3-alpha.tld", 0),
+            (b"uses: invented-org/sample-action@v1.2.3-alpha.tld", 1),
+            (b"uses: invented-org/sample-action@v1.2.3-rc", 0),
+            (b"uses: invented-org/sample-action@v1.2.3-rc.1", 0),
+            (b"uses: " + reference + b" \t", 0),
+            (b"uses: '" + reference + b"'  ", 0),
+            (b'uses: "' + reference + b'"\t', 0),
+            (b"uses: '" + reference + b"'#comment", 1),
+            (b"uses: '" + reference + b"' # '" + email, 1),
+            (b"uses: '" + reference + b"' " + email, 2),
             (b"uses: /sample-action@v9.8.7", 1),
             (b"uses: invented-org//sample-action@v9.8.7", 1),
             (b"uses: invented-org/sample-action/../x@v9.8.7", 1),
@@ -1395,6 +1403,110 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                 self.assertEqual(coverage.status, "complete")
                 self.assertNotIn(reference.decode(), json.dumps(findings))
                 self.assertNotIn(email.decode(), json.dumps(findings))
+
+    def test_workflow_reference_limit_excludes_quotes_and_comments(self) -> None:
+        helper = load_helper_module()
+        prefix = b"invented-org/sample-action@v1.2.3+"
+        email = b"nobody" + b"@reserved.zzsynthetic"
+        for length, count in [(512, 0), (513, 1)]:
+            reference = prefix + b"x" * (length - len(prefix))
+            for quote in (b"", b"'", b'"'):
+                for suffix, adjacent in [(b" \t", 0), (b" # " + b"c" * 600 + b" " + email, 1)]:
+                    with self.subTest(length=length, quote=quote, adjacent=adjacent):
+                        coverage = helper.Coverage("branch-history")
+                        findings = helper.detect_non_secret(
+                            b"uses: " + quote + reference + quote + suffix,
+                            source="branch-history", path=".github/workflows/synthetic.yaml",
+                            deadline=helper.monotonic() + 5, coverage=coverage,
+                        )
+                        self.assertEqual(sum(item["detector"] == "pii.email" for item in findings), count + adjacent)
+                        self.assertEqual(coverage.status, "complete")
+
+    def test_workflow_skips_preserve_adjacent_email_offsets(self) -> None:
+        helper = load_helper_module()
+        reference = b"invented-org/sample-action@v1.2.3"
+        email = b"nobody" + b"@reserved.zzsynthetic"
+        data = (b"uses: '" + reference + b"'  \r\n# " + email + b"\r\nuses: "
+                + reference + b" # " + email + b"\nuses: \"" + reference + b"\"\n" + email)
+        coverage = helper.Coverage("branch-history")
+        findings = helper.detect_non_secret(
+            data, source="branch-history", path=".github/workflows/synthetic.yml",
+            deadline=helper.monotonic() + 5, coverage=coverage,
+        )
+        self.assertEqual([item["location"]["line"] for item in findings], [2, 3, 5])
+        self.assertEqual(coverage.status, "complete")
+
+    def test_workflow_recognition_stops_at_deadline(self) -> None:
+        helper = load_helper_module()
+        coverage = helper.Coverage("branch-history")
+        pattern = mock.Mock(wraps=helper.WORKFLOW_ACTION_LINE)
+        calls = 0
+
+        def clock():
+            nonlocal calls
+            calls += 1
+            return 0.0 if calls <= 3 else 2.0
+
+        with mock.patch.object(helper, "monotonic", side_effect=clock), mock.patch.object(helper, "WORKFLOW_ACTION_LINE", pattern):
+            findings = helper.detect_non_secret(
+                b"uses: invented-org/sample-action@v1.2.3\n" * 100,
+                source="branch-history", path=".github/workflows/synthetic.yml",
+                deadline=1.0, coverage=coverage,
+            )
+        self.assertEqual(findings, [])
+        self.assertEqual(coverage.status, "partial")
+        self.assertIn("deadline-exceeded", coverage.limits)
+        self.assertLessEqual(pattern.fullmatch.call_count, 3)
+
+    def test_exempt_email_matches_do_not_skip_deadline_checks(self) -> None:
+        helper = load_helper_module()
+        email = next(item for item in helper.DEFAULT_DETECTORS if item.detector == "pii.email")
+        coverage = helper.Coverage("branch-history")
+        matched = 0
+
+        def matches(data):
+            nonlocal matched
+            for match in email.pattern.finditer(data):
+                matched += 1
+                yield match
+
+        pattern = mock.Mock()
+        pattern.finditer.side_effect = matches
+        detector = helper.CustomDetector(email.category, email.detector, email.severity, pattern, email.canary)
+        with mock.patch.object(helper, "monotonic", side_effect=lambda: 2.0 if matched >= 2 else 0.0):
+            findings = helper.detect_non_secret(
+                b"uses: invented-org/sample-action@v1.2.3\n" * 100,
+                source="branch-history", path=".github/workflows/synthetic.yml",
+                deadline=1.0, coverage=coverage, detectors=(detector,),
+            )
+        self.assertEqual(findings, [])
+        self.assertEqual(coverage.status, "partial")
+        self.assertIn("deadline-exceeded", coverage.limits)
+        self.assertEqual(matched, 2)
+
+    def test_workflow_span_lookup_is_linear_in_matches_and_spans(self) -> None:
+        helper = load_helper_module()
+        comparisons = 0
+
+        class CountedOffset(int):
+            def __le__(self, other):
+                nonlocal comparisons
+                comparisons += 1
+                return super().__le__(other)
+
+        line = b"uses: invented-org/sample-action@v1.2.3\n"
+        count = 1000
+        spans = tuple((CountedOffset(index * len(line) + 6), CountedOffset((index + 1) * len(line) - 1)) for index in range(count))
+        coverage = helper.Coverage("branch-history")
+        email = next(item for item in helper.DEFAULT_DETECTORS if item.detector == "pii.email")
+        with mock.patch.object(helper, "workflow_action_email_spans", return_value=spans):
+            findings = helper.detect_non_secret(
+                line * count, source="branch-history", path=".github/workflows/synthetic.yml",
+                deadline=helper.monotonic() + 30, coverage=coverage, detectors=(email,),
+            )
+        self.assertEqual(findings, [])
+        self.assertEqual(coverage.status, "complete")
+        self.assertLessEqual(comparisons, 4 * count)
 
     def test_workflow_action_recognition_is_path_scoped(self) -> None:
         helper = load_helper_module()

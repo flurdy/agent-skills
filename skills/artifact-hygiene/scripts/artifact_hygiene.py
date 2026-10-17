@@ -25,7 +25,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v2"
-HELPER_VERSION = "0.6.4-poc"
+HELPER_VERSION = "0.6.6-poc"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -1428,17 +1428,21 @@ def beads_attribution_email_spans(data: bytes) -> frozenset[tuple[int, int]]:
     return frozenset(spans)
 
 
-def workflow_action_email_spans(data: bytes, path: str) -> frozenset[tuple[int, int]]:
-    """Return email-shaped suffix spans inside strict action refs on workflow uses lines."""
+def workflow_action_email_spans(
+    data: bytes, path: str, deadline: float,
+) -> tuple[tuple[int, int], ...] | None:
+    """Return ordered reference spans, or None when recognition exceeds the deadline."""
     if not path.startswith(".github/workflows/"):
-        return frozenset()
+        return ()
     name = path.removeprefix(".github/workflows/")
     if not name or "/" in name or not name.endswith((".yml", ".yaml")):
-        return frozenset()
+        return ()
 
-    spans: set[tuple[int, int]] = set()
+    spans: list[tuple[int, int]] = []
     offset = 0
     for raw_line in data.split(b"\n"):
+        if monotonic() >= deadline:
+            return None
         line = raw_line[:-1] if raw_line.endswith(b"\r") else raw_line
         match = WORKFLOW_ACTION_LINE.fullmatch(line)
         if match is None:
@@ -1447,7 +1451,7 @@ def workflow_action_email_spans(data: bytes, path: str) -> frozenset[tuple[int, 
 
         value = match.group("value")
         value_start = match.start("value")
-        if not value or len(value) > 512:
+        if not value:
             offset += len(raw_line) + 1
             continue
         quote = value[:1] if value[:1] in {b"'", b'"'} else b""
@@ -1462,13 +1466,13 @@ def workflow_action_email_spans(data: bytes, path: str) -> frozenset[tuple[int, 
         else:
             reference = value
             suffix = b""
-            for index, byte in enumerate(value):
+            for index, byte in enumerate(value[:513]):
                 if byte in b" \t":
                     reference = value[:index]
                     suffix = value[index:]
                     break
 
-        if suffix and re.fullmatch(rb"[ \t]+#.*", suffix) is None:
+        if len(reference) > 512 or (suffix and re.fullmatch(rb"[ \t]+(?:#.*)?", suffix) is None):
             offset += len(raw_line) + 1
             continue
         segments = reference.split(b"/")
@@ -1476,9 +1480,11 @@ def workflow_action_email_spans(data: bytes, path: str) -> frozenset[tuple[int, 
             offset += len(raw_line) + 1
             continue
         if WORKFLOW_ACTION_REFERENCE.fullmatch(reference) is not None:
-            spans.add((offset + value_start, offset + value_start + len(reference)))
+            # The email local-part pattern includes a leading single quote, not a double quote.
+            start = offset + value_start - (1 if quote == b"'" else 0)
+            spans.append((start, offset + value_start + len(reference)))
         offset += len(raw_line) + 1
-    return frozenset(spans)
+    return tuple(spans)
 
 
 def detect_non_secret(
@@ -1494,13 +1500,22 @@ def detect_non_secret(
     detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
+    if monotonic() >= deadline:
+        coverage.limited("deadline-exceeded")
+        return results
     audit_self = AUDIT_SELF_PATH in "/" + path
     beads_email_spans = (
         beads_attribution_email_spans(data)
         if path == ".beads/issues.jsonl"
         else frozenset()
     )
-    action_email_spans = workflow_action_email_spans(data, path)
+    action_email_spans = (
+        workflow_action_email_spans(data, path, deadline)
+        if source == "branch-history" else ()
+    )
+    if action_email_spans is None:
+        coverage.limited("deadline-exceeded")
+        return results
 
     def append_matches(detector: CustomDetector) -> bool:
         if detector.category in allowed_categories or audit_self:
@@ -1516,9 +1531,13 @@ def detect_non_secret(
             NPM_CODE_TOKEN.finditer(data) if detector.detector == "pii.email" else iter(())
         )
         npm_token = None
+        action_index = 0
         line = 1
         cursor = 0
         for match in detector.pattern.finditer(data):
+            if monotonic() >= deadline:
+                coverage.limited("deadline-exceeded")
+                return False
             line_start = data.rfind(b"\n", 0, match.start()) + 1
             line_end = data.find(b"\n", match.end())
             if line_end < 0:
@@ -1531,21 +1550,6 @@ def detect_non_secret(
             if detector.detector == "pii.email":
                 if match.span() in beads_email_spans:
                     continue
-                if any(
-                    (
-                        action_start <= match.start()
-                        and match.end() <= action_end
-                        and match.end() > action_start
-                    )
-                    or (
-                        action_start > 0
-                        and match.start() == action_start - 1
-                        and data[match.start() : action_start] in {b"'", b'"'}
-                        and match.end() <= action_end
-                    )
-                    for action_start, action_end in action_email_spans
-                ):
-                    continue
                 if data[match.end() : match.end() + 1] == b":":
                     continue
                 if match.group(0).startswith(b"//") and data[match.start() - 1 : match.start()] == b":":
@@ -1553,6 +1557,15 @@ def detect_non_secret(
                 domain = match.group(0).lower().rsplit(b"@", 1)[-1]
                 # Keep ambiguous email-like prereleases, even inside scoped specs.
                 if domain.rsplit(b".", 1)[-1][:1] in b"0123456789":
+                    while action_index < len(action_email_spans) and action_email_spans[action_index][1] <= match.start():
+                        if monotonic() >= deadline:
+                            coverage.limited("deadline-exceeded")
+                            return False
+                        action_index += 1
+                    if action_index < len(action_email_spans):
+                        action_start, action_end = action_email_spans[action_index]
+                        if action_start <= match.start() and match.end() <= action_end:
+                            continue
                     while npm_token is None or npm_token.end() <= match.start():
                         if monotonic() >= deadline:
                             coverage.limited("deadline-exceeded")
@@ -1571,9 +1584,6 @@ def detect_non_secret(
                     PLACEHOLDER_EMAIL_SUFFIXES
                 ):
                     continue
-            if monotonic() >= deadline:
-                coverage.limited("deadline-exceeded")
-                return False
             if len(results) >= MAX_CUSTOM_FINDINGS_PER_RECORD:
                 coverage.limited("custom-finding-limit")
                 return False
@@ -1597,9 +1607,6 @@ def detect_non_secret(
             return False
         return True
 
-    if monotonic() >= deadline:
-        coverage.limited("deadline-exceeded")
-        return results
     for detector in detectors:
         if not append_matches(detector):
             return results
