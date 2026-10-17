@@ -23,7 +23,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | beads-check-dolt-migration | Detect whether beads needs classic-to-Dolt migration or an in-place Dolt schema upgrade |
 | beads-migrate-to-dolt | Back up and verify classic conversion or Dolt schema upgrades; preserve remote history and keep repository aftercare separately opt-in |
 | beads-setup | Preview and separately confirm a fresh repository Beads store with a private GitHub Dolt remote; refuse existing state and verify each initialization/publication boundary |
-| next | Rank ready beads across validated stores; list read-only or select and claim one task, then stop without implementing it |
+| next | Rank ready beads across validated stores; listing is read-only; selection claims one bead, shows details and continues into its appropriate work workflow without a redundant start prompt |
 | plan-to-backlog | Dynamically materialize an explicitly approved plan into proposal-first Beads tracking when durable ownership is requested, with no-item/single-item/epic outcomes and explicit confirmation before writes |
 | refine | Read-only sizing assessment of one existing bead — keep whole, clarify, or split into independently valuable outcomes, possibly under an epic; hands approved changes to /triage, never writes |
 | thoughtbox | Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to `/triage`, and render separately confirmed scoped resolution commands without executing either workflow |

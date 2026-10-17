@@ -92,15 +92,59 @@ class SessionBoundaries(unittest.TestCase):
         for forbidden in ("Write", "Edit", "Skill(", "Bash(git:*)", "Bash(bd update"):
             self.assertNotIn(forbidden, grants("verify-task"))
 
-    def test_next_stops_after_one_claim(self):
-        text = skill("next")
-        for obsolete in ("Continue fixing bugs", "Minor Bug Criteria", "Context Continuity", "and fix it", "Show top 5 candidates"):
+    def test_next_continues_selected_bead_without_widening_authority(self):
+        text = " ".join(skill("next").split())
+        for obsolete in ("Continue fixing bugs", "Minor Bug Criteria", "Context Continuity", "and fix it", "Show top 5 candidates", "Selection ends after one claim", "implementation needs a separate user request"):
             self.assertNotIn(obsolete, text)
-        self.assertIn("Selection ends after one claim", text)
+        for boundary in (
+            "Claim once",
+            "Continue into that bead's work in the same turn",
+            "Do not ask for confirmation merely to start work after the selection",
+            "Never select a second bead automatically",
+            "The tracker claim grants no additional authority",
+            "native Edit/Write acquire the canonical worktree lease automatically",
+            "do not request a redundant `/implement` command",
+            "Never bypass a denied operation through shell scripts or another worktree",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, text)
         for forbidden in ("Write", "Edit", "Skill(", "Bash(git", "Bash(gh", "Bash(bd update"):
             self.assertNotIn(forbidden, grants("next"))
         self.assertIn("next-select start", text)
         self.assertIn("session activity unverified", text)
+
+    def test_next_shows_details_before_work_and_loads_its_workflow(self):
+        text = " ".join(skill("next").split())
+        details = text.index("Repeat the full bead details and first step in a visible commentary message")
+        continuation = text.index("Continue into that bead's work in the same turn")
+        self.assertLess(details, continuation)
+        for boundary in (
+            "Do not rely on the collapsed tool output; do not end the turn here",
+            "including implementation when that is the selected outcome",
+            "a read-only investigation or decision bead stays read-only",
+            "[develop](../develop/SKILL.md) in a separate tool call before any edit",
+            "Do not implement directly under the listing skill's economy route",
+            "never force a route or waive billing consent",
+            "The user's selection (or explicit auto-pick mode) requests work on that one bead",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, text)
+
+    def test_next_preserves_listing_and_selection_checks(self):
+        text = " ".join(skill("next").split())
+        for boundary in (
+            "Never auto-pick in this mode",
+            "Listing mode never marks anything `in_progress`",
+            "require explicit confirmation before starting",
+            "When a live handoff remains, ask with `AskUserQuestion` before starting",
+            'Immediately before the tracking claim call `next_safe` with `{"action":"recheck"',
+            "If the selected row is not eligible, stop",
+            "Do not infer either approval from choosing a review row",
+            "Show the selected bug and continue into `/diagnose-bug` in the same turn",
+            "Follow its investigation boundary",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, text)
 
     def test_wrap_up_writes_handoffs_not_tracker_or_settings(self):
         text = skill("wrap-up")

@@ -333,7 +333,10 @@ class WorkflowContracts(unittest.TestCase):
                 front = skill(name).split("---", 2)[1]
                 effort = "high" if name in high_effort else "medium"
                 self.assertRegex(front, r"(?m)^model-tier: economy$")
-                self.assertRegex(front, r"(?m)^model: haiku$")
+                if name == "next":
+                    self.assertNotRegex(front, r"(?m)^model:")
+                else:
+                    self.assertRegex(front, r"(?m)^model: haiku$")
                 self.assertRegex(front, rf"(?m)^effort: {effort}$")
 
     def test_claude_model_hints_preserve_coding_layers(self):
