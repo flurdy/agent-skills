@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -14,6 +15,7 @@ from typing import Any
 COMMAND_TIMEOUT_SECONDS = 5
 BEADS_READ_TIMEOUT_ENV = "NEXT_BEADS_READ_TIMEOUT_SECONDS"
 MISSING_STORE_ERROR = "missing .beads store"
+DOLT_UNREACHABLE = re.compile(r"Dolt server (?:unreachable|may not be running)", re.IGNORECASE)
 REGISTRATION_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MANAGED_DIRECTORIES = (
     "docs",
@@ -290,6 +292,14 @@ def store_error(source: Source) -> str | None:
     return None
 
 
+def unavailable_store(source: Source, reason: str) -> dict[str, Any]:
+    hint = None
+    if DOLT_UNREACHABLE.search(reason):
+        command = f"bd -C {shlex.quote(str(source.directory))} dolt start"
+        hint = f"Dolt server not running. Start it manually: `{command}`, then rerun /next."
+    return {"repository": source.name, "reason": reason, "hint": hint}
+
+
 def load_issues(source: Source, arguments: list[str]) -> tuple[list[dict[str, Any]], str | None]:
     timeout = beads_read_timeout()
     started = monotonic()
@@ -410,6 +420,7 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
         "in_progress": [],
         "deferred": [],
         "diagnostics": [],
+        "unavailable_stores": [],
     }
     commands = {
         "ready": ["list", "--ready", "--flat", "--limit=0"],
@@ -421,6 +432,7 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
         error = store_error(source)
         if workspace and error is not None:
             payload["diagnostics"].append(f"{source.name}: {error}")
+            payload["unavailable_stores"].append(unavailable_store(source, error))
             continue
         if source.store == "workspace":
             continue
@@ -430,6 +442,7 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
             issues, error = load_issues(source, arguments)
             if error is not None:
                 payload["diagnostics"].append(f"{source.name}: {key}: {error}")
+                payload["unavailable_stores"].append(unavailable_store(source, f"{key}: {error}"))
                 break
             collected[key] = owned_issues(source, issues, workspace)
             if source_scope:

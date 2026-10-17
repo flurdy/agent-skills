@@ -60,6 +60,10 @@ fault = payload.get('faults', {}).get(key)
 if fault == 'error':
     print(f'simulated {key} failure', file=sys.stderr)
     raise SystemExit(9)
+if fault == 'dolt-down':
+    print('Error: failed to open database: Dolt server unreachable at 127.0.0.1:1: connect: connection refused  '
+          'The Dolt server may not be running. Try:   bd dolt start', file=sys.stderr)
+    raise SystemExit(1)
 if fault == 'invalid-json':
     print('{')
     raise SystemExit(0)

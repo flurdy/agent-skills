@@ -400,6 +400,70 @@ class NextBdTest(WorkspaceFixture):
         self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
         self.assertFalse(any(call["arguments"][0] == "update" for call in calls))
 
+    def test_unavailable_store_notice_leads_every_text_view(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root-task", 2, "task", "2026-01-01T00:00:00Z")]},
+            repositories={
+                "down": {"ready": [issue("hidden-task", 0, "bug", "2026-01-01T00:00:00Z")],
+                         "faults": {"ready": "dolt-down"}},
+                "broken": {"faults": {"blocked": "error"}},
+                "healthy": {},
+            },
+        )
+        packet = json.loads(self.run_next(workspace, "--safe-json").stdout)
+        stores = {entry["repository"]: entry for entry in packet["unavailable_stores"]}
+        self.assertEqual(set(stores), {"down", "broken"})
+        self.assertIn("dolt start", stores["down"]["hint"])
+        self.assertIn("bd -C ", stores["down"]["hint"])
+        self.assertIn("down", stores["down"]["hint"])
+        self.assertIsNone(stores["broken"]["hint"])
+        self.assertEqual(stores["broken"]["reason"], "blocked: simulated blocked failure")
+
+        for arguments, heading in ((("--list",), "## Ready to Work"), ((), "## Ready to Work"),
+                                   (("--in-progress",), "## Ready to Work"), (("--safe",), "## Ready to review")):
+            with self.subTest(arguments=arguments):
+                output = self.run_next(workspace, *arguments).stdout
+                notice, rest = output.split(heading, 1)
+                self.assertIn("## ⚠️ Beads store unavailable (2)", notice)
+                self.assertIn("not an empty backlog", notice)
+                self.assertIn("**down**", notice)
+                self.assertIn("dolt start", notice)
+                self.assertIn("**broken** — blocked: simulated blocked failure", notice)
+                self.assertNotIn("healthy", notice)
+                self.assertNotIn("root-task", notice)
+                self.assertIn("root-task", rest)
+                self.assertNotIn("hidden-task", output)
+        safe = self.run_next(workspace, "--safe").stdout
+        self.assertIn("Lease check: 0 free, 1 not checked", safe)
+        candidates = json.loads(self.run_next(workspace, "--json").stdout)
+        self.assertEqual([row["id"] for row in candidates], ["root-task"])
+        calls = self.recorded_calls()
+        self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
+        self.assertFalse(any("dolt" in call["arguments"] for call in calls))
+
+    def test_all_stores_unavailable_is_not_presented_as_empty_work(self) -> None:
+        local = self.base / "down"
+        self.create_store(local, ready=[issue("hidden", 2, "task", "2026-01-01T00:00:00Z")],
+                          faults={"ready": "dolt-down"})
+        safe = self.run_next(local, "--safe").stdout
+        self.assertTrue(safe.startswith("## ⚠️ Beads store unavailable (1)"), safe)
+        self.assertIn("**local**", safe)
+        self.assertIn("dolt start", safe)
+        self.assertNotIn("_No candidates without", safe)
+        self.assertNotIn("Lease check: 0 free, 0 not checked", safe)
+        self.assertIn("Ready work unknown", safe)
+        self.assertIn("Source diagnostics:", safe)
+        listing = self.run_next(local, "--list").stdout
+        self.assertTrue(listing.startswith("## ⚠️ Beads store unavailable (1)"), listing)
+        self.assertNotIn("hidden", listing)
+
+        healthy = self.base / "healthy"
+        self.create_store(healthy)
+        for arguments in (("--safe",), ("--list",)):
+            output = self.run_next(healthy, *arguments).stdout
+            self.assertNotIn("Beads store unavailable", output)
+        self.assertEqual(json.loads(self.run_next(healthy, "--safe-json").stdout)["unavailable_stores"], [])
+
     def test_late_source_failure_discards_its_partial_results(self) -> None:
         workspace = self.create_workspace(
             root_data={

@@ -40,7 +40,8 @@ after approval, then recheck. No task-scoped declaration changes native write pe
 ## Portable packet
 
 `~/.agents/skills/next/scripts/next-bd --safe-json` returns version 1 with `candidates`,
-`in_progress`, `blocked`, `deferred`, and `diagnostics`. Candidates retain normal P0–P3
+`in_progress`, `blocked`, `deferred`, `diagnostics`, and `unavailable_stores` (`repository`,
+`reason`, optional manual `hint`; absent in older packets). Candidates retain normal P0–P3
 ranking and each has its owning `selector`, `repository` and a normalized `source_scope`
 (`state`, canonical `roots`, `reason`). States are `declared`, `partial`, `unknown`,
 `invalid`, and `unavailable`. This packet alone contains **no occupancy evidence**.

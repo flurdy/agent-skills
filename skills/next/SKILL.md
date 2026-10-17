@@ -7,7 +7,7 @@ allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.ag
 model-tier: economy
 model: haiku
 effort: high
-version: "1.17.0"
+version: "1.18.0"
 author: "flurdy"
 ---
 
@@ -186,7 +186,10 @@ When invoked:
    workspace-owned are not independent sources (see **Workspace tracking ownership** below).
    A missing or unusable local `.beads` directory, command failure, timeout, or malformed
    response excludes only that source and
-   emits a concise `Source diagnostics` entry; healthy stores remain ranked. In workspace
+   emits a concise `Source diagnostics` entry; healthy stores remain ranked. Every text view
+   (ordinary and safe) opens with a **Beads store unavailable** notice naming each failed
+   store, plus a manual `bd -C <dir> dolt start` hint when its Dolt server is unreachable, so
+   missing work never reads as an empty backlog. Listing never starts servers. In workspace
    and local mode alike, a source is included only when its ready, blocked, in-progress,
    and deferred reads all succeed. Never show partial state from a failed source. JSON mode
    writes the same diagnostics to stderr and keeps stdout valid JSON. No listing path
@@ -300,7 +303,9 @@ A row that is both occupied and overlapping appears only in Occupied. Suppress e
 auxiliary sections in this safe view only; ordinary `/next list` stays unchanged.
 
 Include the helper's short checked/not-checked summary and selector mapping (`Repo:ID`,
-or `local:ID`). Retain non-empty In Progress, Blocked and Deferred tables and diagnostics;
+or `local:ID`). Keep its leading **Beads store unavailable** notice; when no ready rows remain
+it replaces the empty-ready message and lease summary with *Ready work unknown*.
+Retain non-empty In Progress, Blocked and Deferred tables and diagnostics;
 do not add a second ordinary listing or dump roots/internal selectors on every row. Full
 machine queues and per-root observations remain in tool details. Recheck still returns
 machine-readable JSON and must be assessed by queue, not by the display label.

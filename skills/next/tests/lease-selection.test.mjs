@@ -76,6 +76,42 @@ test('local unknown-only display does not pretend no work or expose selector boi
   assert.match(output, /unknown = no source_scope declaration/);
 });
 
+const downStore = { repository: 'down', reason: 'ready: Dolt server unreachable', hint: 'Dolt server not running. Start it manually: `bd -C /down dolt start`, then rerun /next.' };
+
+test('all-unavailable safe view leads with the store notice instead of an empty backlog', async () => {
+  const data = { ...packet([]), unavailable_stores: [downStore] };
+  const result = await classifyCandidates(data);
+  assert.deepEqual(result.unavailable_stores, [downStore]);
+  for (const queue of ['eligible', 'occupied', 'unknown', 'unavailable', 'tracker_conflicts']) assert.deepEqual(result[queue], []);
+  const output = renderSafeList(result);
+  assert.ok(output.startsWith('## ⚠️ Beads store unavailable (1)'), output);
+  assert.match(output, /not an empty backlog/);
+  assert.match(output, /- \*\*down\*\* — Dolt server not running\. Start it manually: `bd -C \/down dolt start`/);
+  assert.match(output, /Ready work unknown/);
+  assert.doesNotMatch(output, /_No candidates without|Lease check: 0 free, 0 not checked/);
+});
+
+test('partial store failure keeps healthy rows and flags only the failed store', async () => {
+  const broken = { repository: 'broken', reason: 'blocked: simulated a|b failure\u001b', hint: null };
+  const result = await classifyCandidates({ ...packet([candidate('healthy', [], 'unknown')]), unavailable_stores: [downStore, broken] });
+  const output = renderSafeList(result);
+  const [notice, rest] = output.split('## Ready to review (1 beads)');
+  assert.match(notice, /## ⚠️ Beads store unavailable \(2\)/);
+  assert.match(notice, /\*\*broken\*\* — blocked: simulated a\|b failure /);
+  assert.doesNotMatch(notice, /\u001b|&#124;/);
+  assert.doesNotMatch(notice, /healthy/);
+  assert.match(rest, /\| 1 \| workspace \| healthy .*\| unknown \|/);
+  assert.match(rest, /Lease check: 0 free, 1 not checked/);
+  assert.doesNotMatch(renderSafeList(await classifyCandidates(packet([candidate('ok', [], 'unknown')]))), /Beads store unavailable/);
+});
+
+test('malformed unavailable-store entries are rejected and legacy packets default to none', async () => {
+  for (const stores of [{}, [null], [{ repository: 1, reason: 'x' }], [{ repository: 'a', reason: 'x', hint: 3 }]]) {
+    await assert.rejects(classifyCandidates({ ...packet([]), unavailable_stores: stores }), /Invalid unavailable-store packet/);
+  }
+  assert.deepEqual((await classifyCandidates(packet([]))).unavailable_stores, []);
+});
+
 test('rendering escapes tracker text and preserves typed unknown queues', async () => {
   const row = candidate('a', [], 'unknown');
   row.title = 'a|b\n\u001b[31m';

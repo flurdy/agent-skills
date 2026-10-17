@@ -66,7 +66,8 @@ jq -r \
   --arg safe_output "$SAFE_OUTPUT" \
   --arg safe_json "$SAFE_JSON" \
   --arg type_filter "$TYPE_FILTER" '
-  def cell: (. // "—") | tostring | gsub("[\u0000-\u001f\u007f-\u009f]+"; " ") | gsub("\\|"; "&#124;");
+  def text: (. // "—") | tostring | gsub("[\u0000-\u001f\u007f-\u009f]+"; " ");
+  def cell: text | gsub("\\|"; "&#124;");
   def row: "| " + (map(cell) | join(" | ")) + " |";
   def overlap_ids($claims):
     . as $candidate |
@@ -93,6 +94,12 @@ jq -r \
         [.value.lease_check] +
         (if $overlap then ["\(.value.shared_services | join(", ")) (\(.value.tracker_overlap | join(", ")))"] else [] end) | row
       ) | join("\n")) end);
+  def unavailable_notice($stores):
+    if ($stores | length) == 0 then "" else
+      "## ⚠️ Beads store unavailable (\($stores | length))\n\n" +
+      "Work from these stores is not listed below; this is not an empty backlog.\n\n" +
+      ($stores | map("- **\(.repository | text)** — \((.hint // .reason) | text)") | join("\n")) + "\n\n"
+    end;
   def blocker_context:
     if (.blocked_by // [] | length) > 0 then .blocked_by | join(", ")
     elif (.blocked_by_count // 0) > 0 then "\(.blocked_by_count) blockers"
@@ -121,6 +128,7 @@ jq -r \
   ($payload.blocked | map("\(.repository // "")\u0000\(.id)")) as $blocked_keys |
   ($payload.in_progress) as $in_progress |
   ($payload.diagnostics) as $diagnostics |
+  ($payload.unavailable_stores // []) as $unavailable |
 
   ($payload.ready |
     map(select(
@@ -160,7 +168,7 @@ jq -r \
   if $safe_json == "true" then
     {version: 1, workspace: $workspace, candidates: $ranked,
      in_progress: $in_progress, blocked: $payload.blocked, deferred: $payload.deferred,
-     diagnostics: $diagnostics}
+     diagnostics: $diagnostics, unavailable_stores: $unavailable}
   elif $safe_output == "true" then
     ($ranked | map(service_overlap($in_progress) as $overlap | . + {
       tracker_overlap: ($overlap | map(.id)),
@@ -172,8 +180,13 @@ jq -r \
     })) as $safe_rows |
     ($safe_rows | map(select(.tracker_overlap | length == 0))) as $review |
     ($safe_rows | map(select(.tracker_overlap | length > 0))) as $overlaps |
-    safe_table("Ready to review"; $review; $workspace; true; false) +
-    "\n\nLease check: 0 free, \($review | length) not checked; no in-process Pi observer. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. No lease was acquired." +
+    unavailable_notice($unavailable) +
+    (if ($review | length) == 0 and ($unavailable | length) > 0 then
+      "## Ready to review (0 beads)\n\n_Ready work unknown: the unavailable stores above were not read._"
+    else
+      safe_table("Ready to review"; $review; $workspace; true; false) +
+      "\n\nLease check: 0 free, \($review | length) not checked; no in-process Pi observer. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. No lease was acquired."
+    end) +
     (if ($overlaps | length) > 0 then
       "\n\n" + safe_table("Held back — same service as in-progress work"; $overlaps; $workspace; false; true)
     else "" end) +
@@ -185,6 +198,7 @@ jq -r \
   elif $json_output == "true" then
     $ranked
   else
+    unavailable_notice($unavailable) +
     "## Ready to Work (\($ranked | length) beads)\n" +
     (if $workspace then
       "| # | Repo | ID | Pri | Type | Labels | Title |\n" +

@@ -69,6 +69,11 @@ function validatePacket(packet) {
     throw new Error('Invalid source-scope packet');
   }
   if (new Set(packet.candidates.map(row => row.selector)).size !== packet.candidates.length) throw new Error('Duplicate candidate selectors');
+  const stores = packet.unavailable_stores ?? [];
+  if (!Array.isArray(stores) || stores.some(store => !store || typeof store.repository !== 'string' ||
+      typeof store.reason !== 'string' || !(store.hint == null || typeof store.hint === 'string'))) {
+    throw new Error('Invalid unavailable-store packet');
+  }
 }
 
 export async function classifyCandidates(packet, observer, signal) {
@@ -111,6 +116,7 @@ export async function classifyCandidates(packet, observer, signal) {
     version: 1, workspace: packet.workspace, observedAt: new Date().toISOString(), coverage: COVERAGE,
     eligible: [], occupied: [], unknown: [], unavailable: [], tracker_conflicts: [],
     in_progress: packet.in_progress, blocked: packet.blocked ?? [], deferred: packet.deferred ?? [],
+    unavailable_stores: packet.unavailable_stores ?? [],
     diagnostics: skippedLabels && typeof observer === 'function'
       ? [...packet.diagnostics, `${skippedLabels} service-label root${skippedLabels === 1 ? '' : 's'} not observed (32-root limit)`]
       : packet.diagnostics,
@@ -142,8 +148,12 @@ export async function classifyCandidates(packet, observer, signal) {
   return result;
 }
 
+function displayText(value) {
+  return String(value ?? '—').replace(/[\x00-\x1f\x7f-\x9f]/g, ' ');
+}
+
 function displayCell(value) {
-  return String(value ?? '—').replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').replaceAll('|', '&#124;');
+  return displayText(value).replaceAll('|', '&#124;');
 }
 
 function table(headers, rows) {
@@ -175,11 +185,18 @@ export function renderSafeList(result) {
   const fields = row => [...(result.workspace ? [row.repository] : []), row.id, `P${row.priority}`,
     row.issue_type, row.labels?.length ? row.labels.join(', ') : '-', row.title];
   const headers = [...repoHeaders, 'ID', 'Pri', 'Type', 'Labels', 'Title'];
-  const parts = [`## Ready to review (${ready.length} beads)`,
-    ready.length ? table(['#', ...headers, 'Lease check'], ready.map((row, index) => [index + 1, ...fields(row), leaseCheck(row)]))
-      : '_No candidates without known occupancy or a shared in-progress service._'];
-  const checked = ready.filter(row => leaseCheck(row) === 'free').length;
-  parts.push(`Lease check: ${checked} free, ${ready.length - checked} not checked. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. Local Pi only; no reservation.`);
+  const stores = result.unavailable_stores ?? [];
+  const parts = stores.length ? [`## ⚠️ Beads store unavailable (${stores.length})`,
+    'Work from these stores is not listed below; this is not an empty backlog.',
+    stores.map(store => `- **${displayText(store.repository)}** — ${displayText(store.hint ?? store.reason)}`).join('\n')] : [];
+  parts.push(`## Ready to review (${ready.length} beads)`);
+  if (!ready.length && stores.length) parts.push('_Ready work unknown: the unavailable stores above were not read._');
+  else {
+    parts.push(ready.length ? table(['#', ...headers, 'Lease check'], ready.map((row, index) => [index + 1, ...fields(row), leaseCheck(row)]))
+      : '_No candidates without known occupancy or a shared in-progress service._');
+    const checked = ready.filter(row => leaseCheck(row) === 'free').length;
+    parts.push(`Lease check: ${checked} free, ${ready.length - checked} not checked. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. Local Pi only; no reservation.`);
+  }
   if (occupied.length) parts.push(`## Occupied — source held by another Pi session (${occupied.length} ${occupied.length === 1 ? 'bead' : 'beads'})`,
     'held = a declared root is leased; held (label) = a label names a service directory another session leases.',
     table([...headers, 'Lease check', 'Held roots'], occupied.map(row => [...fields(row), leaseCheck(row),
