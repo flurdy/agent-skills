@@ -743,6 +743,181 @@ class ArtifactHygieneCliTests(unittest.TestCase):
 
         self.assertEqual(helper.added_patch_content(patch), b"added@example.invalid\n")
 
+    def test_added_patch_content_preserves_plus_prefixes_and_lf_boundaries(self) -> None:
+        helper = load_helper_module()
+        header = b"diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n"
+        cases = [
+            (
+                header + b"@@ -1,2 +1,4 @@\n context\n--- a/not-a-header\n"
+                b"+++ b/not-a-header\n++++ triple\n+\n",
+                b"++ b/not-a-header\n+++ triple\n\n",
+            ),
+            (
+                header + b"@@ -1 +1 @@\n-old\n+++ first\n"
+                b"@@ -10 +10 @@ function\n-old\n++++ second\n"
+                b"diff --git a/other.txt b/other.txt\n--- a/other.txt\n+++ b/other.txt\n"
+                b"@@ -0,0 +1 @@\n+++ third\n",
+                b"++ first\n+++ second\n++ third\n",
+            ),
+            (
+                header + b"@@ -0,0 +1,2 @@\n+++ crlf\r\n+++ tail\n\\ No newline at end of file\n",
+                b"++ crlf\r\n++ tail\n",
+            ),
+            (
+                header + b"@@ -0,0 +1,2 @@\n+before\rdiff --git fake\r@@ -0,0 +1 @@\r+++ embedded\n+++ after\n",
+                b"before\rdiff --git fake\r@@ -0,0 +1 @@\r+++ embedded\n++ after\n",
+            ),
+            (header + b"@@ -0,0 +1 @@\n+++ unterminated", b"++ unterminated"),
+            (header + b"@@ -1 +0,0 @@\n--- removed\n\\ No newline at end of file\n", b""),
+        ]
+        for patch, expected in cases:
+            with self.subTest(patch=patch):
+                self.assertEqual(helper.added_patch_content(patch), expected)
+
+    def test_added_patch_content_rejects_unsupported_hunk_formats(self) -> None:
+        helper = load_helper_module()
+        for patch in (
+            b"diff --cc file.txt\n@@@ -1 -1 +1 @@@\n++not-a-unified-addition\n",
+            b"diff --combined file.txt\n",
+            b"@@@ -1 -1 +1 @@@\n++unsupported\n",
+            b"@@ malformed @@\n+++ hidden\n",
+            b"@@ -0,0 +1 @@\n\x1b[32m+++ colored\x1b[m\n",
+        ):
+            with self.subTest(patch=patch):
+                with self.assertRaises(helper.AuditError) as raised:
+                    helper.added_patch_content(patch)
+                self.assertEqual(raised.exception.code, "history-read-failed")
+
+    def prepare_plus_prefixed_history(self):
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        email = "nobody" + "@reserved.zzsynthetic"
+        key = "".join(("AKIA", "ABCDEFGHIJKLMNOP"))
+        paths = []
+        for index, prefix in enumerate(("++ ", "+++ ", "++ b/fake-header ")):
+            path = f"history-{index}.txt"
+            paths.append(path)
+            self.repository.write(path, prefix + email + "\n" + prefix + "aws_access_key_id = " + key + " FINDING_MARKER\n")
+        self.repository.commit_all("add synthetic history controls")
+        commit = self.repository.run("rev-parse", "HEAD").strip()
+        for path in paths:
+            (self.repository.root / path).unlink()
+        self.repository.commit_all("remove synthetic history controls")
+        return paths, commit, email, key
+
+    def assert_plus_prefixed_history_findings(self, scanner=None):
+        paths, commit, email, key = self.prepare_plus_prefixed_history()
+        before = self.repository.state()
+        completed = self.run_audit(scanner=scanner)
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual(completed.stderr, "")
+        self.assertEqual((payload["status"], payload["verdict"]), ("complete", "block"))
+        for category in ("personal-data", "secret"):
+            findings = [item for item in payload["findings"] if item["category"] == category]
+            self.assertEqual({item["location"]["path"] for item in findings}, set(paths))
+            self.assertTrue(all(item["location"]["source"] == "branch-history" for item in findings))
+            self.assertTrue(all(item["location"]["commit"] == commit for item in findings))
+            self.assertTrue(all(item["policy"]["grade"] == "block" for item in findings))
+        for sentinel in (email, key, "FINDING_MARKER"):
+            self.assertNotIn(sentinel, completed.stdout)
+        self.assertEqual(self.repository.state(), before)
+
+    def test_plus_prefixed_history_reaches_custom_and_secret_scanners(self) -> None:
+        self.assert_plus_prefixed_history_findings()
+
+    @unittest.skipUnless(shutil.which("gitleaks"), "gitleaks is not installed")
+    def test_plus_prefixed_history_reaches_real_gitleaks(self) -> None:
+        self.assert_plus_prefixed_history_findings(self.real_scanner("plus-history-real-bin"))
+
+    def test_unsupported_history_patch_is_partial_not_clean(self) -> None:
+        self.repository.write("file.txt", "base\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.write("file.txt", "changed\n")
+        self.repository.commit_all("change")
+        before = self.repository.state()
+        git_wrapper = self.fake_gitleaks.parent / "git"
+        real_git = str(git_wrapper.resolve())
+        git_wrapper.unlink()
+        git_wrapper.write_text(
+            "#!/usr/bin/env python3\n"
+            "import os, sys\n"
+            "if 'show' in sys.argv and '--unified=0' in sys.argv:\n"
+            "    print('diff --cc file.txt\\n@@@ -1 -1 +1 @@@\\n++RAW_PATCH_SENTINEL')\n"
+            "    raise SystemExit(0)\n"
+            f"os.execv({real_git!r}, [{real_git!r}, *sys.argv[1:]])\n",
+            encoding="utf-8",
+        )
+        git_wrapper.chmod(0o700)
+
+        completed = self.run_audit()
+
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 2)
+        self.assertEqual((payload["status"], payload["verdict"]), ("partial", "block"))
+        history = next(item for item in payload["coverage"] if item["source"] == "branch-history")
+        self.assertEqual(history["status"], "partial")
+        self.assertIn("history-read-failed", history["errors"])
+        self.assertNotIn("RAW_PATCH_SENTINEL", completed.stdout + completed.stderr)
+        self.assertEqual(self.repository.state(), before)
+
+    def test_history_root_patch_is_not_hidden_by_local_config(self) -> None:
+        email = "nobody" + "@reserved.zzsynthetic"
+        self.repository.write("root.txt", "++ " + email + "\n++ FINDING_MARKER\n")
+        self.repository.commit_all("root controls")
+        root_commit = self.repository.run("rev-parse", "HEAD").strip()
+        (self.repository.root / "root.txt").unlink()
+        self.repository.commit_all("remove root controls")
+        self.repository.run("config", "--local", "log.showRoot", "false")
+        before = self.repository.state()
+
+        completed = self.run_audit()
+
+        payload = json.loads(completed.stdout)
+        self.assertEqual(completed.returncode, 0)
+        self.assertEqual((payload["status"], payload["verdict"]), ("complete", "block"))
+        history = next(item for item in payload["coverage"] if item["source"] == "branch-history")
+        self.assertEqual(history["base"], "all-reachable")
+        findings = [item for item in payload["findings"] if item["location"].get("commit") == root_commit]
+        self.assertTrue(any(item["detector"] == "pii.email" for item in findings))
+        self.assertTrue(any(item["category"] == "secret" for item in findings))
+        self.assertNotIn(email, completed.stdout)
+        self.assertNotIn("FINDING_MARKER", completed.stdout)
+        self.assertEqual(self.repository.state(), before)
+
+    def test_history_patches_force_uncolored_separate_merge_diffs(self) -> None:
+        self.repository.write("base.txt", "clean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        self.repository.run("switch", "-c", "side")
+        email = "nobody" + "@reserved.zzsynthetic"
+        self.repository.write("side.txt", "++ " + email + "\n++ FINDING_MARKER\n")
+        self.repository.commit_all("side addition")
+        self.repository.run("switch", "main")
+        self.repository.write("main.txt", "clean\n")
+        self.repository.commit_all("main addition")
+        self.repository.run("merge", "--no-ff", "side", "-m", "merge synthetic side")
+        merge = self.repository.run("rev-parse", "HEAD").strip()
+        (self.repository.root / "side.txt").unlink()
+        self.repository.commit_all("remove synthetic controls")
+        self.repository.run("config", "--local", "color.ui", "always")
+        for mode in ("combined", "first-parent", "remerge", "off"):
+            with self.subTest(mode=mode):
+                self.repository.run("config", "--local", "log.diffMerges", mode)
+                before = self.repository.state()
+                completed = self.run_audit()
+                payload = json.loads(completed.stdout)
+                self.assertEqual(completed.returncode, 0)
+                self.assertEqual((payload["status"], payload["verdict"]), ("complete", "block"))
+                findings = [item for item in payload["findings"] if item["location"].get("commit") == merge]
+                self.assertTrue(any(item["detector"] == "pii.email" for item in findings))
+                self.assertTrue(any(item["category"] == "secret" for item in findings))
+                self.assertNotIn(email, completed.stdout)
+                self.assertNotIn("FINDING_MARKER", completed.stdout)
+                self.assertEqual(self.repository.state(), before)
+
     def test_clean_repository_reports_complete_clean_coverage(self) -> None:
         self.repository.write("tracked.txt", "clean\n")
         self.repository.commit_all("base")

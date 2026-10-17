@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: economy
 model: sonnet
 effort: high
-version: "0.6.6"
+version: "0.6.7"
 author: "flurdy"
 ---
 
@@ -40,6 +40,10 @@ The proof of concept scans:
   reachable from `HEAD` rather than treating the current local branch as published.
 
 History is scanned through bounded per-record stdin calls, not an unrestricted scanner Git walk.
+Patches use uncolored, separate-parent unified diffs with root-commit patches enabled, regardless
+of local presentation settings.
+Hunk-aware, LF-delimited extraction preserves added content beginning with `++`, including lines
+resembling file headers; unsupported hunk formats produce partial coverage, never a clean result.
 Blob sizes are checked before generating patches; deletions introduce no content. When a large
 predecessor becomes a small file, the full new file is scanned conservatively instead of building a
 huge deletion patch. Such findings can include unchanged lines. Repository diff attributes cannot hide

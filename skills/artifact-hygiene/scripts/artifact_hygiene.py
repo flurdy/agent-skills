@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import hashlib
+import io
 import json
 import math
 import os
@@ -25,7 +26,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v2"
-HELPER_VERSION = "0.6.6-poc"
+HELPER_VERSION = "0.6.7-poc"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -1794,8 +1795,12 @@ def commit_patch(
         runner,
         repository,
         "--literal-pathspecs",
+        "-c",
+        "log.showRoot=true",
         "show",
-        "-m",
+        "--patch",
+        "--diff-merges=separate",
+        "--no-color",
         "--text",
         "--format=",
         "--no-ext-diff",
@@ -1809,12 +1814,24 @@ def commit_patch(
 
 
 def added_patch_content(patch: bytes) -> bytes:
-    """Return only content introduced by the patch, without diff metadata."""
-    return b"".join(
-        line[1:]
-        for line in patch.splitlines(keepends=True)
-        if line.startswith(b"+") and not line.startswith(b"+++")
-    )
+    """Extract unified hunk additions; leading pluses and embedded CRs are content."""
+    added: list[bytes] = []
+    in_hunk = False
+    for line in io.BytesIO(patch):
+        if line.startswith(b"diff --git "):
+            in_hunk = False
+        elif line.startswith(b"@@"):
+            if re.match(rb"@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@(?:[ \n]|$)", line) is None:
+                raise AuditError("history-read-failed")
+            in_hunk = True
+        elif line.startswith((b"diff --cc ", b"diff --combined ")):
+            raise AuditError("history-read-failed")
+        elif in_hunk:
+            if line.startswith(b"+"):
+                added.append(line[1:])
+            elif not line.startswith((b"-", b" ", b"\\", b"\n")):
+                raise AuditError("history-read-failed")
+    return b"".join(added)
 
 
 def history_content(
