@@ -194,7 +194,7 @@ jq -r \
     (if ($payload.blocked | length) > 0 then non_ready_table("Waiting — blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") else "" end) +
     (if ($payload.deferred | length) > 0 then non_ready_table("Later — deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") else "" end) +
     (if ($diagnostics | length) > 0 then "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + cell) | join("\n")) else "" end) +
-    "\n\nNumbers are for review, not safe claims. Selector = \(if $workspace then "Repo:ID" else "local:ID" end). Only a fresh eligible recheck permits a safe claim."
+    "\n\nNumbers are for review, not safe claims. Selector = \(if $workspace then "Repo:ID" else "local:ID" end). Only a fresh eligible recheck permits a safe claim; picking a not-checked row starts ordinary, not lease-checked, work."
   elif $json_output == "true" then
     $ranked
   else

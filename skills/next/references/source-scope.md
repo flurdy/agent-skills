@@ -149,8 +149,9 @@ The safe view suppresses empty auxiliary headings; ordinary list output is uncha
 
 Numbered rows are **for review**, including unknown and unavailable scope; the number is
 not claim permission. Checked-free labels cover only local cooperating Pi processes.
-Not-checked rows require a source-scope review or separately confirmed ordinary selection;
-neither an ordinary claim nor metadata backfill is inferred from choosing a review number.
+Explicitly picking a not-checked row is an ordinary selection with its displayed gap: after a
+fresh recheck it is claimed without a second prompt and reported as not lease-checked, never as
+safe. Metadata backfill is never inferred from a pick.
 The short summary distinguishes not checked from occupied, with diagnostic reasons kept
 where observation failed rather than a wall of empty queues.
 
@@ -160,8 +161,8 @@ A selector that is no longer ready or whose source cannot be read fails closed. 
 recheck immediately before the existing qualified `next-select start` claim. This is a
 procedural two-call sequence, not a claim lock or reservation; do not substitute the safe
 view's numbers for ordinary ranked indexes. Missing helper or non-eligible recheck means
-no safe claim. The user may separately approve an ordinary selection after its coverage
-limit is disclosed; never silently fall back or treat a review-table number as that approval.
+no safe claim. A fresh `occupied` row or a recheck error stops; a non-empty `tracker_overlap`
+asks first; a still not-checked row becomes an ordinary claim with a one-line disclosure.
 
 Only the subsequent concrete native write attempts acquisition. It can still lose a race
 after a free observation or successful tracking claim. Never release, steal or bypass a

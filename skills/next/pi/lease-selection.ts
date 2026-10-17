@@ -216,7 +216,7 @@ export function renderSafeList(result) {
     .map(item => `${row.selector}: ${item.root}: ${item.reason}`));
   const diagnostics = [...new Set([...result.diagnostics, ...reasons])];
   if (diagnostics.length) parts.push('### Check details', ...diagnostics.map(reason => `- ${displayCell(reason)}`));
-  parts.push(`Numbers are for review, not safe claims. ${result.workspace ? 'Selector = Repo:ID.' : 'Selector = local:ID.'} Only a fresh eligible recheck permits a safe claim.`);
+  parts.push(`Numbers are for review, not safe claims. ${result.workspace ? 'Selector = Repo:ID.' : 'Selector = local:ID.'} Only a fresh eligible recheck permits a safe claim; picking a not-checked row starts ordinary, not lease-checked, work.`);
   return parts.join('\n\n');
 }
 

@@ -156,5 +156,6 @@ class SourceScopeTest(WorkspaceFixture):
         self.assertNotIn("## Unknown", fallback.stdout)
         self.assertNotIn("_None._", fallback.stdout)
         self.assertIn("Numbers are for review", fallback.stdout)
+        self.assertIn("picking a not-checked row starts ordinary, not lease-checked, work", fallback.stdout)
         ordinary = json.loads(self.run_script(SKILL_DIR / "scripts/next-bd", root, "--json").stdout)
         self.assertTrue(all("source_scope" not in row for row in ordinary))

@@ -57,6 +57,7 @@ test('safe display keeps the familiar ranking with explicit lease checks, no emp
   assert.doesNotMatch(output, /Tracker label overlap/);
   assert.doesNotMatch(output, /Eligible under observed|## Unknown|## Observation unavailable|_None\._/);
   assert.match(output, /Numbers are for review/);
+  assert.match(output, /picking a not-checked row starts ordinary, not lease-checked, work/);
   assert.match(output, /Selector = Repo:ID/);
   assert.match(output, /no observation|observer unavailable/);
 });

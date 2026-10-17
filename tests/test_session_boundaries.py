@@ -137,14 +137,37 @@ class SessionBoundaries(unittest.TestCase):
             "Listing mode never marks anything `in_progress`",
             "require explicit confirmation before starting",
             "When a live handoff remains, ask with `AskUserQuestion` before starting",
-            'Immediately before the tracking claim call `next_safe` with `{"action":"recheck"',
-            "If the selected row is not eligible, stop",
-            "Do not infer either approval from choosing a review row",
             "Show the selected bug and continue into `/diagnose-bug` in the same turn",
             "Follow its investigation boundary",
         ):
             with self.subTest(boundary=boundary):
                 self.assertIn(boundary, text)
+
+    def test_next_safe_pick_rechecks_then_claims_unchecked_work_as_ordinary(self):
+        text = " ".join(skill("next").split())
+        self.assertNotIn("Do not infer either approval from choosing a review row", text)
+        recheck = text.index('`{"action":"recheck","selector":"<owner>:<id>"}` immediately before the tracking claim')
+        claim = text.index("Claim with `next-select start <owner>:<id> --expect-id <id>`")
+        self.assertLess(recheck, claim)
+        for boundary in (
+            "Every pick from the safe view runs the normal handoff check",
+            "| Error (no longer ready, owning source unreadable) | Stop and show the error; do not claim |",
+            "| `occupied` (`held` or `held (label)`) | Stop and show the holder; do not claim |",
+            "| Non-empty `tracker_overlap` in any queue | Held back: show the shared service and ask before claiming |",
+            "| `eligible` | Safe claim |",
+            "| `unknown` or `unavailable` without overlap | Ordinary claim; disclose the gap in one line |",
+            "For a stopped row, do not claim via a fallback such as an ordinary `next-select start`",
+            "do not ask again to approve the same disclosed fact",
+            "lease safety was not checked",
+            "Never call it safe or free",
+            "no automatic metadata backfill",
+            "a held-back row still needs its advisory conflict reviewed first",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, text)
+        reference = " ".join((ROOT / "skills/next/references/source-scope.md").read_text().split())
+        self.assertIn("never as safe. Metadata backfill is never inferred from a pick", reference)
+        self.assertNotIn("separately confirmed ordinary selection", reference)
 
     def test_wrap_up_writes_handoffs_not_tracker_or_settings(self):
         text = skill("wrap-up")

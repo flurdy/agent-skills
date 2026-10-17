@@ -12,7 +12,7 @@ export function registerNextSafe(pi: ExtensionAPI, loadObserver: () => Promise<O
 		promptGuidelines: [
 			"For next_safe action=list, reproduce its returned Markdown verbatim in the final answer. This is the rendered report, not input for another summary.",
 			"Do not summarize, reorder, drop columns or rows, recompute counts, add empty sections, or rebuild the list from tool details. Keep its numbering and Lease check column.",
-			"For next_safe action=recheck, inspect the machine-readable queues; only eligible permits a safe tracking claim. A numbered review row does not authorize claiming unknown work.",
+			"For next_safe action=recheck, inspect the machine-readable queues; only eligible permits a safe tracking claim. Stop on occupied or a recheck error; ask first when tracker_overlap is non-empty. An explicitly picked unknown or unavailable row may be claimed only as ordinary work and must be reported as not lease-checked, never safe.",
 		],
 		parameters: Type.Object({
 			action: Type.Union([Type.Literal("list"), Type.Literal("recheck")]),

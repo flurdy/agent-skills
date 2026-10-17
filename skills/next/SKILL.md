@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.19.0"
+version: "1.20.0"
 author: "flurdy"
 ---
 
@@ -353,19 +353,31 @@ and the public observer from the same reviewed package revision as the guard.
 
 Safe numbering is **not** ordinary `next-bd` numbering. Map a review number to the exact
 qualified selector shown by its Repo/ID, never pass that number to `next-select`.
-For a not-checked row, offer a read-only scope review or ask for explicit approval of an
-ordinary selection with the coverage gap disclosed. Do not infer either approval from
-choosing a review row, and never claim it as safe. Declarations still require separate
-explicit approval; no automatic metadata backfill. A held-back row likewise needs
-its advisory conflict reviewed rather than being silently reintroduced.
+Every pick from the safe view runs the normal handoff check, then calls `next_safe` with
+`{"action":"recheck","selector":"<owner>:<id>"}` immediately before the tracking claim.
+This reloads tracking and declarations and observes again; it is not a cached receipt.
+Act on the fresh row, not the earlier display:
 
-For a checked-free candidate, run the normal handoff check first.
-Immediately before the tracking claim call `next_safe` with
-`{"action":"recheck","selector":"<owner>:<id>"}`. This reloads tracking and declarations
-and observes again; it is not a cached receipt. Review any changed scope. If the selected
-row is not eligible, stop and show its current queue/reason; do not claim via a fallback.
-If eligible, call `next-select start <owner>:<id> --expect-id <id>` through the installed
-path. No source lease is acquired by either operation.
+| Recheck result | Action |
+|---|---|
+| Error (no longer ready, owning source unreadable) | Stop and show the error; do not claim |
+| `occupied` (`held` or `held (label)`) | Stop and show the holder; do not claim |
+| Non-empty `tracker_overlap` in any queue | Held back: show the shared service and ask before claiming |
+| `eligible` | Safe claim |
+| `unknown` or `unavailable` without overlap | Ordinary claim; disclose the gap in one line |
+
+For a stopped row, do not claim via a fallback such as an ordinary `next-select start`.
+
+An explicit pick of a not-checked row is an ordinary selection with its displayed gap; do not
+ask again to approve the same disclosed fact. After claiming, say in one line that it started as
+ordinary work and lease safety was not checked, naming the reason (for example no
+`source_scope`). Never call it safe or free. Offer a read-only scope review only when the user
+asks. Declarations still require separate explicit approval; no automatic metadata backfill.
+
+Claim with `next-select start <owner>:<id> --expect-id <id>` through the installed path.
+No source lease is acquired by either operation. Without `next_safe`, the `next-bd --safe`
+fallback has no recheck: every pick is an ordinary claim with the same disclosure, and a
+held-back row still needs its advisory conflict reviewed first.
 
 This recheck-to-claim rule is procedural, not an atomic gate in `next-select`. Another
 session can acquire a lease after the observation or claim. Session-mode's native
