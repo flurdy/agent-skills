@@ -5,7 +5,7 @@ allowed-tools: "Read,Edit,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-sele
 model-tier: premium
 model: opus
 effort: high
-version: "2.0.1"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -95,7 +95,12 @@ These are triage hints, not proof; semantic validity remains agent judgment agai
 - **Approval or automated status/noise:** no action or response.
 - **False positive or intentional trade-off:** a concise rationale may be prepared, but never claim
   a fix and do not mark it resolved as fixed.
-- **Resolved, outdated, dismissed, or self-authored:** skip by default and show separately.
+- **Needs closure:** an inline record with `needsClosure: true` (outdated, unresolved, no self
+  reply) still looks ignored on GitHub. List it as a candidate with triage hint `needs closure`;
+  validate it against current code like any other item, and keep it eligible for an inline reply
+  and thread resolution through `/reply-comments`.
+- **Resolved, dismissed, self-authored, or outdated without `needsClosure`:** skip by default and
+  show separately.
 
 ### 4. Select Items
 

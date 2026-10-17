@@ -23,7 +23,10 @@ line_of() {
 [[ -f "$SKILL" ]] || fail "missing reply-comments skill"
 
 for invariant in \
-    'version: "1.2.3"' \
+    'version: "1.3.0"' \
+    'Skip outdated items unless the record has `needsClosure: true`' \
+    'no longer `needsClosure`' \
+    'without having been selected as `needsClosure`' \
     '`owner/repo#number`' \
     'stable `identity`' \
     '`updateKey`' \

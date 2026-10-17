@@ -570,6 +570,9 @@ def inline_records(
             record["replyToDatabaseId"] = reply_to.get("databaseId") if isinstance(reply_to, dict) else None
             record["hasLaterSelfReply"] = any(self_flags[comment_index + 1 :])
             record["threadHasSelfReply"] = thread_has_self_reply
+            record["needsClosure"] = (
+                lifecycle == "outdated" and not thread_has_self_reply and not record["selfAuthored"]
+            )
             records.append(record)
     return records
 

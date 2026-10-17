@@ -22,7 +22,9 @@ line_of() {
 [[ -f "$SKILL" ]] || fail "missing review-comments skill"
 
 for invariant in \
-    'version: "2.0.1"' \
+    'version: "2.1.0"' \
+    '`needsClosure: true`' \
+    'triage hint `needs closure`' \
     '`owner/repo#number`' \
     'matching checkout' \
     'stable `identity`' \

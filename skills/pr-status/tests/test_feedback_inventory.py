@@ -412,6 +412,24 @@ class FeedbackInventoryTests(unittest.TestCase):
         self.assertNotEqual(before["stateKey"], after["stateKey"])
         self.assertEqual("resolved", after["lifecycle"])
 
+    def test_flags_outdated_unanswered_threads_as_needing_closure(self) -> None:
+        fixture = load_fixture("all-sources.json")
+        threads = fixture["initial"]["data"]["repository"]["pr0"]["reviewThreads"]["nodes"]
+        answered = copy.deepcopy(threads[0])
+        answered.update({"id": "T9", "isOutdated": True})
+        for index, comment in enumerate(answered["comments"]["nodes"]):
+            comment["id"] = f"C9{index}"
+        threads.append(answered)
+
+        records = by_identity(feedback.collect_inventory(FixtureClient(fixture), "acme", "widgets", [42]))
+
+        self.assertTrue(records["inline:C4"]["needsClosure"], "outdated, unresolved and unanswered")
+        self.assertEqual("suppressed", records["inline:C4"]["actionability"], "other consumers unchanged")
+        self.assertFalse(records["inline:C90"]["needsClosure"], "already self-answered")
+        self.assertFalse(records["inline:C91"]["needsClosure"], "self-authored")
+        self.assertFalse(records["inline:C1"]["needsClosure"], "current thread")
+        self.assertFalse(records["inline:C3"]["needsClosure"], "resolved thread")
+
     def test_paginates_connections_and_deduplicates_stable_ids(self) -> None:
         client = FixtureClient(load_fixture("pagination.json"))
         result = feedback.collect_inventory(client, "acme", "widgets", [7])

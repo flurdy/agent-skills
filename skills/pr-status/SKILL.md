@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.16.0"
+version: "1.17.0"
 author: "flurdy"
 ---
 
@@ -120,7 +120,10 @@ through normal APIs and are never represented as fetched feedback.
 Treat `actionability: candidate` as a triage hint, not a validated claim or permission to act. Human
 and bot feedback still needs agent judgment against the code and requirements. Suppress
 self-authored, resolved, outdated, dismissed, approval, and automated-status records from suggested
-actions while retaining them in the factual inventory. When `partial` is true, render the available
+actions while retaining them in the factual inventory. Inline records also carry `needsClosure`:
+true for an outdated, unresolved thread with no self-authored comment, which stays open on GitHub
+until someone answers or resolves it. It does not change `actionability`; only the review-comments
+and reply-comments closure flow acts on it. When `partial` is true, render the available
 data, name each failed source, and do not mark absent feedback as handled.
 
 The helper requires Python 3.10+ and authenticated `gh`. Argument errors exit nonzero; API failures

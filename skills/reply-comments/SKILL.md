@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.2.3"
+version: "1.3.0"
 author: "flurdy"
 ---
 
@@ -66,7 +66,8 @@ Never use body text, author, count, or list position as identity.
 If no identities were supplied, render eligible records and use `AskUserQuestion` to select exact
 stable IDs in batches of at most four. Supplied IDs still require a current-run selection summary.
 Skip approvals, automated status/noise, CI annotations without a fix, and resolved, dismissed,
-outdated, or self-authored items.
+or self-authored items. Skip outdated items unless the record has `needsClosure: true` (outdated,
+unresolved, no self reply); those remain eligible for an inline reply and thread resolution.
 
 Before preparing remote gates, re-fetch the normalized inventory:
 
@@ -76,7 +77,8 @@ Before preparing remote gates, re-fetch the normalized inventory:
 
 Compare each selected stable `identity`, `updateKey`, and `stateKey` with the validated version. If
 the inventory is `partial`, do not mutate and name the failed source. If an item is changed,
-resolved, outdated, or self-authored, stop that item and return it to selection/validation. Missing
+resolved, newly outdated, no longer `needsClosure`, or self-authored, stop that item and return it
+to selection/validation. Missing
 is not resolved. This re-fetch is mandatory even when the previous skill ran moments ago.
 
 Keep `pr-status` installed alongside this skill. The legacy `gh-pr-comments.sh` entry point forwards
@@ -100,7 +102,9 @@ one-liners are fine; friendly when a human is on the other end; never nits, name
 - **Approval or automated status/noise:** no response.
 - **False positive or intentional trade-off:** concise rationale, explicitly no fix; never resolve
   it as fixed.
-- **Resolved, outdated, dismissed, or self-authored:** skip.
+- **Needs closure** (`needsClosure: true`): inline reply to the root target, saying briefly why
+  the outdated thread no longer applies or where it was addressed.
+- **Resolved, dismissed, self-authored, or outdated without `needsClosure`:** skip.
 
 A reply claiming a fix must map to a verified local commit. If that commit is not visible on the PR,
 the push gate must succeed before its reply can be posted. Questions and rationale-only responses
@@ -161,7 +165,8 @@ an inline record to the conversation endpoint.
 ### 7. Resolution Confirmation
 
 Resolve only inline review threads. First re-fetch the inventory again and retain the selected
-record's `targets.resolveThreadId`. Exclude any thread that raced, is already resolved/outdated, has
+record's `targets.resolveThreadId`. Exclude any thread that raced, is already resolved, is outdated
+without having been selected as `needsClosure`, has
 no confirmed reply, or has an unknown reply result.
 
 A verified and published fix may be presented as resolution-eligible. A question or rationale may
