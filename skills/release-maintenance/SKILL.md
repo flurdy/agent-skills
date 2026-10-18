@@ -8,7 +8,7 @@ allowed-tools: "Read,AskUserQuestion,Bash(~/.agents/skills/release-manager/scrip
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.1.0"
+version: "1.1.1"
 author: "flurdy"
 ---
 
@@ -97,6 +97,10 @@ Require explicit context, namespace, kind/name, reason, and verified project evi
 workload requires a restart and the intended configuration revision is applied. Mount presence,
 a Secret/ConfigMap change, or young pods alone does not establish that requirement. CronJobs and
 unsupported workload types require their own project runbook, not a Deployment fallback.
+The shared authority's advisory `configUptake` `restart` recommendation identifies the workload,
+desired revision and the consumed revision it was based on; treat it as the reason to look, then
+re-collect fresh evidence here. `investigate`, `unknown`, `pending` or `rolling` entries never
+support a restart.
 
 For a verified Deployment, show and freshly confirm this fully scoped command:
 

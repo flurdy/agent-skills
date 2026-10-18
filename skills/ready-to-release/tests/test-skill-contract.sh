@@ -15,4 +15,14 @@ done
 grep -Fq 'false' "$SKILL_DIR/references/evidence-contract.md" || fail 'toggle policy undocumented'
 grep -Fq 'non-deploying' "$SKILL_DIR/references/evidence-contract.md" || fail 'non-deploying boundary undocumented'
 grep -Fq 'never prompt' "$SKILL_DIR/SKILL.md" || fail 'deep gate must remain passive'
+contract="$SKILL_DIR/references/evidence-contract.md"
+for required in 'config_uptake' 'release-config-uptake' 'adds no gate, never' 'never an action' 'resourceVersion movement' 'legacy digest'; do
+    grep -Fq "$required" "$contract" || fail "config uptake undocumented: $required"
+done
+for consumer in ready-to-release release-status release-manager release-maintenance; do
+    grep -Fq 'configUptake' "$SKILL_DIR/../$consumer/SKILL.md" || fail "$consumer must treat configUptake as advisory"
+done
+for consumer in ready-to-release release-status release-manager; do
+    grep -Eq 'restart[^.]*(handoff|not an action|never dispatched)' "$SKILL_DIR/../$consumer/SKILL.md" || fail "$consumer must not act on restart recommendations"
+done
 printf '%s\n' 'release readiness authority contract tests passed'

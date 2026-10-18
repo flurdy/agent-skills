@@ -14,7 +14,14 @@ LIMIT = 1024 * 1024
 NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./-]*")
 HEADER = "service|unpushed|uncommitted|ci|ciBranch|gitBranch|head|deploy|tag|age|ciRevision|ciExpectedRevision"
 SOURCES = ("digest", "order", "contracts", "manifest", "state")
-BUDGETS = {"release-digest": 90, "release-order": 20, "contract-check": 20}
+OPTIONAL_SOURCES = ("uptake",)
+BUDGETS = {"release-digest": 90, "release-order": 20, "contract-check": 20, "release-config-uptake": 20}
+UPTAKE_HEADER = "resource|context|namespace|workload|desired|applied|consumed|rolloutState|template"
+UPTAKE_IDENTITY = ("resource", "context", "namespace", "workload")
+UPTAKE_REVISIONS = ("desired", "applied", "consumed", "template")
+RELOADS = {"startup", "dynamic", "unknown"}
+ROLLOUT_STATES = {"settled", "rolling", "unknown"}
+POLICY = {"ignore": [], "non_deploying": [], "toggles": {}, "parked": {}}
 MAX_BUDGET = 120
 HARD_CONTRACTS = {"STALE", "DIFFERS", "MISSING_PROVIDER", "UNCOMMITTED", "NOT_BUILT", "NOT_SYNCED"}
 SENTINELS = {"", "-", "unknown", "notfound", "not-applicable"}
@@ -79,6 +86,7 @@ def collect(root):
         "contracts": collect_command(root, "contract-check", ["all"]),
         "manifest": read_evidence(root / "docs" / "release-manifest.yaml"),
         "state": read_evidence(root / ".release-state.json"),
+        "uptake": collect_command(root, "release-config-uptake", []),
     }
 
 
@@ -209,9 +217,9 @@ def name_list(value):
     return result
 
 
-def parse_policy(text):
-    """Parse only the documented policy subset, never pretend to parse general YAML."""
-    policy = {"ignore": [], "non_deploying": [], "toggles": {}, "parked": {}}
+def parse_blocks(text, template):
+    """Parse only the documented manifest subset, never pretend to parse general YAML."""
+    policy = {key: list(value) if isinstance(value, list) else {} for key, value in template.items()}
     seen = set()
     section = None
     entry = None
@@ -270,10 +278,118 @@ def parse_policy(text):
             policy[section][entry][key] = scalar(value)
         else:
             raise ValueError("unsupported policy shape")
+    return policy
+
+
+def parse_policy(text):
+    policy = parse_blocks(text, POLICY)
     for entry in policy["toggles"].values():
         if not NAME.fullmatch(entry.get("service", "")) or entry.get("status", "active") not in {"active", "parked", "dark-release"}:
             raise ValueError("toggle service/status policy is invalid")
     return policy
+
+
+def parse_uptake_declarations(text):
+    """Project-owned config-to-workload mappings; problems are advisory diagnostics, never holds."""
+    declarations, diagnostics = {}, []
+    try:
+        entries = parse_blocks(text, {"config_uptake": {}})["config_uptake"]
+    except ValueError as error:
+        return declarations, [f"config_uptake declarations unreadable: {error}"]
+    fields = ("service", *UPTAKE_IDENTITY)
+    for name, entry in entries.items():
+        reload = entry.get("reload", "unknown")
+        if any(not NAME.fullmatch(entry.get(field, "")) for field in fields) or reload not in RELOADS:
+            diagnostics.append(f"config_uptake {name}: requires service, resource, context, namespace, workload names and reload in startup|dynamic|unknown")
+            continue
+        declarations[name] = {**{field: entry[field] for field in fields}, "reload": reload}
+    return declarations, diagnostics
+
+
+def parse_uptake(text):
+    parts = sections(text)
+    if not NAME.fullmatch(metadata(parts.get("---META---", [])).get("provider", "")):
+        raise ValueError("missing config-uptake provider")
+    rows = parts.get("---UPTAKE---", [])
+    if not rows or rows[0] != UPTAKE_HEADER:
+        raise ValueError("missing or malformed uptake header")
+    observations = {}
+    for line in rows[1:]:
+        fields = line.split("|")
+        if len(fields) != len(UPTAKE_HEADER.split("|")):
+            raise ValueError("malformed uptake row")
+        row = dict(zip(UPTAKE_HEADER.split("|"), fields, strict=True))
+        if (any(not NAME.fullmatch(row[field]) for field in UPTAKE_IDENTITY)
+                or any(row[field] != "-" and not NAME.fullmatch(row[field]) for field in UPTAKE_REVISIONS)
+                or row["rolloutState"] not in ROLLOUT_STATES):
+            raise ValueError("malformed uptake row")
+        key = identity(row)
+        observations[key] = None if key in observations else row
+    return observations
+
+
+def identity(entry):
+    return tuple(entry[field] for field in UPTAKE_IDENTITY)
+
+
+def describe(key):
+    resource, context, namespace, workload = key
+    return f"{resource} {context}/{namespace} {workload}"
+
+
+def uptake_entry(name, declaration, observations, status, reason):
+    """Advisory state for one declared mapping; unknown stays unknown and never becomes a restart."""
+    entry = {"id": name, **declaration, "desired": None, "applied": None, "effective": None, "rolloutState": None,
+             "template": None, "state": "unknown", "maintenance": None, "evidence": ""}
+    if status != "ok":
+        entry["evidence"] = f"config-uptake evidence {status}" + (f": {reason}" if reason else "")
+        return entry
+    key = identity(declaration)
+    if key not in observations:
+        same = [describe(other) for other in observations if other[0] == declaration["resource"]]
+        entry["evidence"] = "workload identity mismatch: observed " + ", ".join(same) if same else "no observation for this resource and workload"
+        return entry
+    row = observations[key]
+    if row is None:
+        entry["evidence"] = "conflicting observations for this resource and workload"
+        return entry
+    revisions = {field: None if row[field] == "-" else row[field] for field in UPTAKE_REVISIONS}
+    entry.update(desired=revisions["desired"], applied=revisions["applied"], effective=revisions["consumed"],
+                 rolloutState=row["rolloutState"], template=revisions["template"])
+    desired, applied, consumed, template = (revisions[field] for field in UPTAKE_REVISIONS)
+    if desired is None or applied is None:
+        entry["evidence"] = "desired or applied revision not reported"
+        return entry
+    if applied != desired:
+        entry.update(state="pending", evidence=f"controller applied {applied}; desired {desired}")
+        return entry
+    if consumed == desired:
+        entry.update(state="effective", evidence=f"workload consumes {desired}")
+        return entry
+    if row["rolloutState"] == "rolling" and template == desired:
+        entry.update(state="rolling", evidence=f"rollout in progress delivers {desired}")
+        return entry
+    entry["state"] = "applied"
+    workload = f"{declaration['workload']} in {declaration['context']}/{declaration['namespace']}"
+    if consumed is None:
+        reason = f"{desired} applied; consumed revision unknown"
+    elif row["rolloutState"] == "rolling":
+        reason = f"unrelated rollout in progress does not deliver {desired}; workload consumes {consumed}"
+    elif row["rolloutState"] != "settled":
+        reason = f"rollout state unknown; workload consumes {consumed}, not {desired}"
+    elif template != desired:
+        reason = f"pod template delivers {template or 'an unknown revision'}, not {desired}; a restart would not apply it"
+    elif declaration["reload"] == "startup":
+        reason = f"startup-only reload; workload consumes {consumed} while {desired} is applied and delivered by the pod template"
+        entry.update(evidence=reason, maintenance={"action": "restart", "workload": workload, "reason": reason,
+                                                     "command": f"/release-maintenance restart {declaration['service']}"})
+        return entry
+    elif declaration["reload"] == "dynamic":
+        reason = f"dynamic reload declared but workload still consumes {consumed}, not {desired}"
+    else:
+        reason = f"reload semantics unknown; workload consumes {consumed}, not {desired}"
+    entry.update(evidence=reason, maintenance={"action": "investigate", "workload": workload, "reason": reason})
+    return entry
 
 
 def parse_contracts(text):
@@ -386,9 +502,11 @@ def verdict(gates):
 
 
 def validate_snapshot(data):
-    if not isinstance(data, dict) or set(data) != {"schemaVersion", *SOURCES} or type(data["schemaVersion"]) is not int or data["schemaVersion"] != 1:
+    required = {"schemaVersion", *SOURCES}
+    if (not isinstance(data, dict) or not required <= set(data) or set(data) - required - set(OPTIONAL_SOURCES)
+            or type(data["schemaVersion"]) is not int or data["schemaVersion"] != 1):
         raise ValueError("unsupported snapshot schema")
-    for name in SOURCES:
+    for name in (*SOURCES, *(name for name in OPTIONAL_SOURCES if name in data)):
         item = data[name]
         if not isinstance(item, dict) or set(item) - {"status", "text", "reason"} or item.get("status") not in {"ok", "absent", "unavailable"}:
             raise ValueError("invalid evidence envelope")
@@ -408,6 +526,7 @@ def evaluate(data, selected=None, exclude_publication=None):
         return result
     result["context"] = meta.get("context", "unknown")
     errors = {}
+    declarations, uptake_diagnostics = parse_uptake_declarations(data["manifest"]["text"]) if data["manifest"]["status"] == "ok" else ({}, [])
     try:
         policy = parse_policy("") if data["manifest"]["status"] == "absent" else parse_policy(source_text(data["manifest"]))
         if any(entry["service"] not in services and entry.get("status", "active") == "active" and flag not in policy["parked"] for flag, entry in policy["toggles"].items()):
@@ -460,6 +579,20 @@ def evaluate(data, selected=None, exclude_publication=None):
         errors["state"] = "saved rollout state unreadable; evidence required"
         publication_error = "publication state unreadable; resolve before publishing"
     result["errors"].extend(f"{source}: {reason}" for source, reason in errors.items())
+    # Config uptake is advisory: its evidence and diagnostics never enter gates or collection errors.
+    uptake_source = data.get("uptake", {"status": "not-captured"})
+    uptake_status, uptake_reason, observations = uptake_source["status"], uptake_source.get("reason"), {}
+    if uptake_status == "ok":
+        try:
+            observations = parse_uptake(uptake_source["text"])
+        except ValueError as error:
+            uptake_status, uptake_reason = "malformed", str(error)
+    for name in [name for name, declaration in declarations.items() if declaration["service"] not in services]:
+        uptake_diagnostics.append(f"config_uptake {name}: service {declarations.pop(name)['service']} is not in the digest")
+    declared = {identity(declaration) for declaration in declarations.values()}
+    result["uptake"] = {"status": uptake_status, "unmapped": [describe(key) for key in observations if key not in declared], "diagnostics": uptake_diagnostics}
+    if uptake_reason:
+        result["uptake"]["reason"] = uptake_reason
     if selected and selected not in services:
         result["errors"].append("requested service absent from full digest")
         return result
@@ -533,7 +666,14 @@ def evaluate(data, selected=None, exclude_publication=None):
             gates["policy"] = gate("hold", errors["policy"])
         if "state" in errors and not non_deploying:
             gates["state"] = gate("hold", errors["state"])
-        result["services"].append({**row, "ci": ci, "nonDeploying": non_deploying, "prerequisites": graph.get(name, []), "rollout": progress, "gates": gates, "notes": notes, "verdict": verdict(gates)})
+        uptake = [uptake_entry(entry_name, declaration, observations, uptake_status, uptake_reason)
+                  for entry_name, declaration in declarations.items() if declaration["service"] == name]
+        for entry in uptake:
+            if entry["maintenance"] and entry["maintenance"]["action"] == "restart":
+                notes.append(f"config {entry['id']}: restart {entry['maintenance']['workload']} required — {entry['maintenance']['command']}")
+            elif entry["state"] != "effective":
+                notes.append(f"config {entry['id']}: {entry['state']} — {entry['evidence']}")
+        result["services"].append({**row, "ci": ci, "nonDeploying": non_deploying, "prerequisites": graph.get(name, []), "rollout": progress, "gates": gates, "notes": notes, "configUptake": uptake, "verdict": verdict(gates)})
     rows = result["services"]
     if selected and not rows:
         result["errors"].append("requested service is excluded by readiness policy")

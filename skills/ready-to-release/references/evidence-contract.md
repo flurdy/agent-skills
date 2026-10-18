@@ -14,12 +14,13 @@ The helper invokes only these project adapters, with the full project in scope:
 | `./scripts/release-digest` | `---META---`, exact `---SERVICES---` header below, optional `---TOGGLES---` |
 | `./scripts/release-order` | `---SOURCE---`, effective `---GRAPH---`, `---DRIFT---` |
 | `./scripts/contract-check all` | Staleness, uncommitted, sync coverage, verification coverage, relationship matrix |
+| `./scripts/release-config-uptake` | Optional; `---META---` provider and `---UPTAKE---` rows, see [Config uptake](#config-uptake-advisory) |
 
 It also reads optional `docs/release-manifest.yaml` and `.release-state.json`. It never creates,
 rewrites, or repairs either, never passes `--write`, and never runs provider commands itself.
 Adapters are trusted project read-only commands; this helper is not a sandbox for arbitrary scripts.
 `release-digest` has a 90-second budget and the other commands 20 seconds each, so one collection
-may take up to 130 seconds; `RELEASE_GATES_TIMEOUT` overrides every budget (bounded 1–120). An
+may take up to 150 seconds; `RELEASE_GATES_TIMEOUT` overrides every budget (bounded 1–120). An
 expired budget kills the adapter's process group and reports `<command> timeout after <N>s budget`
 in top-level `errors`, which consumers render as a prominent incomplete-check heading, never as a
 verdict. Each command also has a 1 MiB accepted output limit. Diagnostics do not echo raw command
@@ -122,11 +123,76 @@ same way, including non-deploying ones. Only the release-state helper settles a 
 `--exclude-publication <id>` evaluates as if that single attempt's record were absent; the
 manager uses it only to recheck readiness for its own in-progress attempt.
 
+## Config uptake (advisory)
+
+Config uptake answers **which configuration revision is desired, which the controller applied,
+and which the running workload actually consumes**. It is advisory: it adds no gate, never
+changes a verdict, and its diagnostics stay out of `errors`. Unsupported projects see
+`uptake.status` `absent` or `not-captured` and `configUptake: []`. Nothing is inferred from
+mounts, source greps, flag names, resourceVersion movement, pod age or the legacy digest
+`---CONFIG---` section, and legacy `configApply`/`restartPending`/`restartWatch` state is not read.
+
+Projects opt in with explicit declarations in `docs/release-manifest.yaml`, parsed separately
+from readiness policy so a bad declaration is an `uptake.diagnostics` entry, not a hold:
+
+```yaml
+config_uptake:
+  web-config:
+    service: web
+    resource: configmap/web-config
+    context: prod
+    namespace: apps
+    workload: deployment/web
+    reload: startup   # startup | dynamic | unknown (default)
+```
+
+and the optional read-only adapter `./scripts/release-config-uptake` (20-second budget):
+
+```text
+---META---
+provider=kubernetes
+---UPTAKE---
+resource|context|namespace|workload|desired|applied|consumed|rolloutState|template
+configmap/web-config|prod|apps|deployment/web|c2|c2|c1|settled|c2
+```
+
+| Field | Meaning |
+|---|---|
+| `desired` | Intended configuration revision from the project's source of truth |
+| `applied` | Revision the controller observably applied to that resource (for example the Flux Kustomization's last applied revision whose inventory contains it); a Git push or a changed resourceVersion is not applied |
+| `consumed` | Revision the workload's current serving pods are verified to consume (application-effective); a pod-template annotation alone is intent, not consumption |
+| `rolloutState` | `settled`, `rolling` or `unknown` for that workload |
+| `template` | Revision newly started pods would receive from the current pod template |
+
+Every field is a name/revision token or `-` (unknown); values, secrets and free text are rejected
+and the whole source is reported `malformed` without echoing it. Use one immutable, resource-bound
+revision scheme across the four revision fields: the evaluator compares tokens and cannot detect
+reused labels. Observations match declarations on the full resource/context/namespace/workload
+identity; duplicate observations conflict, and observations without a declaration are listed in
+`uptake.unmapped`.
+
+Each declared mapping yields one `configUptake` entry with `state` and optional `maintenance`:
+
+| State | Condition | Maintenance |
+|---|---|---|
+| `unknown` | Evidence not captured, absent, unavailable or malformed; no or conflicting observation; identity mismatch; `desired` or `applied` unknown | none |
+| `pending` | `applied` differs from `desired` | none; the controller has not applied it |
+| `effective` | `consumed` equals `desired` | none |
+| `rolling` | Applied, and a rollout in progress whose template delivers `desired` | none; wait |
+| `applied` | Applied but not verified consumed | `restart` only with `reload: startup`, a settled workload, a known different `consumed` and a template that delivers `desired`; otherwise `investigate` |
+
+`restart` names the workload and the handoff `/release-maintenance restart <service>`; it is a
+suggestion for a separately requested, freshly confirmed operation, never an action. Declared
+`dynamic` reload is capability, not proof: without verified consumption it is `investigate`.
+An unrelated rollout never satisfies uptake and never earns a restart while it is in flight.
+Entries other than `effective` also appear as `config <id>: …` notes so every consumer shows them.
+
 ## JSON output and fixtures
 
-Output schema version 1 includes `observedAt`, `context`, `services`, `drift`, `errors`, and an
+Output schema version 1 includes `observedAt`, `context`, `services`, `drift`, `errors`, an
+advisory `uptake` summary (`status`, `unmapped`, `diagnostics`, optional `reason`), and an
 aggregate `verdict`. Each service preserves normalized digest fields plus `nonDeploying`,
-`prerequisites`, `rollout`, `gates`, `notes`, and `verdict`. Each gate has `result` and an `evidence`
+`prerequisites`, `rollout`, `gates`, `notes`, `configUptake`, and `verdict`. Each gate has `result` and an `evidence`
 array. Use **per-service** verdicts for push candidates: an idle service's `NOT READY` does not
 block an unrelated ready service. The aggregate is a summary, not a batch push authorization.
 
@@ -148,8 +214,9 @@ evidence envelope (never hand-transcribe it to authorize a push) is:
 }
 ```
 
-Source status is `ok`, `absent`, or `unavailable`; ok requires bounded text. Unknown schema keys
-or versions are invalid. Collector absence/failure is visible in `errors` even when an optional gate legitimately resolves
+Source status is `ok`, `absent`, or `unavailable`; ok requires bounded text. An optional sixth key
+`uptake` carries the config-uptake adapter envelope; omitting it means not captured. Other unknown
+schema keys or versions are invalid. Collector absence/failure is visible in `errors` even when an optional gate legitimately resolves
 to N/A; those diagnostics do not override the returned per-service verdict. Unmanaged ordering
 appears in `drift`, and an explicitly selected ignored service has an explanatory error.
 Snapshots are test/debug data, not a persisted release authorization;

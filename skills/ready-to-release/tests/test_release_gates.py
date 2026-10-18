@@ -51,6 +51,20 @@ def snapshot(*, dirty=False, unpushed=1, ci="success", deploy="1/1", manifest=""
     }
 
 
+UPTAKE_HEADER = "resource|context|namespace|workload|desired|applied|consumed|rolloutState|template"
+DECLARATION = ("config_uptake:\n  web-config:\n    service: web\n    resource: configmap/web-config\n"
+               "    context: prod\n    namespace: apps\n    workload: deployment/web\n    reload: startup\n")
+
+
+def uptake(*rows):
+    return evidence("---META---\nprovider=kubernetes\n---UPTAKE---\n" + UPTAKE_HEADER + "\n" + "".join(row + "\n" for row in rows))
+
+
+def observation(*, resource="configmap/web-config", context="prod", namespace="apps", workload="deployment/web",
+                desired="c2", applied="c2", consumed="c1", state="settled", template="c2"):
+    return f"{resource}|{context}|{namespace}|{workload}|{desired}|{applied}|{consumed}|{state}|{template}"
+
+
 def add_api(data, *, unpushed=0, dirty=False, deploy="1/1", tag="v2"):
     text = data["digest"]["text"]
     data["digest"]["text"] = text.replace("---TOGGLES---", f"api|{unpushed}|{str(dirty).lower()}|success|main|main|def5678|{deploy}|{tag}|1h|upstream|upstream\n---TOGGLES---")
@@ -58,7 +72,7 @@ def add_api(data, *, unpushed=0, dirty=False, deploy="1/1", tag="v2"):
     return data
 
 
-class ReleaseGatesTests(unittest.TestCase):
+class AuthorityTestCase(unittest.TestCase):
     def run_snapshot(self, data, service=None):
         self.assertTrue(AUTHORITY.is_file(), "one executable release-gates authority must exist")
         with tempfile.TemporaryDirectory() as directory:
@@ -75,6 +89,8 @@ class ReleaseGatesTests(unittest.TestCase):
         result = self.run_snapshot(data)
         return next(row for row in result["services"] if row["service"] == "web")
 
+
+class ReleaseGatesTests(AuthorityTestCase):
     def test_false_flag_is_activation_followup_not_shipping_block(self):
         data = snapshot(manifest="toggles:\n  FLAG:\n    service: web\n    flip_when: after validation\n")
         row = self.web(data)
@@ -347,7 +363,7 @@ class ReleaseGatesTests(unittest.TestCase):
             root = Path(directory)
             scripts = root / "scripts"
             scripts.mkdir()
-            for name, output, allowed_args in [("release-digest", snapshot()["digest"]["text"], ""), ("release-order", ORDER, ""), ("contract-check", CONTRACTS, "all")]:
+            for name, output, allowed_args in [("release-digest", snapshot()["digest"]["text"], ""), ("release-order", ORDER, ""), ("contract-check", CONTRACTS, "all"), ("release-config-uptake", uptake(observation())["text"], "")]:
                 path = scripts / name
                 path.write_text(f"#!/bin/sh\n[ \"$*\" = '{allowed_args}' ] || exit 9\nprintf '%s' '{output}'\n")
                 path.chmod(0o755)
@@ -356,6 +372,8 @@ class ReleaseGatesTests(unittest.TestCase):
             result = subprocess.run([str(AUTHORITY), "--project-root", str(root)], capture_output=True, text=True, check=False)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)["services"][0]["verdict"], "READY")
+            self.assertEqual(json.loads(result.stdout)["uptake"]["status"], "ok")
+            self.assertEqual(json.loads(result.stdout)["uptake"]["unmapped"], ["configmap/web-config prod/apps deployment/web"])
             self.assertEqual(state.read_text(), '{"configApply":{"keep":"untouched"}}')
             self.assertEqual(sorted(path.name for path in root.iterdir()), [".release-state.json", "scripts"])
 
@@ -380,9 +398,183 @@ class ReleaseGatesTests(unittest.TestCase):
             self.assertEqual(release_gates.budget_seconds("release-digest"), 90)
             self.assertEqual(release_gates.budget_seconds("release-order"), 20)
             self.assertEqual(release_gates.budget_seconds("contract-check"), 20)
+            self.assertEqual(release_gates.budget_seconds("release-config-uptake"), 20)
         for value, expected in [("5", 5), ("500", 120), ("0", 1), ("nope", 90)]:
             with self.subTest(value=value), mock.patch.dict(os.environ, {"RELEASE_GATES_TIMEOUT": value}):
                 self.assertEqual(release_gates.budget_seconds("release-digest"), expected)
+
+
+class ConfigUptakeTests(AuthorityTestCase):
+    """Advisory config uptake: desired, controller-applied and application-effective stay distinct; no gate changes."""
+
+    def entry(self, data):
+        row = self.web(data)
+        self.assertEqual(len(row["configUptake"]), 1)
+        return row, row["configUptake"][0]
+
+    def assert_readiness_unchanged(self, data, baseline=None):
+        baseline = baseline or snapshot()
+        result, expected = self.run_snapshot(data), self.run_snapshot(baseline)
+        self.assertEqual(result["services"][0]["gates"], expected["services"][0]["gates"])
+        self.assertEqual(result["services"][0]["verdict"], expected["services"][0]["verdict"])
+        self.assertEqual(result["errors"], expected["errors"])
+        return result
+
+    def test_absent_capability_is_unknown_and_keeps_readiness(self):
+        for source, status in [(None, "not-captured"), ({"status": "absent", "reason": "release-config-uptake adapter missing"}, "absent"),
+                               ({"status": "unavailable", "reason": "release-config-uptake timeout after 20s budget"}, "unavailable")]:
+            with self.subTest(status=status):
+                data = snapshot(manifest=DECLARATION)
+                if source:
+                    data["uptake"] = source
+                result = self.assert_readiness_unchanged(data)
+                self.assertEqual(result["uptake"]["status"], status)
+                row = result["services"][0]
+                entry = row["configUptake"][0]
+                self.assertEqual((entry["state"], entry["maintenance"], entry["effective"], entry["desired"]), ("unknown", None, None, None))
+                self.assertEqual(entry["reload"], "startup")
+                self.assertTrue(any(note.startswith("config web-config: unknown") for note in row["notes"]), row["notes"])
+        plain = self.run_snapshot(snapshot())
+        self.assertEqual(plain["services"][0]["configUptake"], [])
+        self.assertEqual(plain["uptake"], {"status": "not-captured", "unmapped": [], "diagnostics": []})
+        self.assertFalse(any(note.startswith("config ") for note in plain["services"][0]["notes"]))
+
+    def test_mismatched_identity_and_unmapped_observations_stay_unknown(self):
+        data = snapshot(manifest=DECLARATION)
+        data["uptake"] = uptake(observation(workload="deployment/other"), observation(resource="configmap/orphan", consumed="c2"))
+        result = self.assert_readiness_unchanged(data)
+        entry = result["services"][0]["configUptake"][0]
+        self.assertEqual((entry["state"], entry["maintenance"]), ("unknown", None))
+        self.assertIn("identity", entry["evidence"])
+        self.assertIn("deployment/other", entry["evidence"])
+        self.assertEqual(result["uptake"]["unmapped"], ["configmap/web-config prod/apps deployment/other", "configmap/orphan prod/apps deployment/web"])
+        data["uptake"] = uptake(observation(), observation(consumed="c2"))
+        _, entry = self.entry(data)
+        self.assertEqual((entry["state"], entry["maintenance"]), ("unknown", None))
+        self.assertIn("conflicting", entry["evidence"])
+
+    def test_missing_or_lagging_revisions_never_recommend_restart(self):
+        for kwargs, state in [(dict(applied="c1"), "pending"), (dict(desired="-"), "unknown"), (dict(applied="-"), "unknown")]:
+            with self.subTest(**kwargs):
+                data = snapshot(manifest=DECLARATION)
+                data["uptake"] = uptake(observation(**kwargs))
+                row, entry = self.entry(data)
+                self.assertEqual((entry["state"], entry["maintenance"]), (state, None))
+                self.assertEqual(entry["effective"], "c1")
+                self.assertEqual(row["verdict"], "READY")
+        data = snapshot(manifest=DECLARATION)
+        data["uptake"] = uptake(observation(applied="c1"))
+        _, entry = self.entry(data)
+        self.assertEqual((entry["desired"], entry["applied"]), ("c2", "c1"))
+        self.assertIn("controller applied c1", entry["evidence"])
+
+    def test_restart_requires_startup_reload_applied_config_and_a_delivering_template(self):
+        for reload, action in [("startup", "restart"), ("dynamic", "investigate"), ("unknown", "investigate")]:
+            with self.subTest(reload=reload):
+                data = snapshot(manifest=DECLARATION.replace("reload: startup", f"reload: {reload}"))
+                data["uptake"] = uptake(observation())
+                row, entry = self.assert_readiness_unchanged(data)["services"][0], None
+                entry = row["configUptake"][0]
+                self.assertEqual((entry["state"], entry["effective"], entry["maintenance"]["action"]), ("applied", "c1", action))
+                self.assertEqual(entry["maintenance"]["workload"], "deployment/web in prod/apps")
+                if action == "restart":
+                    self.assertEqual(entry["maintenance"]["command"], "/release-maintenance restart web")
+                    self.assertIn("config web-config: restart deployment/web in prod/apps required — /release-maintenance restart web", row["notes"])
+                else:
+                    self.assertNotIn("command", entry["maintenance"])
+                    self.assertFalse(any("restart" in note and "required" in note for note in row["notes"]))
+        data = snapshot(manifest=DECLARATION.replace("    reload: startup\n", ""))
+        data["uptake"] = uptake(observation())
+        _, entry = self.entry(data)
+        self.assertEqual((entry["reload"], entry["maintenance"]["action"]), ("unknown", "investigate"))
+        for reload in ("startup", "dynamic", "unknown"):
+            with self.subTest(effective=reload):
+                data = snapshot(manifest=DECLARATION.replace("reload: startup", f"reload: {reload}"))
+                data["uptake"] = uptake(observation(consumed="c2", state="rolling", template="c1"))
+                row, entry = self.entry(data)
+                self.assertEqual((entry["state"], entry["effective"], entry["maintenance"]), ("effective", "c2", None))
+                self.assertFalse(any(note.startswith("config ") for note in row["notes"]))
+
+    def test_matching_rollout_defers_and_unrelated_rollout_does_not_satisfy_uptake(self):
+        cases = [
+            (dict(state="rolling", template="c2"), "rolling", None),
+            (dict(state="rolling", template="c1"), "applied", "investigate"),
+            (dict(state="rolling", template="-"), "applied", "investigate"),
+            (dict(state="unknown", template="c2"), "applied", "investigate"),
+            (dict(state="settled", template="c1"), "applied", "investigate"),
+            (dict(state="settled", template="-"), "applied", "investigate"),
+            (dict(state="settled", consumed="-"), "applied", "investigate"),
+            (dict(state="settled", consumed="c1", template="c2"), "applied", "restart"),
+        ]
+        for kwargs, state, action in cases:
+            with self.subTest(**kwargs):
+                data = snapshot(manifest=DECLARATION)
+                data["uptake"] = uptake(observation(**kwargs))
+                row, entry = self.entry(data)
+                self.assertEqual(entry["state"], state)
+                self.assertEqual(entry["maintenance"] and entry["maintenance"]["action"], action)
+                self.assertEqual(entry["rolloutState"], kwargs["state"])
+                self.assertEqual(row["verdict"], "READY")
+                if state == "rolling":
+                    self.assertIn("config web-config: rolling — rollout in progress delivers c2", row["notes"])
+
+    def test_uptake_evidence_never_changes_gates_errors_or_legacy_handling(self):
+        malformed = [
+            "garbage",
+            "---META---\nprovider=kubernetes\n---UPTAKE---\nwrong|header\n",
+            "---META---\n---UPTAKE---\n" + UPTAKE_HEADER + "\n",
+            uptake(observation(consumed="password=hunter2"))["text"],
+            uptake(observation(template="has space"))["text"],
+            uptake(observation(state="maybe"))["text"],
+            uptake(observation(workload="-"))["text"],
+            uptake("too|few")["text"],
+        ]
+        for text in malformed:
+            with self.subTest(text=text[:40]):
+                data = snapshot(manifest=DECLARATION)
+                data["uptake"] = evidence(text)
+                result = self.assert_readiness_unchanged(data)
+                self.assertEqual(result["uptake"]["status"], "malformed")
+                self.assertTrue(result["uptake"]["reason"])
+                self.assertNotIn("hunter2", json.dumps(result))
+                self.assertNotIn("has space", json.dumps(result))
+                self.assertEqual(result["services"][0]["configUptake"][0]["state"], "unknown")
+        data = snapshot(manifest=DECLARATION)
+        data["digest"]["text"] = data["digest"]["text"].replace("---TOGGLES---", "---CONFIG---\nweb-config|configmap|12345|true|web|web\n---TOGGLES---")
+        data["state"] = evidence(json.dumps({"configApply": {"web-config": "12345"}, "restartPending": ["web"], "restartWatch": {}}))
+        result = self.assert_readiness_unchanged(data)
+        self.assertEqual(result["uptake"]["status"], "not-captured")
+        self.assertEqual((result["services"][0]["configUptake"][0]["state"], result["services"][0]["configUptake"][0]["maintenance"]), ("unknown", None))
+        data = snapshot(dirty=True, manifest=DECLARATION)
+        data["uptake"] = uptake(observation())
+        row = self.assert_readiness_unchanged(data, snapshot(dirty=True))["services"][0]
+        self.assertEqual((row["verdict"], row["configUptake"][0]["maintenance"]["action"]), ("HOLD", "restart"))
+        data = snapshot()
+        data["uptake"] = {"status": "ok"}
+        self.assertEqual(self.run_snapshot(data)["services"], [])
+
+    def test_declaration_problems_are_diagnostics_not_policy_holds(self):
+        for manifest in [DECLARATION.replace("reload: startup", "reload: sometimes"), DECLARATION.replace("service: web", "service: nope"),
+                         DECLARATION.replace("    workload: deployment/web\n", ""), "config_uptake: [web]\n", "config_uptake:\n  web-config: nested\n",
+                         "toggles:\n  FLAG:\n    service: web\n    config_uptake: nested\n" + DECLARATION]:
+            with self.subTest(manifest=manifest):
+                data = snapshot(manifest=manifest)
+                data["uptake"] = uptake(observation())
+                result = self.run_snapshot(data)
+                row = result["services"][0]
+                self.assertNotIn("policy", row["gates"])
+                self.assertEqual(row["verdict"], "READY")
+                self.assertEqual(row["configUptake"], [])
+                self.assertTrue(result["uptake"]["diagnostics"])
+                self.assertEqual(result["errors"], self.run_snapshot(snapshot())["errors"])
+        data = snapshot(manifest="toggles:\n  FLAG:\n    service: web\n" + DECLARATION)
+        data["uptake"] = uptake(observation(consumed="c2"))
+        row, entry = self.entry(data)
+        self.assertEqual((row["gates"]["toggle"]["result"], entry["state"]), ("pass", "effective"))
+        data = add_api(snapshot(manifest=DECLARATION))
+        data["uptake"] = uptake(observation())
+        self.assertEqual(self.run_snapshot(data, "api")["services"][0]["configUptake"], [])
+        self.assertEqual(self.run_snapshot(data, "web")["services"][0]["configUptake"][0]["state"], "applied")
 
 
 if __name__ == "__main__":
