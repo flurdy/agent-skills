@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: economy
 model: sonnet
 effort: high
-version: "0.6.7"
+version: "0.6.8"
 author: "flurdy"
 ---
 
@@ -82,8 +82,15 @@ immediately preceded by `://` as URL userinfo (`git+ssh://git@host/…`). Comple
 unscoped npm `package@version` tokens enclosed in single backticks are excluded only when
 the token is at most 512 bytes, its version is strict SemVer, and the email-like domain's
 last label starts with a digit. Alphabetic-ending prerelease domains remain reportable,
-even in scoped specs; bare specs, ranges, malformed tokens, and adjacent email matches
-receive no exemption. In unpublished history only, the detector also recognizes strictly
+even in scoped specs. The same strict version and 512-byte token limits apply to scoped or
+unscoped npm specifiers in URL paths: the complete specifier must follow `/` and end at `/`,
+end-of-input, whitespace, a quote/backtick, or a surrounding bracket delimiter. Recognition is
+lexical, not URL fetching or full URL parsing; a bounded 512-byte preceding token context rejects
+query/fragment content and malformed scopes, and unbounded prefixes remain reportable. Bare specs,
+ranges, malformed tokens, and adjacent email matches receive no new exemption. Only the validated
+npm match is skipped; line reporting, audit deadlines, canaries, and secret scanning remain active.
+This built-in exemption adds no clone-local override or `target.policy` allowance.
+In unpublished history only, the detector also recognizes strictly
 versioned `uses:` references on added lines in top-level `.github/workflows/*.yml` or
 `.yaml` files. This is bounded lexical recognition, not full YAML parsing: the entire
 owner/repository/path plus SemVer token must fit the 512-byte limit, excluding matching quotes,

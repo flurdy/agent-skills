@@ -1802,6 +1802,123 @@ class ArtifactHygieneCliTests(unittest.TestCase):
                 self.assertEqual(coverage.status, "complete")
                 self.assertNotIn(data.decode(), json.dumps(findings))
 
+    def test_email_detector_skips_only_bounded_npm_url_paths(self) -> None:
+        helper = load_helper_module()
+        cases = [
+            (b"https://cdn.jsdelivr.net/npm/@scope/pkg@1.2.3/dist/x.js", 0),
+            (b"https://cdn.jsdelivr.net/npm/pkg@1.2.3/dist/x.js", 0),
+            (b"/npm/@scope/pkg@1.2.3/dist/x.js", 0),
+            (b"/npm/pkg@1.2.3/dist/x.js", 0),
+            (b"/npm/pkg@1.2.3", 0),
+            (b"'/npm/pkg@1.2.3'", 0),
+            (b'"/npm/@scope/pkg@1.2.3"', 0),
+            (b"[package](/npm/@scope/pkg@1.2.3)", 0),
+            (b"`/npm/@scope/pkg@1.2.3`", 0),
+            (b"/npm/@scope/pkg@1.2.3-rc.1+build.05/x.js", 0),
+            (b"/npm/pkg@1.2.3-alpha/x.js", 0),
+            (b"/npm/pkg@1.2.3-alpha.tld/x.js", 1),
+            (b"/npm/@scope/pkg@1.2.3-alpha.tld/x.js", 1),
+            (b"/npm/pkg@01.2.3/x", 1),
+            (b"/npm/pkg@1.2.3-rc.01/x", 1),
+            (b"/npm/pkg@1.2.3.4/x", 1),
+            (b"/npm/pkg@1.2.3+build..5/x", 1),
+            (b"/npm/pkg@1.2.3_/x", 1),
+            (b"/npm/pkg@1.2.3x/x", 1),
+            (b"/npm/pkg@1.2.3./x", 1),
+            (b"/npm/pkg@1.2.3+/x", 1),
+            (b"/npm/pkg@1.2.3-/x", 1),
+            (b"/npm/pkg@v1.2.3/x", 1),
+            (b"/npm/@Scope!/pkg@1.2.3/x", 1),
+            (b"/npm/@/pkg@1.2.3/x", 1),
+            (b"/npm/@s/x/pkg@1.2.3/x", 1),
+            (b"a@b/pkg@1.2.3/x", 1),
+            (b"pkg@1.2.3/x", 1),
+            (b"@scope/pkg@1.2.3/x", 1),
+            (b"/npm/@scope/pkg@1.2.3@acme.dev", 1),
+            (b"https://cdn.invalid/?next=/@scope/pkg@1.2.3", 1),
+            (b"https://cdn.invalid/#/@scope/pkg@1.2.3", 1),
+            (b"/search?q=/pkg@1.2.3", 1),
+            (b"/search#/pkg@1.2.3", 1),
+            (b"/npm/pkg@1.2.3 bob@acme.dev", 1),
+            (b"/npm/@scope/pkg@1.2.3/bob@acme.dev", 1),
+            (b"bob@acme.dev/npm/pkg@1.2.3", 2),
+            (b"bob@acme.dev /npm/@scope/pkg@1.2.3 jane@acme.dev", 2),
+            (b"/n@1.2.3+" + b"x" * 504 + b"/x", 0),
+            (b"/n@1.2.3+" + b"x" * 505 + b"/x", 1),
+            (b"/@s/n@1.2.3+" + b"x" * 501 + b"/x", 0),
+            (b"/@s/n@1.2.3+" + b"x" * 502 + b"/x", 1),
+            (b"/" + b"p" * 513 + b"/pkg@1.2.3/x", 1),
+        ]
+        for data, expected_count in cases:
+            with self.subTest(data=data):
+                coverage = helper.Coverage("branch-history")
+                findings = helper.detect_non_secret(
+                    data, source="branch-history", path="public/auth.js",
+                    deadline=helper.monotonic() + 5, coverage=coverage,
+                )
+                emails = [item for item in findings if item["detector"] == "pii.email"]
+                self.assertEqual(len(emails), expected_count)
+                self.assertEqual(coverage.status, "complete")
+                self.assertNotIn(data.decode(), json.dumps(findings))
+
+    def test_npm_url_skips_preserve_email_lines_and_deadline(self) -> None:
+        helper = load_helper_module()
+        detector = next(item for item in helper.DEFAULT_DETECTORS if item.detector == "pii.email")
+        data = b"/npm/a@1.2.3\nbob@acme.dev\n/npm/@s/b@2.3.4\njane@acme.dev\n"
+        coverage = helper.Coverage("branch-history")
+        findings = helper.detect_non_secret(
+            data, source="branch-history", path="public/auth.js",
+            deadline=helper.monotonic() + 5, coverage=coverage, detectors=(detector,),
+        )
+        self.assertEqual([item["location"]["line"] for item in findings], [2, 4])
+        coverage = helper.Coverage("branch-history")
+        with mock.patch.object(helper, "monotonic", side_effect=range(100)):
+            findings = helper.detect_non_secret(
+                b"/npm/@s/b@2.3.4\n" * 100, source="branch-history", path="public/auth.js",
+                deadline=10, coverage=coverage, detectors=(detector,),
+            )
+        self.assertEqual(findings, [])
+        self.assertEqual(coverage.status, "partial")
+        self.assertIn("deadline-exceeded", coverage.limits)
+
+    def test_npm_url_history_keeps_adjacent_email_and_secret_scanning(self) -> None:
+        self.repository.write("README.md", "# Synthetic\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        path = "public/auth.js"
+        url = "https://cdn.jsdelivr.net/npm/@synthetic/widget@6.32.1/dist/widget.js"
+        script = 'const source = "' + url + '";\n'
+        self.repository.write(path, script)
+        self.repository.commit_all("feat: load browser library")
+        before = self.repository.state()
+        clean = self.run_audit()
+        report = json.loads(clean.stdout)
+        self.assertEqual(clean.returncode, 0)
+        self.assertEqual((report["status"], report["verdict"]), ("complete", "clean"))
+        self.assertEqual(report["findings"], [])
+        canary = next(item for item in report["coverage"] if item["source"] == "custom-detectors")
+        self.assertEqual(canary["status"], "complete")
+        self.assertEqual(self.repository.state(), before)
+
+        email = "nobody" + "@reserved.zzsynthetic"
+        self.repository.write(path, script.rstrip() + " // " + email + " FINDING_MARKER\n")
+        self.repository.commit_all("test: add synthetic scanner controls")
+        before = self.repository.state()
+        blocked = self.run_audit()
+        report = json.loads(blocked.stdout)
+        self.assertEqual(blocked.returncode, 0)
+        self.assertEqual((report["status"], report["verdict"]), ("complete", "block"))
+        emails = [item for item in report["findings"] if item["detector"] == "pii.email"]
+        self.assertEqual(len(emails), 1)
+        self.assertEqual(emails[0]["location"]["line"], 1)
+        self.assertTrue(any(
+            item["category"] == "secret" and item["location"]["source"] == "branch-history"
+            for item in report["findings"]
+        ))
+        for value in (url, email, "FINDING_MARKER"):
+            self.assertNotIn(value, blocked.stdout)
+        self.assertEqual(self.repository.state(), before)
+
     def test_npm_version_skips_preserve_email_lines_and_deadline(self) -> None:
         helper = load_helper_module()
         detector = next(item for item in helper.DEFAULT_DETECTORS if item.detector == "pii.email")

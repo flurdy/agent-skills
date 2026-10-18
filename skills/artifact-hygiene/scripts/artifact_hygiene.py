@@ -77,6 +77,8 @@ PLACEHOLDER_EMAIL_DOMAINS = {
 }
 PLACEHOLDER_EMAIL_SUFFIXES = (b".example", b".invalid", b".localhost", b".test")
 NPM_CODE_TOKEN = re.compile(rb"(?<!`)`([^`\s]{1,512})`(?!`)")
+NPM_PATH_CONTEXT_BOUNDARY = re.compile(rb"[\s\"'`<>()\[\]{}]")
+NPM_PATH_END = re.compile(rb"[/\s\"'`<>()\[\]{}]")
 NPM_NAME = rb"[a-z0-9~-][a-z0-9._~-]*"
 SEMVER_NUMBER = rb"(?:0|[1-9][0-9]*)"
 SEMVER_PRERELEASE = rb"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
@@ -1488,6 +1490,35 @@ def workflow_action_email_spans(
     return tuple(spans)
 
 
+def npm_url_path_spec(data: bytes, match: re.Match[bytes]) -> bool:
+    at = data.rfind(b"@", match.start(), match.end())
+    if match.start() > 0 and data[match.start() - 1:match.start()] == b"@":
+        start = match.start() - 1
+    else:
+        slash = data.rfind(b"/", max(match.start(), at - 512), at)
+        if slash < 0:
+            return False
+        start = slash + 1
+    if start == 0 or data[start - 1:start] != b"/" or at - start >= 512:
+        return False
+    boundary = NPM_PATH_END.search(data, at + 1, start + 513)
+    end = boundary.start() if boundary else len(data)
+    if end - start > 512 or match.end() > end:
+        return False
+    if not NPM_EXACT_VERSION.fullmatch(data[start:end]):
+        return False
+
+    # A bounded token prefix keeps query/fragment values and malformed scopes reportable.
+    window_start = max(0, start - 512)
+    prefix_start = window_start
+    for delimiter in NPM_PATH_CONTEXT_BOUNDARY.finditer(data, window_start, start):
+        prefix_start = delimiter.end()
+    if window_start > 0 and prefix_start == window_start:
+        return False
+    prefix = data[prefix_start:start]
+    return not any(marker in prefix for marker in (b"?", b"#", b"@"))
+
+
 def detect_non_secret(
     data: bytes,
     *,
@@ -1580,6 +1611,8 @@ def detect_non_secret(
                         and match.end() < npm_token.end()
                         and NPM_EXACT_VERSION.fullmatch(npm_token.group(1))
                     ):
+                        continue
+                    if npm_url_path_spec(data, match):
                         continue
                 if domain in PLACEHOLDER_EMAIL_DOMAINS or domain.endswith(
                     PLACEHOLDER_EMAIL_SUFFIXES
