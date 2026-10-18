@@ -1,11 +1,11 @@
 ---
 name: complete-task
 description: "Complete an in-progress task by running clean-code, staging, and committing. Close the bead on trunk, leave it open for PR creation, and protect detached commits. Use after /verify-task."
-allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/complete-task/scripts/jira-review.py:*),Bash(bd -C * close:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(bd -C * create:*),Bash(bd -C * defer:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion"
+allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/complete-task/scripts/jira-review.py:*),Bash(bd -C * close:*),Bash(bd -C * list:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(bd -C * create:*),Bash(bd -C * defer:*),Bash(make:*),Bash(git:*),Bash(npm:*),Grep,Glob,Skill,AskUserQuestion,release_scopes"
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.2.1"
+version: "2.3.0"
 author: "flurdy"
 ---
 
@@ -280,7 +280,21 @@ work cannot fall through. The project's required delivery boundary must still be
 bd -C <directory> close <bead-id> --reason="<brief summary of what was done>"
 ```
 
-Then continue to §6a.
+Then release this task's worktree scopes (Pi only) and continue to §6a.
+
+#### Release task scopes (Pi only)
+
+Only after this run's fully verified trunk-mode close succeeds, and before §6a, call the native
+`release_scopes` tool once with no arguments when it is available. It returns this session's worktree
+leases to lazy mode after its own dirty-worktree check, keeping exact-file grants, so the next bead
+can take a different member. Never pass `allowDirty`; only the user can decide to leave uncommitted
+changes unprotected. On a refusal (dirty, busy or ineligible), report it with the leases it retained
+and continue: do not retry, work around it, or reopen the bead. If the tool is unavailable (another
+harness or an older session-mode), release nothing and report that leases remain held until the user
+runs `/lazy` or `/plan`.
+
+Detached mode, PR mode, **Close the bead anyway**, deferred-verification closures, snoozes and failed
+or uncertain closes skip this release. The tracker close itself never releases source authority.
 
 **PR mode** — do **not** close the bead here. By convention the bead is closed one step later, at the `/create-pr` stage (and reopened if review demands major changes); closing at commit time would be premature, before the PR even exists. Instead, tell the user a PR workflow was detected (on branch `{current_branch}`) and the bead is being left `in_progress`, then offer the next step with `AskUserQuestion`:
 
@@ -324,6 +338,7 @@ Summarize what was done:
   verification deferred in <id>**, **original deferred until <date>**, or **left `in_progress`**
   with its explicit blocker/decision. Do not describe pending evidence as verified.
 - If a PR was created via the handoff, its URL
+- The Pi scope-release outcome: released roots, a refusal with retained leases, or tool unavailable
 - The Jira review outcome, separately from local completion (nothing when disabled)
 - Commit hash and message
 - Files changed count

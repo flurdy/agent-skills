@@ -115,3 +115,41 @@ class DeferredVerificationContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ScopeReleaseContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.complete = text("complete-task")
+        cls.flat = " ".join(cls.complete.split())
+
+    def test_release_follows_a_verified_trunk_close_and_precedes_jira_review(self):
+        trunk = self.complete.index("**Trunk mode** — close the bead now")
+        release = self.complete.index("#### Release task scopes (Pi only)")
+        pr_mode = self.complete.index("**PR mode** — do **not** close")
+        jira = self.complete.index("### 6a. Offer Jira review")
+        self.assertLess(trunk, release)
+        self.assertLess(release, pr_mode)
+        self.assertLess(release, jira)
+        for phrase in (
+            "Only after this run's fully verified trunk-mode close succeeds, and before §6a",
+            "`release_scopes` tool once with no arguments",
+            "Never pass `allowDirty`",
+            "do not retry, work around it, or reopen the bead",
+            "release nothing and report that leases remain held until the user runs `/lazy` or `/plan`",
+            "The tracker close itself never releases source authority",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.flat)
+
+    def test_non_trunk_and_pending_outcomes_skip_release(self):
+        section = self.complete.split("#### Release task scopes (Pi only)", 1)[1].split("**PR mode**", 1)[0]
+        flat = " ".join(section.split())
+        for outcome in ("Detached mode", "PR mode", "**Close the bead anyway**", "deferred-verification closures", "snoozes", "failed or uncertain closes"):
+            with self.subTest(outcome=outcome):
+                self.assertIn(outcome, flat)
+        self.assertIn("skip this release", flat)
+
+    def test_report_and_tool_permission_cover_release(self):
+        self.assertIn("release_scopes", self.complete.split("---", 2)[1])
+        self.assertIn("The Pi scope-release outcome", self.complete.split("### 8. Report", 1)[1])
