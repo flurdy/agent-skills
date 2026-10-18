@@ -3,6 +3,7 @@
 Shared slash-command templates for Pi and Claude Code, installed by `make apply`:
 
 - [`/about <id-or-name>`](about.md) — orient on an issue, pull request, branch, worktree, Git ref, or stash
+- [`/ask-astra <question>`](ask-astra.md) — ask Codex Astra for a repository-grounded review or second opinion
 - [`/ask-claude <question>`](ask-claude.md) — ask Claude for a repository-grounded second opinion
 - [`/ask-fable <question>`](ask-fable.md) — ask Claude Fable for a repository-grounded second opinion
 - [`/ask-peer <question>`](ask-peer.md) — ask an independent peer for a repository-grounded second opinion

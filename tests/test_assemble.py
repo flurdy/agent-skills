@@ -165,6 +165,19 @@ class AssembleTest(unittest.TestCase):
         self.assertFalse((self.codex / "alpha").exists())
         self.assertFalse((self.codex / "alpha").is_symlink())
 
+    def test_astra_prompt_installs_via_managed_aliases_after_dry_run(self) -> None:
+        source = REPOSITORY / "prompts" / "ask-astra.md"
+        shutil.copyfile(source, self.shared / "prompts" / source.name)
+        preview = self.run_assembler("apply", "--dry-run")
+        self.assertIn("ask-astra.md", preview.stdout)
+        self.assertFalse(self.pi_prompts.exists())
+        self.run_assembler("apply")
+        self.assert_link(self.prompts / source.name, self.shared / "prompts" / source.name)
+        self.assert_link(self.pi_prompts / source.name, self.prompts / source.name)
+        self.assert_link(self.claude_commands / source.name, self.prompts / source.name)
+        self.assertEqual((self.pi_prompts / source.name).read_text(), source.read_text())
+        self.run_assembler("doctor")
+
     def test_retired_skills_migrate_to_yesterday_prompt_without_losing_overlays(self) -> None:
         prompt = REPOSITORY / "prompts" / "yesterday.md"
         self.assertTrue(prompt.is_file(), "missing yesterday prompt")

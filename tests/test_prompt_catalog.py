@@ -8,6 +8,17 @@ PROMPTS = ROOT / "prompts"
 
 
 class PromptCatalogTests(unittest.TestCase):
+    def test_astra_delegates_exact_model_and_preserves_review_gates(self):
+        text = (PROMPTS / "ask-astra.md").read_text()
+        self.assertIn("argument-hint: \"<question>\"", text)
+        self.assertIn("$ARGUMENTS", text)
+        self.assertIn("`second-opinion` skill in `ask` mode", text)
+        self.assertIn("--agent codex --model gpt-6-astra", text)
+        for gate in ("context-sanitization", "read-only", "provider-independence",
+                     "billing-consent", "failure-reporting"):
+            self.assertIn(gate, text)
+        self.assertNotIn("--agent claude", text)
+
     def test_templates_and_catalog_rows_match(self):
         catalog = (PROMPTS / "README.md").read_text()
         listed = set(re.findall(r"\]\(([a-z0-9-]+\.md)\)", catalog))
