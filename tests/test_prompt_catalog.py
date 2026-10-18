@@ -32,10 +32,25 @@ class PromptCatalogTests(unittest.TestCase):
             "query any provider yourself, retry, sign in",
             "`windows`", "`usedPercent`", "`resetsAtText`", "`resetPassed`",
             "quota unavailable", "continue with the other provider",
-            "this prompt used a model turn, whereas running `codex-quota` or `claude-quota` directly does not",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, flat)
+
+    def test_quota_keeps_standing_caveats_and_cost_note_in_documentation(self):
+        text = (PROMPTS / "quota.md").read_text()
+        flat = " ".join(text.split())
+        self.assertIn("Do not print a caveats section or a model-turn reminder", flat)
+        self.assertNotIn("every entry in `caveats`", text)
+        self.assertNotIn("End with one line noting", text)
+        self.assertIn("stale and its percentage is not current", flat)
+        self.assertIn("one-row table with columns Window, Used, Remaining, Reset, and Time until reset", flat)
+        self.assertIn("table with columns Window, Used, Reset, and Time until reset", flat)
+        self.assertIn("One row per entry in `windows`", flat)
+        docs = (PROMPTS / "README.md").read_text()
+        for phrase in ("## Quota report notes", "model turn", "alignment", "undocumented",
+                       "without a year", "not API dollars", "What's contributing"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, docs)
 
     def test_templates_and_catalog_rows_match(self):
         catalog = (PROMPTS / "README.md").read_text()

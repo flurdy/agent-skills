@@ -16,9 +16,14 @@ installed on PATH. Do not search for a checkout, run `codex` or `claude`, query 
 yourself, retry, sign in, switch models, or change settings, limits, or balances.
 
 Use the JSON values verbatim and never estimate from the footer, a screenshot, or memory. Null
-means unknown, never zero.
+means unknown, never zero. Keep the report compact: figures, resets, retrieval times and errors only.
+Do not print a caveats section or a model-turn reminder; standing notes belong in the prompt README.
+Keep stale and unknown indicators inline with the affected value.
 
 **Codex** (`codex-quota`):
+
+Render a one-row table with columns Window, Used, Remaining, Reset, and Time until reset.
+Use "GPT weekly" for the window; put credits and retrieval time below the table.
 
 - GPT weekly: `weekly.usedPercent`% used, `weekly.remainingPercent`% remaining, or "unknown" when
   `weekly` is null.
@@ -27,18 +32,16 @@ means unknown, never zero.
 - Retrieved: `fetchedAtLocal`.
 - Credits: the exact `credits.balance` string, "unlimited", or "unknown" when null. Do not round or
   convert credits into dollars, requests, or weekly allowance.
-- Caveats: every entry in `caveats`, condensed to one line each.
 
 **Claude** (`claude-quota`):
 
-- One line per entry in `windows`, in order: `label`, then `usedPercent`% used or "unknown" when
+Render a table with columns Window, Used, Reset, and Time until reset. Put retrieval time below it.
+
+- One row per entry in `windows`, in order: `label`, then `usedPercent`% used or "unknown" when
   null, then the reset: `resetsAtLocal` plus `untilReset.text` remaining; otherwise `resetsAtText`
   with `resetsTimeZone`; otherwise "unknown". If `resetPassed` is true, say the window is stale and
   its percentage is not current. When `windows` is empty, say Claude usage is unknown.
 - Retrieved: `fetchedAtLocal`.
-- Caveats: every entry in `caveats`, condensed to one line each.
 
 For either provider, when `status` is "error", report `error.kind`, `error.message`, and any `hint`
 as "Codex quota unavailable" or "Claude quota unavailable", then continue with the other provider.
-End with one line noting that this prompt used a model turn, whereas running `codex-quota` or
-`claude-quota` directly does not.

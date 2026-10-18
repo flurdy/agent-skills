@@ -20,3 +20,21 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 
 Codex uses `/today --previous-workday` directly because repository prompt templates are not installed there.
 See [installation and configuration](../docs/installation.md#prompt-templates) for client setup.
+
+## Quota report notes
+
+`/quota` keeps routine output to figures, resets and retrieval times. Unknown values, stale windows
+and provider errors remain visible, but standing caveats and the cost reminder are not repeated:
+
+- Values describe the accounts signed in to the Codex CLI and Claude Code; alignment with Pi's
+  active accounts is not verified. A snapshot does not guarantee future requests.
+- Codex credits are ChatGPT/Codex capacity, not API dollars, extra weekly allowance or request counts.
+- Claude Code's usage panel is undocumented human-readable text. Unrecognised or missing values are
+  unknown, never zero. Its approximate, local-only "What's contributing" breakdown is excluded.
+- Claude Code prints reset dates without a year; the helper resolves the first matching time after
+  retrieval in the reported zone. Unrecognised times or zones remain unknown.
+- `/quota` uses a model turn. Running `codex-quota` or `claude-quota` directly does not.
+
+The helpers retain their full `caveats` arrays in JSON. See the
+[quota helper documentation](https://github.com/flurdy/ai-tools/tree/main/pi/quota) for source and
+parsing details.
