@@ -51,9 +51,9 @@ def snapshot(*, dirty=False, unpushed=1, ci="success", deploy="1/1", manifest=""
     }
 
 
-def add_api(data, *, unpushed=0, deploy="1/1", tag="v2"):
+def add_api(data, *, unpushed=0, dirty=False, deploy="1/1", tag="v2"):
     text = data["digest"]["text"]
-    data["digest"]["text"] = text.replace("---TOGGLES---", f"api|{unpushed}|false|success|main|main|def5678|{deploy}|{tag}|1h|upstream|upstream\n---TOGGLES---")
+    data["digest"]["text"] = text.replace("---TOGGLES---", f"api|{unpushed}|{str(dirty).lower()}|success|main|main|def5678|{deploy}|{tag}|1h|upstream|upstream\n---TOGGLES---")
     data["order"] = evidence("---SOURCE---\nprovider=manifest\ngraph=manual\n---GRAPH---\nweb: [api]\n---DRIFT---\nstatus: not-applicable\n")
     return data
 
@@ -146,18 +146,63 @@ class ReleaseGatesTests(unittest.TestCase):
         data["contracts"] = evidence(CONTRACTS + "\nSUMMARY status=error\n")
         self.assertEqual(self.web(data)["verdict"], "HOLD")
 
+    def test_dirty_prerequisite_alone_does_not_hold_consumer_and_stays_visible(self):
+        for manifest in ("", "ignore: [api]\n"):
+            for selected in (None, "web"):
+                with self.subTest(manifest=manifest, selected=selected):
+                    clean = self.run_snapshot(add_api(snapshot(manifest=manifest)), selected)
+                    result = self.run_snapshot(add_api(snapshot(manifest=manifest), dirty=True), selected)
+                    row = next(row for row in result["services"] if row["service"] == "web")
+                    clean_row = next(row for row in clean["services"] if row["service"] == "web")
+                    self.assertEqual(row["verdict"], "READY")
+                    self.assertEqual(row["gates"], clean_row["gates"])
+                    self.assertFalse(row["uncommitted"])
+                    self.assertIn("api: uncommitted local changes are not deployed", row["notes"])
+                    if selected is None and not manifest:
+                        api = next(row for row in result["services"] if row["service"] == "api")
+                        self.assertTrue(api["uncommitted"])
+                    else:
+                        self.assertEqual([row["service"] for row in result["services"]], ["web"])
+
+    def test_consumer_dirt_still_holds_with_a_dirty_settled_prerequisite(self):
+        row = self.web(add_api(snapshot(dirty=True), dirty=True))
+        self.assertEqual(row["verdict"], "HOLD")
+        self.assertEqual(row["gates"]["work"]["result"], "hold")
+        self.assertEqual(row["gates"]["order"]["result"], "pass")
+
+    def test_dirty_prerequisite_does_not_bypass_other_gates(self):
+        data = add_api(snapshot(), dirty=True)
+        data["contracts"] = evidence(CONTRACTS.replace("OK web -> api", "STALE web -> api"))
+        row = self.web(data)
+        self.assertEqual(row["verdict"], "NOT READY")
+        self.assertEqual(row["gates"]["contracts"]["result"], "block")
+        data = add_api(snapshot(), dirty=True)
+        data["state"] = evidence(json.dumps({"publishing": {"api": {"uncertain": True}}}))
+        row = self.web(data)
+        self.assertEqual(row["verdict"], "HOLD")
+        self.assertEqual(row["gates"]["publication"]["result"], "hold")
+
+    def test_ignored_prerequisite_with_unpushed_commits_still_blocks_consumer(self):
+        row = self.web(add_api(snapshot(manifest="ignore: [api]\n"), unpushed=1, dirty=True))
+        self.assertEqual(row["gates"]["order"]["result"], "block")
+        self.assertEqual(row["verdict"], "NOT READY")
+
     def test_scoped_result_still_evaluates_prerequisites(self):
-        for unpushed, deploy, expected in [(1, "1/1", "block"), (0, "0/1", "block"), (0, "cron:rollout", "block"), (0, "unknown", "hold"), (0, "1/1", "pass")]:
-            data = add_api(snapshot(), unpushed=unpushed, deploy=deploy)
-            rows = self.run_snapshot(data, "web")["services"]
-            self.assertEqual(len(rows), 1)
-            self.assertEqual(rows[0]["gates"]["order"]["result"], expected)
+        for dirty in (False, True):
+            for unpushed, deploy, expected in [(1, "1/1", "block"), (0, "0/1", "block"), (0, "cron:rollout", "block"), (0, "unknown", "hold"), (0, "1/1", "pass")]:
+                with self.subTest(dirty=dirty, unpushed=unpushed, deploy=deploy):
+                    data = add_api(snapshot(), unpushed=unpushed, deploy=deploy, dirty=dirty)
+                    rows = self.run_snapshot(data, "web")["services"]
+                    self.assertEqual(len(rows), 1)
+                    self.assertEqual(rows[0]["gates"]["order"]["result"], expected)
 
     def test_rollout_confirmation_requires_baseline_movement_and_settlement(self):
-        for baseline, deploy, tag, expected in [(None, "1/1", "v2", "hold"), ("v2", "1/1", "v2", "block"), ("v1", "0/1", "v2", "block"), ("v1", "1/1", "v2", "pass")]:
-            data = add_api(snapshot(), deploy=deploy, tag=tag)
-            data["state"] = evidence(json.dumps({"rolloutWatch": {"api": {"sha": "def5678", "fromTag": baseline}}}))
-            self.assertEqual(self.web(data)["gates"]["order"]["result"], expected)
+        for dirty in (False, True):
+            for baseline, deploy, tag, expected in [(None, "1/1", "v2", "hold"), ("v2", "1/1", "v2", "block"), ("v1", "0/1", "v2", "block"), ("v1", "1/1", "v2", "pass")]:
+                with self.subTest(dirty=dirty, baseline=baseline, deploy=deploy, tag=tag):
+                    data = add_api(snapshot(), deploy=deploy, tag=tag, dirty=dirty)
+                    data["state"] = evidence(json.dumps({"rolloutWatch": {"api": {"sha": "def5678", "fromTag": baseline}}}))
+                    self.assertEqual(self.web(data)["gates"]["order"]["result"], expected)
 
     def test_missing_dependency_cannot_be_inferred_live(self):
         data = snapshot()

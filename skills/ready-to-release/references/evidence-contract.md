@@ -76,10 +76,10 @@ evidence is a `hold`, not an ambiguous N/A row. No gate can be overridden by a c
 
 | Gate | Pass / informational | Hold | Block |
 |---|---|---|---|
-| Work | Clean with unpushed commits | Dirty tree, including non-deploying repos; missing Git evidence | No unpushed work |
+| Work | Clean with unpushed commits | Releasing service's own dirty tree, including non-deploying repos; missing Git evidence | No unpushed work |
 | CI | Exact upstream success; N/A for non-deploying | Missing/degraded evidence, running, ref/revision mismatch | Exact failed/error |
 | Contracts | Applicable clean; N/A with no known relationship and no adapter | Applicable coverage GAP; expected/malformed/unavailable evidence | Stale/different/missing/uncommitted/not-built/not-synced |
-| Order | Settled prerequisites; valid empty `provider=none`; N/A for non-deploying | Missing graph/prerequisite/live evidence | Co-changing prerequisite (unpushed or rolling) |
+| Order | Settled prerequisites, even with uncommitted local changes; valid empty `provider=none`; N/A for non-deploying | Missing graph/prerequisite/live evidence | Co-changing prerequisite (unpushed or rolling) |
 | Toggle | Active true **or false** observed; parked/dark-release informational | Missing/unknown active declared flag | — |
 | Deployment | Settled `N/N` (N>0) or `cron`; unavailable optional capability is N/A | Overlapping rollout or saved rollout lacking evidence | — |
 
@@ -109,6 +109,11 @@ This does **not** prove exact candidate-image provenance. Missing baselines or l
 remain unknown; never substitute pod age or assume completion. `/release-maintenance
 acknowledge-rollout <service>` is the explicit evidence-backed recovery path. Dependency checks
 use the full snapshot, even for a single-service display, including ignored prerequisite rows.
+A prerequisite's uncommitted local changes are undeployed work, not an ordering hold by
+themselves. Preserve its dirty field in emitted rows and report an informational note on the
+consumer, including when the prerequisite is omitted from a selected or ignored display.
+The releasing service's own cleanliness and applicable contract gates remain unchanged;
+prerequisite unpushed commits, rolling rollouts and missing/unsettled evidence retain their gates.
 
 Any saved `publishing` record adds a `publication` HOLD to every service: a push is in progress or
 its outcome is uncertain, so further publication waits. Unreadable state holds every service the

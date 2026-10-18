@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/ready-to-release/scripts/release-gate
 model-tier: economy
 model: sonnet
 effort: high
-version: "2.1.0"
+version: "2.1.1"
 author: "flurdy"
 ---
 

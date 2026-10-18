@@ -496,11 +496,13 @@ def evaluate(data, selected=None, exclude_publication=None):
             waiting, unknown = [], []
             for prerequisite in graph.get(name, []):
                 other = services.get(prerequisite)
+                if other and other["uncommitted"]:
+                    notes.append(f"{prerequisite}: uncommitted local changes are not deployed")
                 if not other:
                     unknown.append(prerequisite)
                 elif other["unpushed"] > 0 or rollout(other, watches) == "rolling":
                     waiting.append(prerequisite)
-                elif other["uncommitted"] or deployment(other["deploy"]) != "settled" or rollout(other, watches) == "unknown":
+                elif deployment(other["deploy"]) != "settled" or rollout(other, watches) == "unknown":
                     unknown.append(prerequisite)
             gates["order"] = gate("block", "waiting on " + ", ".join(waiting)) if waiting else gate("hold", "prerequisite evidence unsettled: " + ", ".join(unknown)) if unknown else gate("na" if provider == "none" else "pass", "no ordering configured" if provider == "none" else "prerequisites settled")
         active, missing = [], []
