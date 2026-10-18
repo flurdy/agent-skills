@@ -139,7 +139,6 @@ class ResourceSelectionTests(unittest.TestCase):
         destinations = {
             "setup-multirepo-git": ["mgit"],
             "trello-beads": ["trello-api", "trello-pull", "trello-sync"],
-            "browser-screenshot": ["screenshot"],
         }
         for name, targets in destinations.items():
             root = self.install(self.home / ".agents/skills", name)
@@ -390,6 +389,114 @@ class WorkflowContracts(unittest.TestCase):
         self.assertIn("Do not invoke it automatically", confirm)
         self.assertIn("Skip this suggestion on a handoff-resume path, an abort, or any stop/error path", confirm)
 
+    def test_browser_screenshot_needs_no_project_link(self):
+        text = skill("browser-screenshot")
+        front = text.split("---", 2)[1]
+        grants = {entry.strip() for entry in re.search(r'^allowed-tools: "(.*)"$', front, re.M)[1].split(",")}
+        self.assertIn("Bash(~/.agents/skills/browser-screenshot/scripts/screenshot.sh:*)", grants)
+        for stale in ("Bash(ln:*)", "Bash(npm:*)", "Bash(npx:*)", "Bash(scripts/screenshot:*)"):
+            self.assertNotIn(stale, grants)
+        for block in re.findall(r"```bash\n(.*?)```", text, re.S):
+            self.assertNotIn("ln -s", block)
+            self.assertIsNone(re.search(r"^\s*scripts/screenshot\b", block, re.M))
+        for term in ("-C", "not verified", "Pi", "Codex", "Never install"):
+            self.assertIn(term, text)
+        self.assertFalse((ROOT / "skills/browser-screenshot/scripts/screenshot.mjs").exists())
+
+
+FAKE_PLAYWRIGHT = """
+import { writeFileSync } from 'fs';
+export const chromium = {
+  async launch() {
+    return {
+      async newContext({ viewport }) {
+        return { async newPage() {
+          let target;
+          return {
+            async goto(url) { target = url; },
+            async screenshot({ path }) { writeFileSync(path, JSON.stringify({ url: target, viewport })); },
+          };
+        } };
+      },
+      async close() {},
+    };
+  },
+};
+"""
+
+
+class ScreenshotHelperTests(unittest.TestCase):
+    SCRIPT = ROOT / "skills/browser-screenshot/scripts/screenshot.sh"
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="screenshot project ")
+        self.addCleanup(temp.cleanup)
+        self.project = Path(temp.name)
+        self.app = self.project / "web app"
+        package = self.app / "node_modules/playwright"
+        package.mkdir(parents=True)
+        (package / "package.json").write_text('{"name":"playwright","type":"module","exports":"./index.js"}')
+        (package / "index.js").write_text(FAKE_PLAYWRIGHT)
+        self.tmp = self.project / "tmp"
+        self.tmp.mkdir()
+
+    def run_helper(self, *args, cwd=None):
+        env = {"PATH": os.environ["PATH"], "HOME": str(self.project), "TMPDIR": str(self.tmp)}
+        return subprocess.run([str(self.SCRIPT), *args], cwd=cwd or self.project, env=env,
+                              text=True, capture_output=True, timeout=30)
+
+    def project_files(self):
+        return sorted(str(p.relative_to(self.project)) for p in self.project.rglob("*") if self.tmp not in p.parents)
+
+    def test_dependency_directory_option_resolves_nested_install_without_project_writes(self):
+        before = self.project_files()
+        result = self.run_helper("-C", str(self.app), "http://localhost:5173/a b", "mobile")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = Path(result.stdout.strip())
+        self.assertEqual(output.parent.parent, self.tmp)
+        self.assertEqual(stat_mode(output.parent), 0o700)
+        self.assertEqual(output.name, "screenshot-mobile.png")
+        self.assertIn('"width":375', output.read_text())
+        self.assertIn("localhost:5173/a b", output.read_text())
+        self.assertEqual(before, self.project_files())
+
+    def test_parent_install_resolves_from_nested_cwd(self):
+        nested = self.app / "src"
+        nested.mkdir()
+        result = self.run_helper("http://localhost:3000", "800x600", cwd=nested)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('"width":800', Path(result.stdout.strip()).read_text())
+
+    def test_relative_output_stays_relative_to_invocation_cwd(self):
+        result = self.run_helper("-C", "web app", "http://localhost:3000", "desktop", "shot one.png")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(Path(result.stdout.strip()), self.project / "shot one.png")
+        self.assertTrue((self.project / "shot one.png").is_file())
+
+    def test_missing_playwright_is_diagnosed_without_install(self):
+        before = self.project_files()
+        result = self.run_helper("http://localhost:3000")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Playwright is not resolvable from", result.stderr)
+        self.assertIn(str(self.project), result.stderr)
+        self.assertIn("-C", result.stderr)
+        self.assertEqual(before, self.project_files())
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    def test_invalid_dependency_directory_fails_before_capture(self):
+        for args in (("-C",), ("-C", str(self.project / "absent"))):
+            with self.subTest(args=args):
+                result = self.run_helper(*args, "http://localhost:3000")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("-C", result.stderr)
+                self.assertEqual(list(self.tmp.iterdir()), [])
+
+
+def stat_mode(path):
+    return path.stat().st_mode & 0o777
+
+
+class AuthoringGuidance(unittest.TestCase):
     def test_native_gate_and_authoring_guidance(self):
         self.assertIn("test-portability", (ROOT / "Makefile").read_text())
         text = (ROOT / "CONTRIBUTING.md").read_text()

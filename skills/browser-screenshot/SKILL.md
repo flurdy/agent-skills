@@ -1,11 +1,11 @@
 ---
 name: browser-screenshot
 description: Take a screenshot of the running web application for visual verification of UI/CSS changes. Use when iterating on frontend changes and need to see the result.
-allowed-tools: "Read,Bash(npm:*),Bash(npx:*),Bash(scripts/screenshot:*),Bash(ln:*)"
+allowed-tools: "Read,Bash(~/.agents/skills/browser-screenshot/scripts/screenshot.sh:*)"
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -13,20 +13,21 @@ author: "flurdy"
 
 Capture screenshots of the web application for visual verification during UI/CSS iteration.
 
-## Setup
+## Prerequisites
 
-1. Install playwright in the project (if not already):
+No project setup or link is needed. The project must already have Node.js, the `playwright`
+package in a `node_modules` reachable from its dependency directory, and a matching Chromium.
+Never install packages or browsers from this skill; when the helper reports them missing, hand the
+user its command (`npm install playwright && npx playwright install chromium`) to run themselves.
+Existing project `scripts/screenshot` links keep working; leave them alone.
 
-```bash
-npm install playwright
-npx playwright install chromium
-```
+## Locate the helper
 
-2. Symlink the screenshot script into the project's `scripts/` directory:
-
-Resolve resources in Bash first. A nonempty absolute `SKILLS_DIR` is authoritative; never replace
-an invalid override silently. Otherwise prefer the canonical root, falling back to the Claude alias
-root only when this skill unit is absent. Legacy Codex-only roots require explicit `SKILLS_DIR`.
+The canonical helper is `~/.agents/skills/browser-screenshot/scripts/screenshot.sh`. Only when
+it is absent or `SKILLS_DIR` is set, resolve and validate the installed root read-only first.
+A nonempty absolute `SKILLS_DIR` is authoritative; never replace an invalid override silently.
+Otherwise prefer the canonical root, falling back to the Claude alias root only when this skill
+unit is absent. Legacy Codex-only roots require explicit `SKILLS_DIR`.
 
 ```bash
 set -eu
@@ -45,15 +46,8 @@ done
 [[ -x "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" ]] || { echo "screenshot.sh is not executable" >&2; exit 1; }
 ```
 
-Missing resources stop before linking. Preview actual source/destination paths and obtain setup
-approval; never overwrite an existing destination implicitly. Reuse the verified absolute root
-across tool calls (shell variables may not persist). Repeat approved setup after root migrations.
-
-```bash
-[[ ! -e scripts/screenshot && ! -L scripts/screenshot ]] || { echo "Destination exists: scripts/screenshot" >&2; exit 1; }
-mkdir -p scripts
-ln -s "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" scripts/screenshot
-```
+Missing resources stop the run; do not repair the installation. Reuse the verified absolute path
+in later tool calls, since shell variables may not persist between them.
 
 ## Usage
 
@@ -78,13 +72,24 @@ ln -s "$SKILLS_DIR/browser-screenshot/scripts/screenshot.sh" scripts/screenshot
    - If `$ARGUMENTS` contains `both`, take two screenshots (desktop and mobile)
    - Keep both dimensions under 2000px to avoid image limit errors
 
-3. Run the screenshot script via the project symlink:
+3. Run the installed helper directly as one command, passing the directory whose
+   `node_modules` contains Playwright with `-C` (for example a nested `web` app). Omit `-C`
+   when the current directory already resolves it; parent `node_modules` directories also
+   count. Quote paths containing spaces, and never prefix the call with `cd … &&`.
 
 ```bash
-scripts/screenshot <url> <viewport>
+~/.agents/skills/browser-screenshot/scripts/screenshot.sh -C web <url> <viewport>
 ```
 
-If the symlink doesn't exist yet, create it first (see Setup above).
+   With an override or fallback root, use its verified absolute path instead:
+   `"<verified-root>/browser-screenshot/scripts/screenshot.sh" -C "<dependency dir>" <url> <viewport>`.
+   A relative output path (third argument) stays relative to the invocation directory.
+
+   **Permissions:** the frontmatter grant is Claude Code metadata matching the canonical
+   `~/.agents/...` prefix, the convention other skills use; exact matching of an expanded or
+   override path is not verified, so expect a prompt there. Pi does not enforce `allowed-tools`,
+   and Codex applies its own sandbox and approval policy. Report any prompt rather than widening
+   permissions.
 
 Screenshots are saved to a fresh private directory (mode 0700) created per run, unless you pass an explicit output path as the third argument. The script prints the full path it wrote — read it from the output rather than assuming a location. Screenshots may capture authenticated pages, which is why the directory is not a predictable shared one.
 

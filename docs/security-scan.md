@@ -31,8 +31,8 @@ itself.
   *use* them, not their transport security.
 - **The private overlay.** `agent-skills-private` is referenced by
   `.env.example` but is a separate repository.
-- **`skills/browser-screenshot/scripts/screenshot.mjs`.** JavaScript; no
-  automated check covers it. Review by hand.
+- **The JavaScript embedded in `skills/browser-screenshot/scripts/screenshot.sh`.**
+  The shell is checked; the heredoc module is not. Review it by hand.
 
 ## Severity
 
