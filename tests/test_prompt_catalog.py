@@ -19,6 +19,24 @@ class PromptCatalogTests(unittest.TestCase):
             self.assertIn(gate, text)
         self.assertNotIn("--agent claude", text)
 
+    def test_quota_runs_both_read_only_helpers_and_isolates_failures(self):
+        text = (PROMPTS / "quota.md").read_text()
+        flat = " ".join(text.split())
+        commands = re.findall(r"(?m)^    (\S.*)$", text)
+        self.assertEqual(commands, ["codex-quota", "claude-quota"])
+        for phrase in (
+            "exactly these two read-only shell commands, as separate commands",
+            "one provider's failure never hides or skips the other's report",
+            "is not installed on PATH",
+            "Null means unknown, never zero",
+            "query any provider yourself, retry, sign in",
+            "`windows`", "`usedPercent`", "`resetsAtText`", "`resetPassed`",
+            "quota unavailable", "continue with the other provider",
+            "this prompt used a model turn, whereas running `codex-quota` or `claude-quota` directly does not",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, flat)
+
     def test_templates_and_catalog_rows_match(self):
         catalog = (PROMPTS / "README.md").read_text()
         listed = set(re.findall(r"\]\(([a-z0-9-]+\.md)\)", catalog))

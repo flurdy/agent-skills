@@ -12,7 +12,7 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 - [`/ask-sol <question>`](ask-sol.md) — ask Codex Sol for a repository-grounded second opinion
 - [`/discuss <question>`](discuss.md) — inspect and research without changing files or external state
 - [`/plain <topic-or-text>`](plain.md) — explain a topic clearly for a smart non-specialist
-- [`/quota`](quota.md) — report the Codex CLI account's weekly GPT quota, reset time, and credits via the ai-tools `codex-quota` helper
+- [`/quota`](quota.md) — report Codex weekly GPT quota and credits, and Claude Code session and weekly usage, via the ai-tools `codex-quota` and `claude-quota` helpers
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
 - [`/trim-comments [file-or-PR]`](trim-comments.md) — remove redundant inline comments and docblocks
 - [`/watch-landscape [minutes]`](watch-landscape.md) — refresh `/landscape quick` on a fixed cadence until end of day
