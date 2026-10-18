@@ -296,7 +296,9 @@ def unavailable_store(source: Source, reason: str) -> dict[str, Any]:
     hint = None
     if DOLT_UNREACHABLE.search(reason):
         command = f"bd -C {shlex.quote(str(source.directory))} dolt start"
-        hint = f"Dolt server not running. Start it manually: `{command}`, then rerun /next."
+        hint = (f"Dolt server unreachable. `/next recover {source.name}` checks eligibility "
+                f"and asks for confirmation before one local start. "
+                f"Manual command (not executed): `{command}`. Listing remains read-only.")
     return {"repository": source.name, "reason": reason, "hint": hint}
 
 

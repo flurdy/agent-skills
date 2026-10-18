@@ -3,10 +3,10 @@ name: next
 description: >
   Rank ready beads across validated workspace stores or one local store.
   List read-only, or claim one selected bead, show its details, and continue into its work.
-allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
+allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.20.0"
+version: "1.21.0"
 author: "flurdy"
 ---
 
@@ -37,12 +37,29 @@ each workflow's boundaries and all required approvals. Never select a second bea
 /next backlog            # Same, always including the P4 backlog table
 /next safe               # Explicit source scope + advisory local Pi occupancy; separate unknowns
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
+/next recover <repo>     # Check one unavailable store; confirm local startup, then retry once
 /next task               # Auto-pick the next most suitable task and start it
 /next quick              # Auto-pick an easy win (excludes busy services)
 /next bug                # Auto-pick the next most important bug and claim it
 /next <bead-id>          # Start working on specific bead
 /next <repo>:<bead-id>   # Start a bead whose ID exists in several workspace stores
 ```
+
+## Attended recovery of a stopped Dolt server
+
+An unavailable-store notice offers `/next recover <repository>` (or `local` in a
+single store). Read [the recovery procedure](references/dolt-recovery.md) before
+acting. This is a separate attended workflow, not a collector flag: listing,
+resolution and lease rechecks never start servers. Do not automatically enter it
+from a scheduled/unattended tick or merely because a read failed.
+
+Check canonical ownership and effective configuration first. Shared, proxied,
+external, auto-start-disabled and ambiguous stores are ineligible. A fresh exact
+command confirmation must disclose that `bd dolt start` may clean up orphan
+processes or initialise storage; it is not a start-only primitive. Attempt one
+visible `bd -C <directory> --sandbox dolt start`, then retry the original strict
+read once only on success. Preserve guards, diagnostics and safe recheck rules;
+never drop `--readonly`, loop, repair, sync or claim a bead as part of recovery.
 
 ## What This Skill Does
 
@@ -191,7 +208,8 @@ When invoked:
    response excludes only that source and
    emits a concise `Source diagnostics` entry; healthy stores remain ranked. Every text view
    (ordinary and safe) opens with a **Beads store unavailable** notice naming each failed
-   store, plus a manual `bd -C <dir> dolt start` hint when its Dolt server is unreachable, so
+   store, plus an attended `/next recover <repository>` offer and a non-executed manual
+   `bd -C <dir> dolt start` hint when its Dolt server is unreachable, so
    missing work never reads as an empty backlog. Listing never starts servers. In workspace
    and local mode alike, a source is included only when its ready, blocked, in-progress,
    and deferred reads all succeed. Never show partial state from a failed source. JSON mode
@@ -205,6 +223,8 @@ When invoked:
    unavailable or incompatible `bd` reads produce source diagnostics, never partial tables.
 
 2. Parse command argument:
+   - `recover <repository>`: Follow [attended recovery](references/dolt-recovery.md);
+     do not pass `recover` to `next-bd` or treat it as a bead selector.
    - `backlog`: Run `next-bd --list --backlog` and render it as in Listing Mode
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Follow **Lease-aware safe selection** below; do not equate `--avoid-busy` with source safety

@@ -416,6 +416,9 @@ class NextBdTest(WorkspaceFixture):
         self.assertIn("dolt start", stores["down"]["hint"])
         self.assertIn("bd -C ", stores["down"]["hint"])
         self.assertIn("down", stores["down"]["hint"])
+        self.assertIn("/next recover down", stores["down"]["hint"])
+        self.assertIn("eligibility", stores["down"]["hint"])
+        self.assertIn("confirmation", stores["down"]["hint"])
         self.assertIsNone(stores["broken"]["hint"])
         self.assertEqual(stores["broken"]["reason"], "blocked: simulated blocked failure")
 
@@ -448,6 +451,7 @@ class NextBdTest(WorkspaceFixture):
         safe = self.run_next(local, "--safe").stdout
         self.assertTrue(safe.startswith("## ⚠️ Beads store unavailable (1)"), safe)
         self.assertIn("**local**", safe)
+        self.assertIn("/next recover local", safe)
         self.assertIn("dolt start", safe)
         self.assertNotIn("_No candidates without", safe)
         self.assertNotIn("Lease check: 0 free, 0 not checked", safe)
