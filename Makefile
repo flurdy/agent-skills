@@ -282,6 +282,7 @@ test-pr-reviewers:
 
 test-pr-status:
 	@python3 -B -m unittest discover -s skills/pr-status/tests -p 'test_pr_details.py'
+	@python3 -B -m unittest discover -s skills/pr-status/tests -p 'test_format_pr_tables.py'
 
 test-review-requests:
 	@python3 -m unittest discover -s skills/pr-status/tests -p 'test_request_feedback.py'

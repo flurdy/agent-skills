@@ -319,11 +319,25 @@ class RenderingContractTests(unittest.TestCase):
     def test_sync_reads_mergeability_and_actual_base_not_merge_state(self):
         sync = self.bullet("Sync")
         for phrase in ("actual base", "regardless of `mergeState`", "`mergeable` `CONFLICTING`",
-                       "💥 conflict", "`behindBy` > 0 → ⚠️ N behind", "`behindBy` 0 → ✅",
-                       "→ `?`", "never `—`"):
+                       "💥 conflict", "`behindBy` > 0 → ⏪", "`mergeState` `BEHIND` → ⏪", "`behindBy` 0 → ✅",
+                       "→ `?`", "never `—`", "exactly ⏪"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, sync)
         self.assertNotIn("Stacked PRs (📌) → `—`", sync)
+        self.assertNotIn("⚠️ behind", self.text)
+        self.assertNotIn("N behind", self.text)
+
+    def test_tables_come_from_the_formatter_with_bounded_cells(self):
+        self.assertIn("~/.agents/skills/pr-status/scripts/format-pr-tables.py", self.text)
+        self.assertIn("Bash(~/.agents/skills/pr-status/scripts/format-pr-tables.py:*)", self.text)
+        self.assert_phrases(
+            "Reproduce the formatter output verbatim",
+            "plain `#123`",
+            "Target is capped at 30",
+            "Full names",
+            "no unbroken token longer than 30",
+            "never rewrite or paraphrase a title",
+        )
 
     def test_lgtm_keeps_requiring_clean_on_a_default_base(self):
         lgtm = self.bullet("LGTM")
@@ -332,7 +346,7 @@ class RenderingContractTests(unittest.TestCase):
 
     def test_behind_suggestion_fires_before_approval_against_actual_base(self):
         self.assertIn(
-            "| → ⚠️ behind (fell behind its base) | "
+            "| → ⏪ (fell behind its base) | "
             "`/rebase main` (on that PR's branch); stacked: `/rebase parent {base}` |",
             self.text,
         )
@@ -343,6 +357,7 @@ class RenderingContractTests(unittest.TestCase):
         targets = makefile.split("TEST_TARGETS :=", 1)[1].split("test:", 1)[0]
         self.assertIn("test-pr-status", targets)
         self.assertIn("-p 'test_pr_details.py'", makefile)
+        self.assertIn("-p 'test_format_pr_tables.py'", makefile)
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 ---
 name: pr-status
 description: Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion, with transition-driven suggested next actions.
-allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh search:*), Bash(date:*), mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-closed.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-details.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-feedback.py:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-checks.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-reviews.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-threads.sh:*), Bash(~/.agents/skills/pr-status/scripts/gh-pr-merge-state.sh:*), Bash(~/.agents/skills/pr-status/scripts/format-pr-tables.py:*), Bash(gh pr list:*), Bash(gh pr checks:*), Bash(gh pr view:*), Bash(gh search:*), Bash(date:*), mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.18.0"
+version: "1.19.0"
 author: "flurdy"
 ---
 
@@ -191,7 +191,46 @@ For a key with comments, render `💬 {total} · {latest author first name or @a
 
 ### 4. Render as tables
 
-Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local** time, 24h (`date '+%H:%M:%S'`, not `date -u`). Relative-time math against `lastPush` / `readyAt` / `closedAt` works in UTC since those are `Z`-suffixed; only the displayed timestamp is local.
+Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local** time, 24h (`date '+%H:%M:%S'`, not `date -u`).
+
+The tables are produced by the formatter, not composed by hand, so Pi and Claude Code receive the
+same markdown. Merge the list rows, the details rows and the Jira summaries into one JSON document
+and pipe it in (a heredoc is fine):
+
+```bash
+~/.agents/skills/pr-status/scripts/format-pr-tables.py <<'JSON'
+{"now": "2026-04-15T10:00:00Z",
+ "closed": [{"number": 120, "owner": "acme", "repo": "widgets", "title": "...", "closedAt": "...",
+             "readyAt": "...", "mergeCommitSha": "...", "mergeCommitAt": "...", "mainChecksState": "SUCCESS",
+             "jira": {"total": 3, "author": "Jane Doe", "created": "..."}}],
+ "open": [{"number": 123, "owner": "acme", "repo": "widgets", "title": "...", "branch": "...", "base": "main",
+           "isDraft": false, "mergeable": "MERGEABLE", "mergeState": "CLEAN", "behindBy": 0,
+           "reviewDecision": "APPROVED", "approvers": ["alice"], "reviewRequestCount": 0,
+           "unresolvedThreads": 0, "checksState": "SUCCESS", "lastPush": "...", "readyAt": "...",
+           "jira": null}]}
+JSON
+```
+
+`now` is the UTC instant from `date -u +%Y-%m-%dT%H:%M:%SZ`; relative times are computed from it.
+Each row is the `gh-pr-details.sh` object plus `owner`, `repo` and `title` from the list scripts
+(`closedAt` for closed rows) and a `jira` summary: `{total, author, created}` from step 3, `null`
+when the PR has no ticket or zero comments, `{"error": true}` when the lookup failed. Keep rows in
+list order. The formatter needs Python 3.10+ only; invalid JSON exits nonzero with a message, so
+fix the input rather than hand-writing a table.
+
+Reproduce the formatter output verbatim: never rewrite or paraphrase a title, reflow columns, add
+links inside cells, or drop the `Links:` / `Full names:` lines. The formatter enforces the layout
+contract below, which is also the reason the output is portable across harnesses:
+
+- PR cells are plain `#123`; the `Links:` line after each table carries the markdown links, so
+  terminals without hyperlink support print URLs there instead of inside the table.
+- Open titles are capped at 25 characters, closed titles at 50, Branch at 30, and Target is capped
+  at 30 (after the 📌 marker) with `…`. Every truncated Target/Branch is listed in full on the
+  `Full names:` line. Truncation keeps the factual prefix; `|`, backticks and other markdown
+  characters are escaped.
+- Narrow widths: every cell contains no unbroken token longer than 30 characters, so a renderer
+  wraps within columns rather than tearing rows; no column is ever dropped. Pi renders the table
+  down to ~53 columns and shows raw markdown below that; Claude Code wraps cells natively.
 
 **Recently closed** — render first, one table with a **Repo** column. Skip the section if the closed list is empty.
 
@@ -200,7 +239,7 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 | PR | Repo | Ticket | Jira 💬 | Title | Status | CI | Ready | Wait | Closed |
 |----|------|--------|---------|-------|--------|----|-------|------|--------|
 
-- **PR**: markdown link `[#123](https://github.com/{owner}/{repo}/pull/123)`
+- **PR**: plain `#123`; the link `[#123](https://github.com/{owner}/{repo}/pull/123)` goes on the `Links:` line
 - **Repo**: repository name
 - **Ticket**: Jira ID matched by `/[A-Z]+-\d+/` against the PR title, or `—`
 - **Status**: 🔀 merged / 🗑️ closed unmerged — emoji only
@@ -214,11 +253,11 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 | PR | Ticket | Jira 💬 | Title | Branch | Target | Ready | Push | Sync | CI | Approved | Threads | LGTM |
 |----|--------|---------|-------|--------|--------|-------|------|------|----|----------|---------|------|
 
-- **PR**: markdown link as above
+- **PR**: plain `#123` as above
 - **Ticket**: Jira ID matched against branch name first, then title, or `—`
 - **Branch**: head branch minus conventional-commit prefix and ticket prefix (`feat/AB-1107-cta-clicked-event` → `cta-clicked-event`); truncate past ~30 chars with `…`
-- **Target**: base branch. `main`/`master` are default branches — plain text. Anything else is a stacked PR: prefix with 📌
-- **Sync**: against the PR's actual base (📌 stacked PRs included), regardless of `mergeState` or review state; first match wins: `mergeable` `CONFLICTING` (or `mergeState` `DIRTY`) → 💥 conflict; `behindBy` > 0 → ⚠️ N behind (e.g. ⚠️ 6 behind); `behindBy` null with `mergeState` `BEHIND` → ⚠️ behind; `mergeable` `MERGEABLE` with `behindBy` 0 → ✅; anything else → `?`. Sync is never `—`: `BLOCKED` only means a merge gate such as approval is unmet
+- **Target**: base branch. `main`/`master` are default branches — plain text. Anything else is a stacked PR: prefix with 📌, capped at 30 characters with `…` and listed in full under `Full names:`
+- **Sync**: against the PR's actual base (📌 stacked PRs included), regardless of `mergeState` or review state; first match wins: `mergeable` `CONFLICTING` (or `mergeState` `DIRTY`) → 💥 conflict; `behindBy` > 0 → ⏪; `behindBy` null with `mergeState` `BEHIND` → ⏪; `mergeable` `MERGEABLE` with `behindBy` 0 → ✅; anything else → `?`. Behind is exactly ⏪ — no count or text, so the cell never wraps; `behindBy` stays in the collected data for the change summary. Sync is never `—`: `BLOCKED` only means a merge gate such as approval is unmet
 - **CI**: ✅ / ❌ / ⏳ — emoji only
 - **Ready**: 🚧 if `isDraft`, else relative time since `readyAt`
 - **Push**: relative time since `lastPush`
@@ -243,7 +282,7 @@ count — never a bell per reviewer — and no question mark: unknown stays a ba
 ⚠️ 0 in session state. The column keeps its width; the count never changes the ✅, ☑️, 👎 or
 LGTM rules.
 
-Truncate titles: ~50 chars in the closed table, ~25 in the open table (13 columns — wide rows break Claude Code's table renderer).
+Title truncation (50 characters closed, 25 open) is applied by the formatter; the open table has 13 columns and wide rows break Claude Code's table renderer.
 
 ### 5. Summarise changes
 
@@ -267,18 +306,18 @@ Fire on transitions, not standing state: on the first check of a session list th
 |---|---|
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
 | new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
-| → ⚠️ behind (fell behind its base) | `/rebase main` (on that PR's branch); stacked: `/rebase parent {base}` |
+| → ⏪ (fell behind its base) | `/rebase main` (on that PR's branch); stacked: `/rebase parent {base}` |
 | → ⚠️ 0 awaiting review with no requests | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
 
 Fire the reviewer suggestion only for a known zero: a PR enters that state when it leaves draft with
 no requests, or its last outstanding request is withdrawn or answered without approval. 🔔 N means
 requests are already pending and a bare 🔔 means the count is unknown — suggest nothing for either.
 
-The behind suggestion fires when Sync enters ⚠️ from any other state, regardless of review or
-approval state: rebasing before approval avoids invalidating it later. A PR already behind stays
-quiet; a growing count is not a new transition.
+The ⏪ suggestion fires when Sync enters ⏪ from any other state, regardless of review or
+approval state: rebasing before approval avoids invalidating it later. A PR already ⏪ stays
+quiet; a growing count is not a new transition (mention the `behindBy` count in the bullet).
 
-Order most actionable first (🚀 → 💬 → ⚠️ behind → ⚠️ 0 no requests); omit the section when no PR
+Order most actionable first (🚀 → 💬 → ⏪ → ⚠️ 0 no requests); omit the section when no PR
 changed state.
 
 Use the normalized record's author and bounded gist in the bullet. Keep its `identity` and
