@@ -6,7 +6,8 @@ each as eligible (compatible patch/minor with local version evidence and, for tr
 dependencies, every parent range proven to allow the patch), hold (major, pre-1.0, no
 patched version, unsupported ecosystem, parent range excluding or not proving the patch,
 or missing local evidence) or verify-publication (locally already patched). Severity
-informs priority only; it never widens eligibility.
+informs priority only; it never widens eligibility. Eligible outcomes then form one
+bounded batch in priority order; the remainder is deferred, never silently dropped.
 
 ``recheck`` compares a saved plan with a fresh collector read and reports fixed,
 pending, dismissed, changed or unknown per outcome. Dismissed is not fixed.
@@ -26,6 +27,8 @@ ALERTS_SCHEMA = "dependabot-alerts/v1"
 SEMVER_ECOSYSTEMS = {"npm", "pip", "rubygems", "maven", "nuget", "composer", "go", "rust", "pub", "swift"}
 SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 SEVERITY_PRIORITY = {"critical": "P1", "high": "P2", "medium": "P3", "low": "P3"}
+BATCH_LIMIT = 10
+EXCEPTION_BUDGET = 2
 NUMERIC = re.compile(r"\d+")
 NPM_COMPARATOR = re.compile(r"(\^|~|>=|<=|>|<|=)?v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?")
 EXIT_OK, EXIT_UNAVAILABLE, EXIT_USAGE = 0, 3, 64
@@ -178,7 +181,7 @@ def classify(alerts: list[dict], dependency: dict | None) -> tuple[str, list[str
     return ("hold" if reasons else "eligible"), reasons, upgrade
 
 
-def build_plan(alerts_doc: dict, local: dict) -> dict:
+def build_plan(alerts_doc: dict, local: dict, batch_limit: int = BATCH_LIMIT) -> dict:
     repository = alerts_doc.get("repository")
     evidence = {
         "status": alerts_doc.get("status"),
@@ -192,7 +195,8 @@ def build_plan(alerts_doc: dict, local: dict) -> dict:
         "local": {"revision": local.get("revision"), "dirty": bool(local.get("dirty"))},
         "blockers": ["dirty-worktree"] if local.get("dirty") else [],
         "outcomes": [],
-        "summary": {"alerts": 0, "eligible": 0, "hold": 0, "verify-publication": 0},
+        "batch": build_batch([], batch_limit),
+        "summary": {"alerts": 0, "eligible": 0, "hold": 0, "verify-publication": 0, "batched": 0, "deferred": 0},
     }
     if evidence["status"] not in {"complete", "partial"}:
         plan["blockers"].append("alert-evidence-unavailable")
@@ -220,16 +224,47 @@ def build_plan(alerts_doc: dict, local: dict) -> dict:
             "package": alerts[0].get("package"),
             "manifestPath": manifest,
             "relationship": alerts[0].get("relationship"),
+            "scope": alerts[0].get("scope"),
             "alerts": [a["identity"] for a in alerts],
             "severity": severity,
             "priority": SEVERITY_PRIORITY.get(severity or "", "P3"),
             "decision": decision,
             "reasons": reasons,
             "upgrade": upgrade,
+            "batch": None,
             "titleHint": f"Upgrade {alerts[0].get('package')}{target} ({manifest})",
         })
         plan["summary"][decision] += 1
+    plan["batch"] = build_batch(plan["outcomes"], batch_limit)
+    plan["summary"]["batched"] = len(plan["batch"]["outcomes"])
+    plan["summary"]["deferred"] = len(plan["batch"]["deferred"])
     return plan
+
+
+def batch_order(outcome: dict) -> tuple:
+    return (-SEVERITY_RANK.get(outcome["severity"] or "", 0), outcome["scope"] != "runtime", outcome["key"])
+
+
+def build_batch(outcomes: list[dict], limit: int) -> dict:
+    """Select one bounded batch of eligible outcomes; mark the rest deferred, not dropped."""
+    eligible = sorted((o for o in outcomes if o["decision"] == "eligible"), key=batch_order)
+    included, deferred = eligible[:limit], eligible[limit:]
+    for outcome in included:
+        outcome["batch"] = "included"
+    for outcome in deferred:
+        outcome["batch"] = "deferred"
+    packages = [o["package"] for o in included]
+    shown = ", ".join(packages[:3]) + (f" (+{len(packages) - 3} more)" if len(packages) > 3 else "")
+    return {
+        "limits": {"outcomes": limit, "exceptions": EXCEPTION_BUDGET},
+        "priority": included[0]["priority"] if included else None,
+        "outcomes": [o["key"] for o in included],
+        "alerts": [identity for o in included for identity in o["alerts"]],
+        "deferred": [o["key"] for o in deferred],
+        "held": [o["key"] for o in outcomes if o["decision"] == "hold"],
+        "verifyPublication": [o["key"] for o in outcomes if o["decision"] == "verify-publication"],
+        "titleHint": f"Dependabot security batch: {len(included)} fix{'' if len(included) == 1 else 'es'} ({shown})" if included else None,
+    }
 
 
 def alert_resolution(identity: str, fresh: dict) -> str:
@@ -292,6 +327,8 @@ def main(argv: list[str]) -> int:
     plan = commands.add_parser("plan", help="group alerts into remediation outcomes")
     plan.add_argument("--alerts", help="collector JSON file; defaults to stdin")
     plan.add_argument("--local", help="JSON file with local revision, dirty flag and dependency versions")
+    plan.add_argument("--batch-limit", type=int, default=BATCH_LIMIT,
+                      help=f"maximum eligible outcomes in one batch (default {BATCH_LIMIT})")
     recheck = commands.add_parser("recheck", help="compare a saved plan with a fresh collector read")
     recheck.add_argument("--plan", required=True, help="saved plan JSON file")
     recheck.add_argument("--alerts", help="fresh collector JSON file; defaults to stdin")
@@ -302,7 +339,9 @@ def main(argv: list[str]) -> int:
         local = load_json(args.local) if args.local else {}
         if not isinstance(local, dict):
             raise SystemExit("remediation-plan: --local must be a JSON object")
-        result = build_plan(alerts_document(args.alerts), local)
+        if args.batch_limit < 1:
+            raise SystemExit("remediation-plan: --batch-limit must be at least 1")
+        result = build_plan(alerts_document(args.alerts), local, args.batch_limit)
         exit_code = EXIT_UNAVAILABLE if "alert-evidence-unavailable" in result["blockers"] else EXIT_OK
     else:
         saved = load_json(args.plan)

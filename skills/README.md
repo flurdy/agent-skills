@@ -61,7 +61,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | contract-check | Read-only Pact-lite health authority: content drift, uncommitted pacts, sync gaps, static CI evidence and semantic test gaps |
 | contract-test | Execute existing scoped Pact-lite generation, local sync and provider verification; status delegates to contract-check |
 | delegate-work | Dynamically coordinate bounded delegation for non-trivial work when independent investigation, separated implementation and review, or genuinely separable workstreams materially improve delivery |
-| dependabot-remediation | Explicit per-repository Dependabot security-alert remediation: read-only discovery, semver eligibility with held major/uncertain cases, fixes through normal coding owners and one confirmed push |
+| dependabot-remediation | One bounded batch of compatible Dependabot security fixes per repository: read-only discovery, semver eligibility with held cases as residual risk, one batch owner, one verification cycle and one confirmed push |
 | develop | Lightweight standard/high entry before authorized code changes, with one-way diagnosis, architecture, and premium implementation handoffs; best-effort routing, not a capability floor |
 | diagnose-bug | Evidence-led, read-only bug diagnosis using minimal reproduction, boundary isolation, ranked hypotheses, and explicit falsification tests before proposing a fix |
 | implement-solution | Load before implementation-ready coding with interacting behavior, state/error paths, or local design trade-offs, including when ongoing work becomes complex; premium judgment and proportional TDD, not mechanical-edit ceremony |

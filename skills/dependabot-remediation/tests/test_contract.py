@@ -43,6 +43,21 @@ class DependabotRemediationContractTests(unittest.TestCase):
         for block in re.findall(r"```(?:bash|sh)\n(.*?)```", self.raw, re.S):
             self.assertIsNone(re.search(r"^\s*(?:gh\s+api|git\s+push|bd\s+close)\b", block, re.M))
 
+    def test_batch_scope_and_stopping_rule(self):
+        self.require_terms(
+            "one repository, one batch, one tracking owner, one verification and finalization cycle, one publication offer and one alert recheck",
+            "not an open-ended dependency-maintenance campaign", "`--batch-limit`, default 10",
+            "never started, never silently dropped", "at most 2 outcomes may fall out of the batch",
+            "stops the batch at the last safe checkpoint", "never abandon a half-applied dependency change",
+            "no backlog item is auto-created per held package", "not zero alerts or dependency freshness",
+            "a next batch and any watcher each need a new explicit request",
+            "Do not create validation worktrees by default", "trigger no worktrees, reviews, merges or closures",
+            "Rerunning the planner on the same evidence yields the same plan", "regardless of what the batch contains",
+            "Do not start a next batch, a watcher, PR triage or any follow-on maintenance",
+            "not retried without a new request", "**Residual risk:**", "**Batch:**",
+        )
+        self.assertNotRegex(self.text, r"one bead per (?:planned )?outcome")
+
     def test_scope_binding_and_degraded_sources(self):
         self.require_terms(
             "security alerts", "version-update PRs are out of scope", "Bind the invoking repository",
@@ -62,7 +77,7 @@ class DependabotRemediationContractTests(unittest.TestCase):
             "`parent-range-excludes-target`", "`parent-range-unknown`", "never assumed compatible",
             "Missing parent evidence holds",
             "Semver labels are not compatibility proof", "Do not widen a fix, add resolution overrides, or begin a migration",
-            "`human` label",
+            "residual risk recorded on the batch bead", "`human` label only when the user asks",
         )
 
     def test_untrusted_text_and_prohibited_remote_actions(self):
@@ -77,9 +92,10 @@ class DependabotRemediationContractTests(unittest.TestCase):
 
     def test_tracking_reuses_beads_authorities(self):
         self.require_terms(
-            "next-select stores", "next-select resolve <repo>:<id>", "one bead per planned outcome",
-            "never per command, package occurrence, alert or retry", "Deduplicate by the outcome `key`",
-            "reuse and update rather than duplicate", "Workspace-owned members route to the workspace store",
+            "next-select stores", "next-select resolve <repo>:<id>", "one bead per batch",
+            "never per outcome, package occurrence, alert, command or retry", "Deduplicate by the alert identities",
+            "already tracked", "never merge, close or take over existing owners", "update rather than duplicate",
+            "Workspace-owned members route to the workspace store",
             "never guess a store from the repository name", "next-select start <selector>",
             "session activity unverified", "do not take them over",
         )
@@ -92,9 +108,13 @@ class DependabotRemediationContractTests(unittest.TestCase):
     def test_fix_verify_finalize_and_publication_gates(self):
         self.require_terms(
             "explicit implementation authority", "one writer per working tree", "install scripts",
-            "integrity hashes", "Change only the dependency and its lockfile entries", "Never suppress the failure",
+            "integrity hashes", "change only the dependency and its lockfile entries", "safe checkpoint before the",
+            "restore the previous checkpoint with the same tooling", "Never suppress the failure",
+            "reported as a blocker, never finalized", "One batch, one coherent diff",
+            "verify-task](../verify-task/SKILL.md) once against the whole batch diff",
             "Dependency-resolution and regression evidence", "a lockfile diff alone is not verification",
-            "block finalization and publication", "no bead ID", "artifact_hygiene.py --pretty",
+            "block finalization and publication", "complete-task](../complete-task/SKILL.md) once", "no bead ID",
+            "artifact_hygiene.py --pretty",
             "`block` verdict or partial coverage stops the offer", "immediately before that single action",
             "**Push now** or **Leave unpushed**", "Approval covers that one command only",
             "Never chain the push",
@@ -113,10 +133,12 @@ class DependabotRemediationContractTests(unittest.TestCase):
         self.assertIn("not observed model behavior", self.fixtures["purpose"])
         required = {
             "no-alerts-vs-denied-access", "direct-and-transitive-compatible-fixes", "several-alerts-one-fix",
+            "bounded-batch-and-deferred-remainder", "unpatched-dev-only-alert-stays-residual",
             "duplicate-beads-and-workspace-store", "severity-independent-of-upgrade-size", "held-cases",
             "untrusted-advisory-text", "related-dependabot-pr", "unauthorized-or-dirty-scope",
-            "package-execution-and-gate-failure", "publication-audit-and-single-push",
-            "stale-revision-or-changed-alert", "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun",
+            "exception-budget-stops-at-checkpoint", "package-execution-and-gate-failure",
+            "publication-audit-and-single-push", "stale-revision-or-changed-alert",
+            "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun", "run-ends-without-follow-on",
         }
         self.assertEqual(set(self.cases), required)
         self.assertEqual(len(self.cases), len(self.fixtures["cases"]))
@@ -133,10 +155,17 @@ class DependabotRemediationContractTests(unittest.TestCase):
                     self.assertIn(f"def {name}(", helper_tests)
         self.assertEqual(stages, {"discover", "plan", "track", "fix", "verify", "publish", "recheck"})
         for case_id in ("no-alerts-vs-denied-access", "untrusted-advisory-text", "related-dependabot-pr",
-                        "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun"):
+                        "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun", "run-ends-without-follow-on"):
             self.assertEqual(self.cases[case_id]["expected"]["mutations"], [])
         self.assertIn("auto-push", self.cases["publication-audit-and-single-push"]["forbidden"])
         self.assertIn("treat dismissed as fixed", self.cases["delayed-scanning-dismissed-vs-fixed"]["forbidden"])
+        self.assertIn("start the deferred outcomes", self.cases["bounded-batch-and-deferred-remainder"]["forbidden"])
+        self.assertIn("continue past the exception budget", self.cases["exception-budget-stops-at-checkpoint"]["forbidden"])
+        self.assertIn("start a next batch", self.cases["run-ends-without-follow-on"]["forbidden"])
+        self.assertIn("create validation worktrees", self.cases["related-dependabot-pr"]["forbidden"])
+        for case in self.cases.values():
+            with self.subTest(case=case["id"]):
+                self.assertNotRegex(" ".join(case["expected"]["mutations"]), r"bead per (?:outcome|package)")
 
     def test_catalog_makefile_and_notes_are_wired(self):
         catalog = (ROOT / "skills" / "README.md").read_text()
