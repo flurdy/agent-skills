@@ -17,10 +17,11 @@ SKILLS = Path(__file__).resolve().parents[2]
 MAX_CONFIG_BYTES = 2 * 1024 * 1024
 MAX_EVIDENCE_BYTES = 65536
 COMPATIBILITY = {"role", "stability", "reasoning", "modalities", "limits", "pricing", "billingRoute"}
-ALIASES = {"claude": {"opus", "sonnet", "haiku", "fable", "default", "smart", "fast"},
+ALIASES = {"claude": {"opus", "sonnet", "haiku", "fable", "best", "opusplan", "default", "smart", "fast"},
            "codex": {"default", "smart", "fast"}, "gemini": {"default", "smart", "fast", "auto"}}
 CLI_CATALOG = {"codex": "openai", "claude": "anthropic", "gemini": "google"}
 PI_CATALOG = {"openai-codex": "openai", "google-gemini-cli": "google"}
+EXTENSION_CATALOG = {"pi-claude-cli": "anthropic"}
 
 
 def load_helper(name, path):
@@ -33,6 +34,8 @@ def load_helper(name, path):
 
 SPEND = load_helper("model_audit_spend", SKILLS / "pi-spend/scripts/pi_spend.py")
 STARTUP = load_helper("model_audit_startup", Path(__file__).with_name("startup_audit.py"))
+load_helper("catalog_refresh", Path(__file__).with_name("catalog_refresh.py"))
+CLAUDE = load_helper("model_audit_claude", Path(__file__).with_name("claude_discovery.py"))
 
 
 def snapshot(path, ceiling=MAX_CONFIG_BYTES):
@@ -76,6 +79,15 @@ def identity_parts(identity):
     return parts[0], "/".join(parts[1:])
 
 
+def native_alias(identity):
+    parts = identity_parts(identity)
+    if not parts:
+        return False
+    route, model = parts
+    agent = route.split("/")[1] if route.startswith("local/") else "claude" if route in EXTENSION_CATALOG else None
+    return agent is not None and (model.removesuffix("[1m]") in ALIASES[agent] or model.endswith("-latest"))
+
+
 def router_policy(router, identity):
     """Read-only projection of global policy, not runtime or launch authorization."""
     explicit = router.get("modelPolicies", {})
@@ -107,7 +119,7 @@ def inventory(router, panel, sources):
                 metered, basis, consent = router_policy(router, identity)
                 rows.append({"source": "routerConfig", "identity": identity, "model": identity,
                              "path": pointer("tiers", tier_name, "candidates", index, "model"),
-                             "usage": tier_name, "resolution": "exact", "enabled": item.get("enabled", True),
+                             "usage": tier_name, "resolution": "native-alias" if native_alias(identity) else "exact", "enabled": item.get("enabled", True),
                              "routerEnabled": router.get("enabled", True), "weight": item.get("weight"),
                              "selection": tier.get("selection", "first-available"), "thinking": tier.get("thinking"),
                              "metered": metered, "policyBasis": basis, "consent": consent,
@@ -151,22 +163,67 @@ def catalog_scope(identity):
     route, model = identity_parts(identity)
     if route.startswith("local/"):
         return route, CLI_CATALOG[route.split("/")[1]], model
-    return route, PI_CATALOG.get(route, route), model
+    return route, EXTENSION_CATALOG.get(route, PI_CATALOG.get(route, route)), model
 
 
 def model_facts(identity, catalogs, sources):
     route, provider, model = catalog_scope(identity)
     dev, opened, pi = catalogs
-    record = (dev.get(provider, {}).get("models") or {}).get(model)
-    # OpenRouter facts stay on the OpenRouter route. Local CLI/Pi availability never follows them.
+    alias = native_alias(identity)
+    record = (dev.get(provider, {}).get("models") or {}).get(model) if not alias else None
+    # This collector never loads extensions. Public provider mapping is metadata only.
+    extension = route in EXTENSION_CATALOG
+    if route.startswith("local/"):
+        assessment = "not-applicable"
+    elif extension:
+        assessment = "out-of-scope"
+    elif sources["piCatalog"]["status"] != "ok":
+        assessment = "unknown"
+    else:
+        assessment = "available" if identity in pi else "missing"
     direct = opened.get(model) if route == "openrouter" else None
     return {
-        "piAvailable": None if route.startswith("local/") or sources["piCatalog"]["status"] != "ok" else identity in pi,
-        "runtimeAvailability": "unknown" if route.startswith("local/") else "pi-catalog",
-        "liveFound": None if sources["modelsDev"]["status"] != "ok" or provider not in dev else record is not None,
+        "piAvailable": {"available": True, "missing": False}.get(assessment),
+        "piAssessment": assessment,
+        "runtimeAvailability": "not-assessed" if extension else "unknown" if route.startswith("local/") else "pi-catalog",
+        "extensionCompatibility": "unverified" if extension else "not-applicable",
+        "publicCatalogProvider": provider,
+        "publicCatalogScope": "public metadata only; not native CLI or extension access" if extension or route.startswith("local/") else "public metadata",
+        "catalogProviderFound": None if sources["modelsDev"]["status"] != "ok" else provider in dev,
+        "liveFound": None if alias or sources["modelsDev"]["status"] != "ok" or provider not in dev else record is not None,
         "openRouterFound": None if route != "openrouter" or sources["openRouter"]["status"] != "ok" else direct is not None,
         "modelsDev": record, "openRouter": direct,
     }
+
+
+def configured_facts(entry, catalogs, sources):
+    facts = model_facts(entry["model"], catalogs, sources)
+    _route, provider, model = catalog_scope(entry["model"])
+    metadata, opened = facts["modelsDev"], facts["openRouter"]
+    return {**entry, **facts, "catalogProvider": provider, "catalogModel": model,
+            "liveMetadata": ({"name": metadata.get("name", model), "releaseDate": metadata.get("release_date"),
+                              "lastUpdated": metadata.get("last_updated"), "reasoning": metadata.get("reasoning", False),
+                              "toolCall": metadata.get("tool_call"), "modalities": metadata.get("modalities"),
+                              "limit": metadata.get("limit"), "cost": metadata.get("cost")} if metadata else None),
+            "openRouterMetadata": ({"name": opened.get("name", model), "created": opened.get("created"),
+                                    "contextLength": opened.get("context_length"), "pricing": opened.get("pricing"),
+                                    "expirationDate": opened.get("expiration_date")} if opened else None)}
+
+
+def availability_findings(entries):
+    result = []
+    for entry in entries:
+        common = {"severity": "warning", "model": entry["model"], "usage": entry.get("usage")}
+        if entry["piAvailable"] is False:
+            result.append({**common, "kind": "pi-unavailable", "message": "configured model is not available in the extension-disabled native Pi catalog/auth scope"})
+        if entry["liveFound"] is False and entry["piAssessment"] != "out-of-scope":
+            result.append({**common, "kind": "live-missing", "message": "configured model is absent from the mapped live models.dev catalog"})
+        if entry["openRouterFound"] is False:
+            result.append({**common, "kind": "openrouter-missing", "message": "configured model is absent from the live public OpenRouter model catalog"})
+        if (entry["openRouterMetadata"] or {}).get("expirationDate") is not None:
+            result.append({**common, "severity": "review", "kind": "openrouter-expiration",
+                           "expirationDate": entry["openRouterMetadata"]["expirationDate"], "message": "OpenRouter reports an expiration date for this model"})
+    return result
 
 
 def discover(rows, catalogs, sources):
@@ -385,8 +442,8 @@ def interaction_plan(sources, leads, recommendations, assessments, candidates, f
     elif any(f["kind"] == "startup" for f in findings):
         kind, question = "inspect-startup", "Startup settings differ or could not be audited. Review launch paths and configuration evidence?"
         label, option = "Review startup settings", "inspect"
-    elif unavailable:
-        kind, question = "inspect-availability", "Some model sources are unavailable. Review what could not be checked?"
+    elif unavailable or any(f["kind"] == "pi-scope-not-assessed" for f in findings):
+        kind, question = "inspect-availability", "Some model sources or extension routes were not assessed. Review what could not be checked?"
         label, option = "Review missing evidence", "inspect"
     else:
         kind, question, label, option = "none", None, None, None
@@ -492,7 +549,7 @@ def previews(evidence, rows, router, panel, spend, policy, catalogs, sources, no
 
 
 def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs, refresh, now, billing_policy_path=None,
-           startup_paths=None):
+           startup_paths=None, claude_result=None):
     router, router_meta = snapshot(router_path)
     panel, panel_meta = snapshot(panel_path)
     spend, spend_meta = snapshot(spend_path)
@@ -515,11 +572,25 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
     if startup_paths is not None:
         report["startupAudit"] = STARTUP.audit(startup_paths, snapshot, sources, router, rows)
         report["findings"].extend(report["startupAudit"]["findings"])
+    if claude_result is not None:
+        report["claudeDiscovery"] = claude_result
+        sources["claudeClient"] = claude_result["client"]
+        sources["claudeDocumentation"] = claude_result["documentation"]
     for row in rows:
         row["config"] = sources[row["source"]]["path"]
         row["sourceSha256"] = sources[row["source"]].get("sha256")
-        row["facts"] = model_facts(row["identity"], catalogs, sources) if row["resolution"] == "exact" else None
+        row["facts"] = model_facts(row["identity"], catalogs, sources) if row["resolution"] == "exact" or row["identity"].split("/")[0] in EXTENSION_CATALOG else None
+        if claude_result is not None and (row["identity"].startswith("local/claude/") or row["identity"].split("/")[0] in EXTENSION_CATALOG):
+            row["claudeClientSupport"] = CLAUDE.client_support(identity_parts(row["identity"])[1], claude_result)
         row["spendCoverage"] = spend_coverage(row["identity"], policy, now, spend, spend_meta["status"])
+    report["configuredModels"] = [configured_facts(entry, catalogs, sources) for entry in report["configuredModels"]
+                                  if identity_parts(entry["model"])]
+    report["findings"] = [f for f in report["findings"] if f["kind"] not in {"pi-unavailable", "live-missing", "openrouter-missing", "openrouter-expiration"}]
+    report["findings"].extend(availability_findings(report["configuredModels"]))
+    for row in rows:
+        if row.get("claudeClientSupport", {}).get("status") == "minimum-version-mismatch" and row.get("enabled") is not False and row.get("routerEnabled") is not False:
+            report["findings"].append({"severity": "review", "kind": "claude-client-version", "model": row["identity"],
+                                       "message": "The CLI on PATH is older than the documented model minimum; extension executable and account access remain unverified."})
     for configured in report["configuredModels"]:
         if configured["source"] == "model-tier-router":
             configured["metered"], configured["policyBasis"], configured["consent"] = router_policy(router, configured["model"])
@@ -572,19 +643,33 @@ def enrich(report, router_path, panel_path, spend_path, evidence_path, catalogs,
     if evidence_meta["status"] not in {"ok", "not-supplied"}:
         findings.append({"severity": "error", "kind": "release-evidence", "message": "Evidence file is missing, invalid, oversized or older than seven days."})
     failed_sources = [name for name in ("piCatalog", "modelsDev", "openRouter") if sources[name]["status"] != "ok"]
+    if claude_result is not None and any("claudeClientSupport" in r and r.get("enabled") is not False
+                                         and r.get("routerEnabled") is not False for r in rows):
+        failed_sources.extend(name for name in ("claudeClient", "claudeDocumentation") if sources[name]["status"] != "ok")
     refresh_failed = refresh["status"] not in {"ok", "not-requested"}
     if refresh_failed:
         findings.append({"severity": "error", "kind": "refresh", "message": "Refresh did not complete; catalog freshness is unproven.", "status": refresh["status"]})
     repair = (any(sources[name]["status"] != "ok" for name in ("routerConfig", "consensusConfig"))
               or any(f["kind"] == "startup" for f in findings))
     unknown_models = sorted({r["identity"] for r in rows if r["resolution"] == "exact" and r.get("enabled") is not False
+                             and r["identity"].split("/")[0] not in EXTENSION_CATALOG
                              and (r["facts"]["liveFound"] is None or (not r["identity"].startswith("local/") and r["facts"]["piAvailable"] is None))})
     incomplete_reasons = (["Unreviewed discovery leads require authoritative compatibility evidence."] if unreviewed_leads else [])
     if uncertainties:
         incomplete_reasons.append("Release chronology is unknown for same-family discoveries; no upgrade inferred.")
     if unknown_models:
         incomplete_reasons.append("Model evidence is unknown for: " + ", ".join(unknown_models))
-    review = repair or policy.status != "complete" or any(f["kind"] in {"router-policy-unknown", "spend-uncovered", "pi-unavailable", "live-missing", "openrouter-missing", "openrouter-expiration"} for f in findings) or bool(recommendations)
+    claude_pins = sorted({r["identity"] for r in rows if r["identity"].startswith("local/claude/")
+                          and r["resolution"] == "exact" and r.get("enabled") is not False})
+    if claude_pins:
+        incomplete_reasons.append("Native Claude exact-model acceptance is unverified; public metadata and CLI minimum versions do not prove runtime/account access: " + ", ".join(claude_pins))
+    extension_models = sorted({r["identity"] for r in rows if r["identity"].split("/")[0] in EXTENSION_CATALOG
+                               and r.get("enabled") is not False and r.get("routerEnabled") is not False})
+    if extension_models:
+        incomplete_reasons.append("Pi extension compatibility is not assessed by extension-disabled discovery: " + ", ".join(extension_models))
+        findings.append({"severity": "info", "kind": "pi-scope-not-assessed", "models": extension_models,
+                         "message": "Extension-only routes are outside the passive Pi catalog scope; public Claude metadata does not verify runtime mapping, account access or billing."})
+    review = repair or policy.status != "complete" or any(f["kind"] in {"router-policy-unknown", "spend-uncovered", "pi-unavailable", "live-missing", "openrouter-missing", "openrouter-expiration", "claude-client-version"} for f in findings) or bool(recommendations)
     verdict = "REVIEW CONFIG" if review else "CURRENT"
     if failed_sources or refresh_failed or incomplete_reasons or evidence_meta["status"] not in {"ok", "not-supplied"}:
         verdict = "REVIEW CONFIG" if repair else "INCOMPLETE EVIDENCE"
@@ -625,6 +710,7 @@ def main():
     parser.add_argument("--openrouter", required=True)
     parser.add_argument("--pi-catalog", required=True)
     parser.add_argument("--refresh-result", required=True)
+    parser.add_argument("--claude-result")
     args = parser.parse_args()
     report = json.load(sys.stdin)
     dev = json.loads(Path(args.catalog).read_text())
@@ -641,7 +727,8 @@ def main():
         }
     result = enrich(report, args.router, args.panel, args.billing_policy, args.evidence,
                     (dev, opened, pi), refresh_result, datetime.now(timezone.utc), args.billing_policy_path,
-                    startup_paths=startup_paths)
+                    startup_paths=startup_paths,
+                    claude_result=json.loads(Path(args.claude_result).read_text()) if args.claude_result else None)
     if args.evidence_origin:
         result["sources"]["releaseEvidence"]["path"] = args.evidence_origin
     print(json.dumps(result, indent=2))

@@ -6,8 +6,10 @@ import argparse
 import json
 import os
 import re
+import selectors
 import signal
 import subprocess
+import time
 from pathlib import Path
 
 DISCLOSURE = (
@@ -19,19 +21,43 @@ DISCLOSURE = (
 )
 
 
-def run_native(argv, timeout):
+def run_native(argv, timeout, max_bytes=16 * 1024 * 1024):
     try:
         with subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                               stdin=subprocess.DEVNULL, start_new_session=True) as child:
-            try:
-                output, _ = child.communicate(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
-                child.communicate()
-                return "timeout", ""
-            if child.returncode:
-                return "failed", ""
-            return "ok", output.decode("utf-8", errors="replace")
+            deadline = time.monotonic() + timeout
+            output = bytearray()
+            status = "ok"
+            with selectors.DefaultSelector() as selector:
+                selector.register(child.stdout, selectors.EVENT_READ)
+                while selector.get_map():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        status = "timeout"
+                        break
+                    if not selector.select(remaining):
+                        continue
+                    chunk = os.read(child.stdout.fileno(), min(65536, max_bytes + 1 - len(output)))
+                    if not chunk:
+                        selector.unregister(child.stdout)
+                        break
+                    output.extend(chunk)
+                    if len(output) > max_bytes:
+                        status = "output-limit"
+                        break
+            if status == "ok":
+                try:
+                    child.wait(timeout=max(0, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    status = "timeout"
+            if status != "ok":
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.wait()
+                return status, ""
+            return ("failed", "") if child.returncode else ("ok", output.decode("utf-8", errors="replace"))
     except OSError:
         return "unavailable", ""
 
@@ -86,7 +112,8 @@ def collect_catalog():
                     break
                 rows.append({"provider": fields[0], "model": fields[1]})
     return {"status": status, "installedVersion": version.strip(),
-            "scope": "offline native catalog/auth scope; extensions disabled", "models": rows if status == "ok" else []}
+            "scope": "offline native catalog/auth scope; extensions disabled", "extensionsEnabled": False,
+            "models": rows if status == "ok" else []}
 
 
 def main():

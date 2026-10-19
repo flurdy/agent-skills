@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/model-update-check/scripts/model-upda
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.6.0"
+version: "1.7.0"
 author: "flurdy"
 ---
 
@@ -35,21 +35,57 @@ role compatibility. Read [MODEL_ROUTING.md](../../MODEL_ROUTING.md); the tiers a
 ```
 
 Run `scripts/model-update-check.sh` relative to this skill. Requires Bash, Python 3.10+, jq;
-Pi, curl and Homebrew degrade independently when unavailable. Python uses only the standard
+Pi, Claude CLI, curl and Homebrew degrade independently when unavailable. Python uses only the standard
 library. Read the complete helper output or extract named JSON fields without silently truncating
 sources/candidates. Do not use ad-hoc authenticated model APIs or inspect credential values.
 
 ## Default and offline collection
 
-Default mode fetches bounded, public metadata from models.dev, OpenRouter and npm, without API
-keys or curl user configuration. Homebrew is local metadata only, with auto-update disabled.
+Default mode fetches bounded, public metadata from models.dev, OpenRouter, npm and the official
+Claude model-configuration documentation, without API keys or curl user configuration. Homebrew is local metadata only, with auto-update disabled.
 Offline skips these network fetches. Both modes use bounded native `pi --offline --list-models`
 with executable extension/resource discovery disabled and project trust denied. No forced refresh,
 package update, config edit or inference runs. Native listing uses its existing auth scope, but
 neither this helper nor the agent opens, copies or prints credential values. A missing native
 `auth.json` stops enumeration because Pi 0.87.1 would otherwise create it. Do not initialize it.
-Extension-only models are outside this passive catalog scope; missing entries need investigation,
-not replacement. Native runtime behavior can vary by version; unavailable evidence is not success.
+Extension-only models are outside this passive catalog scope. Known `pi-claude-cli` identities
+have `piAvailable: null`, `piAssessment: out-of-scope` and `runtimeAvailability: not-assessed`
+in configured models, inventory facts and discovery candidates—not a missing-model warning.
+Their public Anthropic metadata is explicitly cross-runtime evidence, never proof of extension
+registration, mapping, account entitlement or billing. Aliases stay unresolved and disabled entries
+stay visible. Active unassessed extension routes keep the verdict incomplete for that reason;
+genuine missing native models still return `false`. Native runtime behavior can vary by version;
+unavailable evidence is not success.
+
+### Claude discovery fallback
+
+`claudeDiscovery` separates the local CLI version, native inventory, public documentation,
+account access, billing and Pi extension compatibility. The only native Claude command is
+`claude --version`, bounded to 10 seconds and 4 KiB; malformed output and diagnostics are not
+printed. This describes the executable on PATH, not necessarily the executable used by an extension.
+
+There is no documented standalone model-list command. The supported
+[Agent SDK `Query.supportedModels()` / `initializationResult()` interface](https://platform.claude.com/docs/en/agent-sdk/typescript#query)
+provides model metadata, but the audit does **not** initialize it, install its dependencies or
+emulate its private control protocol. SDK startup can consult authentication and organization
+metadata; native startup can migrate saved settings. Its initialization effects need separate
+review before it becomes a passive inventory source. `inventory.status: not-assessed` means this
+interface was not executed, not that Claude has no models or that the SDK API does not exist.
+
+The supported fallback is installed-version evidence plus the official
+[model configuration documentation](https://code.claude.com/docs/en/model-config), fetched only
+in hybrid mode over HTTPS without following redirects, with a 15-second/1-MiB bound. The report
+retains its exact URL, retrieval time and SHA-256, documented alias names and minimum-version citations. Missing, failed or changed/unrecognized
+documentation remains unknown, never an empty successful inventory. No interactive picker is opened.
+`claudeClientSupport` reports `minimum-version-met`, `minimum-version-mismatch`, `native-resolution`
+or `unverified`; meeting a documented minimum does not prove model acceptance or account access.
+Provider-dependent aliases and native defaults are never resolved or pinned from public docs.
+Account access, billing/usage credits and extension compatibility remain explicitly unverified.
+Active exact `local/claude/*` pins also keep the verdict incomplete: public existence and a met
+minimum version do not establish native model acceptance. Native aliases/defaults remain runtime-owned.
+Offline mode records documentation as skipped and performs no public fetch. Neither fallback mode
+initializes authentication, reads credential values, changes settings, refreshes catalogs or runs
+inference.
 
 The collector validates and audits the same private config snapshots, recording original target
 paths and SHA-256 digests. Disposable snapshots are removed on exit. It imports the pi-spend
@@ -133,6 +169,7 @@ runtime availability is uncertain; this skill never executes that package update
 |---|---|
 | Pi and live catalog both found | Configured identity resolves; no mandatory upgrade |
 | Pi missing, live found | Investigate Pi/auth/catalog scope first |
+| Pi out-of-scope, public metadata found or absent | Extension not assessed; public existence is separate from runtime compatibility |
 | Pi found, live missing | Mapping or catalog lag; investigate |
 | Both missing | Replacement review candidate; verify provider documentation |
 | Either unknown | Incomplete evidence |
@@ -265,5 +302,5 @@ make test-model-update-check test-pi-spend
 make clean-code lint-python validate-skills
 ```
 
-Fixtures use synthetic configs and mock Pi, public fetches and Homebrew. No real credentials,
+Fixtures use synthetic configs and mock Pi, Claude version output, public fetches and Homebrew. No real credentials,
 provider requests, config application or live refresh are needed for acceptance.

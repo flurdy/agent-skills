@@ -60,7 +60,7 @@ class AuditTests(unittest.TestCase):
             "routerPolicy": {"metered": False, "consent": "ask", "evidence": "Confirmed subscription routing"},
             "billing": {"billing": "subscription", "effectiveFrom": "2026-01-11T00:00:00Z", "evidence": "Confirmed activation date"}}]}
 
-    def audit(self, evidence=None):
+    def audit(self, evidence=None, claude_result=None):
         for path, payload in zip(self.paths, (self.router, self.panel, self.spend), strict=True):
             path.write_text(json.dumps(payload))
         evidence_path = None
@@ -69,7 +69,7 @@ class AuditTests(unittest.TestCase):
             evidence_path.write_text(json.dumps(evidence))
         before = {path: path.read_bytes() for path in self.paths}
         result = AUDIT.enrich(copy.deepcopy(self.base), *map(str, self.paths), evidence_path,
-                              (self.dev, self.opened, self.pi), self.refresh, NOW)
+                              (self.dev, self.opened, self.pi), self.refresh, NOW, claude_result=claude_result)
         self.assertEqual(before, {path: path.read_bytes() for path in self.paths})
         return result
 
@@ -85,6 +85,110 @@ class AuditTests(unittest.TestCase):
         self.assertEqual(len(aliases), 3)
         self.assertTrue(all(r["facts"] is None for r in aliases))
         self.assertEqual(result["recommendations"], [])
+
+    def test_extension_scope_is_not_native_absence_or_public_unavailability(self):
+        self.dev["openai"]["models"].pop("example-sol-2")
+        self.opened = {}
+        self.pi = {OLD}
+        pins = ["claude-sonnet-9-1", "opus", "fable", "claude-haiku-9-1"]
+        self.router = {"tiers": {"standard": {"candidates": [
+            {"model": f"pi-claude-cli/{pin}", "enabled": pin != pins[-1], "metered": False}
+            for pin in pins]}}}
+        self.base["configuredModels"] = [
+            {"source": "model-tier-router", "model": f"pi-claude-cli/{pin}"} for pin in pins]
+        self.base["sources"]["piCatalog"]["extensionsEnabled"] = False
+        self.dev["anthropic"] = {"models": {pins[0]: {"release_date": "2025-01-01"}}}
+        self.pi.add(f"anthropic/{pins[0]}")
+        result = self.audit()
+        for row in result["configuredModels"]:
+            self.assertIsNone(row["piAvailable"])
+            self.assertEqual(row["piAssessment"], "out-of-scope")
+            self.assertEqual(row["runtimeAvailability"], "not-assessed")
+        configured = {r["model"]: r for r in result["configuredModels"]}
+        self.assertIs(configured[f"pi-claude-cli/{pins[0]}"]["liveFound"], True)
+        self.assertIsNone(configured["pi-claude-cli/opus"]["liveFound"])
+        extension_rows = [r for r in result["configurationInventory"] if r["source"] == "routerConfig"]
+        self.assertEqual([r["enabled"] for r in extension_rows], [True, True, True, False])
+        self.assertEqual(extension_rows[1]["resolution"], "native-alias")
+        self.assertFalse(any(f["kind"] in {"pi-unavailable", "live-missing"} for f in result["findings"]))
+        self.assertEqual(result["verdict"], "INCOMPLETE EVIDENCE")
+        self.assertTrue(any("extension" in reason.lower() for reason in result["incompleteReasons"]))
+        candidate = next(r for r in result["catalogCandidates"] if r["identity"] == f"pi-claude-cli/{pins[0]}")
+        self.assertIsNone(candidate["piAvailable"])
+        self.assertEqual(candidate["publicCatalogProvider"], "anthropic")
+        self.assertEqual(candidate["extensionCompatibility"], "unverified")
+        self.assertEqual(result["interaction"]["primaryAction"]["kind"], "inspect-availability")
+
+    def test_public_extension_successor_cannot_authorize_a_runtime_preview(self):
+        before, after = "pi-claude-cli/claude-sonnet-9-1", "pi-claude-cli/claude-sonnet-9-2"
+        self.router["tiers"]["standard"]["candidates"][1]["model"] = before
+        self.dev["anthropic"] = {"models": {
+            "claude-sonnet-9-1": {"release_date": "2025-01-01"},
+            "claude-sonnet-9-2": {"release_date": "2025-02-01"}}}
+        proposal = self.audit(self.evidence(before, after))["recommendations"][0]
+        self.assertEqual(proposal["status"], "incomplete")
+        self.assertEqual(proposal["changes"], [])
+        self.assertTrue(any("runtime route" in reason for reason in proposal["unresolved"]))
+        self.assertIsNone(proposal["availability"]["piAvailable"])
+
+    def test_failed_claude_metadata_is_not_missing_models_or_current(self):
+        # Keep only the current native model so an unrelated upgrade lead cannot hide the gap.
+        self.dev["openai"]["models"].pop("example-sol-2")
+        self.opened = {}
+        self.pi = {OLD}
+        metadata = {"client": {"status": "timeout", "installedVersion": None},
+                    "documentation": {"status": "error", "aliases": [], "versionRequirements": []}}
+        result = self.audit(claude_result=metadata)
+        self.assertTrue({"claudeClient", "claudeDocumentation"} <= set(result["incompleteSources"]))
+        self.assertEqual(result["verdict"], "INCOMPLETE EVIDENCE")
+        self.assertFalse(any(f["kind"] == "live-missing" and f.get("model", "").startswith("local/claude") for f in result["findings"]))
+
+    def test_exact_claude_pin_is_not_current_from_public_or_minimum_version_evidence(self):
+        self.dev["openai"]["models"].pop("example-sol-2")
+        self.pi = {OLD}
+        self.opened = {}
+        self.dev["anthropic"] = {"models": {"claude-sonnet-9-1": {"release_date": "2025-01-01"}}}
+        self.panel["profiles"]["premium"]["routes"][1]["model"] = "claude-sonnet-9-1"
+        docs = {"status": "ok", "url": "https://code.claude.com/docs/en/model-config.md", "aliases": [],
+                "versionRequirements": [{"modelLabel": "Sonnet 9.1", "minimumVersion": "2.1.500", "quote": "Synthetic requirement"}]}
+        for version in ("2.1.500", "2.1.499"):
+            with self.subTest(version=version):
+                result = self.audit(claude_result={"client": {"status": "ok", "installedVersion": version}, "documentation": docs})
+                self.assertEqual(result["verdict"], "INCOMPLETE EVIDENCE")
+                self.assertTrue(any("exact-model acceptance" in reason for reason in result["incompleteReasons"]))
+                self.assertEqual(any(f["kind"] == "claude-client-version" for f in result["findings"]), version == "2.1.499")
+
+    def test_extension_only_metadata_failure_respects_enabled_and_router_gates(self):
+        self.panel = {"version": 1, "profiles": {}}
+        metadata = {"client": {"status": "timeout", "installedVersion": None},
+                    "documentation": {"status": "error", "aliases": [], "versionRequirements": []}}
+        for candidate_enabled, router_enabled in ((True, True), (False, True), (True, False)):
+            with self.subTest(candidate_enabled=candidate_enabled, router_enabled=router_enabled):
+                self.router = {"enabled": router_enabled, "tiers": {"standard": {"candidates": [
+                    {"model": "pi-claude-cli/claude-sonnet-9-1", "enabled": candidate_enabled, "metered": False}]}}}
+                self.base["configuredModels"] = [{"source": "model-tier-router", "model": "pi-claude-cli/claude-sonnet-9-1"}]
+                result = self.audit(claude_result=metadata)
+                failures = {"claudeClient", "claudeDocumentation"} & set(result["incompleteSources"])
+                self.assertEqual(bool(failures), candidate_enabled and router_enabled)
+                if not candidate_enabled or not router_enabled:
+                    self.assertFalse(any("extension compatibility" in reason.lower() for reason in result["incompleteReasons"]))
+        self.router["enabled"] = False
+        metadata["client"] = {"status": "ok", "installedVersion": "2.1.499"}
+        metadata["documentation"] = {"status": "ok", "url": "https://code.claude.com/docs/en/model-config.md", "aliases": [],
+                                     "versionRequirements": [{"modelLabel": "Sonnet 9.1", "minimumVersion": "2.1.500", "quote": "Synthetic requirement"}]}
+        self.assertFalse(any(f["kind"] == "claude-client-version" for f in self.audit(claude_result=metadata)["findings"]))
+
+    def test_missing_native_model_and_failed_catalog_remain_distinct(self):
+        self.pi.remove(OLD)
+        result = self.audit()
+        self.assertIs(result["configuredModels"][0]["piAvailable"], False)
+        self.assertTrue(any(f["kind"] == "pi-unavailable" for f in result["findings"]))
+        self.base["sources"]["piCatalog"]["status"] = "invalid-output"
+        result = self.audit()
+        self.assertIsNone(result["configuredModels"][0]["piAvailable"])
+        self.assertEqual(result["configuredModels"][0]["piAssessment"], "unknown")
+        self.assertFalse(any(f["kind"] == "pi-unavailable" for f in result["findings"]))
+        self.assertIn("piCatalog", result["incompleteSources"])
 
     def test_complete_catalog_not_top_eight_and_no_release_name_upgrade(self):
         for n in range(12):

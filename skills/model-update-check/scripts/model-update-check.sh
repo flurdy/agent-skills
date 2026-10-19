@@ -338,11 +338,15 @@ fi
 models_dev_status="skipped"
 openrouter_status="skipped"
 pi_release_status="skipped"
+claude_docs_status="skipped"
+claude_docs="$work_dir/claude-model-config.md"
+printf '' > "$claude_docs"
 if [[ "$offline" == false ]]; then
   if ! command -v curl >/dev/null 2>&1; then
     models_dev_status="missing-curl"
     openrouter_status="missing-curl"
     pi_release_status="missing-curl"
+    claude_docs_status="missing-curl"
   else
     models_dev_status="ok"
     if ! curl -q --fail --silent --show-error --location --max-time 30 --max-filesize 16777216 \
@@ -370,6 +374,16 @@ if [[ "$offline" == false ]]; then
   fi
 fi
 
+if [[ "$offline" == false && "$claude_docs_status" != "missing-curl" ]]; then
+  claude_docs_status="ok"
+  if ! curl -q --proto '=https' --fail --silent --show-error --max-time 15 --max-filesize 1048576 \
+    "https://code.claude.com/docs/en/model-config.md" --output "$claude_docs" 2>/dev/null; then
+    claude_docs_status="error"
+  fi
+fi
+python3 -B "$SCRIPT_DIR/claude_discovery.py" --documentation "$claude_docs" \
+  --documentation-status "$claude_docs_status" > "$work_dir/claude.json"
+
 latest_pi_version="$(jq -r '.version // ""' "$pi_package")"
 generated_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
@@ -394,7 +408,6 @@ jq -n \
   --arg brew_latest_version "$brew_latest_version" \
   --argjson brew_update_available "$brew_update_available" \
   --slurpfile configured "$configured_entries" \
-  --slurpfile pi_models "$pi_models" \
   --slurpfile catalog "$live_catalog" \
   --slurpfile openrouter_catalog "$openrouter_catalog" '
   def version_parts:
@@ -414,60 +427,9 @@ jq -n \
     sort_by(.releaseDate // "") | reverse | .[0:$count];
 
   ($configured[0]) as $configured_models |
-  ($pi_models[0]) as $available_models |
   ($catalog[0]) as $live |
   ($openrouter_catalog[0].data // []) as $openrouter_models |
-  ($configured_models | map(
-    . as $entry |
-    ($live[$entry.catalogProvider] // null) as $provider_metadata |
-    ($provider_metadata.models[$entry.catalogModel] // null) as $metadata |
-    . + {
-      piAvailable: (
-        if $pi_status != "ok" then null
-        else any($available_models[];
-          .provider == $entry.piProvider and .model == $entry.catalogModel)
-        end
-      ),
-      catalogProviderFound: (
-        if $models_dev_status != "ok" then null else ($provider_metadata != null) end
-      ),
-      liveFound: (
-        if $models_dev_status != "ok" or $provider_metadata == null then null
-        else ($metadata != null)
-        end
-      ),
-      liveMetadata: (
-        if $metadata == null then null else {
-          name: ($metadata.name // $entry.catalogModel),
-          releaseDate: ($metadata.release_date // null),
-          lastUpdated: ($metadata.last_updated // null),
-          reasoning: ($metadata.reasoning // false),
-          toolCall: ($metadata.tool_call // null),
-          modalities: ($metadata.modalities // null),
-          limit: ($metadata.limit // null),
-          cost: ($metadata.cost // null)
-        } end
-      ),
-      openRouterFound: (
-        if $entry.catalogProvider != "openrouter" or $openrouter_status != "ok" then null
-        else any($openrouter_models[]; .id == $entry.catalogModel)
-        end
-      ),
-      openRouterMetadata: (
-        if $entry.catalogProvider != "openrouter" then null
-        else (
-          [$openrouter_models[] | select(.id == $entry.catalogModel)][0] // null |
-          if . == null then null else {
-            name: (.name // $entry.catalogModel),
-            created: (.created // null),
-            contextLength: (.context_length // null),
-            pricing: (.pricing // null),
-            expirationDate: (.expiration_date // null)
-          } end
-        ) end
-      )
-    }
-  )) as $audited |
+  ($configured_models) as $audited |
   ($audited | map(.catalogProvider) | unique) as $providers |
   ($audited | map(select(.catalogProvider == "openrouter") |
     .catalogModel | split("/")[0] | ltrimstr("~")) | unique) as $openrouter_namespaces |
@@ -482,7 +444,7 @@ jq -n \
     sources: {
       routerConfig: {path: $router_path, status: $router_status},
       consensusConfig: {path: $consensus_path, status: $consensus_status},
-      piCatalog: {status: $pi_status, installedVersion: (if $pi_version == "" then null else $pi_version end), scope: "offline native catalog/auth scope; extensions disabled; CLI availability not inferred"},
+      piCatalog: {status: $pi_status, installedVersion: (if $pi_version == "" then null else $pi_version end), scope: "offline native catalog/auth scope; extensions disabled; CLI availability not inferred", extensionsEnabled: false},
       modelsDev: {status: $models_dev_status, url: $models_dev_url},
       openRouter: {status: $openrouter_status, url: $openrouter_url},
       piRelease: {status: $pi_release_status, latestVersion: (if $latest_pi_version == "" then null else $latest_pi_version end)},
@@ -523,26 +485,6 @@ jq -n \
         elif $brew_status == "ok" and $npm_update_available then
           {severity: "review", kind: "pi-npm-ahead-of-homebrew", manager: "homebrew", current: $brew_installed_version, candidate: $latest_pi_version, message: "a newer Pi npm release exists, but Homebrew currently reports no formula update"}
         else empty end
-      ] +
-      [
-        $audited[] |
-        select(.piAvailable == false) |
-        {severity: "warning", kind: "pi-unavailable", model: .model, usage: .usage, message: "configured model is not available in the active Pi catalog/auth scope"}
-      ] +
-      [
-        $audited[] |
-        select(.liveFound == false) |
-        {severity: "warning", kind: "live-missing", model: .model, usage: .usage, message: "configured model is absent from the mapped live models.dev catalog"}
-      ] +
-      [
-        $audited[] |
-        select(.openRouterFound == false) |
-        {severity: "warning", kind: "openrouter-missing", model: .model, usage: .usage, message: "configured model is absent from the live public OpenRouter model catalog"}
-      ] +
-      [
-        $audited[] |
-        select(.openRouterMetadata.expirationDate != null) |
-        {severity: "review", kind: "openrouter-expiration", model: .model, usage: .usage, expirationDate: .openRouterMetadata.expirationDate, message: "OpenRouter reports an expiration date for this model"}
       ]
     )
   }
@@ -552,4 +494,4 @@ jq -n \
   --launcher "$launcher_config" --settings "$settings_config" "${startup_args[@]}" \
   "${evidence_args[@]}" \
   --catalog "$live_catalog" --openrouter "$openrouter_catalog" --pi-catalog "$pi_models" \
-  --refresh-result "$refresh_result"
+  --refresh-result "$refresh_result" --claude-result "$work_dir/claude.json"

@@ -54,6 +54,14 @@ esac
 FAKE_PI
 chmod +x "$TMP_DIR/bin/pi"
 
+cat > "$TMP_DIR/bin/claude" <<'FAKE_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "$*" == --version ]] || exit 2
+printf '2.1.499 (Claude Code)\n'
+FAKE_CLAUDE
+chmod +x "$TMP_DIR/bin/claude"
+
 cat > "$TMP_DIR/bin/brew" <<'FAKE_BREW'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -124,6 +132,7 @@ cat > "$TMP_DIR/bin/curl" <<'FAKE_CURL'
 set -euo pipefail
 url=""
 output=""
+original_args="$*"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output)
@@ -153,6 +162,18 @@ case "$url" in
   {"id":"~google/gemini-flash-latest","name":"Gemini Flash Latest","created":3,"context_length":1048576,"pricing":{},"expiration_date":null}
 ]}
 JSON
+    ;;
+  https://code.claude.com/docs/en/model-config.md)
+    [[ "$original_args" != *--location* && "$original_args" == *"--proto =https"* ]] || exit 2
+    cat > "$output" <<'DOCS'
+### Model aliases
+| Model alias | Behavior |
+| **`sonnet`** | Latest Sonnet |
+| **`opus`** | Latest Opus |
+| **`fable`** | Provider-dependent Fable |
+### Versions
+Sonnet 9.1 requires Claude Code v2.1.500 or later.
+DOCS
     ;;
   https://fixture.test/pi-latest)
     printf '%s\n' '{"version":"0.81.0"}' > "$output"
@@ -283,8 +304,12 @@ jq -e '
   (.recentOpenRouterByNamespace.qwen[0].model == "qwen/new-reasoner") and
   (.recentOpenRouterByNamespace | has("google") and (has("~google") | not))
 ' <<< "$result_json" >/dev/null || fail "hybrid audit output was incorrect"
-[[ "$(wc -l < "$CURL_LOG" | tr -d '[:space:]')" -eq 3 ]] || \
-  fail "hybrid mode did not make exactly three public metadata requests"
+[[ "$(wc -l < "$CURL_LOG" | tr -d '[:space:]')" -eq 4 ]] || \
+  fail "hybrid mode did not make exactly four public metadata requests"
+jq -e '.sources.claudeClient.installedVersion == "2.1.499" and
+  .sources.claudeDocumentation.status == "ok" and
+  .claudeDiscovery.inventory.status == "not-assessed" and
+  .claudeDiscovery.accountAccess == "unverified"' <<< "$result_json" >/dev/null || fail "Claude fallback provenance"
 grep -Fqx -- 'info --json=v2 pi-coding-agent' "$BREW_LOG" || \
   fail "hybrid mode did not inspect Homebrew formula metadata"
 
@@ -298,6 +323,24 @@ jq -e '
   all(.findings[]; .kind != "pi-update")
 ' <<< "$result_json" >/dev/null || fail "Homebrew state did not override npm update availability"
 
+CLAUDE_ROUTER="$TMP_DIR/claude-router.json"
+printf '%s\n' '{"tiers":{"standard":{"candidates":[
+  {"model":"pi-claude-cli/claude-sonnet-9-1","metered":false},
+  {"model":"pi-claude-cli/opus","metered":false},
+  {"model":"pi-claude-cli/claude-haiku-9-1","metered":false,"enabled":false}
+]}}}' > "$CLAUDE_ROUTER"
+result_json="$(BREW_OUTDATED=false "${RUN_ENV[@]}" "$HELPER" --router-config "$CLAUDE_ROUTER" --consensus-config "$CONSENSUS_CONFIG")"
+jq -e '
+  all(.configuredModels[] | select(.model | startswith("pi-claude-cli/"));
+    .piAvailable == null and .piAssessment == "out-of-scope") and
+  all(.findings[]; ((.kind != "pi-unavailable" and .kind != "live-missing") or (.model | startswith("pi-claude-cli/") | not))) and
+  any(.configurationInventory[]; .identity == "pi-claude-cli/claude-sonnet-9-1" and
+    .claudeClientSupport.status == "minimum-version-mismatch") and
+  any(.configurationInventory[]; .identity == "pi-claude-cli/opus" and .resolution == "native-alias") and
+  any(.configurationInventory[]; .identity == "pi-claude-cli/claude-haiku-9-1" and .enabled == false) and
+  .verdict == "INCOMPLETE EVIDENCE"
+' <<< "$result_json" >/dev/null || fail "extension-disabled catalogue produced false model availability"
+
 : > "$CURL_LOG"
 : > "$PI_LOG"
 result_json="$("${RUN_ENV[@]}" "$HELPER" --offline "${COMMON_ARGS[@]}")"
@@ -306,6 +349,7 @@ jq -e '
   .sources.modelsDev.status == "skipped" and
   .sources.openRouter.status == "skipped" and
   .sources.piRelease.status == "skipped" and
+  .sources.claudeDocumentation.status == "skipped" and
   .sources.homebrew.status == "ok" and
   .piUpdateAvailable == true and
   .piNpmUpdateAvailable == false and
