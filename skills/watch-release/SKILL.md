@@ -8,7 +8,7 @@ allowed-tools: "Bash(~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py
 model-tier: standard
 model: sonnet
 effort: medium
-version: "1.5.0"
+version: "1.5.1"
 author: "flurdy"
 ---
 
@@ -70,7 +70,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
 3. Use this self-contained prompt in the start call:
 
    ```text
-   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-release pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `release-manager` now. This is one attended release tick. Invoke the skill rather than improvising its steps, render its full dashboard and every confirmation as visible text, and wait for each answer. Never push without the explicit answer to that action's current question in this tick and release-manager's fresh shared-authority recheck. Never invoke release-maintenance, reconcile manifests, sync config, or restart workloads in a watch tick; an answer cannot expand this boundary. An `ask_user_question` call blocks the active tick until the user answers; do not call `watch_loop` complete while a question is open. After release-manager has finished all answered prompts and printed its final `next-tick:` line, call the matching `watch_loop` action: complete with outcome: continue. In adaptive mode pass that line's numeric N as delaySeconds; if the line is missing or malformed, use 600. In fixed mode omit delaySeconds. Do not complete before the dashboard, answers, tick summary, and cadence recommendation are visible.
+   When already permitted, first run `~/.agents/skills/watch-telemetry/scripts/watch_telemetry.py record watch-release pi tick` once; telemetry failure must not block the watch. Then Load and follow the skill named `release-manager` now. This is one attended release tick. Invoke the skill rather than improvising its steps, render its full dashboard and every confirmation as visible text, and wait for each answer. Never push without the explicit answer to that action's current question in this tick and release-manager's fresh shared-authority recheck. Never invoke release-maintenance, reconcile manifests, sync config, or restart workloads in a watch tick; an answer cannot expand this boundary. A release question (the native `publish_commit` dialog, or `ask_user_question`) blocks the active tick until the user answers; do not call `watch_loop` complete while a question is open. After release-manager has finished all answered prompts and printed its final `next-tick:` line, call the matching `watch_loop` action: complete with outcome: continue. In adaptive mode pass that line's numeric N as delaySeconds; if the line is missing or malformed, use 600. In fixed mode omit delaySeconds. Do not complete before the dashboard, answers, tick summary, and cadence recommendation are visible.
    ```
 
 4. For adaptive mode, state the local deadline and that the first tick lands after about one
@@ -110,7 +110,7 @@ If `watch_loop` is available, use this path instead of Claude scheduling:
    Fixed ticks ignore `next-tick:` and let the runtime enforce the requested cadence from each
    successful completion.
 
-A successful start ends the initiating turn. `ask_user_question` blocks the active tick until the
+A successful start ends the initiating turn. A release question blocks the active tick until the
 user answers, and only the later matching `action: complete` schedules another tick. The `pause`
 policy prevents an unanswered, interrupted, or malformed attended tick from retrying by itself.
 Protocol v1 also exposes model-facing `action: stop`; ordinary deadline and manual stopping belong
@@ -171,12 +171,13 @@ stop.
 Some harnesses close an idle question on their own. Claude Code does so only when
 `askUserQuestionTimeout` is set (`60s`, `5m`, `10m`; default `never`) and the terminal window is
 unfocused, the normal state of a dedicated watch tab, returning `No response after 60s — the user
-may be away from keyboard`. Pi's `ask_user_question` has no timeout and waits. Either way
+may be away from keyboard`. Pi asks through the native `publish_commit` dialog (push / defer /
+cancel / why?), which has no timeout and waits; Esc dismisses it. Either way
 `/release-manager` treats anything but an explicit current answer as unanswered: it defers the
 service, stops re-offering that exact head on later ticks, keeps observing, and never pushes. To
 release such a service, reply `push <service>` in the watch tab; the manager rechecks the gates
-first and, in Pi, still asks for the native `publish_commit` confirmation. Keep or change the
-timeout as you prefer; the loop stays safe at any value.
+first and asks that service's question again, which in Pi is the same native dialog. Keep or
+change the timeout as you prefer; the loop stays safe at any value.
 
 In Pi, a tick whose model turn fails (for example a dropped provider connection) settles without
 `watch_loop complete`, and the `pause` policy pauses the watch. `/watch-status` shows the paused

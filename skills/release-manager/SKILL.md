@@ -8,7 +8,7 @@ allowed-tools: "Read,Skill,AskUserQuestion,Bash(~/.agents/skills/ready-to-releas
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.4.1"
+version: "2.5.0"
 author: "flurdy"
 ---
 
@@ -143,7 +143,7 @@ movement alone do not prove desired configuration applied or a restart completed
      use: it must push only the selected service, without hidden extra remote actions or history
      rewrites. Unsupported composite recipes require an explicit handoff, not a permission bypass.
 
-5. **Prompt and push one at a time.** Obtain a **fresh authority result** immediately before each
+5. **Ask once and push one at a time.** Obtain a **fresh authority result** immediately before each
    question. If the service is no longer READY, show the new gates and skip its push offer.
    Show the publication path (the exact command `make git-push <service>`, or `publish_commit`
    for the service's canonical root and full head SHA), candidate head/count, upstream revision,
@@ -160,42 +160,54 @@ movement alone do not prove desired configuration applied or a restart completed
 
    Only questions actually shown get a row; READY candidates not offered this tick are listed
    separately as waiting. After the tool returns, update the row's response (`push`, `defer`,
-   `cancel`, `unanswered`, `dismissed`) separately from its execution outcome (`not executed` or
-   the receipt status). No row may imply that an unissued action was approved or executed.
+   `cancel`, `why?`, `unanswered`, `dismissed`) separately from its execution outcome (`not executed`
+   or the receipt status). No row may imply that an unissued action was approved or executed.
 
-   Offer `push` / `defer` / `cancel` / `why?` (one question per service):
-   - `push`: after the answer, recollect once more. Compare the complete selected service row,
-     relevant prerequisite rows, and gate/policy evidence to the question's snapshot (ignore only
-     observation timestamps, display age and advisory `configUptake` entries/notes). If anything relevant changed, discard the answer
-     and ask again against fresh evidence. Otherwise publish with no intervening unrelated action,
-     shell loop, pipe, substitution, or `&&` chain:
-     1. Record intent first: `release-state begin-publication --service <service> --sha <full head>
+   Ask one question per service, offering `push` / `defer` / `cancel` / `why?`:
+   - **Pi:** the question is `publish_commit` with `action: confirm`, `root` = `realpath <service
+     dir>`, `commit` = the full head and a short `context` (service, verdict, consequence, live
+     baseline). Its native dialog offers exactly those choices, waits for the answer, and is the
+     publication authorization: never precede it with `ask_user_question` for the same decision.
+     A refusal before the dialog means no push offer; report it as a handoff. Map `confirmed`
+     (with `token`) → `push`, `deferred` → `defer`, `cancelled` → `cancel`, `why` → `why?`, and
+     `dismissed` or a tool failure → unanswered.
+   - **Other harnesses:** `AskUserQuestion` with the same four options.
+
+   Then act on the answer:
+   - `push`: publish with no intervening unrelated action, shell loop, pipe, substitution, or `&&`
+     chain:
+     1. **Other harnesses only:** recollect once more and compare the complete selected service
+        row, relevant prerequisite rows, and gate/policy evidence to the question's snapshot (ignore
+        only observation timestamps, display age and advisory `configUptake` entries/notes). If
+        anything relevant changed, discard the answer and ask again against fresh evidence. Pi
+        rechecks in step 3 instead, after recording intent, so one recheck fits the token's window.
+     2. Record intent: `release-state begin-publication --service <service> --sha <full head>
         --from-tag <pre-push tag, or omit when unknown> --session <session> --deploying|--no-deploying
         --expect <hash>`. Use `printenv PI_SESSION_ID` in Pi, otherwise a short harness label.
-        `held` or `conflict` stops publication for this tick; report it. Every later
-        `finish-publication` passes the same `--service` and `--sha` plus the printed attempt `--id`.
-     2. **Pi:** call `publish_commit` with `action: confirm`, `root` = `realpath <service dir>`,
-        `commit` = the full head and a short `context`. Its native dialog is the authorization; the
-        earlier answer was intent only. Declined → `finish-publication --status declined`; refused
-        before a token → `--status failed`. After an approval, recollect once more with
-        `release-gates --exclude-publication <id>`, which evaluates as if only this attempt's own
-        record were absent, and compare as above, including that the confirmed commit is still the
-        head. Any change → do not execute;
+        `held` or `conflict` stops publication for this tick; report it and, in Pi, leave the token
+        unused. Every later `finish-publication` passes the same `--service` and `--sha` plus the
+        printed attempt `--id`.
+     3. **Pi:** recollect once more with `release-gates --exclude-publication <id>`, which evaluates
+        as if only this attempt's own record were absent, and compare as in step 1, including that
+        the confirmed commit is still the head. Any change → do not execute;
         `finish-publication --status stale`. Otherwise call `publish_commit` with `action: execute`
-        and only the returned `token`, then `finish-publication --status <receipt status>`.
+        and only the returned `token`, then `finish-publication --status <receipt status>`. A token
+        the tool reports unknown, used or expired → `finish-publication --status stale`; a new push
+        needs a new question.
         **Other harnesses:** run only the exact command `make git-push <service>`; exit 0 →
         `finish-publication --status ok`, anything else → `--status unknown`.
-     3. Report the receipt. `ok` lets the helper save the rollout watch for deploying services from
-        the recorded pre-push tag; `uptodate` adds no baseline; `rejected`, `failed`, `stale` and
-        `declined` stop this service without retry. `unknown` stays recorded as uncertain and holds
+     4. Report the receipt. `ok` lets the helper save the rollout watch for deploying services from
+        the recorded pre-push tag; `uptodate` adds no baseline; `rejected`, `failed` and `stale`
+        stop this service without retry. `unknown` stays recorded as uncertain and holds
         every push: hand off `/release-maintenance resolve-publication <service>`. Never assume
         nothing reached the remote, and never retry automatically.
    - Recollect after each push before selecting another candidate, so an old same-tick approval
      cannot release a dependent consumer before its prerequisite settles.
    - `defer`: suppress for this tick only. `cancel`: record `cancelled[service]` with
      `reason: "cancel"` and suppress this exact head until it changes.
-   - **Unanswered:** any result that is not an explicit current answer counts as no answer: an
-     expiry or auto-continue result (for example
+   - **Unanswered:** any result that is not an explicit current answer counts as no answer: a
+     `dismissed` `publish_commit` result (Esc, or a cancelled tool call), an expiry or
+     auto-continue result (for example
      `No response after 60s — the user may be away from keyboard`), a dismissed or cancelled
      dialog, a partial or auto-submitted selection, a validation error, or a tool failure. A
      preselected `push` inside such a result is not an answer. Record `cancelled[service] = {"sha": "<head>", "reason": "unanswered"}` so the
@@ -205,8 +217,9 @@ movement alone do not prove desired configuration applied or a restart completed
      they chose.
    - **Chat reply after an unanswered offer:** a later chat message naming the service
      (`push <service>`) is the explicit answer for the exact head that offer showed. Remove that
-     service's `unanswered` suppression, then recollect and continue exactly as for `push`,
-     including the Pi native `publish_commit` confirmation. A changed head, a reply naming no
+     service's `unanswered` suppression, then recollect and ask that service's question again:
+     in Pi the native `publish_commit` dialog, which remains the only authorization; elsewhere
+     the reply itself is the `push` answer. A changed head, a reply naming no
      service, or `push all` is not an answer: show the fresh gates and make a new single-service
      offer instead.
    - `why?`: show returned gate evidence and optionally the single read-only command
@@ -237,8 +250,9 @@ movement alone do not prove desired configuration applied or a restart completed
    Fixed watches ignore it. Even failed/paused ticks render their errors and use a conservative
    warm recommendation; no prompt can remain open when the tick completes.
 
-An `ask_user_question` blocks the attended tick until answered or until the harness closes it. No
-response, expiry, auto-continue, dismissal, cancellation, old permission, READY row, or scheduled
-wake authorizes a push; only an explicit current answer, or a later chat reply naming the service,
-does, and both still pass the fresh recheck. Use `/release-status` for unattended observation.
+A release question (`publish_commit`'s native dialog in Pi, `ask_user_question` elsewhere) blocks
+the attended tick until answered or until the harness closes it. No response, expiry,
+auto-continue, dismissal, cancellation, old permission, READY row, or scheduled wake authorizes a
+push; only an explicit current answer does, and it still passes the fresh recheck. A later chat
+reply naming the service reopens that question. Use `/release-status` for unattended observation.
 Repository-specific remote/destructive-action confirmation rules remain authoritative.

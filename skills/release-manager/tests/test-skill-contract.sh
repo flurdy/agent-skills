@@ -10,7 +10,7 @@ skill="$SKILL_DIR/SKILL.md"
 for required in 'Do not recompute' 'fresh authority result' 'exact command' 'only `READY`' 'Legacy maintenance state' 'next-tick:' 'upstream' 'malformed' 'one active manager'; do
     grep -Fq "$required" "$skill" || fail "missing manager invariant: $required"
 done
-for required in 'away from keyboard' '"reason": "unanswered"' 'is not an answer' 'ask no further push question this tick' 'push <service>' '| Response | Executed |' 'Before the blocking question' 'explicit current answer'; do
+for required in 'away from keyboard' '"reason": "unanswered"' 'is not an answer' 'ask no further push question this tick' 'push <service>' '| Response | Executed |' 'Before the blocking question' 'explicit current answer' '`dismissed` or a tool failure' 'never precede it with `ask_user_question`'; do
     grep -Fq -- "$required" "$skill" || fail "missing unanswered-prompt invariant: $required"
 done
 unanswered_line=$(grep -nF -- '**Unanswered:**' "$skill" | head -1 | cut -d: -f1)
