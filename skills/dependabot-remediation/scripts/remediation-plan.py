@@ -6,8 +6,10 @@ each as eligible (compatible patch/minor with local version evidence and, for tr
 dependencies, every parent range proven to allow the patch), hold (major, pre-1.0, no
 patched version, unsupported ecosystem, parent range excluding or not proving the patch,
 or missing local evidence) or verify-publication (locally already patched). Severity
-informs priority only; it never widens eligibility. Eligible outcomes then form one
-bounded batch in priority order; the remainder is deferred, never silently dropped.
+informs priority only; it never widens eligibility. Eligible outcomes already owned by
+existing tracking are excluded; the rest are partitioned into one dedicated item per
+urgent (critical) fix and a capped number of small manifest-coherent batches. Anything
+left over is deferred to one dated follow-up, never silently dropped.
 
 ``recheck`` compares a saved plan with a fresh collector read and reports fixed,
 pending, dismissed, changed or unknown per outcome. Dismissed is not fixed.
@@ -19,6 +21,7 @@ import argparse
 import json
 import re
 import sys
+from itertools import groupby
 from pathlib import Path
 
 PLAN_SCHEMA = "dependabot-remediation-plan/v1"
@@ -27,8 +30,11 @@ ALERTS_SCHEMA = "dependabot-alerts/v1"
 SEMVER_ECOSYSTEMS = {"npm", "pip", "rubygems", "maven", "nuget", "composer", "go", "rust", "pub", "swift"}
 SEVERITY_RANK = {"critical": 4, "high": 3, "medium": 2, "low": 1}
 SEVERITY_PRIORITY = {"critical": "P1", "high": "P2", "medium": "P3", "low": "P3"}
-BATCH_LIMIT = 10
+URGENT_SEVERITIES = {"critical"}
+BATCH_SIZE = 5
+MAX_BATCHES = 3
 EXCEPTION_BUDGET = 2
+FOLLOW_UP_DAYS = 7
 NUMERIC = re.compile(r"\d+")
 NPM_COMPARATOR = re.compile(r"(\^|~|>=|<=|>|<|=)?v?(\d+|[xX*])(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?")
 EXIT_OK, EXIT_UNAVAILABLE, EXIT_USAGE = 0, 3, 64
@@ -181,7 +187,18 @@ def classify(alerts: list[dict], dependency: dict | None) -> tuple[str, list[str
     return ("hold" if reasons else "eligible"), reasons, upgrade
 
 
-def build_plan(alerts_doc: dict, local: dict, batch_limit: int = BATCH_LIMIT) -> dict:
+def tracked_owner(outcome: dict, tracked: list) -> str | None:
+    for entry in tracked:
+        if not isinstance(entry, dict):
+            continue
+        keys, alerts = entry.get("keys") or [], entry.get("alerts") or []
+        if outcome["key"] in keys or any(identity in alerts for identity in outcome["alerts"]):
+            return str(entry.get("owner") or "unknown")
+    return None
+
+
+def build_plan(alerts_doc: dict, local: dict, tracked: list | None = None,
+               batch_size: int = BATCH_SIZE, max_batches: int = MAX_BATCHES) -> dict:
     repository = alerts_doc.get("repository")
     evidence = {
         "status": alerts_doc.get("status"),
@@ -195,12 +212,12 @@ def build_plan(alerts_doc: dict, local: dict, batch_limit: int = BATCH_LIMIT) ->
         "local": {"revision": local.get("revision"), "dirty": bool(local.get("dirty"))},
         "blockers": ["dirty-worktree"] if local.get("dirty") else [],
         "outcomes": [],
-        "batch": build_batch([], batch_limit),
-        "summary": {"alerts": 0, "eligible": 0, "hold": 0, "verify-publication": 0, "batched": 0, "deferred": 0},
+        "work": None,
+        "summary": {"alerts": 0, "eligible": 0, "hold": 0, "verify-publication": 0},
     }
     if evidence["status"] not in {"complete", "partial"}:
         plan["blockers"].append("alert-evidence-unavailable")
-        return plan
+        return with_work(plan, batch_size, max_batches)
     if evidence["status"] == "partial":
         plan["blockers"].append("alert-evidence-partial")
     open_alerts = [a for a in alerts_doc.get("alerts") or [] if a.get("state") == "open"]
@@ -231,39 +248,85 @@ def build_plan(alerts_doc: dict, local: dict, batch_limit: int = BATCH_LIMIT) ->
             "decision": decision,
             "reasons": reasons,
             "upgrade": upgrade,
-            "batch": None,
+            "tracked": None,
+            "work": None,
             "titleHint": f"Upgrade {alerts[0].get('package')}{target} ({manifest})",
         })
         plan["summary"][decision] += 1
-    plan["batch"] = build_batch(plan["outcomes"], batch_limit)
-    plan["summary"]["batched"] = len(plan["batch"]["outcomes"])
-    plan["summary"]["deferred"] = len(plan["batch"]["deferred"])
+    for outcome in plan["outcomes"]:
+        outcome["tracked"] = tracked_owner(outcome, tracked or [])
+    return with_work(plan, batch_size, max_batches)
+
+
+def with_work(plan: dict, batch_size: int, max_batches: int) -> dict:
+    work = build_work(plan["outcomes"], plan["repository"], batch_size, max_batches)
+    plan["work"] = work
+    plan["summary"].update({
+        "urgent": len(work["urgent"]),
+        "batched": sum(len(batch["outcomes"]) for batch in work["batches"]),
+        "deferred": len(work["deferred"]),
+        "tracked": len(work["tracked"]),
+    })
     return plan
 
 
-def batch_order(outcome: dict) -> tuple:
+def priority_order(outcome: dict) -> tuple:
     return (-SEVERITY_RANK.get(outcome["severity"] or "", 0), outcome["scope"] != "runtime", outcome["key"])
 
 
-def build_batch(outcomes: list[dict], limit: int) -> dict:
-    """Select one bounded batch of eligible outcomes; mark the rest deferred, not dropped."""
-    eligible = sorted((o for o in outcomes if o["decision"] == "eligible"), key=batch_order)
-    included, deferred = eligible[:limit], eligible[limit:]
-    for outcome in included:
-        outcome["batch"] = "included"
-    for outcome in deferred:
-        outcome["batch"] = "deferred"
-    packages = [o["package"] for o in included]
+def work_item(kind: str, index: int, outcomes: list[dict]) -> dict:
+    packages = [o["package"] for o in outcomes]
     shown = ", ".join(packages[:3]) + (f" (+{len(packages) - 3} more)" if len(packages) > 3 else "")
+    manifest = outcomes[0]["manifestPath"]
+    if kind == "urgent":
+        title = f"Urgent: {outcomes[0]['titleHint']}"
+    else:
+        title = f"Dependabot security batch {index}: {len(outcomes)} fix{'' if len(outcomes) == 1 else 'es'} in {manifest} ({shown})"
+    for outcome in outcomes:
+        outcome["work"] = f"{kind}-{index}"
     return {
-        "limits": {"outcomes": limit, "exceptions": EXCEPTION_BUDGET},
-        "priority": included[0]["priority"] if included else None,
-        "outcomes": [o["key"] for o in included],
-        "alerts": [identity for o in included for identity in o["alerts"]],
+        "id": f"{kind}-{index}",
+        "manifestPath": manifest,
+        "priority": min(o["priority"] for o in outcomes),
+        "outcomes": [o["key"] for o in outcomes],
+        "alerts": [identity for o in outcomes for identity in o["alerts"]],
+        "titleHint": title,
+    }
+
+
+def build_work(outcomes: list[dict], repository, batch_size: int, max_batches: int) -> dict:
+    """Partition eligible, untracked outcomes into dedicated urgent items and bounded batches."""
+    urgent, normal = [], []
+    for outcome in outcomes:
+        if outcome["tracked"] is not None:
+            outcome["work"] = "tracked"
+        elif outcome["decision"] == "eligible":
+            (urgent if outcome["severity"] in URGENT_SEVERITIES else normal).append(outcome)
+    urgent.sort(key=priority_order)
+    normal.sort(key=lambda o: (o["manifestPath"], *priority_order(o)))
+    chunks = []
+    for _manifest, group in groupby(normal, key=lambda o: o["manifestPath"]):
+        members = list(group)
+        chunks.extend(members[i:i + batch_size] for i in range(0, len(members), batch_size))
+    chunks.sort(key=lambda chunk: (*priority_order(chunk[0])[:2], chunk[0]["manifestPath"]))
+    deferred = [o for chunk in chunks[max_batches:] for o in chunk]
+    for outcome in deferred:
+        outcome["work"] = "deferred"
+    return {
+        "limits": {"batchSize": batch_size, "maxBatches": max_batches,
+                   "exceptions": EXCEPTION_BUDGET, "followUpDays": FOLLOW_UP_DAYS},
+        "urgent": [work_item("urgent", i, [o]) for i, o in enumerate(urgent, 1)],
+        "batches": [work_item("batch", i, chunk) for i, chunk in enumerate(chunks[:max_batches], 1)],
         "deferred": [o["key"] for o in deferred],
+        "tracked": [{"key": o["key"], "owner": o["tracked"]} for o in outcomes if o["tracked"] is not None],
         "held": [o["key"] for o in outcomes if o["decision"] == "hold"],
         "verifyPublication": [o["key"] for o in outcomes if o["decision"] == "verify-publication"],
-        "titleHint": f"Dependabot security batch: {len(included)} fix{'' if len(included) == 1 else 'es'} ({shown})" if included else None,
+        "followUp": {
+            "needed": bool(deferred),
+            "reason": "deferred-outcomes" if deferred else None,
+            "days": FOLLOW_UP_DAYS,
+            "titleHint": f"Recheck Dependabot alerts for {repository}" if deferred else None,
+        },
     }
 
 
@@ -327,8 +390,11 @@ def main(argv: list[str]) -> int:
     plan = commands.add_parser("plan", help="group alerts into remediation outcomes")
     plan.add_argument("--alerts", help="collector JSON file; defaults to stdin")
     plan.add_argument("--local", help="JSON file with local revision, dirty flag and dependency versions")
-    plan.add_argument("--batch-limit", type=int, default=BATCH_LIMIT,
-                      help=f"maximum eligible outcomes in one batch (default {BATCH_LIMIT})")
+    plan.add_argument("--tracked", help="JSON array of existing owners: [{\"owner\", \"alerts\": [...], \"keys\": [...]}]")
+    plan.add_argument("--batch-size", type=int, default=BATCH_SIZE,
+                      help=f"maximum fixes in one batch (default {BATCH_SIZE})")
+    plan.add_argument("--max-batches", type=int, default=MAX_BATCHES,
+                      help=f"maximum batches per plan run (default {MAX_BATCHES})")
     recheck = commands.add_parser("recheck", help="compare a saved plan with a fresh collector read")
     recheck.add_argument("--plan", required=True, help="saved plan JSON file")
     recheck.add_argument("--alerts", help="fresh collector JSON file; defaults to stdin")
@@ -339,9 +405,12 @@ def main(argv: list[str]) -> int:
         local = load_json(args.local) if args.local else {}
         if not isinstance(local, dict):
             raise SystemExit("remediation-plan: --local must be a JSON object")
-        if args.batch_limit < 1:
-            raise SystemExit("remediation-plan: --batch-limit must be at least 1")
-        result = build_plan(alerts_document(args.alerts), local, args.batch_limit)
+        tracked = load_json(args.tracked) if args.tracked else []
+        if not isinstance(tracked, list):
+            raise SystemExit("remediation-plan: --tracked must be a JSON array")
+        if args.batch_size < 1 or args.max_batches < 1:
+            raise SystemExit("remediation-plan: --batch-size and --max-batches must be at least 1")
+        result = build_plan(alerts_document(args.alerts), local, tracked, args.batch_size, args.max_batches)
         exit_code = EXIT_UNAVAILABLE if "alert-evidence-unavailable" in result["blockers"] else EXIT_OK
     else:
         saved = load_json(args.plan)

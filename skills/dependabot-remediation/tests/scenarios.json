@@ -22,9 +22,9 @@
         {"id": "pinned-parent", "text": "@grpc/grpc-js 1.9.16 transitive; first patched 1.13.6; its only parent declares ~1.9.0."},
         {"id": "local", "text": "HEAD 1111111, clean worktree, repository policy trunk/no-PR."}
       ],
-      "expected": {"report": "Direct lodash and transitive minimist are eligible and form one batch; @grpc/grpc-js is held as parent-range-excludes-target and listed as residual risk because the fix needs a parent upgrade first. Compatibility evidence is recorded per outcome from changelog inspection before fixing.", "mutations": ["one batch bead in the proven store", "dependency edits only within authorized scope"], "next": "Authorize implementation of the batch."},
-      "forbidden": ["fix before authorization", "one bead per outcome", "one bead per command", "trust relationship field without reading the lockfile", "override a parent-pinned range", "treat missing parent ranges as compatible"],
-      "helperTests": ["test_direct_patch_upgrade_with_local_evidence_is_eligible", "test_transitive_minor_upgrade_is_eligible_when_every_parent_range_allows_it", "test_transitive_fix_outside_a_parent_range_is_held", "test_every_parent_range_must_allow_the_patch", "test_transitive_without_mechanical_parent_evidence_is_held", "test_compatible_fixes_form_one_batch_with_per_outcome_evidence"]
+      "expected": {"report": "Direct lodash and transitive minimist are eligible and form one batch; @grpc/grpc-js is held as parent-range-excludes-target and listed as residual risk because the fix needs a parent upgrade first. Compatibility evidence is recorded per outcome from changelog inspection before fixing.", "mutations": ["one batch bead in the proven store after confirmation"], "next": "Confirm the proposed beads; fixing is a separate run."},
+      "forbidden": ["fix before authorization", "fix during the plan run", "one bead per outcome", "trust relationship field without reading the lockfile", "override a parent-pinned range", "treat missing parent ranges as compatible"],
+      "helperTests": ["test_direct_patch_upgrade_with_local_evidence_is_eligible", "test_transitive_minor_upgrade_is_eligible_when_every_parent_range_allows_it", "test_transitive_fix_outside_a_parent_range_is_held", "test_every_parent_range_must_allow_the_patch", "test_transitive_without_mechanical_parent_evidence_is_held", "test_urgent_fixes_get_dedicated_items_and_normal_fixes_one_batch"]
     },
     {
       "id": "several-alerts-one-fix",
@@ -32,20 +32,41 @@
       "evidence": [
         {"id": "alerts", "text": "Alerts #3 (low, patched 4.17.19) and #4 (critical, patched 4.17.21) both target lodash in package.json."}
       ],
-      "expected": {"report": "One outcome upgrading to 4.17.21 lists both alert identities with priority P1 and enters the batch once.", "mutations": ["one batch bead whose acceptance names both alerts"], "next": "Authorize the batch."},
+      "expected": {"report": "One outcome upgrading to 4.17.21 lists both alert identities with priority P1; because the outcome is critical it becomes one urgent bead, not two.", "mutations": ["one urgent bead whose acceptance names both alerts"], "next": "Confirm the proposed beads."},
       "forbidden": ["two beads", "two commits for one dependency"],
       "helperTests": ["test_multiple_alerts_on_one_dependency_form_one_outcome_at_the_highest_patch"]
     },
     {
-      "id": "bounded-batch-and-deferred-remainder",
+      "id": "urgent-fixes-get-dedicated-beads",
       "stage": "plan",
       "evidence": [
-        {"id": "many", "text": "Twelve eligible outcomes across runtime and development scope with mixed severity; the default batch limit is 10."},
-        {"id": "rerun", "text": "The planner is rerun on the same alert and local evidence."}
+        {"id": "critical", "text": "Critical compatible patches for minimist (runtime) and qs (development); high lodash and low semver patches in the same package.json."}
       ],
-      "expected": {"report": "The batch holds the ten highest-priority outcomes (severity first, runtime before development); two are deferred and reported, not started. Each outcome keeps its own upgrade, reasons and alert identities. The rerun yields the identical plan.", "mutations": ["one batch bead recording included and deferred outcomes"], "next": "Authorize implementation of the batch; the deferred remainder waits for a new request."},
-      "forbidden": ["start the deferred outcomes", "a second batch in the same run", "one bead per outcome", "drop outcomes beyond the limit silently"],
-      "helperTests": ["test_batch_limit_defers_the_remainder_in_priority_order", "test_compatible_fixes_form_one_batch_with_per_outcome_evidence", "test_cli_batch_limit_is_applied_and_bounded"]
+      "expected": {"report": "minimist and qs each become a dedicated urgent bead at P1; lodash and semver form one normal batch. Development scope orders qs after minimist but does not make it irrelevant.", "mutations": ["two urgent beads and one batch bead after confirmation"], "next": "Confirm; fix the first urgent bead in its own run."},
+      "forbidden": ["batch the critical fixes with the normal ones", "treat the development-only critical as ignorable", "skip confirmation"],
+      "helperTests": ["test_urgent_fixes_get_dedicated_items_and_normal_fixes_one_batch"]
+    },
+    {
+      "id": "batches-group-by-manifest-and-cap",
+      "stage": "plan",
+      "evidence": [
+        {"id": "many", "text": "Seventeen eligible non-critical outcomes across package.json and tools/package.json with mixed severity and scope; defaults are batches of 5 and at most 3 batches."},
+        {"id": "rerun", "text": "The planner is rerun on the same alert, local and tracked evidence."}
+      ],
+      "expected": {"report": "Batches never span manifests; each holds up to five fixes ordered runtime before development and severity first; the three highest-priority batches are proposed and the remaining outcomes are deferred and reported, not started. Each outcome keeps its own upgrade, reasons and alert identities. The rerun yields the identical plan.", "mutations": ["three batch beads and one follow-up bead after confirmation"], "next": "Confirm the proposed beads; the deferred remainder waits for the follow-up."},
+      "forbidden": ["start the deferred outcomes", "a fourth batch bead in the same run", "one bead per outcome", "drop outcomes beyond the cap silently"],
+      "helperTests": ["test_batches_group_by_manifest_and_the_cap_defers_the_remainder", "test_cli_limits_and_tracked_input_are_applied_and_bounded"]
+    },
+    {
+      "id": "follow-up-when-fixes-remain",
+      "stage": "track",
+      "evidence": [
+        {"id": "deferred", "text": "The plan deferred two eligible outcomes beyond the batch cap; an earlier plan run already created a follow-up bead for this repository."},
+        {"id": "nothing-left", "text": "A later plan run defers nothing."}
+      ],
+      "expected": {"report": "The existing follow-up bead is reused and its body updated to name the deferred outcomes with a wake date 7 days ahead; no second follow-up bead. When nothing is deferred, no follow-up is created and the existing one is left to wake on its date. Waking the follow-up runs a fresh plan, not a fix.", "mutations": ["one follow-up bead created or updated"], "next": "Nothing required until the follow-up wakes."},
+      "forbidden": ["duplicate follow-up beads", "create follow-up when nothing is deferred", "start fixes when the follow-up wakes", "a follow-up bead per deferred package"],
+      "helperTests": ["test_batches_group_by_manifest_and_the_cap_defers_the_remainder", "test_tracked_outcomes_keep_their_owner_and_leave_the_plan"]
     },
     {
       "id": "unpatched-dev-only-alert-stays-residual",
@@ -53,8 +74,8 @@
       "evidence": [
         {"id": "dev-only", "text": "sprintf-js in test coverage tooling has a moderate alert with no fixed release; a direct lodash patch is also eligible."}
       ],
-      "expected": {"report": "sprintf-js is held as no-patched-version and listed as residual risk; the batch proceeds with lodash and the run is not prolonged waiting for a release.", "mutations": ["residual risk recorded on the batch bead"], "next": "Authorize the batch; nothing is owed for the unpatched alert."},
-      "forbidden": ["prolong the batch waiting for a release", "create a bead per held package", "dismiss the alert", "replace the tool to make the alert go away"],
+      "expected": {"report": "sprintf-js is held as no-patched-version and listed as residual risk; lodash is batched and the run is not prolonged waiting for a release; no follow-up is needed for a held item.", "mutations": ["residual risk recorded on the plan artifact and first bead"], "next": "Confirm the batch; nothing is owed for the unpatched alert."},
+      "forbidden": ["prolong the run waiting for a release", "create a bead per held package", "dismiss the alert", "replace the tool to make the alert go away"],
       "helperTests": ["test_unpatched_dev_only_alert_and_majors_stay_residual_outside_the_batch", "test_unpatched_alert_does_not_block_a_patched_sibling_fix"]
     },
     {
@@ -62,11 +83,11 @@
       "stage": "track",
       "evidence": [
         {"id": "stores", "text": "next-select stores reports the bound member as owner workspace; an existing open bead owned independently already records alert identity acme/widgets#4."},
-        {"id": "plan", "text": "The batch includes the outcome for acme/widgets#4 and two further outcomes."}
+        {"id": "plan", "text": "The tracked input names that bead for acme/widgets#4; the plan contains that outcome and two further outcomes."}
       ],
-      "expected": {"report": "The acme/widgets#4 outcome stays with its existing owner and is reported as already tracked, excluded from the batch; one batch bead for the remaining outcomes is created or reused in the workspace store chosen from the resolver, not the repository name.", "mutations": ["bd -C <workspace store> create or update of the batch bead"], "next": "Claim the batch bead through next-select start when fixing."},
+      "expected": {"report": "The acme/widgets#4 outcome is marked tracked, reported as already tracked and left with its owner; one batch bead for the remaining outcomes is created in the workspace store chosen from the resolver, not the repository name.", "mutations": ["bd -C <workspace store> create of the batch bead after confirmation"], "next": "Confirm the proposed bead."},
       "forbidden": ["create duplicate bead", "merge or close the existing owner", "write to a guessed member store", "take over another session's in_progress claim"],
-      "helperTests": []
+      "helperTests": ["test_tracked_outcomes_keep_their_owner_and_leave_the_plan"]
     },
     {
       "id": "severity-independent-of-upgrade-size",
@@ -75,8 +96,8 @@
         {"id": "critical-major", "text": "Critical alert whose first patched version is a major bump."},
         {"id": "low-patch", "text": "Low alert with a patch-level fix."}
       ],
-      "expected": {"report": "Critical major is held at P1 as residual risk; low patch is eligible at P3 and enters the batch.", "mutations": ["batch bead listing the held major as residual risk"], "next": "Proceed with the patch; the major upgrade waits for a separate request."},
-      "forbidden": ["treat high severity as eligibility", "treat low severity as skip", "begin the major upgrade inside the batch"],
+      "expected": {"report": "Critical major is held at P1 as residual risk and one decision bead with the human label is offered in the confirmation; low patch is eligible at P3 and enters a batch.", "mutations": ["batch bead; decision bead only if the user accepts the offer"], "next": "Confirm; the major upgrade itself waits for a separate request."},
+      "forbidden": ["treat high severity as eligibility", "treat low severity as skip", "begin the major upgrade inside a batch", "create the decision bead without the user's acceptance"],
       "helperTests": ["test_severity_informs_priority_but_never_eligibility"]
     },
     {
@@ -85,7 +106,7 @@
       "evidence": [
         {"id": "cases", "text": "Major bump, pre-1.0 package, no patched version, unparsable version, GitHub Actions ecosystem, transitive fix needing a parent major bump, missing local version."}
       ],
-      "expected": {"report": "Each is a hold outcome with its named reason, listed as residual risk on the batch bead and outside the batch; held outcomes are never quietly widened fixes.", "mutations": ["residual risk recorded on the batch bead"], "next": "Proceed with the batch; record a human decision bead only on request."},
+      "expected": {"report": "Each is a hold outcome with its named reason, listed as residual risk and outside every bead; held outcomes are never quietly widened fixes.", "mutations": ["residual risk recorded on the plan artifact and first bead"], "next": "Confirm the proposed beads; held items need no action now."},
       "forbidden": ["override or migration to force eligibility", "suppress advisory", "ignore vulnerability to pass checks", "create a bead per held package"],
       "helperTests": ["test_uncertain_or_breaking_cases_are_held_with_named_reasons", "test_unpatched_alert_does_not_block_a_patched_sibling_fix"]
     },
@@ -106,7 +127,7 @@
         {"id": "pr", "text": "An open Dependabot PR already bumps the same package in a PR-policy repository."},
         {"id": "many-prs", "text": "Twenty-three further Dependabot version-update PRs are open, several of them superseded majors."}
       ],
-      "expected": {"report": "The matching PR is recorded on the batch bead as possible duplicate work; the user decides whether to adopt it or fix locally. The version-update PRs change nothing: no worktrees, reviews, merges or closures.", "mutations": [], "next": "Ask which path to take for the matching PR."},
+      "expected": {"report": "The matching PR is recorded on the bead as possible duplicate work; the user decides whether to adopt it or fix locally. The version-update PRs change nothing: no worktrees, reviews, merges or closures.", "mutations": [], "next": "Ask which path to take for the matching PR."},
       "forbidden": ["edit, close, merge or comment on any PR", "create a competing PR in a trunk repository", "create validation worktrees", "review, merge or close the version-update PRs"],
       "helperTests": []
     },
@@ -116,18 +137,29 @@
       "evidence": [
         {"id": "dirty", "text": "git status shows unrelated modified files; no implementation authority has been granted."}
       ],
-      "expected": {"report": "Plan reports blocker dirty-worktree; discovery and tracking continue, fixing stops regardless of the batch contents.", "mutations": ["tracking only"], "next": "Clean or isolate the worktree and grant implementation scope."},
+      "expected": {"report": "Plan reports blocker dirty-worktree; planning and tracking continue, fixing stops regardless of the bead contents.", "mutations": ["tracking only"], "next": "Clean or isolate the worktree and grant implementation scope."},
       "forbidden": ["stash or discard unrelated changes", "edit manifests without authority", "create a validation worktree to route around the dirty tree"],
       "helperTests": ["test_dirty_worktree_and_partial_evidence_are_blockers_not_silent"]
+    },
+    {
+      "id": "fix-refreshes-stale-bead",
+      "stage": "fix",
+      "evidence": [
+        {"id": "bead", "text": "A batch bead planned last week lists five outcomes; since then one alert was fixed upstream by a merged PR and one package gained a newer unpatched alert."},
+        {"id": "refresh", "text": "The fix run re-collects only the bead's alerts and re-runs the planner on current local evidence."}
+      ],
+      "expected": {"report": "The fixed outcome is reported as fixed and skipped; the outcome whose alert changed is reported as changed and held; the remaining three eligible outcomes are fixed in plan order with a checkpoint after each. The bead is treated as intent, not evidence.", "mutations": ["bead comments", "dependency edits for the still-eligible outcomes"], "next": "One verification cycle for the three fixes."},
+      "forbidden": ["fix an outcome GitHub already reports fixed", "widen the bead with newly discovered alerts", "re-plan the whole repository"],
+      "helperTests": ["test_non_open_alerts_are_not_planned_and_planning_is_idempotent"]
     },
     {
       "id": "exception-budget-stops-at-checkpoint",
       "stage": "fix",
       "evidence": [
-        {"id": "failures", "text": "Two earlier outcomes were restored and held after failing checks; the fifth outcome of eight now fails its dependency-resolution check."},
-        {"id": "tree", "text": "The fifth outcome's change can be reinstalled to the prior version and the diff then matches the last checkpoint."}
+        {"id": "failures", "text": "Two earlier outcomes were restored and held after failing checks; the fourth outcome of five now fails its dependency-resolution check."},
+        {"id": "tree", "text": "The fourth outcome's change can be reinstalled to the prior version and the diff then matches the last checkpoint."}
       ],
-      "expected": {"report": "The exception budget of 2 is spent: the batch stops at the last safe checkpoint with four passed outcomes; the three failed outcomes are held with evidence and the three unstarted outcomes are reported as not started. The passed outcomes go through one verification and finalization cycle.", "mutations": ["batch bead comments", "one commit for what passed"], "next": "Decision on the held outcomes, or a new request for another batch."},
+      "expected": {"report": "The exception budget of 2 is spent: the run stops at the last safe checkpoint with two passed outcomes; the three failed outcomes are held with evidence and the unstarted outcome is reported as not started. The passed outcomes go through one verification and finalization cycle.", "mutations": ["bead comments", "one commit for what passed"], "next": "Decision on the held outcomes, or a new plan run."},
       "forbidden": ["continue past the exception budget", "finalize a half-applied dependency change", "weaken the gate", "abandon an unrestorable tree without reporting it as a blocker"],
       "helperTests": []
     },
@@ -138,7 +170,7 @@
         {"id": "install", "text": "The upgrade changes lockfile integrity hashes and the package runs a postinstall script."},
         {"id": "gate", "text": "make test fails after one outcome's upgrade."}
       ],
-      "expected": {"report": "Execution risk stated before install; the failed gate is recorded on the batch bead, that outcome is restored to the previous checkpoint and held, the rest of the batch continues; no commit of the failing change, no publication offer for it.", "mutations": ["batch bead comment", "checkpoint restore"], "next": "Continue the batch; the failing upgrade waits for a decision."},
+      "expected": {"report": "Execution risk stated before install; the failed gate is recorded on the bead, that outcome is restored to the previous checkpoint and held, the rest of the bead continues; no commit of the failing change, no publication offer for it.", "mutations": ["bead comment", "checkpoint restore"], "next": "Continue the bead; the failing upgrade waits for a decision."},
       "forbidden": ["skip or weaken the gate", "commit a failing fix", "offer a push"],
       "helperTests": []
     },
@@ -146,7 +178,7 @@
       "id": "publication-audit-and-single-push",
       "stage": "publish",
       "evidence": [
-        {"id": "audit", "text": "artifact-hygiene verdict clean for the finalized batch commit."},
+        {"id": "audit", "text": "artifact-hygiene verdict clean for the finalized commit."},
         {"id": "approval", "text": "User approves the exact push command once; a second repository is also finalized."}
       ],
       "expected": {"report": "One push executed; the second repository needs its own audit and approval; decline leaves commits unpushed and says so.", "mutations": ["one approved push"], "next": "Offer the second push separately or stop."},
@@ -159,7 +191,7 @@
       "evidence": [
         {"id": "head", "text": "Default-branch head differs from the pushed commit; alert #1 is missing from the re-read."}
       ],
-      "expected": {"report": "publicationObserved false; the outcome is changed, not fixed; the batch bead records the pending remote outcome.", "mutations": ["bead comment"], "next": "Re-read later when the default branch contains the commit."},
+      "expected": {"report": "publicationObserved false; the outcome is changed, not fixed; the bead records the pending remote outcome.", "mutations": ["bead comment"], "next": "Re-read later when the default branch contains the commit."},
       "forbidden": ["claim fixed", "poll in a loop", "duplicate the fix"],
       "helperTests": ["test_missing_alerts_are_changed_and_unavailable_reads_are_unknown", "test_publication_mismatch_and_unknown_head_are_explicit"]
     },
@@ -177,20 +209,20 @@
       "id": "idempotent-rerun",
       "stage": "recheck",
       "evidence": [
-        {"id": "rerun", "text": "The skill is rerun after a trunk-mode close; the same alerts are still open on GitHub and one outcome was held during fixing."}
+        {"id": "rerun", "text": "A plan run is repeated after a trunk-mode close of one batch bead; its alerts are still open on GitHub, the other planned beads are open, and one outcome was held during fixing."}
       ],
-      "expected": {"report": "Same outcome keys, batch and alert identities; the closed batch bead and the pending remote state are reported separately; the held outcome is not retried; no new bead or second fix.", "mutations": [], "next": "Recheck later or ask whether publication happened."},
+      "expected": {"report": "Outcomes recorded on open beads are tracked and excluded; the closed bead's alerts are reported as pending remote state, not re-planned; the held outcome is not retried; no new bead, no second fix, same outcome keys.", "mutations": [], "next": "Recheck later or ask whether publication happened."},
       "forbidden": ["reopen or duplicate bead", "second commit for the same fix", "retry a held outcome without a new request"],
-      "helperTests": ["test_non_open_alerts_are_not_planned_and_planning_is_idempotent", "test_compatible_fixes_form_one_batch_with_per_outcome_evidence"]
+      "helperTests": ["test_non_open_alerts_are_not_planned_and_planning_is_idempotent", "test_tracked_outcomes_keep_their_owner_and_leave_the_plan"]
     },
     {
       "id": "run-ends-without-follow-on",
       "stage": "recheck",
       "evidence": [
-        {"id": "state", "text": "One push was approved and one recheck reports two outcomes fixed and one pending; two outcomes are deferred, one major is held, and 23 version-update PRs remain open."}
+        {"id": "state", "text": "One push was approved and one recheck reports two outcomes fixed and one pending; two further batch beads and a follow-up bead are open, one major is held, and 23 version-update PRs remain open."}
       ],
-      "expected": {"report": "The completion summary lists the batch result, residual risk (held major, pending outcome) and the deferred remainder; the run ends. No next batch, watcher, PR triage, deployment monitoring or major upgrade starts.", "mutations": [], "next": "Nothing required; a new request starts another bounded run."},
-      "forbidden": ["start a next batch", "launch a watcher or polling loop", "triage, close or merge Dependabot PRs", "begin a major upgrade", "create follow-up beads for every held or deferred package"],
+      "expected": {"report": "The completion summary lists the bead result, residual risk (held major, pending outcome) and the other open beads; the run ends. No next bead, next batch, watcher, PR triage, deployment monitoring or major upgrade starts.", "mutations": [], "next": "Nothing required; pick the next bead through /next when ready."},
+      "forbidden": ["start the next bead automatically", "start a next batch", "launch a watcher or polling loop", "triage, close or merge Dependabot PRs", "begin a major upgrade", "create follow-up beads for every held or deferred package"],
       "helperTests": []
     }
   ]

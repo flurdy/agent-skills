@@ -125,7 +125,8 @@ class PlanTests(unittest.TestCase):
         keys = [o["key"] for o in plan["outcomes"]]
         self.assertEqual(keys, sorted(keys))
         self.assertEqual(len(keys), 3)
-        self.assertEqual(plan["summary"], {"alerts": 3, "eligible": 2, "hold": 1, "verify-publication": 0, "batched": 2, "deferred": 0})
+        self.assertEqual(plan["summary"], {"alerts": 3, "eligible": 2, "hold": 1, "verify-publication": 0,
+                                           "urgent": 0, "batched": 2, "deferred": 0, "tracked": 0})
 
     def test_severity_informs_priority_but_never_eligibility(self):
         critical_major = self.outcome([alert(8, patched="5.0.0", severity="critical")], dependency())
@@ -167,7 +168,7 @@ class PlanTests(unittest.TestCase):
     def test_unavailable_evidence_yields_no_outcomes_and_nonzero_exit(self):
         plan = MODULE.build_plan(document([], status="unavailable"), {})
         self.assertEqual((plan["outcomes"], plan["blockers"]), ([], ["alert-evidence-unavailable"]))
-        self.assertEqual((plan["batch"]["outcomes"], plan["batch"]["titleHint"]), ([], None))
+        self.assertEqual((plan["work"]["urgent"], plan["work"]["batches"], plan["work"]["followUp"]["needed"]), ([], [], False))
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "alerts.json"
             path.write_text(json.dumps(document([], status="unavailable")))
@@ -183,7 +184,7 @@ class PlanTests(unittest.TestCase):
         self.assertEqual(first["summary"]["alerts"], 1)
         self.assertEqual(first["outcomes"][0]["alerts"], [f"{REPO}#22"])
 
-    def test_compatible_fixes_form_one_batch_with_per_outcome_evidence(self):
+    def test_urgent_fixes_get_dedicated_items_and_normal_fixes_one_batch(self):
         alerts = [alert(1), alert(2, package="minimist", patched="1.2.6", severity="critical"),
                   alert(3, package="qs", patched="6.11.0", severity="critical", scope="development"),
                   alert(4, patched=None), alert(5, package="express", patched="5.0.0"),
@@ -192,56 +193,96 @@ class PlanTests(unittest.TestCase):
                 dependency(package="express", installed="4.18.2"), dependency(package="semver", installed="7.5.1"))
         first = MODULE.build_plan(document(alerts), local(*deps))
         self.assertEqual(first, MODULE.build_plan(document(alerts), local(*deps)))
-        batch = first["batch"]
-        self.assertEqual(batch["outcomes"], [key("minimist"), key("qs"), key("lodash"), key("semver")])
-        self.assertEqual(batch["alerts"], [f"{REPO}#2", f"{REPO}#3", f"{REPO}#1", f"{REPO}#6"])
-        self.assertEqual(batch["held"], [key("express"), key("lodash", "unpatched")])
-        self.assertEqual((batch["deferred"], batch["verifyPublication"], batch["priority"]), ([], [], "P1"))
-        self.assertEqual(batch["limits"], {"outcomes": 10, "exceptions": 2})
-        self.assertEqual(batch["titleHint"], "Dependabot security batch: 4 fixes (minimist, qs, lodash (+1 more))")
-        self.assertEqual(first["summary"], {"alerts": 6, "eligible": 4, "hold": 2, "verify-publication": 0, "batched": 4, "deferred": 0})
+        work = first["work"]
+        self.assertEqual([(u["id"], u["outcomes"], u["priority"]) for u in work["urgent"]],
+                         [("urgent-1", [key("minimist")], "P1"), ("urgent-2", [key("qs")], "P1")])
+        self.assertEqual(work["urgent"][0]["titleHint"], "Urgent: Upgrade minimist to >= 1.2.6 (package.json)")
+        self.assertEqual(len(work["batches"]), 1)
+        batch = work["batches"][0]
+        self.assertEqual((batch["id"], batch["outcomes"], batch["alerts"], batch["priority"]),
+                         ("batch-1", [key("lodash"), key("semver")], [f"{REPO}#1", f"{REPO}#6"], "P2"))
+        self.assertEqual(batch["titleHint"], "Dependabot security batch 1: 2 fixes in package.json (lodash, semver)")
+        self.assertEqual(work["held"], [key("express"), key("lodash", "unpatched")])
+        self.assertEqual((work["deferred"], work["tracked"], work["verifyPublication"]), ([], [], []))
+        self.assertEqual(work["limits"], {"batchSize": 5, "maxBatches": 3, "exceptions": 2, "followUpDays": 7})
+        self.assertEqual(work["followUp"], {"needed": False, "reason": None, "days": 7, "titleHint": None})
+        self.assertEqual(first["summary"], {"alerts": 6, "eligible": 4, "hold": 2, "verify-publication": 0,
+                                            "urgent": 2, "batched": 2, "deferred": 0, "tracked": 0})
         by_key = {o["key"]: o for o in first["outcomes"]}
         self.assertEqual(by_key[key("lodash")]["upgrade"], {"from": "4.17.20", "to": "4.17.21", "kind": "patch"})
-        self.assertEqual((by_key[key("qs")]["scope"], by_key[key("qs")]["batch"]), ("development", "included"))
-        self.assertEqual({by_key[k]["batch"] for k in batch["held"]}, {None})
+        self.assertEqual((by_key[key("qs")]["scope"], by_key[key("qs")]["work"]), ("development", "urgent-2"))
+        self.assertEqual(by_key[key("semver")]["work"], "batch-1")
+        self.assertEqual({by_key[k]["work"] for k in work["held"]}, {None})
 
-    def test_batch_limit_defers_the_remainder_in_priority_order(self):
-        alerts = [alert(1, severity="low"), alert(2, package="minimist", patched="1.2.6", severity="critical"),
+    def test_batches_group_by_manifest_and_the_cap_defers_the_remainder(self):
+        alerts = [alert(1, package="a", patched="1.0.1", severity="medium"), alert(2, package="b", patched="1.0.1", severity="medium"),
+                  alert(3, package="c", patched="1.0.1", severity="medium"),
+                  alert(4, package="d", patched="1.0.1", manifest="tools/package.json"),
+                  alert(5, package="e", patched="1.0.1", manifest="tools/package.json", scope="development")]
+        deps = [dependency(package=p, installed="1.0.0") for p in "abc"] + \
+               [dependency(package=p, installed="1.0.0", manifest="tools/package.json") for p in "de"]
+        plan = MODULE.build_plan(document(alerts), local(*deps), batch_size=2, max_batches=2)
+        work = plan["work"]
+        tools = "tools/package.json"
+        self.assertEqual([(b["id"], b["manifestPath"], b["outcomes"]) for b in work["batches"]],
+                         [("batch-1", tools, [key("d", manifest=tools), key("e", manifest=tools)]),
+                          ("batch-2", "package.json", [key("a"), key("b")])])
+        self.assertEqual(work["deferred"], [key("c")])
+        self.assertEqual(work["followUp"], {"needed": True, "reason": "deferred-outcomes", "days": 7,
+                                            "titleHint": f"Recheck Dependabot alerts for {REPO}"})
+        self.assertEqual((plan["summary"]["batched"], plan["summary"]["deferred"]), (4, 1))
+        self.assertEqual({o["package"]: o["work"] for o in plan["outcomes"]},
+                         {"a": "batch-2", "b": "batch-2", "c": "deferred", "d": "batch-1", "e": "batch-1"})
+        one = MODULE.build_plan(document(alerts[:1]), local(deps[0]), batch_size=1)
+        self.assertEqual(one["work"]["batches"][0]["titleHint"], "Dependabot security batch 1: 1 fix in package.json (a)")
+
+    def test_tracked_outcomes_keep_their_owner_and_leave_the_plan(self):
+        alerts = [alert(1), alert(2, package="minimist", patched="1.2.6", severity="critical"),
                   alert(3, package="qs", patched="6.11.0")]
         deps = (dependency(), dependency(package="minimist", installed="1.2.5"), dependency(package="qs", installed="6.10.0"))
-        plan = MODULE.build_plan(document(alerts), local(*deps), batch_limit=2)
-        self.assertEqual((plan["batch"]["outcomes"], plan["batch"]["deferred"]), ([key("minimist"), key("qs")], [key("lodash")]))
-        self.assertEqual((plan["summary"]["batched"], plan["summary"]["deferred"]), (2, 1))
-        self.assertEqual({o["key"]: o["batch"] for o in plan["outcomes"]},
-                         {key("lodash"): "deferred", key("minimist"): "included", key("qs"): "included"})
-        self.assertEqual(plan["batch"]["titleHint"], "Dependabot security batch: 2 fixes (minimist, qs)")
-        one = MODULE.build_plan(document(alerts[1:2]), local(deps[1]), batch_limit=1)
-        self.assertEqual(one["batch"]["titleHint"], "Dependabot security batch: 1 fix (minimist)")
+        tracked = [{"owner": "widgets-abc", "alerts": [f"{REPO}#1"]}, {"owner": "widgets-def", "keys": [key("minimist")]}, "junk"]
+        plan = MODULE.build_plan(document(alerts), local(*deps), tracked)
+        work = plan["work"]
+        self.assertEqual(work["tracked"], [{"key": key("lodash"), "owner": "widgets-abc"}, {"key": key("minimist"), "owner": "widgets-def"}])
+        self.assertEqual((work["urgent"], [b["outcomes"] for b in work["batches"]]), ([], [[key("qs")]]))
+        self.assertEqual({o["package"]: (o["tracked"], o["work"]) for o in plan["outcomes"]},
+                         {"lodash": ("widgets-abc", "tracked"), "minimist": ("widgets-def", "tracked"), "qs": (None, "batch-1")})
+        self.assertEqual(plan["summary"]["tracked"], 2)
+        self.assertFalse(plan["work"]["followUp"]["needed"])
 
     def test_unpatched_dev_only_alert_and_majors_stay_residual_outside_the_batch(self):
         # Gauge regression: a dev-only alert with no fixed release must not prolong or block the batch.
         alerts = [alert(1), alert(2, package="sprintf-js", patched=None, severity="medium", scope="development"),
                   alert(3, package="typescript", patched="7.0.0")]
         plan = MODULE.build_plan(document(alerts), local(dependency(), dependency(package="typescript", installed="5.8.0")))
-        self.assertEqual(plan["batch"]["outcomes"], [key("lodash")])
-        self.assertEqual(plan["batch"]["held"], [key("sprintf-js", "unpatched"), key("typescript")])
+        self.assertEqual([b["outcomes"] for b in plan["work"]["batches"]], [[key("lodash")]])
+        self.assertEqual(plan["work"]["held"], [key("sprintf-js", "unpatched"), key("typescript")])
         reasons = {o["key"]: o["reasons"] for o in plan["outcomes"] if o["decision"] == "hold"}
         self.assertEqual(reasons, {key("sprintf-js", "unpatched"): ["no-patched-version"], key("typescript"): ["major-upgrade"]})
-        self.assertEqual(plan["blockers"], [])
+        self.assertEqual((plan["blockers"], plan["work"]["followUp"]["needed"]), ([], False))
 
-    def test_cli_batch_limit_is_applied_and_bounded(self):
+    def test_cli_limits_and_tracked_input_are_applied_and_bounded(self):
         alerts = [alert(1), alert(2, package="minimist", patched="1.2.6")]
         with tempfile.TemporaryDirectory() as temp:
-            alerts_path, local_path = Path(temp) / "alerts.json", Path(temp) / "local.json"
+            alerts_path, local_path, tracked_path = (Path(temp) / name for name in ("alerts.json", "local.json", "tracked.json"))
             alerts_path.write_text(json.dumps(document(alerts)))
             local_path.write_text(json.dumps(local(dependency(), dependency(package="minimist", installed="1.2.5"))))
+            tracked_path.write_text(json.dumps([{"owner": "widgets-abc", "alerts": [f"{REPO}#2"]}]))
             command = [sys.executable, "-I", str(SCRIPT), "plan", "--alerts", str(alerts_path), "--local", str(local_path)]
-            limited = subprocess.run([*command, "--batch-limit", "1"], capture_output=True, text=True, timeout=10)
+            limited = subprocess.run([*command, "--batch-size", "1", "--max-batches", "1"], capture_output=True, text=True, timeout=10)
             self.assertEqual(limited.returncode, 0)
-            self.assertEqual(json.loads(limited.stdout)["summary"]["batched"], 1)
-            invalid = subprocess.run([*command, "--batch-limit", "0"], capture_output=True, text=True, timeout=10)
-            self.assertNotEqual(invalid.returncode, 0)
-            self.assertEqual(invalid.stdout, "")
+            summary = json.loads(limited.stdout)["summary"]
+            self.assertEqual((summary["batched"], summary["deferred"]), (1, 1))
+            tracked = subprocess.run([*command, "--tracked", str(tracked_path)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(json.loads(tracked.stdout)["summary"]["tracked"], 1)
+            for flag in ("--batch-size", "--max-batches"):
+                invalid = subprocess.run([*command, flag, "0"], capture_output=True, text=True, timeout=10)
+                self.assertNotEqual(invalid.returncode, 0)
+                self.assertEqual(invalid.stdout, "")
+            local_path.write_text(json.dumps(local()))
+            tracked_path.write_text(json.dumps({"owner": "x"}))
+            bad = subprocess.run([*command, "--tracked", str(tracked_path)], capture_output=True, text=True, timeout=10)
+            self.assertNotEqual(bad.returncode, 0)
 
     def test_cli_rejects_foreign_documents(self):
         with tempfile.TemporaryDirectory() as temp:
