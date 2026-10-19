@@ -24,7 +24,7 @@ no dependency is installed, and no model is launched.
 | Several alerts resolved by one coherent fix; independent fixes stay distinct | planner suite |
 | Dedicated urgent item per critical fix; manifest-grouped batches of `--batch-size` capped at `--max-batches`; remainder deferred with a follow-up, never dropped; identical plan on rerun | planner suite |
 | Existing owners from `--tracked` keep their outcomes; tracked outcomes leave the plan | planner suite |
-| Unpatched dev-only alerts and majors stay residual risk outside every bead | planner suite |
+| Unpatched dev-only alerts and majors stay held, outside automatic fix work | planner suite |
 | Severity independent of upgrade size | planner suite |
 | Major / pre-1.0 / breaking / uncertain / no-patched-version / unsupported ecosystem held | planner suite |
 | Untrusted advisory text dropped or bounded; token shapes redacted | collector suite |
@@ -32,6 +32,7 @@ no dependency is installed, and no model is launched.
 | Stale revision, changed alert, dismissed versus fixed, unavailable final read | planner recheck suite |
 | Idempotent rerun | planner suite |
 | Confirmation before tracker writes, follow-up bead reuse, workspace store routing, existing Dependabot PRs changing nothing, fix-run refresh of a stale bead, exception budget and checkpoints, gate failure, publication audit and single push, run ending without follow-on | `scenarios.json` authored expectations plus `SKILL.md` term assertions |
+| Worthwhile unpatched-alert investigation versus low-value/no new work; prior findings reuse; investigation acceptance separate from alert resolution; no acknowledgement dismissal or local triage database | `scenarios.json` authored expectations plus `SKILL.md` term assertions |
 
 `scenarios.json` holds authored expectations for review: each case names the helper tests
 that mechanically cover it, or an empty list when only the instructions and the composed
@@ -60,3 +61,9 @@ batches of five capped at three, tracked exclusions, one dated follow-up) from a
 bounded by checkpoints and an exception budget. The partition fixtures and the plan/fix term
 assertions fail by construction against the previous planner (no `work` field) and
 per-outcome instructions; they were not run live against Gauge.
+
+The selective-investigation instruction checks were observed failing before adding the
+policy: the skill previously offered a decision bead for every held critical outcome and
+sent every selected bead through the fix pipeline. These are static instruction regressions,
+not observed model behavior. Exposure judgment, existing-investigation reuse and tracker
+lifecycle in the new scenarios remain authored expectations, not live security findings.

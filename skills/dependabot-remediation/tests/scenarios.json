@@ -96,9 +96,42 @@
         {"id": "critical-major", "text": "Critical alert whose first patched version is a major bump."},
         {"id": "low-patch", "text": "Low alert with a patch-level fix."}
       ],
-      "expected": {"report": "Critical major is held at P1 as residual risk and one decision bead with the human label is offered in the confirmation; low patch is eligible at P3 and enters a batch.", "mutations": ["batch bead; decision bead only if the user accepts the offer"], "next": "Confirm; the major upgrade itself waits for a separate request."},
-      "forbidden": ["treat high severity as eligibility", "treat low severity as skip", "begin the major upgrade inside a batch", "create the decision bead without the user's acceptance"],
+      "expected": {"report": "Critical major is held at P1 as residual risk; severity alone does not justify an investigation. Offer one only if an exposure or mitigation question could change a decision. Low patch is eligible at P3 and enters a batch.", "mutations": ["batch bead after confirmation"], "next": "Confirm; the major upgrade itself waits for a separate request."},
+      "forbidden": ["treat high severity as eligibility", "treat low severity as skip", "begin the major upgrade inside a batch", "create an investigation automatically because the major is critical"],
       "helperTests": ["test_severity_informs_priority_but_never_eligibility"]
+    },
+    {
+      "id": "unpatched-critical-worth-investigating",
+      "stage": "plan",
+      "evidence": [
+        {"id": "alert", "text": "Critical unpatched vulnerability; the affected dependency handles public request input, but reachability of the vulnerable operation is materially unknown."},
+        {"id": "value", "text": "A bounded reachability check could determine whether disabling the operation or replacing the parent dependency is necessary; no existing bead owns this question."}
+      ],
+      "expected": {"report": "The alert remains held, not eligible for an upgrade. Offer one investigation bead to answer whether attacker-controlled input reaches the vulnerable operation and what mitigation is practical, with evidence-based acceptance. Create it only after the proposal is confirmed; no dismissal or local triage inventory.", "mutations": ["one worthwhile investigation bead after confirmation"], "next": "Select the investigation separately for read-only work."},
+      "forbidden": ["treat no patch as no possible action", "create the investigation without confirmation", "begin dependency replacement", "dismiss the alert", "create a local triage database"],
+      "helperTests": []
+    },
+    {
+      "id": "unpatched-low-value-no-bead",
+      "stage": "plan",
+      "evidence": [
+        {"id": "moderate", "text": "An unpatched moderate development alert has no actionable remediation or material uncertainty identified by the bounded triage; development scope alone is not proof of safety."},
+        {"id": "critical", "text": "Another unpatched critical alert already has a completed reachability investigation whose evidence still applies; it found the vulnerable input path unavailable."}
+      ],
+      "expected": {"report": "Leave both alerts open. Briefly report no patch and no actionable remediation identified; reuse the existing investigation findings for the critical alert without reopening or duplicating it. No new acknowledgement or reminder bead, no comments via dismissal, no growing local assessment file.", "mutations": [], "next": "Nothing required unless exposure, patch availability or other relevant evidence changes."},
+      "forbidden": ["create a bead merely because severity is critical", "dismiss to add a comment", "claim development-only means harmless", "create a local triage database", "create a weekly reminder solely for an unpatched alert", "reopen an unchanged completed investigation"],
+      "helperTests": []
+    },
+    {
+      "id": "investigation-is-not-a-fix",
+      "stage": "investigate",
+      "evidence": [
+        {"id": "owner", "text": "A selected investigation bead asks whether the unpatched vulnerability is reachable through runtime or CI input; an independent open investigation owns a related alert."},
+        {"id": "result", "text": "Read-only inspection answers the question and identifies a possible mitigation, but no implementation is authorized and the alert remains open."}
+      ],
+      "expected": {"report": "Leave the independent owner untouched. Record findings and the recommendation on the selected investigation bead. It can complete because its question is answered, while clearly saying no mitigation was implemented and GitHub remains open. No dependency, commit, publication or alert-resolution pipeline is entered.", "mutations": ["selected investigation bead findings and completion when answered"], "next": "Obtain separate implementation authorization if the mitigation is worth doing."},
+      "forbidden": ["start dependency changes", "claim the vulnerability fixed", "wait indefinitely for the alert to disappear", "take over the independent owner", "run fix finalization or push", "write a separate local triage ledger"],
+      "helperTests": []
     },
     {
       "id": "held-cases",

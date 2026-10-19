@@ -6,7 +6,7 @@ disable-model-invocation: true
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.3.0"
+version: "0.3.1"
 author: "flurdy"
 ---
 
@@ -26,9 +26,10 @@ scope.
 /skill:dependabot-remediation [mode]    # Pi
 ```
 
-Codex can request the skill by name. A planned bead picked through `/next` continues into
-`fix` for that bead. Nothing appended to the invocation widens source, tracker, or remote
-authority.
+Codex can request the skill by name. A fix bead picked through `/next` continues into
+`fix` for that bead; an investigation or follow-up bead runs its recorded read-only task
+and does not enter the fix pipeline. Nothing appended to the invocation widens source,
+tracker, or remote authority.
 
 ## Two runs, not one campaign
 
@@ -49,8 +50,8 @@ watcher, PR triage or any follow-on maintenance; a new request starts another bo
 - **Residual risk.** Held, unpatched, deferred and failed outcomes stay visible in the plan
   and on the beads. "Ignore" means not now, with a reason: never a GitHub dismissal or a
   false-positive claim. Development-only scope lowers ordering but is not automatically
-  irrelevant. No bead is created per held package; a held critical outcome is offered one
-  decision bead with the `human` label in the plan confirmation.
+  irrelevant. No bead is created per held package; offer an investigation only when it
+  could change a decision (§3).
 - **Exception budget.** During a fix run at most 2 outcomes may fall out of the bead because
   of an incompatible API, failing check or hidden major bump. A third failure stops the run
   at the last safe checkpoint; what passed is still verified and finalized. A limit may stop
@@ -200,6 +201,34 @@ Do not widen a fix, add resolution overrides, or begin a migration to make an ou
 Hold outcomes are residual risk recorded in the plan and on the related bead; they are never
 silently retried as eligible.
 
+### Unpatched alerts: investigate only when worthwhile
+
+No patch does not mean no possible action: removal, replacement, a parent-dependency
+upgrade or a mitigation may reduce exposure. Severity alone does not justify an
+investigation bead. Offer one when exposure is plausible or materially unknown and a
+bounded investigation could change a mitigation, replacement or risk decision. State that
+question and its likely value in the proposal; critical severity raises priority, not
+permission to invent work. Development-only scope is not proof that exposure is absent.
+
+An existing investigation keeps its owner; inspect related open or completed beads before
+proposing another, and reuse findings while the relevant evidence is unchanged. Do not
+reopen completed investigations merely because the alert remains open. If no useful action
+or material uncertainty is identified, report briefly: "No patch; no actionable remediation
+identified." No bead merely to acknowledge an alert, and no invented claim that it is safe.
+Do not create a weekly reminder solely for an unpatched alert; the overflow follow-up is
+still only for eligible fixes outside the batch cap.
+
+GitHub remains the alert inventory; Beads holds worthwhile work, not a copy of every alert.
+Do not create or maintain a local triage database, acknowledgement ledger, or growing
+Markdown/CSV/JSON assessment file. Optional ignored plan artifacts are disposable run
+evidence, not a required persistent inventory.
+
+Dependabot alerts have no ordinary PR-style comment thread; GitHub's documented alert
+comment mechanism accompanies dismissal (see [GitHub's alert management documentation](https://docs.github.com/en/code-security/how-tos/manage-security-alerts/manage-dependabot-alerts/view-dependabot-alerts#dismissing-dependabot-alerts)).
+Do not dismiss an alert to attach an acknowledgement comment, or create a GitHub issue or
+PR solely to say "aware". Any separately requested external post still needs draft review
+and fresh approval.
+
 ## 4. Propose and track the beads
 
 Resolve ownership before any tracker read or write:
@@ -212,9 +241,12 @@ Resolve ownership before any tracker read or write:
 Workspace-owned members route to the workspace store as `next-select stores` reports; never
 guess a store from the repository name. Show the proposal, then ask once with
 `AskUserQuestion` before any tracker write: the urgent beads, the batch beads with their
-packages and manifests, the follow-up bead if needed, any decision bead offered for a held
-critical outcome, and the residual list. `discover` mode stops here; a declined proposal
-writes nothing.
+packages and manifests, the follow-up bead if needed, any worthwhile investigation offered
+under §3, and the residual list. `discover` mode stops here; a declined proposal writes
+nothing. Record a bounded investigation question, the exposure or uncertainty motivating
+it, existing evidence and an acceptance criterion that answers the question—not a promised
+upgrade or a fixed GitHub alert. No investigation starts merely because tracking was
+approved.
 
 After confirmation create **one bead per urgent fix and one bead per batch**, never per
 alert, package occurrence, command or retry. Outcomes the planner marked `tracked` stay with
@@ -227,7 +259,20 @@ not as beads of their own. Create or reuse the single follow-up bead with
 `--defer` set 7 days ahead and a body naming the deferred outcomes; a rerun updates it
 rather than adding another. Then stop: the plan run creates tracking, not fixes.
 
-## 5. Fix one bead (authorized scope only)
+## 5. Process one selected bead
+
+For an investigation bead, use a read-only investigation: inspect the dependency path,
+reachable input, runtime/build/CI exposure and possible mitigations or replacement options.
+Record the answer, evidence and recommendation on that bead. Complete an investigation
+when its question is answered, not when the alert disappears; an unresolved investigation
+stays open. Any resulting mitigation or dependency replacement needs separately authorized
+implementation. Do not enter §§6–8 or claim a local fix, publication or alert resolution
+merely because an investigation completed.
+
+For an overflow follow-up bead, run a fresh plan and propose remaining work; do not enter
+the fix pipeline automatically.
+
+### Fix bead (authorized scope only)
 
 Proceed only with explicit implementation authority for the bound repository and the
 selected bead. Claim it through `next-select start <selector>` so claim attribution and

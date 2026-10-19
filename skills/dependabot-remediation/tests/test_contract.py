@@ -65,6 +65,22 @@ class DependabotRemediationContractTests(unittest.TestCase):
         )
         self.assertNotRegex(self.text, r"one bead per (?:planned )?outcome")
 
+    def test_unpatched_investigation_is_selective_and_has_no_shadow_inventory(self):
+        self.require_terms(
+            "No patch does not mean no possible action", "Severity alone does not justify an investigation bead",
+            "exposure is plausible or materially unknown", "could change a mitigation, replacement or risk decision",
+            "No bead merely to acknowledge an alert", "No patch; no actionable remediation identified",
+            "Do not create or maintain a local triage database", "GitHub remains the alert inventory",
+            "Do not dismiss an alert to attach an acknowledgement comment",
+            "no ordinary PR-style comment thread", "An existing investigation keeps its owner",
+            "Record a bounded investigation question", "not a promised upgrade or a fixed GitHub alert",
+            "investigation or follow-up bead runs its recorded read-only task", "does not enter the fix pipeline",
+            "Complete an investigation when its question is answered", "not when the alert disappears",
+            "Any resulting mitigation or dependency replacement needs separately authorized implementation",
+            "Do not create a weekly reminder solely for an unpatched alert",
+        )
+        self.assertNotIn("a held critical outcome is offered one decision bead", self.text)
+
     def test_scope_binding_and_degraded_sources(self):
         self.require_terms(
             "security alerts", "version-update PRs are out of scope", "Bind the invoking repository",
@@ -84,7 +100,7 @@ class DependabotRemediationContractTests(unittest.TestCase):
             "`parent-range-excludes-target`", "`parent-range-unknown`", "never assumed compatible",
             "Missing parent evidence holds",
             "Semver labels are not compatibility proof", "Do not widen a fix, add resolution overrides, or begin a migration",
-            "residual risk recorded in the plan", "one decision bead with the `human` label",
+            "residual risk recorded in the plan", "investigation only when it could change a decision",
         )
 
     def test_untrusted_text_and_prohibited_remote_actions(self):
@@ -145,6 +161,7 @@ class DependabotRemediationContractTests(unittest.TestCase):
             "unauthorized-or-dirty-scope", "fix-refreshes-stale-bead", "exception-budget-stops-at-checkpoint",
             "package-execution-and-gate-failure", "publication-audit-and-single-push", "stale-revision-or-changed-alert",
             "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun", "run-ends-without-follow-on",
+            "unpatched-critical-worth-investigating", "unpatched-low-value-no-bead", "investigation-is-not-a-fix",
         }
         self.assertEqual(set(self.cases), required)
         self.assertEqual(len(self.cases), len(self.fixtures["cases"]))
@@ -159,10 +176,14 @@ class DependabotRemediationContractTests(unittest.TestCase):
                 self.assertIsInstance(case["expected"]["mutations"], list)
                 for name in case["helperTests"]:
                     self.assertIn(f"def {name}(", helper_tests)
-        self.assertEqual(stages, {"discover", "plan", "track", "fix", "verify", "publish", "recheck"})
+        self.assertEqual(stages, {"discover", "plan", "track", "fix", "investigate", "verify", "publish", "recheck"})
         for case_id in ("no-alerts-vs-denied-access", "untrusted-advisory-text", "related-dependabot-pr",
-                        "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun", "run-ends-without-follow-on"):
+                        "delayed-scanning-dismissed-vs-fixed", "idempotent-rerun", "run-ends-without-follow-on",
+                        "unpatched-low-value-no-bead"):
             self.assertEqual(self.cases[case_id]["expected"]["mutations"], [])
+        self.assertIn("create a bead merely because severity is critical", self.cases["unpatched-low-value-no-bead"]["forbidden"])
+        self.assertIn("dismiss to add a comment", self.cases["unpatched-low-value-no-bead"]["forbidden"])
+        self.assertIn("start dependency changes", self.cases["investigation-is-not-a-fix"]["forbidden"])
         self.assertIn("auto-push", self.cases["publication-audit-and-single-push"]["forbidden"])
         self.assertIn("treat dismissed as fixed", self.cases["delayed-scanning-dismissed-vs-fixed"]["forbidden"])
         self.assertIn("start the deferred outcomes", self.cases["batches-group-by-manifest-and-cap"]["forbidden"])
