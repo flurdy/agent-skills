@@ -63,6 +63,7 @@ help:
 	@echo "make test-next-pi (optional Node/public lease observer fixtures)"
 	@echo "make test-handoffs"
 	@echo "make test-pi-spend"
+	@echo "make test-prompt-patterns"
 	@echo "make test-pickup"
 	@echo "make test-review-pr"
 	@echo "make test-pr-status"
@@ -119,7 +120,7 @@ clean-code:
 TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-contract-check test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
   test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
-  test-pi-spend test-pickup test-review-pr test-thoughtbox test-pr-status test-pr-reviewers test-review-requests test-pr-feedback \
+  test-pi-spend test-prompt-patterns test-pickup test-review-pr test-thoughtbox test-pr-status test-pr-reviewers test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-state test-release-status \
   test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check
 
@@ -269,6 +270,10 @@ test-model-update-check:
 
 test-pi-spend:
 	@python3 -m unittest discover -s skills/pi-spend/tests -p 'test_*.py'
+
+.PHONY: test-prompt-patterns
+test-prompt-patterns:
+	@python3 -B -m unittest discover -s skills/prompt-patterns/tests -p 'test_*.py'
 
 test-review-pr:
 	@python3 -m unittest discover -s skills/review-pr/tests -p 'test_snapshot.py'

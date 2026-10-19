@@ -129,6 +129,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 |-------|-------------|
 | model-update-check | Audit Pi startup defaults, routing and coordinated model migration previews across second-opinion and pi-spend; read-only by default, with separate attended refresh and apply paths |
 | pi-spend | Read-only estimate of Pi model cost by provider and model for today, this week, this month, and all recorded history, separating metered credit usage from flat-rate subscription usage |
+| prompt-patterns | Find recurring substantial prompts in local Pi and Claude Code history and suggest reusable prompt-template drafts; metadata-first, redacted, bounded and read-only |
 | skills-review | Explicit read-only collection review with bounded content sampling, conservative evidence-backed recommendations and selected-pattern handoff to triage |
 | tidy-settings | Sort, dedupe, and audit Claude `settings.json` / `settings.local.json` files at user and project level — flags risky permissions, broken refs, subsumed entries, and cross-section conflicts |
 | token-dashboard | Read-only current-session and UTC-week token telemetry for Pi, Claude Code, Codex, and optional OpenRouter management analytics; normalized JSON and terminal views without transcript or credential output |
