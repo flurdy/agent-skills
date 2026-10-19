@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.17.0"
+version: "1.18.0"
 author: "flurdy"
 ---
 
@@ -74,7 +74,9 @@ Output is a JSON array, one object per PR:
     "number": 123,
     "base": "main",
     "isDraft": false,
+    "mergeable": "MERGEABLE",
     "mergeState": "CLEAN",
+    "behindBy": 0,
     "reviewDecision": "APPROVED",
     "approvers": ["alice"],
     "reviewRequestCount": 0,
@@ -96,11 +98,19 @@ connection's `totalCount` rather than a capped page: each requested user or team
 no team expansion. It excludes submitted reviews, approvals or withdrawn requests. `null` means
 unknown (missing field or unavailable data) — never treat it as zero.
 
+`mergeable` is GitHub's `MERGEABLE`/`CONFLICTING`/`UNKNOWN` verdict, reported independently of
+review gates. `behindBy` counts commits on the PR's actual base branch that its head lacks, from a
+second batched compare query (branch names travel as GraphQL variables). It is `null` for closed and
+cross-repository (fork) PRs and whenever the count is unavailable — unknown, never zero. A failed
+compare query only warns on stderr and leaves those counts `null`; the other details stay valid.
+The collector requires Bash, authenticated `gh` and `jq`.
+
 If the batch script is unavailable, the per-PR scripts in the same directory (`gh-pr-checks.sh`,
 `gh-pr-reviews.sh`, `gh-pr-threads.sh`, `gh-pr-merge-state.sh`) or plain `gh pr view/checks` cover
 the other fields but not an exact request count: treat `reviewRequestCount` as unknown. Do not
 derive it from the length of a capped `gh pr view` reviewer list, historical reviews, request
 timeline events, or the viewer-specific inbound review-request queue (`gh-pr-review-requests.py`).
+The fallbacks also lack `behindBy`; treat it as unknown.
 
 ### 2b. Fetch the normalized feedback inventory
 
@@ -208,13 +218,13 @@ Before the tables, output a timestamp line: `_Checked at HH:MM:SS_` in **local**
 - **Ticket**: Jira ID matched against branch name first, then title, or `—`
 - **Branch**: head branch minus conventional-commit prefix and ticket prefix (`feat/AB-1107-cta-clicked-event` → `cta-clicked-event`); truncate past ~30 chars with `…`
 - **Target**: base branch. `main`/`master` are default branches — plain text. Anything else is a stacked PR: prefix with 📌
-- **Sync**: from `mergeState` when base is `main`/`master`: `CLEAN`/`UNSTABLE` → ✅, `BEHIND` → ⚠️ behind, `DIRTY` → 💥 conflict, other → `—`. Stacked PRs (📌) → `—`
+- **Sync**: against the PR's actual base (📌 stacked PRs included), regardless of `mergeState` or review state; first match wins: `mergeable` `CONFLICTING` (or `mergeState` `DIRTY`) → 💥 conflict; `behindBy` > 0 → ⚠️ N behind (e.g. ⚠️ 6 behind); `behindBy` null with `mergeState` `BEHIND` → ⚠️ behind; `mergeable` `MERGEABLE` with `behindBy` 0 → ✅; anything else → `?`. Sync is never `—`: `BLOCKED` only means a merge gate such as approval is unmet
 - **CI**: ✅ / ❌ / ⏳ — emoji only
 - **Ready**: 🚧 if `isDraft`, else relative time since `readyAt`
 - **Push**: relative time since `lastPush`
 - **Approved**: from the table below
 - **Threads**: `💬 N` if N > 0, else `—`
-- **LGTM**: 🚀 if not draft, `APPROVED`, CI `SUCCESS`, sync ✅, zero threads, and `mergeState` `CLEAN`; else 🚧
+- **LGTM**: 🚀 if not draft, base `main`/`master` (stacked PRs merge via their parent), `APPROVED`, CI `SUCCESS`, zero threads, and `mergeState` `CLEAN`; else 🚧. `CLEAN` already excludes conflicts and, where branch protection requires it, a stale branch, so Sync does not gate LGTM
 
 **Approved cell** — first matching row wins:
 
@@ -257,12 +267,16 @@ Fire on transitions, not standing state: on the first check of a session list th
 |---|---|
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
 | new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
-| → ⚠️ behind (fell behind base) | `/rebase main` (on that PR's branch) |
+| → ⚠️ behind (fell behind its base) | `/rebase main` (on that PR's branch); stacked: `/rebase parent {base}` |
 | → ⚠️ 0 awaiting review with no requests | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
 
 Fire the reviewer suggestion only for a known zero: a PR enters that state when it leaves draft with
 no requests, or its last outstanding request is withdrawn or answered without approval. 🔔 N means
 requests are already pending and a bare 🔔 means the count is unknown — suggest nothing for either.
+
+The behind suggestion fires when Sync enters ⚠️ from any other state, regardless of review or
+approval state: rebasing before approval avoids invalidating it later. A PR already behind stays
+quiet; a growing count is not a new transition.
 
 Order most actionable first (🚀 → 💬 → ⚠️ behind → ⚠️ 0 no requests); omit the section when no PR
 changed state.
