@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.a
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.3.0"
+version: "2.3.1"
 author: "flurdy"
 ---
 
@@ -332,7 +332,32 @@ After finalizing:
 
 ### 8. Report
 
-Summarize what was done:
+Start the final bead summary with a compact two-line header, before outcome bullets:
+
+1. The bead title or a terse faithful plain-language summary of the original problem/goal, in bold.
+2. The bead ID, priority and actual status, separated by ` · `.
+
+Do not replace this with a full metadata box or lead with an opaque ID or commit hash. Omit dates
+unless timing matters, for example a deferred-verification wake date. Never infer missing metadata;
+mark unavailable fields as unknown. Use **Completed** only for fully verified, closed work. Partial
+work stays **In progress** with its blocker; a snoozed original is **Deferred** with its wake date.
+An implementation-only closure is **Implementation closed; verification deferred**, naming the
+follow-up and pending check below the header. These are reporting labels, not new tracker states.
+
+Example (placeholders stand for observed metadata):
+
+```markdown
+**Fix false model-unavailable warnings for extensions**
+<bead-id> · P2 · Completed
+
+- Compatibility warnings now recognize the verified runtime versions.
+- Verification: <checks and results>.
+- Commit: <sha> — <message>; local main, unpushed.
+- Remaining work: none.
+```
+
+After the header, summarize outcomes, verification results or evidence gaps, and remaining work.
+Retain the applicable delivery details:
 
 - Workflow mode and resulting bead state — fully verified **closed**, **implementation closed;
   verification deferred in <id>**, **original deferred until <date>**, or **left `in_progress`**
@@ -340,7 +365,7 @@ Summarize what was done:
 - If a PR was created via the handoff, its URL
 - The Pi scope-release outcome: released roots, a refusal with retained leases, or tool unavailable
 - The Jira review outcome, separately from local completion (nothing when disabled)
-- Commit hash and message
+- Commit hash and message, plus actual publication status (for example **unpushed**)
 - Files changed count
 - Any follow-up items noted
 
