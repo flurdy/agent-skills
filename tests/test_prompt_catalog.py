@@ -43,7 +43,7 @@ class PromptCatalogTests(unittest.TestCase):
         self.assertNotIn("every entry in `caveats`", text)
         self.assertNotIn("End with one line noting", text)
         self.assertIn("stale and its percentage is not current", flat)
-        self.assertIn("one-row table with columns Window, Used, Remaining, Reset, and Time until reset", flat)
+        self.assertIn("one-row table with columns Window, Used, Reset, and Time until reset", flat)
         self.assertIn("table with columns Window, Used, Reset, and Time until reset", flat)
         self.assertIn("One row per entry in `windows`", flat)
         docs = (PROMPTS / "README.md").read_text()
@@ -51,6 +51,17 @@ class PromptCatalogTests(unittest.TestCase):
                        "without a year", "not API dollars", "What's contributing"):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, docs)
+
+    def test_codex_quota_omits_remaining_percentage_but_keeps_credits_and_retrieval(self):
+        text = (PROMPTS / "quota.md").read_text()
+        codex = " ".join(text.split("**Codex**", 1)[1].split("**Claude**", 1)[0].split())
+        self.assertIn("one-row table with columns Window, Used, Reset, and Time until reset.", codex)
+        for redundant in ("Remaining", "remainingPercent", "% remaining"):
+            self.assertNotIn(redundant, codex)
+        for retained in ("put credits and retrieval time below the table", "`weekly.usedPercent`% used",
+                         '"unknown" when `weekly` is null', "`fetchedAtLocal`", "`credits.balance`",
+                         "`weekly.resetPassed`", "stale", "not current"):
+            self.assertIn(retained, codex)
 
     def test_templates_and_catalog_rows_match(self):
         catalog = (PROMPTS / "README.md").read_text()

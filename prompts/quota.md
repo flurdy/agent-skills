@@ -22,13 +22,12 @@ Keep stale and unknown indicators inline with the affected value.
 
 **Codex** (`codex-quota`):
 
-Render a one-row table with columns Window, Used, Remaining, Reset, and Time until reset.
+Render a one-row table with columns Window, Used, Reset, and Time until reset.
 Use "GPT weekly" for the window; put credits and retrieval time below the table.
 
-- GPT weekly: `weekly.usedPercent`% used, `weekly.remainingPercent`% remaining, or "unknown" when
-  `weekly` is null.
+- GPT weekly: `weekly.usedPercent`% used, or "unknown" when `weekly` is null.
 - Reset: `weekly.resetsAtLocal` plus `weekly.untilReset.text` remaining, or "unknown" when null. If
-  `weekly.resetPassed` is true, say the window is stale and the percentages are not current.
+  `weekly.resetPassed` is true, say the window is stale and its percentage is not current.
 - Retrieved: `fetchedAtLocal`.
 - Credits: the exact `credits.balance` string, "unlimited", or "unknown" when null. Do not round or
   convert credits into dollars, requests, or weekly allowance.
