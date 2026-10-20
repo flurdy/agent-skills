@@ -5,19 +5,19 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.22.1"
+version: "0.23.0"
 author: "flurdy"
 ---
 
 # Handoffs — Pick a saved session to resume
 
-Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick one to resume. Companion to `/wrap-up` (the writer) and `/landscape` (the morning orienter).
+Browse handoff files written by `/wrap-up` (in `~/.agents/handoffs/`) and pick one to resume. Companion to `/wrap-up` (the writer) and `/landscape` (the morning orienter).
 
 ## When to use
 
 - Starting a session and wanting to pick up a thread from a previous one.
 - After `/landscape` flagged that recent handoffs exist for this repo.
-- Searching for an older thread — `ls ~/.claude/handoffs/` is grep-friendly, but this skill renders the metadata table.
+- Searching for an older thread — `ls ~/.agents/handoffs/` is grep-friendly, but this skill renders the metadata table.
 
 > **Not sure whether to resume a handoff or start fresh work?** That's a morning orientation call, not a handoffs call — run `/landscape` first. Its `**Next:**` line arbitrates resume-a-handoff vs `/next safe` from the full picture (Jira, PRs, beads, working copy). Come here once you've decided to resume a thread.
 
@@ -35,11 +35,11 @@ Browse handoff files written by `/wrap-up` (in `~/.claude/handoffs/`) and pick o
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
 - It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
 - It **cannot pick handoffs from unrelated repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in an unrelated repo, `cd` there and run `/handoffs` again. **Exception:** repos in the same multi-repo workspace are listed and pickable (§2b/§4b), because from a workspace root they'd otherwise be invisible; picking one requires an explicit `cd` before any repo-scoped command runs.
-- It **never deletes** handoff files. The opt-in archive steps (§3b–§3f) only *move* explicitly confirmed candidates into `~/.claude/handoffs/archive/` — they stay on disk and greppable.
+- It **never deletes** handoff files. The opt-in archive steps (§3b–§3f) only *move* explicitly confirmed candidates into `~/.agents/handoffs/archive/` — they stay on disk and greppable.
 
 ## Instructions
 
-> **MUST use the helper script.** Never construct ad-hoc `ls`/`grep` pipelines against `~/.claude/handoffs/` — they bypass the per-script permission allowlist and miss the repo-matching logic.
+> **MUST use the helper script.** Never construct ad-hoc `ls`/`grep` pipelines against `~/.agents/handoffs/` — they bypass the per-script permission allowlist and miss the repo-matching logic.
 
 ### 1. Run the helper
 
@@ -172,8 +172,8 @@ If `unresolved > 0`, surface them. When `unresolved ≤ 5`, list each one by fil
 
 ```markdown
 _⚠️ {unresolved} handoff(s) could not be matched to any repo or directory (recorded path is invalid or gone):_
-- `~/.claude/handoffs/{filename}`
-- `~/.claude/handoffs/{filename}`
+- `~/.agents/handoffs/{filename}`
+- `~/.agents/handoffs/{filename}`
 ```
 
 Pull the filenames straight from the `---HANDOFFS---` section where `repo-key=UNRESOLVED`. Render in the same newest-first order the script emits.
@@ -181,7 +181,7 @@ Pull the filenames straight from the `---HANDOFFS---` section where `repo-key=UN
 `unresolved > 5`:
 
 ```markdown
-_⚠️ {unresolved} handoff(s) could not be matched to any repo or directory (recorded path is invalid or gone). Run `grep -L "Repo root:" ~/.claude/handoffs/*.md` to find them._
+_⚠️ {unresolved} handoff(s) could not be matched to any repo or directory (recorded path is invalid or gone). Run `grep -L "Repo root:" ~/.agents/handoffs/*.md` to find them._
 ```
 
 **Do not add a global pruned-count footnote.** The Worktree column in the current-repo table already makes pruning visible per-row. Add a one-time pickability hint immediately under the current-repo table (when `current_repo_pruned > 0`):
@@ -453,7 +453,10 @@ git worktree add {worktree-path} {branch}      # if {branch} already exists — 
 
 Each step is independent — a failure in one should not block the others.
 
-- **`~/.claude/handoffs/` missing**: render `_No handoffs directory yet. Run /wrap-up at the end of a session to create one._` and stop.
+- **`~/.agents/handoffs/` missing**: render `_No handoffs directory yet. Run /wrap-up at the end of a session to create one._` and stop.
+- **`---STORAGE---` is `migration-required`** (`list.sh` exits `3`): the retired `~/.claude/handoffs/`
+  still exists on this machine. Render `_Handoff storage has not been migrated to ~/.agents/handoffs yet; nothing is listed until the approved move completes._`
+  and stop. Never list, load or archive from the legacy directory directly.
 - **Empty directory**: render `_No handoffs saved yet._` and stop.
 - **Not in a git repo**: retain directory-matched rows when `CURRENT-REPO-KIND == dir`; they remain
   loadable. Skip Git recovery, not the picker. Only `CURRENT-REPO == NONE` prevents matching.
@@ -466,7 +469,7 @@ Each step is independent — a failure in one should not block the others.
 ## Notes
 
 - Handoffs are written by `/wrap-up`. If a session ends without `/wrap-up`, there is nothing here to recover. That's intentional — the index lists `/wrap-up` next to `/handoffs` for a reason.
-- File naming convention: `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
+- File naming convention: `~/.agents/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
 - Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after the recent grace window (superseded rows are the sole immediate exception); §3d separately offers older signal-less current-repo rows for explicit judgement, §3e offers eligible `safe` workspace-member rows, and §3f offers old signal-less member rows unchecked. No flow touches live/open-PR work automatically or sweeps anything by itself.
 - **"Done" detection** has three independent sources, each ground truth in its own domain: a **merged PR** (matched by branch *or* by a number recorded in the body — the latter rescues trunk-parked handoffs that recorded `main`), **all referenced beads closed** (local `bd`, works even on trunk repos with no PR), and a **Jira ticket in the Done category** (§1a, skill-resolved). Any one is enough; together they cover the cases — trunk-based completion, post-merge wrap-ups on `main`, ticket-only closure — that the old branch/PR-only check reported as `🟢 live`.
 - Supersede classification comes from `list.sh`, shared with `/handoffs-tidy`; wrap-up does not

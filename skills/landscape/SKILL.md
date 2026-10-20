@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-bd:*), Bash(date:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.13.1"
+version: "0.13.2"
 author: "flurdy"
 ---
 
@@ -344,7 +344,7 @@ These come from `working-copy.sh` and have no equivalent in the roll-up, so they
   - `/path/to/other` on `fix/X` — 3 modified, 2 unpushed
   ```
   Omit the dirty/unpushed parts that are zero (e.g. `3 modified` alone, or `2 unpushed` alone).
-- **Recent handoffs for this repo**: probe `~/.claude/handoffs/` via:
+- **Recent handoffs for this repo**: probe `~/.agents/handoffs/` via:
   ```bash
   ~/.agents/skills/handoffs/scripts/list.sh --summary-only
   ```

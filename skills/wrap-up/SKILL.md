@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.16.1"
+version: "0.17.0"
 author: "flurdy"
 ---
 
@@ -25,7 +25,7 @@ Produce a tidy end-of-day snapshot so the next session can resume from a paste, 
 2. Working-copy hygiene — flag uncommitted, unpushed, worktree-only state, and artifact-hygiene risks.
 3. Settings/tracker drift — report risks and name their separate review workflow; do not repair them.
 4. Paste-ready **Resume block** capturing topic, decisions, open threads, and where to pick up.
-5. Atomically save and read-back verify the resume block at `~/.claude/handoffs/YYYY-MM-DD-{slug}.md`; prompt only on collision/overwrite or when choosing a different name.
+5. Atomically save and read-back verify the resume block at `~/.agents/handoffs/YYYY-MM-DD-{slug}.md`; prompt only on collision/overwrite or when choosing a different name.
 6. Optionally point to `/handoffs-tidy` for a separately requested archive review; do not invoke it.
 7. Reminder to leave the client manually with its own command — the skill cannot exit for you.
 
@@ -460,7 +460,7 @@ If a field has more than ~4 items, keep the most relevant 4 and add ` (+N more)`
 
 ### 5. 💾 Save and verify the resume block (auto-save unless collision)
 
-Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `cl` and `pl` consume files under `~/.claude/handoffs/`. The deterministic helper owns path construction, no-clobber creation, writing, and read-back verification. Frontmatter is not a portable permission sandbox; each client's actual permission policy still applies.
+Persisting the resume block is the point of `/wrap-up`: `/handoffs`, `/landscape`, and launchers such as `cl` and `pl` consume files under `~/.agents/handoffs/`. The deterministic helper owns path construction, no-clobber creation, writing, and read-back verification. Frontmatter is not a portable permission sandbox; each client's actual permission policy still applies.
 
 Pass only the exact unfenced resume summary already rendered in §4, never raw transcripts,
 credentials, `.env` contents, or unrelated session text. Content sanitization remains the model's
@@ -493,7 +493,7 @@ are not expanded:
 WRAP_UP_HANDOFF_EOF
 ```
 
-The helper requires Python 3.10+, accepts at most 64 KiB of UTF-8, and returns one JSON object with `schemaVersion: "wrap-up-save/v1"`. It rejects malformed identity arguments, empty input, missing/out-of-order/empty required fields, NUL bytes, a mismatching first-line header, symlink/non-regular targets, and stale overwrite approval. Structure checks catch common truncation, not semantically incomplete prose; byte verification binds the submitted block, not the conversation transcript. It writes mode `0600` through a same-directory temporary file, installs a new target without clobbering, then reopens it without following symlinks and verifies the exact bytes and file identity. The target path is always `$HOME/.claude/handoffs/{date}-{slug}.md`; do not supply or substitute another path.
+The helper requires Python 3.10+, accepts at most 64 KiB of UTF-8, and returns one JSON object with `schemaVersion: "wrap-up-save/v1"`. It rejects malformed identity arguments, empty input, missing/out-of-order/empty required fields, NUL bytes, a mismatching first-line header, symlink/non-regular targets, and stale overwrite approval. Structure checks catch common truncation, not semantically incomplete prose; byte verification binds the submitted block, not the conversation transcript. It writes mode `0600` through a same-directory temporary file, installs a new target without clobbering, then reopens it without following symlinks and verifies the exact bytes and file identity. The target path is always `$HOME/.agents/handoffs/{date}-{slug}.md`; do not supply or substitute another path. The helper creates only that `handoffs` directory (mode `0700`) beneath an existing, non-symlinked `~/.agents`. While the retired `~/.claude/handoffs/` still exists it returns `failure` with reason `legacy-storage-present` and writes nothing: report that handoff storage must be migrated first (a separately approved whole-directory move), and never fall back to the legacy path or a shell write.
 
 #### Verified new save
 
@@ -517,7 +517,7 @@ Never print `Saved to`, a `cat` command, or an equivalent persistence claim base
 
 A regular file already at the target returns `status: "collision"`, its `existingSha256`, and a first-free `suggestedSlug` (the standalone helper exits `3`); it never counts as saved, even if its contents look valid. Prompt:
 
-> `~/.claude/handoffs/{YYYY-MM-DD}-{slug}.md` already exists. Save this handoff how?
+> `~/.agents/handoffs/{YYYY-MM-DD}-{slug}.md` already exists. Save this handoff how?
 
 Options:
 
@@ -543,7 +543,7 @@ Missing Python, denied execution, or unsupported filesystem operations also mean
 
 Archiving belongs to a separately requested `/handoffs-tidy` run. After saving, mention that
 handoff if older context may need review; do not invoke it or inspect archive candidates here.
-Wrap-up does not touch `~/.claude/handoffs/archive/`.
+Wrap-up does not touch `~/.agents/handoffs/archive/`.
 
 ### 6. Footer
 
@@ -553,21 +553,21 @@ Select exactly one footer using the client selection from **Important — client
 
 ```markdown
 ---
-**Next:** run `/quit` to close this session. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
+**Next:** run `/quit` to close this session. Resume tomorrow with `cat ~/.agents/handoffs/{file}.md` (or paste the block above).
 ```
 
 **Claude Code footer:**
 
 ```markdown
 ---
-**Next:** run `/exit` to close this session. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
+**Next:** run `/exit` to close this session. Resume tomorrow with `cat ~/.agents/handoffs/{file}.md` (or paste the block above).
 ```
 
 **Unknown-client footer:**
 
 ```markdown
 ---
-**Next:** close this session manually — Pi: `/quit`; Claude Code: `/exit`. Resume tomorrow with `cat ~/.claude/handoffs/{file}.md` (or paste the block above).
+**Next:** close this session manually — Pi: `/quit`; Claude Code: `/exit`. Resume tomorrow with `cat ~/.agents/handoffs/{file}.md` (or paste the block above).
 ```
 
 Include the `cat` half only for the exact path returned by a valid `status: "saved"` response in this wrap-up run. Otherwise drop it and keep just the paste reminder.

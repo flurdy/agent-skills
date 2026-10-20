@@ -53,6 +53,7 @@ class SaveHandoffTests(unittest.TestCase):
         self.root = Path(self.temporary_directory.name)
         self.home = self.root / "home"
         self.home.mkdir()
+        (self.home / ".agents").mkdir()
         specification = importlib.util.spec_from_file_location("save_handoff", SCRIPT)
         self.helper = importlib.util.module_from_spec(specification)
         specification.loader.exec_module(self.helper)
@@ -80,7 +81,7 @@ class SaveHandoffTests(unittest.TestCase):
 
     @property
     def target(self) -> Path:
-        return self.home / ".claude" / "handoffs" / "2026-09-13-save-proof.md"
+        return self.home / ".agents" / "handoffs" / "2026-09-13-save-proof.md"
 
     def test_new_save_writes_and_verifies_exact_regular_file(self) -> None:
         content = resume_block(context="Literal `code` and $(not-expanded).")
@@ -153,7 +154,39 @@ class SaveHandoffTests(unittest.TestCase):
                 self.assertEqual(completed.returncode, 2)
                 self.assertEqual(payload["status"], "failure")
                 self.assertEqual(payload["reason"], "invalid-arguments")
-        self.assertFalse((self.home / ".claude" / "handoffs").exists())
+        self.assertFalse((self.home / ".agents" / "handoffs").exists())
+
+    def test_legacy_storage_blocks_saves_without_creating_canonical_directory(self) -> None:
+        legacy = self.home / ".claude" / "handoffs"
+        legacy.mkdir(parents=True)
+        for shape in ("directory", "symlink"):
+            with self.subTest(shape=shape):
+                if shape == "symlink":
+                    legacy.rmdir()
+                    legacy.symlink_to(self.root / "elsewhere")
+                completed, payload = self.run_save(resume_block(context="PRIVATE-SENTINEL"))
+                self.assertEqual(completed.returncode, 1)
+                self.assertEqual(payload["status"], "failure")
+                self.assertEqual(payload["reason"], "legacy-storage-present")
+                self.assertEqual(payload["path"], str(self.target))
+                self.assertFalse((self.home / ".agents" / "handoffs").exists())
+                self.assertNotIn("PRIVATE-SENTINEL", completed.stdout.decode())
+
+    def test_missing_agents_directory_is_never_created(self) -> None:
+        (self.home / ".agents").rmdir()
+        completed, payload = self.run_save(resume_block())
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(payload["reason"], "directory-unavailable")
+        self.assertFalse((self.home / ".agents").exists())
+
+    def test_symlinked_handoffs_directory_is_refused(self) -> None:
+        elsewhere = self.root / "elsewhere"
+        elsewhere.mkdir()
+        (self.home / ".agents" / "handoffs").symlink_to(elsewhere)
+        completed, payload = self.run_save(resume_block())
+        self.assertEqual(completed.returncode, 1)
+        self.assertEqual(payload["reason"], "directory-unavailable")
+        self.assertEqual(list(elsewhere.iterdir()), [])
 
     def test_collision_preserves_existing_file_and_suggests_next_slug(self) -> None:
         original = resume_block(context="Original block.")
@@ -257,7 +290,7 @@ class SaveHandoffTests(unittest.TestCase):
         self.assertEqual(outside.read_text(encoding="utf-8"), "leave unchanged")
 
     def test_directory_creation_failure_is_bounded_and_does_not_echo_content(self) -> None:
-        (self.home / ".claude").write_text("not a directory", encoding="utf-8")
+        (self.home / ".agents" / "handoffs").write_text("not a directory", encoding="utf-8")
         content = resume_block(context="PRIVATE-SENTINEL")
 
         completed, payload = self.run_save(content)
@@ -309,6 +342,7 @@ class SaveHandoffTests(unittest.TestCase):
         for stage in ("verify_saved_file", "sync_directory"):
             with self.subTest(stage=stage):
                 home = self.home / stage
+                (home / ".agents").mkdir(parents=True)
                 first = self.helper.save_handoff("2026-09-13", "09:42", "save-proof", original, home, None)
                 self.assertEqual(first.status, "saved")
                 with mock.patch.object(self.helper, stage, side_effect=OSError("simulated I/O error")):

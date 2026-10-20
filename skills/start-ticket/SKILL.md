@@ -5,7 +5,7 @@ allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Ba
 model-tier: economy
 model: haiku
 effort: high
-version: "2.2.1"
+version: "2.2.2"
 author: "flurdy"
 ---
 
@@ -88,10 +88,10 @@ When a live handoff remains, ask with `AskUserQuestion`:
 
 > 📥 You have a handoff `{slug}` ({date} {time}) for `{TICKET-NUMBER}` on branch `{branch}`. Resume it instead of creating a new branch?
 
-- **Resume handoff (recommended)** — `Read` `~/.claude/handoffs/{filename}` and render it **verbatim** in a fenced block as resume context. Hand to `/handoffs` for its worktree-aware resume flow rather than switching blindly. **Skip the fresh-branch path in step 4** — don't create over an existing branch. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`.
+- **Resume handoff (recommended)** — `Read` `~/.agents/handoffs/{filename}` and render it **verbatim** in a fenced block as resume context. Hand to `/handoffs` for its worktree-aware resume flow rather than switching blindly. **Skip the fresh-branch path in step 4** — don't create over an existing branch. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`.
 - **Start fresh** — ignore the handoff and continue to step 4 with a new branch.
 
-If `list.sh` errors or there's no handoffs dir, proceed to step 4 silently — this is a courtesy, never a blocker.
+If `list.sh` errors or there's no handoffs dir, proceed to step 4 silently — this is a courtesy, never a blocker. The one exception is exit `3` with `---STORAGE---` `migration-required`: say in one line that handoff storage still needs migrating to `~/.agents/handoffs`, then proceed; never read the legacy directory instead.
 
 ### 4. Preflight and create the branch
 

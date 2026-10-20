@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.21.0"
+version: "1.21.1"
 author: "flurdy"
 ---
 
@@ -435,10 +435,10 @@ When a live handoff remains, ask with `AskUserQuestion` before starting:
 
 > 📥 A handoff `{slug}` ({date} {time}) covers `{id}` — load its context before starting?
 
-- **Load handoff (recommended)** — `Read` `~/.claude/handoffs/{filename}` and render it **verbatim** in a fenced block so it becomes resume context. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`. If `{exists}=N` (worktree pruned) or the flow gets involved, point to `/handoffs` for the full worktree-recreation flow rather than reimplementing it here. Then mark the bead in_progress and continue.
+- **Load handoff (recommended)** — `Read` `~/.agents/handoffs/{filename}` and render it **verbatim** in a fenced block so it becomes resume context. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`. If `{exists}=N` (worktree pruned) or the flow gets involved, point to `/handoffs` for the full worktree-recreation flow rather than reimplementing it here. Then mark the bead in_progress and continue.
 - **Start fresh** — skip the handoff; mark in_progress and proceed.
 
-Keep it to one prompt. If `bd`/`list.sh` errors or there's no handoffs dir, proceed silently — the check is a courtesy, never a blocker.
+Keep it to one prompt. If `bd`/`list.sh` errors or there's no handoffs dir, proceed silently — the check is a courtesy, never a blocker. The one exception is `list.sh` exiting `3` with `---STORAGE---` `migration-required`: say in one line that handoff storage still needs migrating to `~/.agents/handoffs`, then proceed; never read the legacy directory instead.
 
 ## Owner-routed selection
 

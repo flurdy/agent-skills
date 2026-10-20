@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Move handoff files out of the active ~/.claude/handoffs/ listing into
-# ~/.claude/handoffs/archive/ so the picker de-clutters without losing the
+# Move handoff files out of the active ~/.agents/handoffs/ listing into
+# ~/.agents/handoffs/archive/ so the picker de-clutters without losing the
 # grep log. Non-destructive: it MOVES, never deletes, and never overwrites.
 # Shared by the wrap-up (supersede-at-save) and handoffs (archive sweep) skills.
 #
@@ -15,12 +15,27 @@
 #   ---SKIPPED---       one `{arg}|{reason}` line per refused/missing file
 set -uo pipefail
 
-HANDOFFS_DIR="${HOME}/.claude/handoffs"
+HANDOFFS_DIR="${HOME}/.agents/handoffs"
+LEGACY_HANDOFFS_DIR="${HOME}/.claude/handoffs"
 ARCHIVE_DIR="${HANDOFFS_DIR}/archive"
 
 if [ $# -eq 0 ]; then
     echo "usage: archive.sh NAME [NAME...]" >&2
     exit 2
+fi
+
+# Hard cutover: never move files while the legacy location still exists. The
+# migration itself is a separately approved whole-directory move, not an archive.
+if [ -e "$LEGACY_HANDOFFS_DIR" ] || [ -L "$LEGACY_HANDOFFS_DIR" ]; then
+    echo "WARNING: legacy handoff storage still exists at $LEGACY_HANDOFFS_DIR; nothing archived." >&2
+    echo "---ARCHIVE-DIR---"
+    echo "$ARCHIVE_DIR"
+    echo "---ARCHIVED---"
+    echo "---SKIPPED---"
+    for arg in "$@"; do
+        echo "${arg}|legacy handoff storage present; migrate first"
+    done
+    exit 3
 fi
 
 ARCHIVED=()

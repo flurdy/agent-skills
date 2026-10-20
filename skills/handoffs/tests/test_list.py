@@ -11,6 +11,7 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).resolve().parents[1]
 SCRIPT = SKILL_DIR / "scripts" / "list.sh"
+ARCHIVE_SCRIPT = SKILL_DIR / "scripts" / "archive.sh"
 HANDOFFS_SKILL = SKILL_DIR / "SKILL.md"
 TIDY_SKILL = SKILL_DIR.parent / "handoffs-tidy" / "SKILL.md"
 REFERENCE = SKILL_DIR / "REFERENCE.md"
@@ -27,7 +28,7 @@ class HandoffListFixture:
         self.today = today or dt.date.today()
         self.home = root / "home"
         self.repo = root / "repo"
-        self.handoffs = self.home / ".claude" / "handoffs"
+        self.handoffs = self.home / ".agents" / "handoffs"
         self.bin = root / "bin"
         self.handoffs.mkdir(parents=True)
         self.bin.mkdir()
@@ -127,19 +128,26 @@ print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
         timestamp = dt.datetime.combine(dt.date.today(), dt.time.fromisoformat(time)).timestamp()
         os.utime(self.handoffs / filename, (timestamp, timestamp))
 
-    def run(self, *args: str, cwd: Path | None = None) -> str:
+    def environment(self) -> dict[str, str]:
         env = os.environ.copy()
         env["HOME"] = str(self.home)
         env["PATH"] = f"{self.bin}:{env['PATH']}"
         env["HANDOFFS_TODAY"] = self.today.isoformat()
-        result = subprocess.run(
-            [str(SCRIPT), "--check-branches", *args],
+        return env
+
+    def run_script(self, script: Path, *args: str, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [str(script), *args],
             cwd=cwd or self.repo,
-            env=env,
+            env=self.environment(),
             text=True,
             capture_output=True,
-            check=True,
+            check=False,
         )
+
+    def run(self, *args: str, cwd: Path | None = None) -> str:
+        result = self.run_script(SCRIPT, "--check-branches", *args, cwd=cwd)
+        result.check_returncode()
         return result.stdout
 
 
@@ -149,6 +157,57 @@ def section(output: str, name: str) -> list[str]:
     start = lines.index(marker) + 1
     end = next((i for i in range(start, len(lines)) if lines[i].startswith("---")), len(lines))
     return lines[start:end]
+
+
+class StorageLocationTests(unittest.TestCase):
+    def test_canonical_storage_is_reported_and_listed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            filename = fixture.add_handoff(0, "ready")
+            output = fixture.run()
+            self.assertEqual(section(output, "HANDOFFS-DIR"), [str(fixture.handoffs)])
+            self.assertEqual(section(output, "STORAGE"), ["canonical"])
+            self.assertTrue(any(row.startswith(f"{filename}|") for row in section(output, "HANDOFFS")))
+
+    def test_legacy_storage_blocks_listing_with_explicit_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            fixture.add_handoff(0, "canonical-row")
+            legacy = fixture.home / ".claude" / "handoffs"
+            legacy.mkdir(parents=True)
+            (legacy / "2026-01-01-old.md").write_text("# Resume: old\n", encoding="utf-8")
+            result = fixture.run_script(SCRIPT, "--bead", "repo-1")
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertIn("migration-required", result.stderr)
+            self.assertEqual(section(result.stdout, "STORAGE"), ["migration-required"])
+            self.assertEqual(section(result.stdout, "HANDOFFS"), [])
+            self.assertEqual(section(result.stdout, "MATCHED-HANDOFFS"), [])
+            self.assertIn("total=0", section(result.stdout, "SUMMARY"))
+            self.assertNotIn("old.md", result.stdout)
+
+    def test_archive_moves_within_canonical_storage_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            filename = fixture.add_handoff(1, "done")
+            result = fixture.run_script(ARCHIVE_SCRIPT, filename, "missing.md")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            archive = fixture.handoffs / "archive"
+            self.assertEqual(section(result.stdout, "ARCHIVE-DIR"), [str(archive)])
+            self.assertEqual(section(result.stdout, "ARCHIVED"), [f"{filename}|{archive / filename}"])
+            self.assertEqual(section(result.stdout, "SKIPPED"), ["missing.md|not found"])
+            self.assertTrue((archive / filename).is_file())
+
+    def test_archive_refuses_while_legacy_storage_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            filename = fixture.add_handoff(1, "done")
+            (fixture.home / ".claude" / "handoffs").mkdir(parents=True)
+            result = fixture.run_script(ARCHIVE_SCRIPT, filename)
+            self.assertEqual(result.returncode, 3)
+            self.assertEqual(section(result.stdout, "ARCHIVED"), [])
+            self.assertEqual(section(result.stdout, "SKIPPED"), [f"{filename}|legacy handoff storage present; migrate first"])
+            self.assertTrue((fixture.handoffs / filename).is_file())
+            self.assertFalse((fixture.handoffs / "archive").exists())
 
 
 class SupersedeOrderingTests(unittest.TestCase):

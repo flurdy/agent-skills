@@ -54,7 +54,11 @@ Delimited sections:
 - `---CURRENT-REPO-KIND---` — `repo`, `dir` (not in a git repo; matching is by exact directory, no branch/PR liveness or workspace members), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
 - `---STALE-DAYS---` — configured age floor for assisted age review (the recent-window size by default).
-- `---HANDOFFS-DIR---` — directory scanned (`~/.claude/handoffs`).
+- `---HANDOFFS-DIR---` — directory scanned (`~/.agents/handoffs`).
+- `---STORAGE---` — `canonical`, or `migration-required` when the retired `~/.claude/handoffs`
+  location still exists. In that state every row section is empty, the script exits `3`, and
+  the handoff store must be migrated (a separately approved whole-directory move) before any
+  listing, save or archive; never read or merge the legacy directory ad hoc.
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
 - `---MATCHED-HANDOFFS---` — emitted with `--bead` / `--ticket`: exact-token, case-insensitive
   current-repo matches, excluding superseded/completed/inactive rows under the available evidence.
@@ -261,7 +265,7 @@ promoted no older row to `safe`. The script counters cannot include model-side J
 older promotion is itself an effective Done candidate even when both counters remain zero. A recent
 Jira-Done status is retained and does not open this flow.
 
-Archiving **moves** handoffs to `~/.claude/handoffs/archive/` (still on disk, still greppable; just
+Archiving **moves** handoffs to `~/.agents/handoffs/archive/` (still on disk, still greppable; just
 out of the active listing). It is opt-in and never automatic — rows stay pickable until the user says so.
 
 The candidates split by regret — the `archive-class` field already encodes which is which. Present
@@ -283,7 +287,7 @@ described by its group:
 - done → `✅ PR #{pr-number} merged` / `✅ beads closed` / `✅ {KEY} done` / `🔵 branch merged`
 - stale → `🚫 PR #{pr-number} closed — no newer handoff` / `⚪ branch gone — no newer handoff`
 
-> Archive these to `~/.claude/handoffs/archive/`? They stay on disk (greppable), just out of the
+> Archive these to `~/.agents/handoffs/archive/`? They stay on disk (greppable), just out of the
 > picker. **Superseded** and **done** ones are safe — the context lives on or the work shipped.
 > **Stale** ones may be the only record of an abandoned thread, so leave any you might still want.
 
@@ -296,7 +300,7 @@ For the selected filenames, archive them in one call:
 Parse the script's `---ARCHIVED---` / `---SKIPPED---` sections and confirm:
 
 ```markdown
-✅ Archived {N} handoff(s) to `~/.claude/handoffs/archive/`.
+✅ Archived {N} handoff(s) to `~/.agents/handoffs/archive/`.
 ```
 
 Surface any `---SKIPPED---` lines verbatim with their reason — never drop them silently. Only ever
@@ -350,11 +354,11 @@ Options:
 - **Skip {repo}** — leave them; suggest `cd {path} && /handoffs-tidy` for per-row control.
 
 Collect the selections across repos and archive them in **one** `archive.sh` call (it takes bare
-filenames and is repo-agnostic — it only ever moves files within `~/.claude/handoffs/`). Parse
+filenames and is repo-agnostic — it only ever moves files within `~/.agents/handoffs/`). Parse
 `---ARCHIVED---` / `---SKIPPED---` and confirm exactly as §Archive-flow does, naming the repos:
 
 ```markdown
-✅ Archived {N} handoff(s) from {repo-list} to `~/.claude/handoffs/archive/`.
+✅ Archived {N} handoff(s) from {repo-list} to `~/.agents/handoffs/archive/`.
 ```
 
 Never offer a member row that is `🟢 live`, `🟠 PR open`, or `unknown` in this evidence-backed flow.

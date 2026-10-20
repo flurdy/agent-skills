@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# List Claude Code handoff files (~/.claude/handoffs/*.md) with metadata.
+# List shared handoff files (~/.agents/handoffs/*.md) with metadata.
 # Sections delimited by `---<NAME>---` markers. Companion to the wrap-up skill.
 #
 # Usage: list.sh [--recent-days N] [--stale-days N] [--summary-only] [--bead ID] [--ticket KEY]
@@ -37,7 +37,16 @@ emit_record() {
     printf '%s\n' "${out#|}"
 }
 
-HANDOFFS_DIR="${HOME}/.claude/handoffs"
+HANDOFFS_DIR="${HOME}/.agents/handoffs"
+LEGACY_HANDOFFS_DIR="${HOME}/.claude/handoffs"
+# Hard cutover: while the legacy location still exists nothing is listed, so a
+# half-migrated machine shows an explicit `migration-required` status instead of
+# a silently empty or split inventory. Reported in `---STORAGE---`; exit 3.
+STORAGE_STATUS="canonical"
+if [ -e "$LEGACY_HANDOFFS_DIR" ] || [ -L "$LEGACY_HANDOFFS_DIR" ]; then
+    STORAGE_STATUS="migration-required"
+    echo "WARNING: handoff storage migration-required: $LEGACY_HANDOFFS_DIR still exists; handoffs now live in $HANDOFFS_DIR. Nothing is listed until it is migrated." >&2
+fi
 
 RECENT_DAYS=""
 STALE_DAYS=""
@@ -563,6 +572,9 @@ echo "$STALE_DAYS"
 echo "---HANDOFFS-DIR---"
 echo "$HANDOFFS_DIR"
 
+echo "---STORAGE---"
+echo "$STORAGE_STATUS"
+
 echo "---CUTOFF---"
 echo "$CUTOFF"
 
@@ -611,7 +623,7 @@ bump_other() {
     OTHER_COUNTS+=(1)
 }
 
-if [ -d "$HANDOFFS_DIR" ]; then
+if [ "$STORAGE_STATUS" = "canonical" ] && [ -d "$HANDOFFS_DIR" ]; then
     # newest first by filename (handoff filenames begin with YYYY-MM-DD)
     while IFS= read -r F; do
         [ -f "$F" ] || continue
@@ -1240,3 +1252,8 @@ if [ -n "$MATCH_FILTER" ]; then
         i=$((i+1))
     done
 fi
+
+# Every section is emitted so parsers stay shape-stable, but an unmigrated
+# machine must not look like an empty inventory to callers that only check $?.
+[ "$STORAGE_STATUS" = "canonical" ] || exit 3
+exit 0

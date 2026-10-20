@@ -5,13 +5,13 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.7.1"
+version: "0.7.2"
 author: "flurdy"
 ---
 
 # Handoffs-tidy — retire handoffs that no longer point at live work
 
-Keep `~/.claude/handoffs/` focused through four review groups. Only the first three have
+Keep `~/.agents/handoffs/` focused through four review groups. Only the first three have
 completion/staleness evidence; the fourth is explicitly uncertain:
 
 - **Superseded** — a newer handoff continues the same thread (same branch / topic / same-day re-wrap).
@@ -24,7 +24,7 @@ completion/staleness evidence; the fourth is explicitly uncertain:
 
 This command finds all four and archives the ones you confirm. A recent handoff is retained even when
 finished or stale; superseded rows are the sole immediate exception. Nothing is deleted — archived
-files move to `~/.claude/handoffs/archive/` and stay greppable.
+files move to `~/.agents/handoffs/archive/` and stay greppable.
 
 Run it **ad-hoc** whenever the picker feels noisy, or right after a `/wrap-up`. It is the standalone
 twin of `/handoffs`'s opt-in archive step (§3b): same `list.sh` classification, same archive flow —
@@ -45,7 +45,7 @@ ever archives explicit selections. Automatic candidate groups exclude live/unkno
 ## Instructions
 
 > **MUST use the helper scripts.** Never construct ad-hoc `ls`/`grep`/`git`/`gh`/`bd` pipelines
-> against `~/.claude/handoffs/` — they bypass the per-script permission allowlist and miss the
+> against `~/.agents/handoffs/` — they bypass the per-script permission allowlist and miss the
 > repo-matching and liveness logic. Classification and the archive flow are specified **once** in
 > `~/.agents/skills/handoffs/REFERENCE.md`; read it rather than re-deriving the rules here, including
 §Age-review for old rows with no usable signals.
@@ -128,7 +128,7 @@ REFERENCE prompt bounds; leave all choices unselected. Surface every `---SKIPPED
 reason. Never offer a `🟢 live`, `🟠 PR open`, or `unknown` row. `archive.sh` only moves — never deletes.
 
 ```markdown
-✅ Archived {N} handoff(s) to `~/.claude/handoffs/archive/`.
+✅ Archived {N} handoff(s) to `~/.agents/handoffs/archive/`.
 ```
 
 ### 5b. Trunk handoffs worth a look (assisted)
@@ -189,7 +189,9 @@ separate assisted confirmation; no selection means no mutation.
 
 - **`list.sh` / `archive.sh` / `REFERENCE.md` missing** (handoffs skill not installed): say so plainly
   and stop — this command is a thin driver over the handoffs skill's scripts and shared spec.
-- **No `~/.claude/handoffs/` directory**: nothing to tidy; say so and stop.
+- **No `~/.agents/handoffs/` directory**: nothing to tidy; say so and stop.
+- **`---STORAGE---` is `migration-required`** (`list.sh` and `archive.sh` exit `3`): the retired
+  `~/.claude/handoffs/` still exists. Say that storage must be migrated first and stop; archive nothing.
 - **Not in a git repo**: liveness needs a repo to classify against — say so and stop. (`cd` into the
   repo and re-run.)
 - **Multi-repo workspace**: member repos are covered by step 5d for `safe` rows and step 5e for old

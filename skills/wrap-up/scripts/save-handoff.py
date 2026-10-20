@@ -19,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "wrap-up-save/v1"
+HANDOFFS_RELATIVE = Path(".agents") / "handoffs"
+LEGACY_HANDOFFS_RELATIVE = Path(".claude") / "handoffs"
 MAX_INPUT_BYTES = 65_536
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -152,7 +154,24 @@ def validate_content(content: bytes, date_text: str, time_text: str, slug: str) 
 
 
 def target_path(home: Path, date_text: str, slug: str) -> Path:
-    return home / ".claude" / "handoffs" / f"{date_text}-{slug}.md"
+    return home / HANDOFFS_RELATIVE / f"{date_text}-{slug}.md"
+
+
+def prepare_directory(home: Path, directory: Path) -> None:
+    # Hard cutover: while the legacy location exists, no new handoff is written
+    # anywhere, so old and new storage can never diverge silently.
+    if os.path.lexists(home / LEGACY_HANDOFFS_RELATIVE):
+        raise SaveFailure(
+            "legacy-storage-present",
+            f"{LEGACY_HANDOFFS_RELATIVE} still exists; migrate handoffs to {HANDOFFS_RELATIVE} first",
+        )
+    if directory.is_symlink():
+        raise SaveFailure("directory-unavailable", "handoffs directory must not be a symlink")
+    try:
+        # Only the handoffs directory itself may be created; its parent must already exist.
+        directory.mkdir(mode=0o700, exist_ok=True)
+    except OSError as error:
+        raise SaveFailure("directory-unavailable", bounded_safe_detail(error)) from error
 
 
 def file_identity(file_stat: os.stat_result) -> tuple[int, int, int, int]:
@@ -328,10 +347,7 @@ def save_handoff(
             raise SaveFailure("home-unavailable", "HOME must be an absolute directory")
         validate_arguments(date_text, time_text, slug, overwrite_sha256)
         validate_content(content, date_text, time_text, slug)
-        try:
-            target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        except OSError as error:
-            raise SaveFailure("directory-unavailable", bounded_safe_detail(error)) from error
+        prepare_directory(home, target.parent)
 
         existing = inspect_target(target)
         if overwrite_sha256 is None and existing is not None:
@@ -396,7 +412,7 @@ def main() -> int:
     arguments = parse_arguments()
     home_value = os.environ.get("HOME")
     if not home_value:
-        target = Path(".claude/handoffs") / f"{arguments.date}-{arguments.slug}.md"
+        target = HANDOFFS_RELATIVE / f"{arguments.date}-{arguments.slug}.md"
         result = SaveResult("failure", target, reason="home-unavailable")
     else:
         content = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
