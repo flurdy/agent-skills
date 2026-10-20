@@ -23,12 +23,15 @@ See [installation and configuration](../docs/installation.md#prompt-templates) f
 
 ## Quota report notes
 
-`/quota` keeps routine output to figures, resets and retrieval times. Unknown values, stale windows
-and provider errors remain visible, but standing caveats and the cost reminder are not repeated:
+`/quota` keeps routine output to readable figures, reset tables and errors. Retrieval timestamps
+stay in the helper JSON for diagnostics and are shown only when requested. Unknown values and
+stale windows remain visible, but standing caveats and the cost reminder are not repeated:
 
 - Values describe the accounts signed in to the Codex CLI and Claude Code; alignment with Pi's
   active accounts is not verified. A snapshot does not guarantee future requests.
 - Codex credits are ChatGPT/Codex capacity, not API dollars, extra weekly allowance or request counts.
+  Display them with grouping and at most two decimal places, trimming trailing zeros; this is
+  presentation rounding only, not a change to the provider's exact JSON value.
 - Claude Code's usage panel is undocumented human-readable text. Unrecognised or missing values are
   unknown, never zero. Its approximate, local-only "What's contributing" breakdown is excluded.
 - Claude Code prints reset dates without a year; the helper resolves the first matching time after
@@ -38,8 +41,11 @@ and provider errors remain visible, but standing caveats and the cost reminder a
   Pi's active account is not verified; no account is discovered or switched automatically.
 - OpenRouter totals are canonical decimal strings of the parsed API numbers; remaining is a
   separately labelled derived decimal difference. The helper adds no binary-subtraction noise,
-  does not round the reported totals, and retains zero/negative remaining. The API schema calls
-  the unit credits, so the report does not assume USD. It is not a subscription window or reset.
+  does not round the reported totals, and retains zero/negative remaining. OpenRouter's
+  [official FAQ](https://openrouter.ai/docs/faq) states the base currency is US dollars; the
+  routine report therefore displays a USD table with Remaining, Purchased and Used, each to
+  two decimal places. The helper JSON stays exact; derived/reported labels need not clutter
+  the table. It is not a subscription window or reset.
 - `/quota` uses a model turn. Running any of the three helpers directly does not.
 
 The helpers retain their full `caveats` arrays in JSON. See the

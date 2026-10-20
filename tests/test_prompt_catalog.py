@@ -52,28 +52,40 @@ class PromptCatalogTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, docs)
 
-    def test_codex_quota_omits_remaining_percentage_but_keeps_credits_and_retrieval(self):
+    def test_codex_quota_formats_credits_without_redundant_percentage_or_retrieval(self):
         text = (PROMPTS / "quota.md").read_text()
         codex = " ".join(text.split("**Codex**", 1)[1].split("**Claude**", 1)[0].split())
         self.assertIn("one-row table with columns Window, Used, Reset, and Time until reset.", codex)
         for redundant in ("Remaining", "remainingPercent", "% remaining"):
             self.assertNotIn(redundant, codex)
-        for retained in ("put credits and retrieval time below the table", "`weekly.usedPercent`% used",
-                         '"unknown" when `weekly` is null', "`fetchedAtLocal`", "`credits.balance`",
+        for retained in ("put credits below the table", "`weekly.usedPercent`% used",
+                         '"unknown" when `weekly` is null', "`credits.balance`", "thousands separators",
+                         "at most two decimal places", "trim trailing zeros", "1,000",
                          "`weekly.resetPassed`", "stale", "not current"):
             self.assertIn(retained, codex)
+        self.assertNotIn("`fetchedAtLocal`", codex)
 
-    def test_openrouter_reports_balance_and_retrieval_not_a_subscription_window(self):
+    def test_openrouter_uses_a_compact_usd_table_not_a_subscription_window(self):
         text = (PROMPTS / "quota.md").read_text()
         section = " ".join(text.split("**OpenRouter**", 1)[1].split("For any provider", 1)[0].split())
-        for phrase in ("`credits.derived.remainingCredits`", "derived", "`credits.reported.totalCredits`",
-                       "`credits.reported.totalUsage`", "`fetchedAtLocal`", "zero and negative", "do not round"):
+        for phrase in ("`credits.derived.remainingCredits`", "`credits.reported.totalCredits`",
+                       "`credits.reported.totalUsage`", "zero and negative", "Remaining, Purchased, Used",
+                       "USD", "two decimal places", "73.148107563", "$73.15", "$115.00"):
             self.assertIn(phrase, section)
         self.assertNotIn("weekly.usedPercent", section)
-        self.assertIn("Do not invent resets, percentages, currency labels, requests or token conversions", section)
+        self.assertNotIn("`fetchedAtLocal`", section)
+        self.assertIn("Do not invent resets, percentages, requests or token conversions", section)
         docs = (PROMPTS / "README.md").read_text()
-        for phrase in ("openrouter-quota", "management", "SECRET_API_KEY_PROJECT", "decimal", "derived"):
+        for phrase in ("openrouter-quota", "management", "SECRET_API_KEY_PROJECT", "decimal", "derived", "US dollars", "https://openrouter.ai/docs/faq"):
             self.assertIn(phrase, docs)
+
+    def test_quota_hides_routine_retrieval_metadata_and_preserves_source_values(self):
+        text = " ".join((PROMPTS / "quota.md").read_text().split())
+        self.assertIn("Do not show retrieval dates or times unless requested", text)
+        self.assertIn("Round only for display", text)
+        self.assertIn("Never recompute the remaining balance", text)
+        self.assertNotIn("Use the JSON values verbatim", text)
+        self.assertNotIn("- Retrieved:", text)
 
     def test_templates_and_catalog_rows_match(self):
         catalog = (PROMPTS / "README.md").read_text()
