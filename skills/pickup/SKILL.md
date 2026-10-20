@@ -5,7 +5,7 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: economy
 model: sonnet
 effort: high
-version: "0.6.1"
+version: "0.7.0"
 author: "flurdy"
 ---
 
@@ -47,9 +47,9 @@ projects = ["GE"]                 # required
 ready_statuses = ["Ready to Work"]  # required; exact status names
 labels = ["FE", "BE", "FS"]       # optional; any-of. Omit for all labels
 exclude_types = ["Epic"]          # default ["Epic"]
-holding_sprints = ["READY FOR ENGINEERING"]  # optional; future sprints shown after the real ones
+holding_sprints = ["READY FOR ENGINEERING"]  # optional; fetched and shown after the real future sprints
 active_limit = 50                 # max results per bucket, 1-100
-next_limit = 10
+next_limit = 10                   # real future sprints, and again per holding sprint
 backlog_limit = 10
 
 [jira.fields]                     # optional; Jira Cloud defaults shown
@@ -69,10 +69,24 @@ story_points = "customfield_10016"
 
    On a non-zero exit, show the error and the config example above, then stop.
 
-2. **Fetch.** For each entry in `requests` (buckets `active`, `next`, `backlog`) and for
-   `mine`, call `mcp__jira__jira_get` with its `path`, `queryParams` and `jq` exactly as given.
-   Run them in parallel. A failed bucket is reported as unavailable, never as empty; a failed
-   `mine` drops the ★ markers and the "Parked" and "Already yours" tables, with a one-line note.
+2. **Fetch.** For each entry in `requests` (buckets `active`, `next`, one `holding` per
+   configured holding sprint, then `backlog`) and for `mine`, call `mcp__jira__jira_get` with its
+   `path`, `queryParams` and `jq` exactly as given. Run them in parallel. A failed bucket is
+   reported as unavailable, never as empty; a failed `mine` drops the ★ markers and the "Parked"
+   and "Already yours" tables, with a one-line note. A JQL error naming a holding sprint means
+   `pickup.toml` lists a sprint Jira no longer has.
+
+   **Pages.** Each response is `{isLast, nextPageToken, issues}`, and Jira may return fewer
+   issues than `maxResults`. While `isLast` is false and fewer issues than the request's
+   `maxResults` are collected, repeat the call with the same params plus `nextPageToken`, and
+   `maxResults` lowered to the remainder; at most 5 calls per request. A request that stops with
+   `isLast` false is **truncated**.
+
+   **Follow-ons.** When `mine` returned tickets, run the helper again with the same arguments plus
+   `--parents` (every `parent_key` and `key` in `mine`) and `--linked` (every `key` in `mine`),
+   then fetch its `follow_on` request the same way. It finds ready tickets in an epic or parent you
+   already have work in, or linked to one of your open tickets, however far down the rank they are.
+   A failed `follow_on` keeps ★ by `parent_key` only, with a one-line note.
 
    **Yours, not started** = `mine` entries whose `status` is in `config.ready_statuses` and whose
    `type` is not in `config.exclude_types`. No label filter: they are yours either way.
@@ -104,11 +118,23 @@ story_points = "customfield_10016"
 
    - **Epic**: `parent` when `parent_type` is `Epic`; for a sub-task, its parent's summary
      prefixed `↳ `. `—` when none. Truncate to ~35 chars.
-   - **★**: a leading header-less column; `★` when `parent_key` matches a `parent_key` (or
-     `key`) from `mine` — an epic you already have work in — otherwise blank.
+   - **★**: a leading header-less column; `★` when the key is in the `follow_on` results, or
+     `parent_key` matches a `parent_key` (or `key`) from `mine` — work next to yours —
+     otherwise blank.
    - **Cells**: replace any `|` in epic or summary text with `/` so it can't split the table.
    - **Summary**: drop a leading `FE |`, `BE|`, `FS |`-style prefix (the Labels column has it);
      truncate to ~70 chars.
+
+   Add each `follow_on` ticket not already listed to its table, creating the table if needed:
+   an `active` sprint → active; a `future` sprint → that sprint's table (a holding table when
+   named in `holding_sprints`); neither → backlog. Order it like any other row.
+
+   When a request was truncated, end the last table of its bucket with
+   `_Showing N; more in Jira — raise <limit> in pickup.toml to see them._`, where N is the rows
+   fetched and `<limit>` is `active_limit`, `next_limit` or `backlog_limit`. For a truncated
+   `mine` or `follow_on`, add `_Your tickets: showing N; more in Jira._` or
+   `_Follow-ons: showing N; more in Jira._` after the tables. Never present a truncated bucket
+   as complete.
 
    ```markdown
    ## Pickup — GE · FE, BE, FS
@@ -132,6 +158,12 @@ story_points = "customfield_10016"
    |   | Key | Pri | Pts | Labels | Epic | Summary |
    |---|-----|-----|-----|--------|------|---------|
 
+   _Showing 10; more in Jira — raise next_limit in pickup.toml to see them._
+
+   ### READY FOR ENGINEERING
+   |   | Key | Pri | Pts | Labels | Epic | Summary |
+   |---|-----|-----|-----|--------|------|---------|
+
    ### Backlog
    |   | Key | Pri | Pts | Labels | Epic | Summary |
    |---|-----|-----|-----|--------|------|---------|
@@ -143,7 +175,8 @@ story_points = "customfield_10016"
    | [GE-1234](…) | next | P2 | 1 | blocked by GE-1200 (in progress) | … |
    ```
 
-   When any ★ appears, add a legend line: `★ epic you already have open work in`.
+   When any ★ appears, add a legend line:
+   `★ follow-on: same epic or parent as your open work, or linked to one of your tickets`.
    Replace an empty table with a one-line "none". Add a caveat line for tickets lacking a
    description or points if any.
 
