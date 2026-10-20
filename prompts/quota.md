@@ -1,19 +1,21 @@
 ---
-description: Report Codex weekly GPT quota and credits, and Claude Code session and weekly usage
+description: Report Codex and Claude usage windows plus OpenRouter account credits
 argument-hint: "[no arguments]"
 ---
 
-Run exactly these two read-only shell commands, as separate commands, then answer from their JSON
+Run exactly these three read-only shell commands, as separate commands, then answer from their JSON
 alone:
 
     codex-quota
     claude-quota
+    openrouter-quota
 
-Each provider is independent: one provider's failure never hides or skips the other's report. A
+Each provider is independent: one provider's failure never hides or skips the other reports. A
 non-zero exit with JSON on stdout is that provider's reported error. If a command is not found,
 report for that provider only that its helper from flurdy/ai-tools (`pi/quota/README.md`) is not
 installed on PATH. Do not search for a checkout, run `codex` or `claude`, query any provider
-yourself, retry, sign in, switch models, or change settings, limits, or balances.
+yourself, retry, sign in, switch models, look up credentials, change account/project configuration,
+or change settings, limits, or balances.
 
 Use the JSON values verbatim and never estimate from the footer, a screenshot, or memory. Null
 means unknown, never zero. Keep the report compact: figures, resets, retrieval times and errors only.
@@ -42,5 +44,17 @@ Render a table with columns Window, Used, Reset, and Time until reset. Put retri
   its percentage is not current. When `windows` is empty, say Claude usage is unknown.
 - Retrieved: `fetchedAtLocal`.
 
-For either provider, when `status` is "error", report `error.kind`, `error.message`, and any `hint`
-as "Codex quota unavailable" or "Claude quota unavailable", then continue with the other provider.
+**OpenRouter** (`openrouter-quota`):
+
+Render a compact account-balance section, not a subscription window:
+
+- Remaining: the exact `credits.derived.remainingCredits` string plus `credits.unit`, labelled
+  "derived". Preserve zero and negative values; do not round or calculate another balance.
+- Purchased and used: the exact `credits.reported.totalCredits` and `credits.reported.totalUsage`
+  strings, separately labelled as reported totals. Missing/null values are "unknown", not zero.
+- Retrieved: `fetchedAtLocal`.
+- Do not invent resets, percentages, currency labels, requests or token conversions.
+
+For any provider, when `status` is "error", report `error.kind`, `error.message`, and any `hint`
+as "Codex quota unavailable", "Claude quota unavailable", or "OpenRouter credits unavailable",
+then continue with the other providers.

@@ -12,7 +12,7 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 - [`/ask-sol <question>`](ask-sol.md) — ask Codex Sol for a repository-grounded second opinion
 - [`/discuss <question>`](discuss.md) — inspect and research without changing files or external state
 - [`/plain <topic-or-text>`](plain.md) — explain a topic clearly for a smart non-specialist
-- [`/quota`](quota.md) — report Codex weekly GPT quota and credits, and Claude Code session and weekly usage, via the ai-tools `codex-quota` and `claude-quota` helpers
+- [`/quota`](quota.md) — report Codex and Claude usage windows plus OpenRouter account credits, via the independent ai-tools `codex-quota`, `claude-quota` and `openrouter-quota` helpers
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
 - [`/trim-comments [file-or-PR]`](trim-comments.md) — remove redundant inline comments and docblocks
 - [`/watch-landscape [minutes]`](watch-landscape.md) — refresh `/landscape quick` on a fixed cadence until end of day
@@ -33,7 +33,14 @@ and provider errors remain visible, but standing caveats and the cost reminder a
   unknown, never zero. Its approximate, local-only "What's contributing" breakdown is excluded.
 - Claude Code prints reset dates without a year; the helper resolves the first matching time after
   retrieval in the reported zone. Unrecognised times or zones remain unknown.
-- `/quota` uses a model turn. Running `codex-quota` or `claude-quota` directly does not.
+- OpenRouter credits describe the account of the management key stored as `openrouter_management`
+  under the explicitly configured `SECRET_API_KEY_PROJECT`. Its alignment with inference keys or
+  Pi's active account is not verified; no account is discovered or switched automatically.
+- OpenRouter totals are canonical decimal strings of the parsed API numbers; remaining is a
+  separately labelled derived decimal difference. The helper adds no binary-subtraction noise,
+  does not round the reported totals, and retains zero/negative remaining. The API schema calls
+  the unit credits, so the report does not assume USD. It is not a subscription window or reset.
+- `/quota` uses a model turn. Running any of the three helpers directly does not.
 
 The helpers retain their full `caveats` arrays in JSON. See the
 [quota helper documentation](https://github.com/flurdy/ai-tools/tree/main/pi/quota) for source and

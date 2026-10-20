@@ -19,19 +19,19 @@ class PromptCatalogTests(unittest.TestCase):
             self.assertIn(gate, text)
         self.assertNotIn("--agent claude", text)
 
-    def test_quota_runs_both_read_only_helpers_and_isolates_failures(self):
+    def test_quota_runs_three_read_only_helpers_and_isolates_failures(self):
         text = (PROMPTS / "quota.md").read_text()
         flat = " ".join(text.split())
         commands = re.findall(r"(?m)^    (\S.*)$", text)
-        self.assertEqual(commands, ["codex-quota", "claude-quota"])
+        self.assertEqual(commands, ["codex-quota", "claude-quota", "openrouter-quota"])
         for phrase in (
-            "exactly these two read-only shell commands, as separate commands",
-            "one provider's failure never hides or skips the other's report",
+            "exactly these three read-only shell commands, as separate commands",
+            "one provider's failure never hides or skips the other reports",
             "is not installed on PATH",
             "Null means unknown, never zero",
             "query any provider yourself, retry, sign in",
             "`windows`", "`usedPercent`", "`resetsAtText`", "`resetPassed`",
-            "quota unavailable", "continue with the other provider",
+            "quota unavailable", "OpenRouter credits unavailable", "continue with the other providers",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, flat)
@@ -62,6 +62,18 @@ class PromptCatalogTests(unittest.TestCase):
                          '"unknown" when `weekly` is null', "`fetchedAtLocal`", "`credits.balance`",
                          "`weekly.resetPassed`", "stale", "not current"):
             self.assertIn(retained, codex)
+
+    def test_openrouter_reports_balance_and_retrieval_not_a_subscription_window(self):
+        text = (PROMPTS / "quota.md").read_text()
+        section = " ".join(text.split("**OpenRouter**", 1)[1].split("For any provider", 1)[0].split())
+        for phrase in ("`credits.derived.remainingCredits`", "derived", "`credits.reported.totalCredits`",
+                       "`credits.reported.totalUsage`", "`fetchedAtLocal`", "zero and negative", "do not round"):
+            self.assertIn(phrase, section)
+        self.assertNotIn("weekly.usedPercent", section)
+        self.assertIn("Do not invent resets, percentages, currency labels, requests or token conversions", section)
+        docs = (PROMPTS / "README.md").read_text()
+        for phrase in ("openrouter-quota", "management", "SECRET_API_KEY_PROJECT", "decimal", "derived"):
+            self.assertIn(phrase, docs)
 
     def test_templates_and_catalog_rows_match(self):
         catalog = (PROMPTS / "README.md").read_text()
