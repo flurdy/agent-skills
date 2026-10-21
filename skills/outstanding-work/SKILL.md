@@ -1,11 +1,11 @@
 ---
 name: outstanding-work
 description: Ticket-scoped, read-only status dashboard that shows blockers, unmet requirements, verification evidence, working-copy state, tracking drift, and concrete untracked follow-ups.
-allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(*/outstanding-work/scripts/collect.sh:*),Bash(date:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git merge-base:*),Bash(git ls-files:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh search prs:*),Bash(bd show:*),Bash(bd list:*),Bash(bd search:*),Bash(make test:*),Bash(make check:*),Bash(make lint:*),Bash(npm test:*),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run typecheck:*),mcp__jira__jira_get"
+allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(*/outstanding-work/scripts/collect.sh:*),Bash(date:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git branch --show-current:*),Bash(git rev-parse:*),Bash(git merge-base:*),Bash(git ls-files:*),Bash(gh pr list:*),Bash(gh pr view:*),Bash(gh pr checks:*),Bash(gh search prs:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(bd -C * show:*),Bash(bd -C * list:*),Bash(make test:*),Bash(make check:*),Bash(make lint:*),Bash(npm test:*),Bash(npm run test:*),Bash(npm run lint:*),Bash(npm run typecheck:*),mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.1.1"
+version: "0.2.0"
 author: "flurdy"
 ---
 
@@ -22,8 +22,8 @@ It reports concrete follow-up candidates but never creates them.
 - **`/landscape`** shows the whole session landscape; this skill investigates one ticket.
 - **`/tracking-sweep`** finds portfolio-wide tracker drift; this skill reports only drift relevant
   to the selected ticket.
-- **`/verify-task`** is the deep pre-completion quality gate and always runs the project test
-  suite; this skill is a concise status view and does not run checks unless `verify` is requested.
+- **`/verify-task`** owns fixed-scope requirements, coverage and discovered safe verification
+  gates; this skill owns breadth and remaining work and runs no checks unless `verify` is requested.
 - **`/triage`** investigates and creates approved follow-up beads. This skill only identifies
   candidates and can recommend a paste-ready `/triage` invocation.
 
@@ -35,10 +35,15 @@ It reports concrete follow-up candidates but never creates them.
 /outstanding-work ABC-123            # Explicit Jira ticket
 /outstanding-work verify             # Current ticket; run targeted safe checks
 /outstanding-work ABC-123 verify     # Explicit ticket plus targeted safe checks
+/outstanding-work ABC-123 ticket-wide # Whole-ticket closeout, report-only
 ```
 
-Accept `--verify` as an alias for `verify`. Treat any other extra argument as ambiguous and ask
-for clarification rather than silently widening the scope.
+Accept `--verify` as an alias for `verify`. `ticket-wide` requires one explicit Jira key and loads
+[the ticket-wide evidence contract](references/ticket-closeout.md) before collection. It adds
+bounded source/requirement/deviation ledgers and separate PR/ticket/delivery conclusions while
+reusing this procedure. Ordinary concise dashboard mode stays unchanged. The thin
+[/ticket-closeout prompt](../../prompts/ticket-closeout.md) selects that mode without running tests.
+Treat other extra arguments as ambiguous; ask rather than widening scope.
 
 ## Non-negotiable evidence rules
 
@@ -68,7 +73,7 @@ for clarification rather than silently widening the scope.
 
 ### 0. Parse mode and collect fresh mechanical evidence
 
-Separate the optional `verify` flag from the optional target. Locate `scripts/collect.sh`
+Separate `verify` and `ticket-wide` from the target; pass only the target to the collector. Locate `scripts/collect.sh`
 **relative to this `SKILL.md`**, resolve it to an absolute path, and invoke it with the target when
 one was supplied:
 
@@ -79,9 +84,18 @@ one was supplied:
 Do not assume the skill is installed under `~/.claude`; the same source may be linked into Claude,
 Codex, Pi, or another client. The collector reuses the sibling `landscape` working-copy helper via
 its resolved source path and emits delimited sections for timestamp, git metadata, working-copy
-state, current PR, current/in-progress beads, and explicit-target bead lookups. It passes
-`--readonly` to every `bd` command, prefixes every external payload line with `data=` so it cannot
-forge collector control fields, and degrades each source independently.
+state, current PR, and `TRACKING-INVENTORY` (one JSON payload). The sibling `tracking.py` reuses
+`next-select stores` and `resolve`; all Beads reads are `bd -C <proven-directory> ... --readonly`.
+Python 3.10+, the installed next resolver and a compatible bd are required for tracking; no
+unqualified fallback. Every payload line has `data=` so it cannot forge collector control fields.
+Tracking failures are independent of Git/Jira availability and retain explicit coverage gaps.
+
+Inventory rows carry directory, repository, issue and association kinds (external_ref, title,
+description, explicit, candidate or related); deduplicate by directory + issue ID, not bare ID.
+`complete=false` or a failed section means no claim of tracking completeness. Bounds are 8 stores,
+200 rows/query and 200 distinct records, 20 one-hop related identities, 15 seconds/call, a 90-second
+between-call budget and 2 MB/response. Text fields over 6,000 characters are truncated with a gap.
+These are collection bounds, never permission to treat omitted records as absent.
 
 Treat collector output as mechanical evidence, not conclusions. Requirement assessment and
 rendering remain the agent's responsibility. If the collector itself is missing or fails, use the
@@ -96,22 +110,22 @@ local verification command is run.
 
 - A Jira key matching `[A-Z][A-Z0-9]+-[0-9]+` is a Jira target. Fetch it, then search for beads
   that reference the key in structured external reference, title, or description.
-- Any other identifier is a bead candidate. Resolve it from the collector's `BEAD-EXPLICIT`
-  section (equivalent to `bd show --id=<id> --json --readonly`). If it does not resolve, report
-  that and ask for a Jira key or valid bead ID. Do not fuzzy-pick.
+- Any other identifier is a bead candidate (prefer `owner:id`). The collector calls `next-select
+  resolve` and reads only the returned exact owning store. Use `TRACKING-INVENTORY` rows marked
+  `explicit`; ambiguous/unavailable resolution yields a gap, never a fallback read. Ask for a
+  qualified selector or Jira key rather than fuzzy-picking.
 - For a bead, extract a Jira key from `external_ref` first, then title and description. Fetch Jira
   when a key is present. If none is present, show Jira as `not linked`, not unavailable.
 
-For an explicit Jira target, use the collector's `BEADS-JIRA-EXTERNAL`, `BEADS-JIRA-TITLE`, and
-`BEADS-JIRA-DESCRIPTION` sections and de-duplicate results by bead ID. When a Jira key is only
-found after resolving a bead/current target, rerun the collector with that key or use the
-following equivalent read-only searches:
-
-```bash
-bd search --external-contains <JIRA-key> --status all --json --readonly
-bd list --title-contains <JIRA-key> --all --json --readonly
-bd search --desc-contains <JIRA-key> --status all --json --readonly
-```
+For an explicit Jira target, the collector queries structured external references first, then
+inferred title/description associations with `bd -C <directory> list --all --limit=201 --json
+--readonly` and the respective filter. It validates exact key tokens, includes closed and deferred
+records, deduplicates proven stores and follows resolved links to one hop. Flag-only `bd search`
+is not portable and is not used. Rerun with the Jira key if it was found only after resolving a
+bead/current target. Run from the ticket's verified workspace to include its declared stores;
+local-only invocation is not proof of whole-workspace coverage. Never scan arbitrary siblings.
+For missing related records, use `next-select resolve <selector>` before any further `bd -C`
+read. Disclose unresolved old IDs and relationship/row limits.
 
 #### No explicit target
 
@@ -119,8 +133,8 @@ Gather candidates in this order, but also check for disagreement before selectin
 
 1. Jira key in `git branch --show-current`.
 2. Jira key or bead ID in the current PR title/body, if the current branch has a PR.
-3. The single result from `bd list --status=in_progress --json --readonly`.
-4. A non-closed result from `bd show --current --json --readonly`.
+3. A single `candidate` in the resolver-qualified `TRACKING-INVENTORY` in-progress results.
+   Multiple candidates remain ambiguous; do not use bd last-touched state as ownership evidence.
 
 If one logical target is supported by the available signals, use it and state how it was found.
 If signals identify different tickets, or multiple beads are in progress without a stronger
@@ -248,8 +262,8 @@ A follow-up candidate must satisfy all of these:
    requirement as `OUTSTANDING` instead.
 3. It is not vague cleanup, speculative enhancement, or a bare TODO/FIXME without demonstrated
    impact.
-4. Read-only searches of bead title, description, external reference, and relevant keywords using
-   `--status all` find no bead that already captures it.
+4. Owner-qualified read-only `bd list --all` searches of title, description, external reference
+   and relevant keywords find no bead that already captures it, with all coverage gaps disclosed.
 
 Render each qualifying item as **`Candidate — not created`**, with evidence, duplicate-search
 terms, and a paste-ready suggestion such as `/triage <concise description>`. If there are no
@@ -337,8 +351,10 @@ Run the fixture-based collector validation after changing target resolution or e
 skills/outstanding-work/tests/test-collect.sh
 ```
 
-It exercises client-neutral invocation through a symlink, sibling-helper resolution,
-current-ticket evidence, explicit bead resolution, explicit Jira linkage searches, mandatory
-`bd --readonly` usage, rejection of multiple targets, and an allowlisted read-only git/GitHub
-command surface. Also run `make dry-run` and `make doctor` when
-adding or reinstalling the skill.
+It exercises client-neutral symlink invocation, sibling-helper resolution, qualified read-only
+queries, store deduplication, ambiguous targets, unavailable/malformed/truncated sources, exact
+Jira tokens, linked deferred work, deadlines and payload framing. Static closeout scenarios protect
+workflow instructions but do not simulate model judgment; record live trial coverage separately.
+`make test-outstanding-work` includes this suite in `make check`. Adding the new prompt requires
+separately approved installation per [prompt installation](../../docs/installation.md#prompt-templates);
+existing skill edits are live-linked and do not themselves need apply.

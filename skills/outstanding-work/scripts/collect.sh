@@ -87,40 +87,5 @@ else
     echo "status=UNAVAILABLE"
 fi
 
-if command -v bd >/dev/null 2>&1; then
-    run_probe "BEADS-IN-PROGRESS" bd list --status=in_progress --json --readonly
-    run_probe "BEAD-CURRENT" bd show --current --json --readonly
-else
-    section "BEADS-IN-PROGRESS"
-    echo "status=UNAVAILABLE"
-    section "BEAD-CURRENT"
-    echo "status=UNAVAILABLE"
-fi
-
-if [ -z "$TARGET" ]; then
-    section "BEAD-EXPLICIT"
-    echo "status=NOT_REQUESTED"
-elif [[ "$TARGET" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]]; then
-    section "BEAD-EXPLICIT"
-    echo "status=NOT_A_BEAD_TARGET"
-
-    if command -v bd >/dev/null 2>&1; then
-        run_probe "BEADS-JIRA-EXTERNAL" bd search --external-contains "$TARGET" --status all --json --readonly
-        run_probe "BEADS-JIRA-TITLE" bd list --title-contains "$TARGET" --all --json --readonly
-        run_probe "BEADS-JIRA-DESCRIPTION" bd search --desc-contains "$TARGET" --status all --json --readonly
-    else
-        section "BEADS-JIRA-EXTERNAL"
-        echo "status=UNAVAILABLE"
-        section "BEADS-JIRA-TITLE"
-        echo "status=UNAVAILABLE"
-        section "BEADS-JIRA-DESCRIPTION"
-        echo "status=UNAVAILABLE"
-    fi
-else
-    if command -v bd >/dev/null 2>&1; then
-        run_probe "BEAD-EXPLICIT" bd show --id="$TARGET" --json --readonly
-    else
-        section "BEAD-EXPLICIT"
-        echo "status=UNAVAILABLE"
-    fi
-fi
+# The resolver owns topology and identity; never fall back to unqualified bd.
+run_probe "TRACKING-INVENTORY" python3 "$SCRIPT_DIR/tracking.py" "$TARGET"

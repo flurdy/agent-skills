@@ -14,12 +14,22 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 - [`/plain <topic-or-text>`](plain.md) — explain a topic clearly for a smart non-specialist
 - [`/quota`](quota.md) — report Codex and Claude usage windows plus OpenRouter account credits, via the independent ai-tools `codex-quota`, `claude-quota` and `openrouter-quota` helpers
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
+- [`/ticket-closeout <JIRA-key>`](ticket-closeout.md) — report whole-ticket readiness using outstanding-work’s source, requirement, deviation and delivery evidence; no tests or mutations by default
 - [`/trim-comments [file-or-PR]`](trim-comments.md) — remove redundant inline comments and docblocks
 - [`/watch-landscape [minutes]`](watch-landscape.md) — refresh `/landscape quick` on a fixed cadence until end of day
 - [`/yesterday`](yesterday.md) — run the canonical `/today --previous-workday` recap in Pi or Claude Code
 
 Codex uses `/today --previous-workday` directly because repository prompt templates are not installed there.
 See [installation and configuration](../docs/installation.md#prompt-templates) for client setup.
+
+## Ticket closeout
+
+`/ticket-closeout` is a thin entry to [outstanding-work](../skills/outstanding-work/SKILL.md)
+`ticket-wide` mode, not a new skill or an enforced Jira gate. It separates PR merge state from
+whole-ticket completion and applicable release/QA evidence. Required unread sources and missing
+approval evidence stay incomplete. See its [bounded evidence contract](../skills/outstanding-work/references/ticket-closeout.md).
+New prompt links require a separately approved `make apply`; existing linked skills do not.
+Until installed, invoke `/outstanding-work <JIRA-key> ticket-wide` directly.
 
 ## Quota report notes
 

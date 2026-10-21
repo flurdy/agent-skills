@@ -118,7 +118,7 @@ clean-code:
 # Every test-* suite. test-pr-feedback-actions and the individual watch-* suites
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
 TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-contract-check test-artifact-hygiene \
-  test-second-opinion test-trello-beads test-project-brief test-skill-pilot \
+  test-second-opinion test-trello-beads test-project-brief test-outstanding-work test-skill-pilot \
   test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
   test-pi-spend test-prompt-patterns test-pickup test-review-pr test-thoughtbox test-pr-status test-pr-reviewers test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-state test-release-status \
@@ -183,6 +183,10 @@ test-trello-beads:
 test-project-brief:
 	@skills/project-brief/tests/test-collect.sh
 	@python3 -m unittest discover -s skills/project-brief/tests -p 'test_evaluation.py'
+
+.PHONY: test-outstanding-work
+test-outstanding-work:
+	@skills/outstanding-work/tests/test-collect.sh
 
 test-skill-pilot:
 	@python3 -m unittest discover -s tests -p 'test_run_skill_pilot.py'
