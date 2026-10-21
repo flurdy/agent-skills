@@ -15,6 +15,12 @@ confirmation. An abandoned prompt selects nothing. This also applies to §Trunk-
 those assisted groups may have unknown/live display status and empty archive-class. They are explicit
 exceptions to the automatic-candidate restrictions in §Archive-flow, not permission to archive by age.
 
+**Storage gate.** Every archive flow (§Archive-flow, §Archive-flow-members, §Trunk-review,
+§Age-review, §Age-review-members) runs only when `---STORAGE---` is `canonical`. For `legacy`,
+`mixed` or `partial`, show the candidates once as a read-only preview, say that archiving stays
+disabled until `~/.claude/handoffs` is migrated (or the unreadable location is fixed), and ask no
+archive question: `archive.sh` refuses while the legacy location exists.
+
 Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review, §Age-review-members.
 
 ---
@@ -54,34 +60,52 @@ Delimited sections:
 - `---CURRENT-REPO-KIND---` — `repo`, `dir` (not in a git repo; matching is by exact directory, no branch/PR liveness or workspace members), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
 - `---STALE-DAYS---` — configured age floor for assisted age review (the recent-window size by default).
-- `---HANDOFFS-DIR---` — directory scanned (`~/.agents/handoffs`).
-- `---STORAGE---` — `canonical`, or `migration-required` when the retired `~/.claude/handoffs`
-  location still exists. In that state every row section is empty, the script exits `3`, and
-  the handoff store must be migrated (a separately approved whole-directory move) before any
-  listing, save or archive; never read or merge the legacy directory ad hoc.
+- `---HANDOFFS-DIR---` — the canonical directory (`~/.agents/handoffs`). Rows carry their own
+  `{path}`; load that, never `{HANDOFFS-DIR}/{filename}`.
+- `---STORAGE---` — which locations were read:
+  - `canonical` — only `~/.agents/handoffs` (or neither location) exists. The only writable state.
+  - `legacy` — only the retired `~/.claude/handoffs` exists; its rows are listed read-only.
+  - `mixed` — both exist; rows from both are listed and labelled by `{source}`.
+  - `partial` — a location is a symlink, not a directory, unreadable, vanished mid-read, or holds a
+    filename that cannot be represented in a record. That location is never followed or read; rows
+    from readable locations are still listed and the script exits `3`. A partial inventory is not
+    an empty one.
+  For anything but `canonical`, saving (wrap-up) and archiving stay disabled until the legacy
+  location is migrated by a separately approved whole-directory move. Reading is not permission to
+  move, merge or edit either location.
+- `---SOURCES---` — one `{source}|{dir}|{status}|{listed}` line per location (`canonical`, then
+  `legacy`); status is `ok`, `absent`, `unsafe`, `unreadable` or `vanished`.
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
 - `---MATCHED-HANDOFFS---` — emitted with `--bead` / `--ticket`: exact-token, case-insensitive
   current-repo matches, excluding superseded/completed/inactive rows under the available evidence.
-  Fields: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}`.
+  Fields: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}|{source}|{path}`;
+  load the matched handoff from `{path}`.
   Offline eligibility is not proof of live session ownership or remote branch state. An empty match
   does not prove the requested task shipped; a failed lookup is not an empty match.
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
 - `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent active current-repo handoff; completed, stale, and superseded rows are excluded. (Consumed by `/landscape`; ignore here.)
-- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_member_age_review=N`, `workspace_classified=N`.
+- `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_member_age_review=N`, `workspace_classified=N`, `legacy_total=N`, `source_collisions=N`.
 - `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
 - `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
-- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 22 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (24 total), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
+- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 24 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (26 total; the member path is always the final field), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
+- `---SOURCE-COLLISIONS---` — one `{filename}|identical` or `{filename}|different` line per
+  filename present in both locations (content compared byte-for-byte). Each copy is its own row,
+  identified by `{source}`/`{path}`; the two never supersede each other, and neither is preferred,
+  merged or deleted.
 
 Field values never contain the `|` delimiter or a newline: `list.sh` replaces both
 with a space when it builds a record. Handoff text is author-controlled, and these
 records are read by position, so an unescaped delimiter would shift every later
 field and change what a row appears to say. Parsers can rely on the field count.
 
-**`---HANDOFFS---` line — 22 pipe-delimited fields, in order:**
+**`---HANDOFFS---` line — 24 pipe-delimited fields, in order:**
 
 ```
-{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}|{needs-age-review}
+{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}|{needs-age-review}|{source}|{path}
 ```
+
+`{source}` (field 23) is `canonical` or `legacy`; `{path}` (field 24) is the exact file the row was
+read from. `{filename}` alone is ambiguous when both locations hold the same name.
 
 `{time}` (field 15) is the `HH:MM` the handoff was written — from the `# Resume:` header
 (wrap-up v0.8.0+), falling back to the file's mtime; `?` only when neither is available. Fields after
@@ -101,6 +125,10 @@ field and change what a row appears to say. Parsers can rely on the field count.
 
 - `superseded-by` is the filename of the **newest** handoff in the same repo that continues this thread, or empty if this is the live tip. `supersede-reason` is `branch` (same branch), `slug` (same exact topic slug), or `collision` (same-day re-wrap). Ticket/cwd overlap is deliberately *not* a supersede signal — a ticket legitimately spans many handoffs.
 - Recency is date first, then the `# Resume:` time when both records have one. Equal or unknown same-day times are conservatively unordered, except an established filename collision family (`topic` → `topic-2` → `topic-3`): higher collision suffixes are newer. A trailing numeric topic component such as `GE-1869` is never a global recency signal unless an unsuffixed `GE` handoff establishes that exact collision family.
+- **A same-named copy never supersedes.** The same filename in both storage locations is a copy,
+  not a newer thread (see `---SOURCE-COLLISIONS---`). Different filenames across locations
+  supersede normally, so a newer canonical handoff still retires an older legacy one; resolve
+  `superseded-by` against rows from the same location first.
 - **Trunk co-residence never supersedes.** The `branch` reason excludes the default branch (`main`/`master`): two distinct threads both recorded on the trunk (the wrap-up trunk-parking case) are *not* the same thread — they only supersede on an exact slug or same-day collision.
 
 ### Branch-state (`branch-state`) — only populated with `--check-branches`, current-repo **and workspace-member** rows

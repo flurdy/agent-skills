@@ -5,7 +5,7 @@ allowed-tools: "Bash(git:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),Ba
 model-tier: economy
 model: haiku
 effort: high
-version: "2.2.2"
+version: "2.2.3"
 author: "flurdy"
 ---
 
@@ -82,16 +82,16 @@ Two-step so the usual case (a genuinely new ticket) stays network-free:
    ```bash
    ~/.agents/skills/handoffs/scripts/list.sh --check-branches --ticket {TICKET-NUMBER}
    ```
-   Still empty → the earlier work shipped; create a fresh branch (step 4). Otherwise take the **newest** matched line: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}`.
+   Still empty → the earlier work shipped; create a fresh branch (step 4). Otherwise take the **newest** matched line: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}|{source}|{path}`.
 
 When a live handoff remains, ask with `AskUserQuestion`:
 
 > 📥 You have a handoff `{slug}` ({date} {time}) for `{TICKET-NUMBER}` on branch `{branch}`. Resume it instead of creating a new branch?
 
-- **Resume handoff (recommended)** — `Read` `~/.agents/handoffs/{filename}` and render it **verbatim** in a fenced block as resume context. Hand to `/handoffs` for its worktree-aware resume flow rather than switching blindly. **Skip the fresh-branch path in step 4** — don't create over an existing branch. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`.
+- **Resume handoff (recommended)** — `Read` the matched `{path}` (a `legacy` source is the retired `~/.claude/handoffs`, read-only) and render it **verbatim** in a fenced block as resume context. Hand to `/handoffs` for its worktree-aware resume flow rather than switching blindly. **Skip the fresh-branch path in step 4** — don't create over an existing branch. If `{exists}=Y` and the recorded cwd differs from pwd, add `**Switch directory:** cd {cwd}`.
 - **Start fresh** — ignore the handoff and continue to step 4 with a new branch.
 
-If `list.sh` errors or there's no handoffs dir, proceed to step 4 silently — this is a courtesy, never a blocker. The one exception is exit `3` with `---STORAGE---` `migration-required`: say in one line that handoff storage still needs migrating to `~/.agents/handoffs`, then proceed; never read the legacy directory instead.
+If `list.sh` errors or there's no handoffs dir, proceed to step 4 silently — this is a courtesy, never a blocker. Matches from `legacy` or `mixed` storage are offered like any other. On exit `3` (`---STORAGE---` `partial`), still use any matched rows, say in one line that a handoff location could not be read, then proceed; never read a location it reported as unsafe or unreadable.
 
 ### 4. Preflight and create the branch
 

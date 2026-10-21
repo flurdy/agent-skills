@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# List shared handoff files (~/.agents/handoffs/*.md) with metadata.
-# Sections delimited by `---<NAME>---` markers. Companion to the wrap-up skill.
+# List shared handoff files (~/.agents/handoffs/*.md) with metadata. The retired
+# ~/.claude/handoffs location is listed read-only too; every row names its source
+# and exact path. Sections delimited by `---<NAME>---` markers. Companion to the
+# wrap-up skill. Exit 3 means the inventory is partial (see ---SOURCES---).
 #
 # Usage: list.sh [--recent-days N] [--stale-days N] [--summary-only] [--bead ID] [--ticket KEY]
 #   --recent-days N   override the "recent" window (default: 3, with Mon=3, Tue=4
@@ -39,14 +41,68 @@ emit_record() {
 
 HANDOFFS_DIR="${HOME}/.agents/handoffs"
 LEGACY_HANDOFFS_DIR="${HOME}/.claude/handoffs"
-# Hard cutover: while the legacy location still exists nothing is listed, so a
-# half-migrated machine shows an explicit `migration-required` status instead of
-# a silently empty or split inventory. Reported in `---STORAGE---`; exit 3.
-STORAGE_STATUS="canonical"
-if [ -e "$LEGACY_HANDOFFS_DIR" ] || [ -L "$LEGACY_HANDOFFS_DIR" ]; then
-    STORAGE_STATUS="migration-required"
-    echo "WARNING: handoff storage migration-required: $LEGACY_HANDOFFS_DIR still exists; handoffs now live in $HANDOFFS_DIR. Nothing is listed until it is migrated." >&2
-fi
+# Read compatibility across the storage move: the canonical location and the
+# retired ~/.claude/handoffs are both listed, every row carrying its source and
+# exact path, so existing context stays discoverable before migration. Only
+# canonical-only storage is writable: wrap-up's save helper and archive.sh keep
+# refusing while the legacy location exists. A location that is a symlink, not
+# a directory, or unreadable is never followed or read; the inventory is then
+# `partial` (exit 3) rather than looking empty.
+source_status() {
+    if [ -L "$1" ]; then echo unsafe
+    elif [ ! -e "$1" ]; then echo absent
+    elif [ ! -d "$1" ]; then echo unsafe
+    elif [ ! -r "$1" ] || [ ! -x "$1" ]; then echo unreadable
+    else echo ok
+    fi
+}
+
+# Snapshot each readable location's handoff files as `name<TAB>source<TAB>path`.
+# A name that cannot be represented in a record is skipped and makes the
+# inventory partial instead of silently corrupting field positions.
+ENTRY_LINES=()
+UNLISTABLE=0
+collect_source() {
+    local file name
+    for file in "$2"/*.md; do
+        [ -e "$file" ] || [ -L "$file" ] || continue
+        name=${file##*/}
+        case "$name" in
+            *'|'*|*$'\t'*|*$'\n'*|*$'\r'*) UNLISTABLE=$((UNLISTABLE+1)); continue ;;
+        esac
+        ENTRY_LINES+=("${name}"$'\t'"$1"$'\t'"${file}")
+    done
+}
+
+# Sets SNAPSHOT_STATUS and records one `---SOURCES---` line for the location.
+snapshot_source() {
+    local label="$1" dir="$2" before=${#ENTRY_LINES[@]}
+    SNAPSHOT_STATUS=$(source_status "$dir")
+    if [ "$SNAPSHOT_STATUS" = ok ]; then
+        collect_source "$label" "$dir"
+        # Re-check after globbing: a location that vanished mid-read is partial.
+        [ "$(source_status "$dir")" = ok ] || SNAPSHOT_STATUS=vanished
+    fi
+    SOURCE_LINES+=("${label}|${dir}|${SNAPSHOT_STATUS}|$(( ${#ENTRY_LINES[@]} - before ))")
+}
+
+SOURCE_LINES=()
+snapshot_source canonical "$HANDOFFS_DIR"
+CANONICAL_STATUS=$SNAPSHOT_STATUS
+snapshot_source legacy "$LEGACY_HANDOFFS_DIR"
+LEGACY_STATUS=$SNAPSHOT_STATUS
+case "${CANONICAL_STATUS}:${LEGACY_STATUS}:${UNLISTABLE}" in
+    ok:ok:0) STORAGE_STATUS="mixed" ;;
+    absent:ok:0) STORAGE_STATUS="legacy" ;;
+    ok:absent:0|absent:absent:0) STORAGE_STATUS="canonical" ;;
+    *) STORAGE_STATUS="partial" ;;
+esac
+case "$STORAGE_STATUS" in
+    legacy|mixed)
+        echo "NOTE: legacy handoff storage $LEGACY_HANDOFFS_DIR is listed read-only; saving and archiving stay disabled until it is migrated to $HANDOFFS_DIR." >&2 ;;
+    partial)
+        echo "WARNING: handoff inventory is partial (canonical=${CANONICAL_STATUS}, legacy=${LEGACY_STATUS}, unlistable names=${UNLISTABLE}); unsafe or unreadable locations are never followed or read." >&2 ;;
+esac
 
 RECENT_DAYS=""
 STALE_DAYS=""
@@ -575,6 +631,13 @@ echo "$HANDOFFS_DIR"
 echo "---STORAGE---"
 echo "$STORAGE_STATUS"
 
+# `{source}|{dir}|{status}|{listed}` per location; status is ok, absent, unsafe,
+# unreadable or vanished.
+echo "---SOURCES---"
+for line in "${SOURCE_LINES[@]}"; do
+    echo "$line"
+done
+
 echo "---CUTOFF---"
 echo "$CUTOFF"
 
@@ -608,6 +671,12 @@ R_BEADS=()      # raw `**Beads:**` field content (parsed under --bead/--ticket o
 R_DELIV=()      # raw `**Deliverable:**` field content — own-work beads (wrap-up v0.10.0+); keys beads-done when present
 R_JIRA=()       # raw `**Jira:**` field content (parsed under --bead/--ticket or --check-branches)
 R_PRS=()        # raw `**PRs:**` field content (parsed under --check-branches; PR-number fallback)
+R_SOURCE=()     # canonical | legacy — the location the file was read from
+R_PATH=()       # exact path of the file; consumers load this, never dir+filename
+LEGACY_TOTAL=0
+# Same filename present in both locations: `{filename}|identical|different`.
+# Such rows stay separate and never supersede each other.
+COLLISION_LINES=()
 
 bump_other() {
     local key="$1" display="$2"
@@ -623,12 +692,13 @@ bump_other() {
     OTHER_COUNTS+=(1)
 }
 
-if [ "$STORAGE_STATUS" = "canonical" ] && [ -d "$HANDOFFS_DIR" ]; then
-    # newest first by filename (handoff filenames begin with YYYY-MM-DD)
-    while IFS= read -r F; do
+if [ "${#ENTRY_LINES[@]}" -gt 0 ]; then
+    # Newest first by filename (handoff filenames begin with YYYY-MM-DD); for a
+    # name present in both locations the canonical row comes first.
+    while IFS=$'\t' read -r BASE SOURCE F; do
         [ -f "$F" ] || continue
         TOTAL=$((TOTAL+1))
-        BASE=$(basename "$F")
+        [ "$SOURCE" = legacy ] && LEGACY_TOTAL=$((LEGACY_TOTAL+1))
         if [[ "$BASE" =~ ^([0-9]{4}-[0-9]{2}-[0-9]{2})-(.+)\.md$ ]]; then
             DATE="${BASH_REMATCH[1]}"
             SLUG="${BASH_REMATCH[2]}"
@@ -751,6 +821,16 @@ if [ "$STORAGE_STATUS" = "canonical" ] && [ -d "$HANDOFFS_DIR" ]; then
         R_DELIV+=("$DELIV_FIELD")
         R_JIRA+=("$JIRA_FIELD")
         R_PRS+=("$PRS_FIELD")
+        R_SOURCE+=("$SOURCE")
+        R_PATH+=("$F")
+        prev=$((${#R_FILE[@]} - 2))
+        if [ "$prev" -ge 0 ] && [ "${R_FILE[$prev]}" = "$BASE" ]; then
+            if cmp -s "${R_PATH[$prev]}" "$F"; then
+                COLLISION_LINES+=("${BASE}|identical")
+            else
+                COLLISION_LINES+=("${BASE}|different")
+            fi
+        fi
 
         [ "$EXISTS" = "N" ] && PRUNED_TOTAL=$((PRUNED_TOTAL+1))
         [ "$REPO_KEY" = "UNRESOLVED" ] && UNRESOLVED_COUNT=$((UNRESOLVED_COUNT+1))
@@ -764,7 +844,7 @@ if [ "$STORAGE_STATUS" = "canonical" ] && [ -d "$HANDOFFS_DIR" ]; then
         elif [ "$REPO_KEY" != "UNRESOLVED" ]; then
             bump_other "$REPO_KEY" "$REPO_DISPLAY"
         fi
-    done < <(ls -1 "$HANDOFFS_DIR"/*.md 2>/dev/null | sort -r)
+    done < <(printf '%s\n' "${ENTRY_LINES[@]}" | sort -t "$(printf '\t')" -k1,1r -k2,2)
 fi
 
 # --- Supersede pass -------------------------------------------------------
@@ -775,7 +855,8 @@ fi
 # distinct threads both recorded on main (the trunk-parking case) are NOT the
 # same thread, so trunk co-residence must not collapse them — they only
 # supersede on an exact slug or same-day collision. For each record we keep the
-# newest superseding file and the reason. UNRESOLVED records never participate.
+# newest superseding file and the reason. UNRESOLVED records never participate,
+# and the same filename in both storage locations is a copy, not a newer thread.
 # Date orders records across days. On the same day, the authoritative header
 # time orders records when available; unknown/equal times do not assert an
 # order. The one safe tie-breaker is an established filename collision family
@@ -840,6 +921,7 @@ while [ "$i" -lt "$N" ]; do
     j=0
     while [ "$j" -lt "$N" ]; do
         if [ "$j" -ne "$i" ] \
+            && [ "${R_FILE[$j]}" != "${R_FILE[$i]}" ] \
             && [ "${R_REPO[$i]}" != "UNRESOLVED" ] \
             && [ "${R_REPO[$j]}" = "${R_REPO[$i]}" ] \
             && record_is_newer "$i" "$j"; then
@@ -1144,7 +1226,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}"
+        emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}" "${R_SOURCE[$i]}" "${R_PATH[$i]}"
         i=$((i+1))
     done
 fi
@@ -1184,6 +1266,8 @@ echo "workspace_member_handoffs=${WS_HANDOFF_COUNT}"
 echo "workspace_member_stale=${WS_STALE}"
 echo "workspace_member_age_review=${WS_AGE_REVIEW}"
 echo "workspace_classified=${WS_CLASSIFIED}"
+echo "legacy_total=${LEGACY_TOTAL}"
+echo "source_collisions=${#COLLISION_LINES[@]}"
 
 echo "---OTHER-REPOS---"
 # Sort other-repos by count desc, then by display name asc.
@@ -1211,19 +1295,26 @@ while [ "$mi" -lt "${#WS_KEYS[@]}" ]; do
     mi=$((mi+1))
 done
 
-# Handoffs belonging to a workspace member (newest first). Same 22 fields as
+# Handoffs belonging to a workspace member (newest first). Same 24 fields as
 # ---HANDOFFS---, plus `{member-display}|{member-path}` appended, so a caller can
-# reuse its existing parser and read two extra fields. The member path is what a
-# picker must `cd` to before acting — these rows are pickable, but only from
-# inside their own repo.
+# reuse its existing parser and read two extra fields; the member path stays the
+# final field. It is what a picker must `cd` to before acting — these rows are
+# pickable, but only from inside their own repo.
 echo "---WORKSPACE-MEMBER-HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
         if wi=$(ws_index_for_key "${R_REPO[$i]}"); then
-            emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}" "${WS_DISPLAYS[$wi]}" "${WS_PATHS[$wi]}"
+            emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}" "${R_SOURCE[$i]}" "${R_PATH[$i]}" "${WS_DISPLAYS[$wi]}" "${WS_PATHS[$wi]}"
         fi
         i=$((i+1))
+    done
+fi
+
+echo "---SOURCE-COLLISIONS---"
+if [ "${#COLLISION_LINES[@]}" -gt 0 ]; then
+    for line in "${COLLISION_LINES[@]}"; do
+        echo "$line"
     done
 fi
 
@@ -1234,7 +1325,7 @@ fi
 # points at dead context — the newer/live tip wins. Emitted
 # only when a filter is active; absent otherwise, so existing parsers are
 # untouched. Rows arrive newest-first (same order as ---HANDOFFS---).
-# Line: {filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}
+# Line: {filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}|{source}|{path}
 if [ -n "$MATCH_FILTER" ]; then
     echo "---MATCHED-HANDOFFS---"
     i=0
@@ -1246,14 +1337,14 @@ if [ -n "$MATCH_FILTER" ]; then
             if [ -n "$MATCH_BEAD" ] && field_has_token "${R_BEADS[$i]}" "$MATCH_BEAD"; then matched=1; fi
             if [ -n "$MATCH_TICKET" ] && field_has_token "${R_JIRA[$i]}" "$MATCH_TICKET"; then matched=1; fi
             if [ "$matched" -eq 1 ]; then
-                emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_TIME[$i]}" "${R_SLUG[$i]}" "${R_BRANCH[$i]}" "${R_EXISTS[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}"
+                emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_TIME[$i]}" "${R_SLUG[$i]}" "${R_BRANCH[$i]}" "${R_EXISTS[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_SOURCE[$i]}" "${R_PATH[$i]}"
             fi
         fi
         i=$((i+1))
     done
 fi
 
-# Every section is emitted so parsers stay shape-stable, but an unmigrated
-# machine must not look like an empty inventory to callers that only check $?.
-[ "$STORAGE_STATUS" = "canonical" ] || exit 3
+# Every section is emitted so parsers stay shape-stable, but a partial inventory
+# must not look complete (or empty) to callers that only check $?.
+[ "$STORAGE_STATUS" = "partial" ] && exit 3
 exit 0

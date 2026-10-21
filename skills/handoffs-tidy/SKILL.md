@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.7.2"
+version: "0.8.0"
 author: "flurdy"
 ---
 
@@ -68,7 +68,7 @@ threshold only controls the assisted age-review group and never changes `archive
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is
 present) `pr-state`, so the script can mark merged PRs, landed branches, and closed PRs. Bead-closure
 (`beads-done`, keyed off the `**Deliverable:**` field when present) and supersede are computed
-regardless. See REFERENCE §Run and §Fields for the flag semantics and the 22-field line format.
+regardless. See REFERENCE §Run and §Fields for the flag semantics and the 24-field line format.
 Degrades cleanly offline (REFERENCE §Run / the failure modes below).
 
 Parse the `---HANDOFFS---` lines and the `---SUMMARY---` counts. For each current-repo row, derive its
@@ -154,7 +154,7 @@ Run the member archive flow exactly as **REFERENCE §Archive-flow-members** spec
 current-repo steps. In a multi-repo workspace, member repos are where finished handoffs accumulate —
 the root itself often holds one or two.
 
-Read the member rows from `---WORKSPACE-MEMBER-HANDOFFS---` (24 fields: the usual 22 plus
+Read the member rows from `---WORKSPACE-MEMBER-HANDOFFS---` (26 fields: the usual 24 plus
 `{member-display}|{member-path}`) and the per-repo totals from `---WORKSPACE-MEMBER-REPOS---`.
 Classify each with the same §Status / §Archive-glyph rules as current-repo rows — member rows are
 already classified against their own repo when `--check-branches` was passed.
@@ -189,9 +189,12 @@ separate assisted confirmation; no selection means no mutation.
 
 - **`list.sh` / `archive.sh` / `REFERENCE.md` missing** (handoffs skill not installed): say so plainly
   and stop — this command is a thin driver over the handoffs skill's scripts and shared spec.
-- **No `~/.agents/handoffs/` directory**: nothing to tidy; say so and stop.
-- **`---STORAGE---` is `migration-required`** (`list.sh` and `archive.sh` exit `3`): the retired
-  `~/.claude/handoffs/` still exists. Say that storage must be migrated first and stop; archive nothing.
+- **Neither handoff location exists**: nothing to tidy; say so and stop.
+- **`---STORAGE---` is `legacy`, `mixed` or `partial`**: apply REFERENCE §Prompt boundaries' storage
+  gate. Render the candidate groups once as a read-only preview (label each row's `{source}`), say
+  archiving stays disabled until `~/.claude/handoffs` is migrated or the unreadable location is
+  fixed, and stop without any archive question or `archive.sh` call (it refuses while the legacy
+  location exists). For `partial`, name the locations `---SOURCES---` reports as not readable.
 - **Not in a git repo**: liveness needs a repo to classify against — say so and stop. (`cd` into the
   repo and re-run.)
 - **Multi-repo workspace**: member repos are covered by step 5d for `safe` rows and step 5e for old

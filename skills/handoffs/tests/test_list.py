@@ -29,6 +29,7 @@ class HandoffListFixture:
         self.home = root / "home"
         self.repo = root / "repo"
         self.handoffs = self.home / ".agents" / "handoffs"
+        self.legacy = self.home / ".claude" / "handoffs"
         self.bin = root / "bin"
         self.handoffs.mkdir(parents=True)
         self.bin.mkdir()
@@ -108,12 +109,15 @@ print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
         time: str = "12:00",
         header_time: bool = True,
         repo: Path | None = None,
+        directory: Path | None = None,
     ) -> str:
         date = self.today - dt.timedelta(days=age_days)
         handoff_repo = repo or self.repo
         filename = f"{date.isoformat()}-{slug}.md"
         resume_header = f"# Resume: {slug} — {date.isoformat()} {time}" if header_time else f"# Resume: {slug}"
-        (self.handoffs / filename).write_text(
+        target = directory or self.handoffs
+        target.mkdir(parents=True, exist_ok=True)
+        (target / filename).write_text(
             f"{resume_header}\n\n"
             f"**Where to pick up:** `{handoff_repo}` on branch `{branch}`\n"
             f"**Repo root:** `{handoff_repo}`\n"
@@ -169,21 +173,126 @@ class StorageLocationTests(unittest.TestCase):
             self.assertEqual(section(output, "STORAGE"), ["canonical"])
             self.assertTrue(any(row.startswith(f"{filename}|") for row in section(output, "HANDOFFS")))
 
-    def test_legacy_storage_blocks_listing_with_explicit_status(self) -> None:
+    def test_canonical_rows_carry_their_source_and_exact_path(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fixture = HandoffListFixture(Path(tmp))
-            fixture.add_handoff(0, "canonical-row")
-            legacy = fixture.home / ".claude" / "handoffs"
-            legacy.mkdir(parents=True)
-            (legacy / "2026-01-01-old.md").write_text("# Resume: old\n", encoding="utf-8")
-            result = fixture.run_script(SCRIPT, "--bead", "repo-1")
-            self.assertEqual(result.returncode, 3, result.stderr)
-            self.assertIn("migration-required", result.stderr)
-            self.assertEqual(section(result.stdout, "STORAGE"), ["migration-required"])
+            filename = fixture.add_handoff(0, "ready")
+            output = fixture.run()
+            fields = section(output, "HANDOFFS")[0].split("|")
+            self.assertEqual(fields[22:], ["canonical", str(fixture.handoffs / filename)])
+            self.assertEqual(
+                section(output, "SOURCES"),
+                [f"canonical|{fixture.handoffs}|ok|1", f"legacy|{fixture.legacy}|absent|0"],
+            )
+            self.assertEqual(section(output, "SOURCE-COLLISIONS"), [])
+
+    def test_legacy_only_storage_is_listed_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            fixture.handoffs.rmdir()
+            filename = fixture.add_handoff(0, "old-thread", beads="repo-1", directory=fixture.legacy)
+            result = fixture.run_script(SCRIPT, "--check-branches", "--bead", "repo-1")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("read-only", result.stderr)
+            self.assertEqual(section(result.stdout, "STORAGE"), ["legacy"])
+            fields = section(result.stdout, "HANDOFFS")[0].split("|")
+            self.assertEqual(fields[0], filename)
+            self.assertEqual(fields[22:], ["legacy", str(fixture.legacy / filename)])
+            matched = section(result.stdout, "MATCHED-HANDOFFS")
+            self.assertEqual(len(matched), 1)
+            self.assertEqual(matched[0].split("|")[9:], ["legacy", str(fixture.legacy / filename)])
+            summary = section(result.stdout, "SUMMARY")
+            self.assertIn("total=1", summary)
+            self.assertIn("legacy_total=1", summary)
+
+    def test_mixed_storage_keeps_same_named_rows_apart(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            different = fixture.add_handoff(1, "shared", branch="feature/x", time="09:00")
+            fixture.add_handoff(1, "shared", branch="feature/x", time="08:00", directory=fixture.legacy)
+            identical = fixture.add_handoff(2, "copied")
+            (fixture.legacy / identical).write_bytes((fixture.handoffs / identical).read_bytes())
+            result = fixture.run_script(SCRIPT, "--check-branches")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(section(result.stdout, "STORAGE"), ["mixed"])
+            rows = [line.split("|") for line in section(result.stdout, "HANDOFFS")]
+            shared = [fields for fields in rows if fields[0] == different]
+            self.assertEqual([fields[22] for fields in shared], ["canonical", "legacy"])
+            self.assertEqual(
+                [fields[23] for fields in shared],
+                [str(fixture.handoffs / different), str(fixture.legacy / different)],
+            )
+            self.assertEqual([fields[7] for fields in shared], ["", ""])
+            self.assertEqual(
+                sorted(section(result.stdout, "SOURCE-COLLISIONS")),
+                sorted([f"{different}|different", f"{identical}|identical"]),
+            )
+            summary = section(result.stdout, "SUMMARY")
+            self.assertIn("source_collisions=2", summary)
+            self.assertIn("legacy_total=2", summary)
+
+    def test_newer_canonical_thread_still_supersedes_an_older_legacy_one(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            older = fixture.add_handoff(5, "topic", directory=fixture.legacy)
+            newer = fixture.add_handoff(0, "topic")
+            rows = {
+                fields[0]: fields
+                for fields in (line.split("|") for line in section(fixture.run(), "HANDOFFS"))
+            }
+            self.assertEqual(rows[older][7], newer)
+            self.assertEqual(rows[older][22], "legacy")
+
+    def test_neither_location_is_an_empty_canonical_inventory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            fixture.handoffs.rmdir()
+            result = fixture.run_script(SCRIPT, "--check-branches")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(section(result.stdout, "STORAGE"), ["canonical"])
             self.assertEqual(section(result.stdout, "HANDOFFS"), [])
-            self.assertEqual(section(result.stdout, "MATCHED-HANDOFFS"), [])
             self.assertIn("total=0", section(result.stdout, "SUMMARY"))
-            self.assertNotIn("old.md", result.stdout)
+
+    def test_symlinked_location_is_not_followed_and_reports_partial(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            kept = fixture.add_handoff(0, "kept")
+            elsewhere = Path(tmp) / "elsewhere"
+            linked = fixture.add_handoff(0, "linked", directory=elsewhere)
+            fixture.legacy.parent.mkdir(parents=True)
+            fixture.legacy.symlink_to(elsewhere, target_is_directory=True)
+            result = fixture.run_script(SCRIPT, "--check-branches")
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertIn("partial", result.stderr)
+            self.assertEqual(section(result.stdout, "STORAGE"), ["partial"])
+            self.assertIn(f"legacy|{fixture.legacy}|unsafe|0", section(result.stdout, "SOURCES"))
+            files = [line.split("|")[0] for line in section(result.stdout, "HANDOFFS")]
+            self.assertEqual(files, [kept])
+            self.assertNotIn(linked, result.stdout)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root ignores directory permissions")
+    def test_unreadable_location_reports_partial_not_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            fixture.add_handoff(0, "hidden")
+            fixture.handoffs.chmod(0)
+            try:
+                result = fixture.run_script(SCRIPT, "--check-branches")
+            finally:
+                fixture.handoffs.chmod(0o700)
+            self.assertEqual(result.returncode, 3, result.stderr)
+            self.assertEqual(section(result.stdout, "STORAGE"), ["partial"])
+            self.assertIn(f"canonical|{fixture.handoffs}|unreadable|0", section(result.stdout, "SOURCES"))
+
+    def test_workspace_member_rows_keep_the_member_path_last(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp))
+            member = fixture.add_workspace_member()
+            filename = fixture.add_handoff(0, "member-row", repo=member, directory=fixture.legacy)
+            fields = section(fixture.run(), "WORKSPACE-MEMBER-HANDOFFS")[0].split("|")
+            self.assertEqual(len(fields), 26)
+            self.assertEqual(fields[22:24], ["legacy", str(fixture.legacy / filename)])
+            self.assertEqual(fields[-1], str(member))
 
     def test_archive_moves_within_canonical_storage_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -436,7 +545,7 @@ class AgeReviewClassificationTests(unittest.TestCase):
             output = fixture.run("--stale-days", "30")
             fields = section(output, "HANDOFFS")[0].split("|")
 
-            self.assertEqual(len(fields), 22)
+            self.assertEqual(len(fields), 24)
             self.assertEqual(fields[13], "")
             self.assertEqual(fields[20], "")
             self.assertEqual(fields[21], "Y")
@@ -686,7 +795,7 @@ class RecordEncodingTests(unittest.TestCase):
     """Records are pipe-delimited and REFERENCE.md parses them by field position,
     so free text carrying a delimiter must not shift what a later field means."""
 
-    HANDOFF_FIELDS = 22
+    HANDOFF_FIELDS = 24
 
     def test_pipe_in_branch_cannot_shift_record_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

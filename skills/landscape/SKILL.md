@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-bd:*), Bash(date:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.13.2"
+version: "0.13.3"
 author: "flurdy"
 ---
 
@@ -349,6 +349,9 @@ These come from `working-copy.sh` and have no equivalent in the roll-up, so they
   ~/.agents/skills/handoffs/scripts/list.sh --summary-only
   ```
   Parse from the output:
+  - `---STORAGE---` → when `legacy` or `mixed`, the counts include read-only handoffs from the
+    retired `~/.claude/handoffs`; add one line `_Handoff storage migration pending (legacy handoffs are listed read-only)._`.
+    When `partial`, say a handoff location could not be read, so the counts may be incomplete.
   - `---SUMMARY---` → `current_repo_recent_live` — recent handoffs for this repo that are still live work: not superseded **and not finished** (uses the same Mon→3 / Tue→4 / else→3 weekend buffer as the closed-PR list). "Finished" here means all referenced beads are closed — a local `bd` check that runs even on this offline (`--summary-only`, no `--check-branches`) call, so a handoff whose task shipped no longer counts as a live thread to resume. Re-wraps of the same branch still collapse to one. (Merged-PR / Jira-Done detection needs the network and only applies under `/handoffs`'s `--check-branches`; landscape's offline count catches the bead-closed case.)
   - `---CURRENT-REPO-LATEST---` → a single `{slug}|{branch}|{date}` line for the newest current-repo handoff (the "last session"), or empty if none.
   - `---CURRENT-REPO-LIVE---` → one `{slug}|{branch}|{date}|{time}` line per recent live (non-superseded, non-finished) current-repo handoff, newest first (these are the threads behind the `current_repo_recent_live` count). The first line equals `---CURRENT-REPO-LATEST---` **when the newest handoff is itself still live**; if the newest one is finished it's absent here, so the first line is the most recent *resumable* thread instead.
