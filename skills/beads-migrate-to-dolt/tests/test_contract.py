@@ -129,13 +129,27 @@ class MigrationContractTests(unittest.TestCase):
             self.assertIn(phrase, AFTERCARE)
 
     def test_version_evidence_is_bounded(self):
-        for phrase in ('bd 1.2.2', 'command-surface evidence', 'not a live migration certification',
+        for phrase in ('bd 1.2.2', 'bd 1.3.1', 'command-surface evidence', 'not a live migration certification',
                        'Historical', '0.59', '1.0', '--skip-hooks', '--skip-agents',
                        '--allow-stale', 'help init-safety', 'mode must be observed'):
             self.assertIn(phrase, COMPATIBILITY)
         self.assertIn('Read `--help` before each version-sensitive command', CORE)
         self.assertNotIn('latest as of', CORE + AFTERCARE + COMPATIBILITY)
         self.assertNotIn('migrations through v53', CORE)
+
+    def test_capabilities_not_version_allowlist_control_selected_path(self):
+        for phrase in ('no version allowlist', 'Path-specific capability audit',
+                       'missing optional command', 'not sufficient proof of semantics',
+                       'certification requirement', 'untested end-to-end',
+                       'not the optional legacy exporter'):
+            self.assertIn(phrase, COMPATIBILITY)
+        for phrase in ('A newer version is not itself a blocker',
+                       'missing required safety capabilities', 'unresolved semantic changes',
+                       'protection, verification', 'Optional aftercare capabilities',
+                       'untested end-to-end', 'designated-migrator approval',
+                       'availability does not prove lossless export',
+                       'Never run an exporter on the sole'):
+            self.assertIn(phrase, CORE)
 
     def test_gates_and_detection_handoff(self):
         makefile = (ROOT / 'Makefile').read_text()

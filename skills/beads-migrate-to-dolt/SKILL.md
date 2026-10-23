@@ -1,11 +1,11 @@
 ---
 name: beads-migrate-to-dolt
 description: "Safely migrate classic Beads data or upgrade a Dolt schema, preserving backups and remote history. Repository aftercare is a separate, explicitly selected mode."
-allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(bd --version),Bash(bd migrate --help),Bash(bd init --help),Bash(bd import --help),Bash(bd export --help),Bash(bd bootstrap --help),Bash(bd backup --help),Bash(bd dolt stop --help),Bash(bd list --help),Bash(bd doctor --help),Bash(bd help init-safety),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git worktree list:*)"
+allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(bd --version),Bash(bd --help),Bash(bd dolt push --help),Bash(bd migrate --help),Bash(bd migrate legacy-sqlite --help),Bash(bd init --help),Bash(bd import --help),Bash(bd export --help),Bash(bd bootstrap --help),Bash(bd backup --help),Bash(bd dolt stop --help),Bash(bd list --help),Bash(bd doctor --help),Bash(bd help init-safety),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(git worktree list:*)"
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.1.1"
+version: "2.2.0"
 author: "flurdy"
 ---
 
@@ -28,7 +28,12 @@ Never enter aftercare automatically at the end of migration. Reject unknown/dupl
 
 Read [version and capability evidence](references/compatibility.md) before either mode. It records
 checked CLI help, not universal compatibility. Read `--help` before each version-sensitive command;
-missing capabilities are a blocker, not permission to guess a flag or change the installed version.
+audit the capabilities needed by the selected path, including protection, verification and any
+publication/adoption. A newer version is not itself a blocker; missing required safety capabilities
+or unresolved semantic changes are. Do not guess a flag, silently drop a safety guarantee or change
+the installed version. Optional aftercare capabilities do not block core migration when aftercare
+was not selected. See the reference's path-specific capability audit; help alone cannot establish
+that a command is nonmutating.
 
 ## 1. Bind the target without opening a store
 
@@ -147,6 +152,8 @@ that a missing WAL or the largest/newest-looking JSONL makes that source complet
 For a remote-backed schema, the operator must designate **exactly one designated migrator**.
 Other clones preserve unpushed data/history and wait to adopt the published result; they must not
 independently apply schema migrations. Set no override until this coordination decision is explicit.
+If the installed version lacks representative migration evidence, disclose that untested end-to-end
+status in the designated-migrator approval; a passing help audit does not certify safe publication.
 
 For local-only Dolt, after the approved local plan and verified backup:
 
@@ -169,7 +176,11 @@ repeat failure stops for version-specific recovery rather than another automatic
 ### B. Classic SQLite/JSONL conversion
 
 Preserve original sources and their verified backup throughout conversion.
-Use a version-compatible exporter on a working copy for stale/missing JSONL.
+Use a version-compatible exporter on a working copy for stale/missing JSONL. If installed help
+advertises `bd migrate legacy-sqlite`, assess its source eligibility and preservation guarantees
+before choosing it; availability does not prove lossless export for this database. Missing that
+optional helper does not block another proven lossless exporter. Never run an exporter on the sole
+backup or open the live classic store with a newer binary just to discover whether it works.
 Never use a fixed-field converter or guess field casts to make import succeed. Labels,
 design/acceptance criteria, metadata, timestamps, dependencies, comments, priority 0 and custom
 fields must not silently disappear. If a suitable exporter is absent,
@@ -275,7 +286,9 @@ the remote and at least one verified adopter match; cleanup still needs its own 
 
 Report separately: source/target mode and CLI version; backup location/digests; baseline versus final
 counts/field checks; local data verification; publication/adoption evidence or pending status; and
-any integration observations needing optional aftercare. Local-only success requires verified data;
+any integration observations needing optional aftercare. Distinguish command-surface checks from
+representative migration evidence; report untested end-to-end status rather than inferring version
+compatibility from help or one successful run. Local-only success requires verified data;
 remote-backed completion additionally requires verified publication/adoption. Missing evidence stays
 incomplete. Do not change tracker state, create commits or begin unrelated repairs from this report.
 
