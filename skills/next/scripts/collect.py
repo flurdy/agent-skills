@@ -412,11 +412,74 @@ def service_labels(issue: dict[str, Any], services: dict[str, str]) -> list[str]
     return [label for label in labels if isinstance(label, str) and label in services]
 
 
+def machine_identity() -> dict[str, Any]:
+    path = Path.home() / ".agents" / "AGENTS.local.md"
+    result: dict[str, Any] = {"id": None, "source": str(path), "state": "missing",
+                              "reason": "machine declaration is missing"}
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except FileNotFoundError:
+        return result
+    except (OSError, UnicodeError):
+        return {**result, "state": "invalid", "reason": "machine context is unreadable"}
+    identities = set()
+    fence = ""
+    for line in lines:
+        marker = re.match(r"^\s*(`{3,}|~{3,})", line)
+        if marker:
+            if not fence:
+                fence = marker[1]
+            elif marker[1][0] == fence[0] and len(marker[1]) >= len(fence):
+                fence = ""
+            continue
+        if fence or not re.match(r"^\s*(?:[-*]\s*)?Machine\b", line, re.IGNORECASE):
+            continue
+        match = re.fullmatch(r"\s*-\s+Machine:\s*([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)\.?\s*", line, re.IGNORECASE)
+        if not match:
+            return {**result, "state": "invalid", "reason": "expected - Machine: stable-id"}
+        identities.add(match[1].lower())
+    if len(identities) > 1:
+        return {**result, "state": "conflict", "reason": "conflicting machine declarations"}
+    if identities:
+        return {**result, "id": identities.pop(), "state": "ok", "reason": "user local context"}
+    return result
+
+
+def machine_eligibility(issue: dict[str, Any], machine: dict[str, Any]) -> dict[str, Any]:
+    labels = issue.get("labels") or []
+    required = []
+    invalid = not isinstance(labels, list)
+    for label in labels if isinstance(labels, list) else []:
+        if not isinstance(label, str):
+            invalid = True
+            continue
+        if not label.strip().lower().startswith("run-on"):
+            continue
+        match = re.fullmatch(r"run-on:([a-z0-9]+(?:-[a-z0-9]+)*)", label, re.IGNORECASE)
+        if not match:
+            invalid = True
+        elif match[1].lower() not in required:
+            required.append(match[1].lower())
+    if invalid:
+        state, reason = "invalid", "malformed run-on label"
+    elif not required:
+        state, reason = "unrestricted", "no declared machine restriction"
+    elif machine["id"] is None:
+        state, reason = "unknown", "machine identity unknown; requires " + ", ".join(required)
+    elif machine["id"] in required:
+        state, reason = "match", "matches " + machine["id"]
+    else:
+        state, reason = "mismatch", "requires " + ", ".join(required)
+    return {"eligible": state in {"unrestricted", "match"}, "state": state,
+            "required": required, "reason": reason}
+
+
 def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
     beads_read_timeout()
     workspace, sources = discover_sources(root)
     payload: dict[str, Any] = {
         "workspace": workspace,
+        "machine": machine_identity(),
         "ready": [],
         "blocked": [],
         "in_progress": [],
@@ -458,6 +521,10 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
         else:
             for key, issues in collected.items():
                 payload[key].extend(issues)
+    payload["ready"] = [
+        {**issue, "machine_eligibility": machine_eligibility(issue, payload["machine"])}
+        for issue in payload["ready"]
+    ]
     return payload
 
 

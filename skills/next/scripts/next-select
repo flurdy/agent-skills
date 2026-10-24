@@ -29,6 +29,7 @@ AMBIGUOUS_EXIT = 3
 NOT_FOUND_EXIT = 4
 UNAVAILABLE_EXIT = 5
 STALE_EXIT = 6
+MACHINE_MISMATCH_EXIT = 7
 CLAIM_VERSION = "agent-claim:v1"
 SESSION_ID_VARIABLES = (
     "PI_SESSION_ID",
@@ -102,7 +103,8 @@ def ranked_candidates(options: list[str]) -> tuple[list[dict[str, Any]], str | N
         )
     except OSError:
         return [], "ranked collection unavailable"
-    diagnostic = result.stderr.strip().replace("\n", " ")[:240] or None
+    diagnostic = " ".join(line for line in result.stderr.splitlines()
+                          if not line.startswith("Machine:")).strip()[:240] or None
     if result.returncode != 0:
         return [], diagnostic or f"ranked collection exited {result.returncode}"
     try:
@@ -333,7 +335,7 @@ def claim_lock(directory: Path, issue_id: str) -> Iterator[None]:
         lock.close()
 
 
-def record_claim(directory: Path, issue_id: str) -> int:
+def record_claim(directory: Path, issue_id: str, machine_note: str = "") -> int:
     session_id = harness_session_id()
     marker = claim_marker(directory, session_id)
     try:
@@ -385,8 +387,9 @@ def record_claim(directory: Path, issue_id: str) -> int:
             f"claimed_at_utc: {timestamp}",
             f"owning_store: {directory.resolve()}",
             "Session activity is unverified.",
+            machine_note,
         )
-    )
+    ).rstrip()
     try:
         added = subprocess.run(
             ["bd", "-C", str(directory), "comments", "add", issue_id, body],
@@ -399,10 +402,32 @@ def record_claim(directory: Path, issue_id: str) -> int:
     return added.returncode
 
 
-def run_start(directory: Path, issue_id: str) -> int:
+def run_start(directory: Path, issue_id: str, allow_other_machine: bool = False) -> int:
     try:
         with claim_lock(directory, issue_id):
-            claimed = record_claim(directory, issue_id)
+            collector = load_collector()
+            machine = collector.machine_identity()
+            rows, error = collector.load_issues(
+                collector.Source("local", ".", directory), ["show", issue_id]
+            )
+            if error or len(rows) != 1:
+                print(json.dumps({"status": "unavailable", "id": issue_id,
+                                  "error": error or "expected one current issue"}))
+                return UNAVAILABLE_EXIT
+            eligibility = collector.machine_eligibility(rows[0], machine)
+            override = (allow_other_machine and eligibility["state"] == "mismatch"
+                        and rows[0].get("status") not in {"blocked", "deferred", "closed"})
+            if not eligibility["eligible"] and not override:
+                print(json.dumps({"status": "machine-mismatch", "id": issue_id,
+                                  "machine": machine, "machine_eligibility": eligibility}))
+                return MACHINE_MISMATCH_EXIT
+            note = ""
+            if override:
+                note = (f"machine-override: local {machine['id']}; targets "
+                        f"{', '.join(eligibility['required'])}; explicit tracking override only; "
+                        "machine-local execution and lease checks remain separate.")
+                print(note, file=sys.stderr)
+            claimed = record_claim(directory, issue_id, note)
             if claimed != 0:
                 return claimed
             update = subprocess.run(
@@ -437,11 +462,15 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--type", default="")
     parser.add_argument("--expect-id", default="")
     parser.add_argument("--check-branches", action="store_true")
+    parser.add_argument("--allow-other-machine", action="store_true",
+                        help="explicit tracking override for a known direct-ID machine mismatch")
     arguments = parser.parse_args(argv)
     if arguments.command == "stores" and arguments.selector:
         parser.error("stores takes no selector")
     if arguments.command != "stores" and not arguments.selector:
         parser.error(f"{arguments.command} requires a selector")
+    if arguments.allow_other_machine and (arguments.command != "start" or arguments.selector.isdigit()):
+        parser.error("--allow-other-machine requires start with a direct bead ID")
     return arguments
 
 
@@ -475,7 +504,7 @@ def main(argv: list[str]) -> int:
             resolved["id"],
             ["--check-branches"] if arguments.check_branches else [],
         )
-    return run_start(directory, resolved["id"])
+    return run_start(directory, resolved["id"], arguments.allow_other_machine)
 
 
 if __name__ == "__main__":

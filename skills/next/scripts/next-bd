@@ -54,6 +54,7 @@ payload=$("$SCRIPT_DIR/collect.py" "${collector_args[@]}")
 
 if "$JSON_OUTPUT"; then
   jq -r '.diagnostics[] | "next-bd: \(.)"' <<< "$payload" >&2
+  jq -r '.machine | "Machine: \(.id // "unknown") (\(.state): \(.reason)); source: \(.source)"' <<< "$payload" >&2
 fi
 
 jq -r \
@@ -94,6 +95,16 @@ jq -r \
         [.value.lease_check] +
         (if $overlap then ["\(.value.shared_services | join(", ")) (\(.value.tracker_overlap | join(", ")))"] else [] end) | row
       ) | join("\n")) end);
+  def machine_notice($machine):
+    "Machine: \($machine.id // "unknown" | cell) (\($machine.state | cell): \($machine.reason | cell)); source: \($machine.source | cell)";
+  def other_table($rows; $workspace):
+    if ($rows | length) == 0 then "" else
+      "\n\n## Other machines (\($rows | length) beads; not selectable here)\n\n" +
+      (((if $workspace then ["Repo"] else [] end) + ["ID", "Pri", "Type", "Labels", "Title", "Run on / reason"]) | row) + "\n" +
+      (((if $workspace then ["Repo"] else [] end) + ["ID", "Pri", "Type", "Labels", "Title", "Run on / reason"]) | map("---") | row) + "\n" +
+      ($rows | sort_by(.priority, .created_at, (.repository // ""), .id) | map(
+        issue_fields($workspace) + [.machine_eligibility.reason] | row) | join("\n"))
+    end;
   def unavailable_notice($stores):
     if ($stores | length) == 0 then "" else
       "## ⚠️ Beads store unavailable (\($stores | length))\n\n" +
@@ -137,9 +148,11 @@ jq -r \
       $blocked_keys | index($candidate_key) | not
     ))
   ) as $unblocked |
-  ($unblocked | map(select(.priority == 4))) as $backlog |
+  ($unblocked | map(select(.machine_eligibility.eligible | not))) as $other_machines |
+  ($unblocked | map(select(.machine_eligibility.eligible))) as $eligible |
+  ($eligible | map(select(.priority == 4))) as $backlog |
 
-  ($unblocked |
+  ($eligible |
     map(select(.priority >= 0 and .priority <= 3)) |
     if $type_filter != "" then
       map(select(.issue_type == $type_filter))
@@ -166,7 +179,8 @@ jq -r \
   ) as $ranked |
 
   if $safe_json == "true" then
-    {version: 1, workspace: $workspace, candidates: $ranked,
+    {version: 1, workspace: $workspace, machine: $payload.machine,
+     candidates: $ranked, other_machines: $other_machines,
      in_progress: $in_progress, blocked: $payload.blocked, deferred: $payload.deferred,
      diagnostics: $diagnostics, unavailable_stores: $unavailable}
   elif $safe_output == "true" then
@@ -180,7 +194,7 @@ jq -r \
     })) as $safe_rows |
     ($safe_rows | map(select(.tracker_overlap | length == 0))) as $review |
     ($safe_rows | map(select(.tracker_overlap | length > 0))) as $overlaps |
-    unavailable_notice($unavailable) +
+    unavailable_notice($unavailable) + machine_notice($payload.machine) + "\n\n" +
     (if ($review | length) == 0 and ($unavailable | length) > 0 then
       "## Ready to review (0 beads)\n\n_Ready work unknown: the unavailable stores above were not read._"
     else
@@ -194,11 +208,12 @@ jq -r \
     (if ($payload.blocked | length) > 0 then non_ready_table("Waiting — blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") else "" end) +
     (if ($payload.deferred | length) > 0 then non_ready_table("Later — deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") else "" end) +
     (if ($diagnostics | length) > 0 then "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + cell) | join("\n")) else "" end) +
+    other_table($other_machines; $workspace) +
     "\n\nNumbers are for review, not safe claims. Selector = \(if $workspace then "Repo:ID" else "local:ID" end). Only a fresh eligible recheck permits a safe claim; picking a not-checked row starts ordinary, not lease-checked, work."
   elif $json_output == "true" then
     $ranked
   else
-    unavailable_notice($unavailable) +
+    unavailable_notice($unavailable) + machine_notice($payload.machine) + "\n\n" +
     "## Ready to Work (\($ranked | length) beads)\n" +
     (if $workspace then
       "| # | Repo | ID | Pri | Type | Labels | Title |\n" +
@@ -235,6 +250,7 @@ jq -r \
     if ($diagnostics | length) > 0 then
       "\n\nSource diagnostics:\n" +
       ($diagnostics | map("- " + .) | join("\n"))
-    else "" end
+    else "" end +
+    other_table($other_machines; $workspace)
   end
 ' <<< "$payload"

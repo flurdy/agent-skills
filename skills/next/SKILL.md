@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.21.2"
+version: "1.22.0"
 author: "flurdy"
 ---
 
@@ -308,6 +308,59 @@ an exact `local:<id>` selector for the list-based empty-result/not-found distinc
 Git topology checks, claim comment lookup/add, update, final claim display and attribution-lock
 waits retain their existing **5-second** budgets. Handoff execution is unchanged. This setting
 does not authorize writes, maintenance, synchronization or a guard bypass.
+
+## Machine suitability
+
+Listing and auto-picking use the user-owned `~/.agents/AGENTS.local.md`, associated
+with `~/.agents/AGENTS.md`, as data, not executable instructions. The narrow format is:
+
+```markdown
+- Machine: Rivelino.
+```
+
+Use a single alphanumeric/kebab-case machine name; case and an optional sentence-ending
+period are normalized (`Rivelino.` → `rivelino`). Any stable ID works, such as
+`desk-42`; this does not register another participating machine. Identical declarations
+are accepted, conflicting or malformed ones are not. Fenced examples are ignored.
+There is no hostname, environment identity variable, repository, epic-label or free-text
+notes fallback. The fixed source is resolved under the invoking user's home directory.
+Missing/unreadable/conflicting identity is displayed, not guessed.
+
+- No `run-on:<id>` labels: no declared machine restriction, not verified target state.
+- Multiple labels: OR eligibility. A matching label admits the bead here.
+- Labels are case-insensitive stable IDs; malformed `run-on...` labels exclude the bead
+  even alongside a valid label. They never silently become unrestricted.
+- Restricted ready work without a match, or with unknown identity, appears in an
+  unnumbered **Other machines** table with its reason (including P4). This is the
+  deliberate cross-machine inspection view, not an execution override.
+- In-progress, blocked and deferred tables are never machine-filtered. Foreign-machine
+  claims still inform service-overlap checks.
+- Filtering happens before ready ranking and numbering. `--json` remains a candidate
+  array, with additive `machine_eligibility` fields and eligible rows only; identity is
+  reported on stderr. `--safe-json` adds `machine` and `other_machines`.
+- Portable and native safe views show the same separation; Other machines has no lease
+  check and cannot be certified free. Fresh native recheck refuses a mismatched selector.
+- `resolve` remains an ownership-only read, including direct IDs for other workflows.
+  `start` re-reads identity and target labels inside the claim lock, before either
+  attribution or status mutation. Exit 7 (`machine-mismatch`) means nothing was claimed.
+  Numeric picks still require `--expect-id` to detect re-numbering.
+
+On an ordinary direct-ID mismatch, disclose the current machine, required labels and
+per-target bead record. Ask whether to cancel or explicitly claim tracking for preparation
+elsewhere. Only the latter permits:
+
+```bash
+~/.agents/skills/next/scripts/next-select start <repo>:<id> --expect-id <id> --allow-other-machine
+```
+
+This switch is direct-ID-only, records an override in claim attribution and cannot waive
+unknown identity, malformed labels, blocked/deferred/closed status, a stale expected ID,
+or safe-view occupancy/recheck refusals. Inspection alone is never confirmation.
+
+A match or tracking override grants no host, SSH, sync, installation, activation or write
+authority. Verify the actual execution machine and the bead's per-target evidence before
+machine-local work. Identity/label checks and claims are procedural, not atomic with
+external edits: the local claim lock does not prevent another actor changing tracker data.
 
 ## Lease-aware safe selection
 

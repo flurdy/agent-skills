@@ -128,11 +128,13 @@ class ReadDeadlineTest(unittest.TestCase):
             self.assertTrue(self.collector.is_git_root(Path("/fixture")))
             self.assertEqual(run.call_args.kwargs["timeout"], 5)
         with mock.patch.object(self.selector, "claim_lock", return_value=nullcontext()), \
-                mock.patch.object(self.selector.subprocess, "run", return_value=
-                                  subprocess.CompletedProcess([], 0, "[]", "")) as run:
+                mock.patch.object(self.selector.subprocess, "run", side_effect=[
+                    subprocess.CompletedProcess([], 0, '[{"id":"task-1","labels":[]}]', ""),
+                    *[subprocess.CompletedProcess([], 0, "[]", "") for _ in range(4)],
+                ]) as run:
             self.assertEqual(self.selector.run_start(Path("/fixture"), "task-1"), 0)
-            self.assertEqual(len(run.call_args_list), 4)
-            self.assertEqual([call.kwargs["timeout"] for call in run.call_args_list], [5] * 4)
+            self.assertEqual(len(run.call_args_list), 5)
+            self.assertEqual([call.kwargs["timeout"] for call in run.call_args_list], [120, 5, 5, 5, 5])
         with mock.patch.object(self.selector.HANDOFF_LIST.__class__, "is_file", return_value=True), \
                 mock.patch.object(self.selector.subprocess, "run", return_value=
                                   subprocess.CompletedProcess([], 0)) as run:

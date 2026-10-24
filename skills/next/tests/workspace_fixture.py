@@ -152,6 +152,9 @@ class WorkspaceFixture(unittest.TestCase):
         self.environment = os.environ.copy()
         self.environment["PATH"] = f"{fake_bin}:{self.environment['PATH']}"
         self.environment["BD_CALL_LOG"] = str(self.call_log)
+        self.home = self.base / "home"
+        self.home.mkdir()
+        self.environment["HOME"] = str(self.home)
 
     def tearDown(self) -> None:
         self.temporary.cleanup()

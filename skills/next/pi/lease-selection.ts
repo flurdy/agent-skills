@@ -59,6 +59,7 @@ function validatePacket(packet) {
         !Array.isArray(values) || values.some(label => typeof label !== 'string'))) throw new Error('Invalid tracker labels');
   }
   if (packet.candidates.some(row => typeof row.id !== 'string' || typeof row.selector !== 'string' ||
+      (row.machine_eligibility !== undefined && row.machine_eligibility.eligible !== true) ||
       !row.source_scope || !['declared', 'partial', 'unknown', 'invalid', 'unavailable'].includes(row.source_scope.state) ||
       !Array.isArray(row.source_scope.roots) || row.source_scope.roots.length > MAX_ROOTS ||
       row.source_scope.roots.some(root => typeof root !== 'string' || !root.startsWith('/')) ||
@@ -69,6 +70,22 @@ function validatePacket(packet) {
     throw new Error('Invalid source-scope packet');
   }
   if (new Set(packet.candidates.map(row => row.selector)).size !== packet.candidates.length) throw new Error('Duplicate candidate selectors');
+  const other = packet.other_machines ?? [];
+  if (!Array.isArray(other) || other.length > 1000 || other.some(row =>
+      !row || typeof row.selector !== 'string' || typeof row.id !== 'string' ||
+      !Array.isArray(row.labels ?? []) || (row.labels ?? []).some(label => typeof label !== 'string') ||
+      row.machine_eligibility?.eligible !== false || typeof row.machine_eligibility.reason !== 'string')) {
+    throw new Error('Invalid other-machine packet');
+  }
+  if (new Set([...packet.candidates, ...other].map(row => row.selector)).size !== packet.candidates.length + other.length) {
+    throw new Error('Duplicate machine candidate selectors');
+  }
+  if (packet.machine !== undefined && (!packet.machine ||
+      !(packet.machine.id === null || typeof packet.machine.id === 'string') ||
+      !['ok', 'missing', 'invalid', 'conflict'].includes(packet.machine.state) ||
+      typeof packet.machine.source !== 'string' || typeof packet.machine.reason !== 'string')) {
+    throw new Error('Invalid machine identity packet');
+  }
   const stores = packet.unavailable_stores ?? [];
   if (!Array.isArray(stores) || stores.some(store => !store || typeof store.repository !== 'string' ||
       typeof store.reason !== 'string' || !(store.hint == null || typeof store.hint === 'string'))) {
@@ -113,6 +130,7 @@ export async function classifyCandidates(packet, observer, signal) {
   }
   const byRoot = new Map(roots.map((root, index) => [root, observations?.[index] ?? { kind: 'unavailable', reason }]));
   const result = {
+    machine: packet.machine, other_machines: packet.other_machines ?? [],
     version: 1, workspace: packet.workspace, observedAt: new Date().toISOString(), coverage: COVERAGE,
     eligible: [], occupied: [], unknown: [], unavailable: [], tracker_conflicts: [],
     in_progress: packet.in_progress, blocked: packet.blocked ?? [], deferred: packet.deferred ?? [],
@@ -189,6 +207,7 @@ export function renderSafeList(result) {
   const parts = stores.length ? [`## ⚠️ Beads store unavailable (${stores.length})`,
     'Work from these stores is not listed below; this is not an empty backlog.',
     stores.map(store => `- **${displayText(store.repository)}** — ${displayText(store.hint ?? store.reason)}`).join('\n')] : [];
+  if (result.machine) parts.push(`Machine: ${displayCell(result.machine.id ?? 'unknown')} (${displayCell(result.machine.state)}: ${displayCell(result.machine.reason)}); source: ${displayCell(result.machine.source)}`);
   parts.push(`## Ready to review (${ready.length} beads)`);
   if (!ready.length && stores.length) parts.push('_Ready work unknown: the unavailable stores above were not read._');
   else {
@@ -212,6 +231,9 @@ export function renderSafeList(result) {
     parts.push(table([...headers, ...(extra ? [extra] : [])], result[key].map(row => [...fields(row),
       ...(key === 'blocked' ? [row.blocked_by?.join(', ') || '—'] : key === 'deferred' ? [row.defer_until ?? '—'] : [])])));
   }
+  if (result.other_machines?.length) parts.push(`## Other machines (${result.other_machines.length} beads; not selectable here)`,
+    'Machine suitability only; lease occupancy was not checked for these rows.',
+    table([...headers, 'Run on / reason'], result.other_machines.map(row => [...fields(row), row.machine_eligibility.reason])));
   const reasons = rows.flatMap(row => row.occupancy.filter(item => item.kind === 'unavailable')
     .map(item => `${row.selector}: ${item.root}: ${item.reason}`));
   const diagnostics = [...new Set([...result.diagnostics, ...reasons])];
@@ -224,6 +246,8 @@ export async function inspectCandidates(cwd, { selector, signal, loadObserver } 
   const packet = await collectCandidates(cwd, signal);
   validatePacket(packet);
   if (selector !== undefined) {
+    const other = packet.other_machines?.find(row => row.selector === selector);
+    if (other) throw new Error(`Machine mismatch: ${other.machine_eligibility.reason}; current machine ${packet.machine?.id ?? 'unknown'}. Inspection is not execution authority.`);
     packet.candidates = packet.candidates.filter(row => row.selector === selector);
     if (packet.candidates.length !== 1) throw new Error('Selector is no longer ready or its owning source is unavailable; list again');
   }

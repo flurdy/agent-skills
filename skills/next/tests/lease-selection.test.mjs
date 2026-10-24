@@ -199,6 +199,31 @@ test('mismatched service labels and roots are rejected', async () => {
   await assert.rejects(classifyCandidates(packet([bad])), /Invalid source-scope packet/);
 });
 
+test('other-machine rows remain visible but never enter occupancy or eligible queues', async () => {
+  const other = { ...candidate('remote', ['/remote']),
+    machine_eligibility: { eligible: false, state: 'mismatch', reason: 'requires leonidas' } };
+  const machine = { id: 'rivelino', source: '/home/test/.agents/AGENTS.local.md', state: 'ok', reason: 'user local context' };
+  const data = { ...packet([candidate('here')]), machine, other_machines: [other] };
+  const seen = [];
+  const result = await classifyCandidates(data, async roots => {
+    seen.push(...roots);
+    return roots.map(root => ({ root, kind: 'free' }));
+  });
+  assert.deepEqual(seen, ['/api']);
+  assert.deepEqual(result.eligible.map(row => row.id), ['here']);
+  assert.equal(result.other_machines[0].id, 'remote');
+  const text = renderSafeList(result);
+  assert.match(text, /Machine: rivelino/);
+  const [ready, foreign] = text.split('## Other machines');
+  assert.doesNotMatch(ready, /remote/);
+  assert.match(foreign, /requires leonidas/);
+  assert.doesNotMatch(foreign, /\| # \||\| free \|/);
+  await assert.rejects(classifyCandidates({ ...data, machine: { id: 'rivelino' } }), /machine identity/);
+  await assert.rejects(classifyCandidates({ ...data, other_machines: [{ ...other, labels: 'broken' }] }), /other-machine/);
+  await assert.rejects(classifyCandidates({ ...packet([other]), machine }), /source-scope/);
+  await assert.rejects(classifyCandidates({ ...data, other_machines: [{ ...other, selector: 'workspace:here' }] }), /Duplicate/);
+});
+
 test('declared roots keep observer priority; label overflow is reported, not treated as free', async () => {
   const declaredRoots = Array.from({ length: 31 }, (_, index) => `/d${index}`);
   const data = packet([
