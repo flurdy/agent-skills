@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh pr list:*),Bash(gh pr view:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 
@@ -306,8 +306,14 @@ timing change, and a recheck never merges, waits or schedules anything by itself
 
 **Do NOT pass `--delete-branch`.** It makes `gh` run *local* git operations (switch to the default branch, pull, delete the local branch) as a side effect of the merge. In a worktree checkout — where `main`/`master` is checked out in a *different* worktree — that local step fails with `fatal: '{branch}' is already used by worktree at ...` **even though the remote merge succeeded**. The merge is done; only the local cleanup errored, which reads as a scary failure for a no-op. Branch deletion is handled separately below, against the remote only.
 
+**Pin the commit author email.** GitHub otherwise authors the squash commit with the account's
+default email, which may be a personal address in a client's history. Read the repository's
+`git config user.email` beforehand and pass its literal value; if it is unset, stop and report it
+rather than merging with GitHub's default.
+
 ```bash
 gh pr merge {number} --squash \
+  --author-email "{author-email}" \
   --subject "{subject}" \
   --body "$(cat <<'EOF'
 {body}
