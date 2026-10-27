@@ -9,7 +9,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SETUPS = {
     "setup-multirepo-git": ["scripts/mgit", "templates/permissions.json", "templates/AGENTS-MGIT.md"],
-    "trello-beads": ["scripts/trello-api.sh", "scripts/trello-pull.sh", "scripts/trello-sync.sh", "scripts/owning-store.sh"],
     "browser-screenshot": ["scripts/screenshot.sh"],
 }
 
@@ -138,7 +137,6 @@ class ResourceSelectionTests(unittest.TestCase):
     def test_existing_link_destinations_stop_before_any_project_write(self):
         destinations = {
             "setup-multirepo-git": ["mgit"],
-            "trello-beads": ["trello-api", "trello-pull", "trello-sync"],
         }
         for name, targets in destinations.items():
             root = self.install(self.home / ".agents/skills", name)
@@ -216,6 +214,15 @@ class WorkflowContracts(unittest.TestCase):
     def test_canonical_contract_audit_remains_read_only(self):
         text = skill("contract-check")
         self.assertIn("~/.agents/skills/contract-check/scripts/contract-check.sh", text)
+        self.assertNotIn("SKILLS_DIR=", text)
+        self.assertNotIn("ln -s", text)
+
+    def test_trello_scripts_run_from_shared_install(self):
+        text = skill("trello-beads")
+        grants = {entry.strip() for entry in re.search(r'^allowed-tools: "(.*)"$', text.split("---", 2)[1], re.M)[1].split(",")}
+        for script in ("trello-api.sh", "trello-pull.sh", "trello-sync.sh"):
+            self.assertIn(f"Bash(~/.agents/skills/trello-beads/scripts/{script}:*)", grants)
+        self.assertNotIn("./scripts/trello-", text)
         self.assertNotIn("SKILLS_DIR=", text)
         self.assertNotIn("ln -s", text)
 

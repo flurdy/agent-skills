@@ -142,8 +142,8 @@ $(fence_external "$external_text")"
   if [[ "$match_status" -eq 0 ]]; then
     echo "SKIP: Bead already exists for: $card_name"
     echo "  Card remains in $TRIAGE_LIST — after confirmation, use:"
-    echo "    ./scripts/trello-api move $card_id Shredder --apply"
-    echo "    ./scripts/trello-api move $card_id $BACKLOG_LIST --apply"
+    echo "    ~/.agents/skills/trello-beads/scripts/trello-api.sh move $card_id Shredder --apply"
+    echo "    ~/.agents/skills/trello-beads/scripts/trello-api.sh move $card_id $BACKLOG_LIST --apply"
     return 0
   fi
 

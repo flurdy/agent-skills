@@ -1,11 +1,11 @@
 ---
 name: trello-beads
 description: "Integrate Trello boards with Beads — pull triage cards into beads, sync closed beads back to Trello. Use for project management bridging between Trello and Beads."
-allowed-tools: "Read,Write,Bash(bd create:*),Bash(bd list:*),Bash(bd show:*),Bash(./scripts/trello-api:*),Bash(./scripts/trello-pull:*),Bash(./scripts/trello-sync:*),Bash(ln:*),Bash(mkdir:*),Bash(direnv:*),AskUserQuestion"
+allowed-tools: "Read,Write,Bash(bd create:*),Bash(bd list:*),Bash(bd show:*),Bash(~/.agents/skills/trello-beads/scripts/trello-api.sh:*),Bash(~/.agents/skills/trello-beads/scripts/trello-pull.sh:*),Bash(~/.agents/skills/trello-beads/scripts/trello-sync.sh:*),Bash(direnv:*),AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.2.1"
+version: "2.0.0"
 author: "flurdy"
 ---
 
@@ -22,7 +22,8 @@ Interact with Trello boards and integrate with Beads project management.
   - `TRELLO_LIST_TRIAGE` — column name for cards to pull into beads (default: "Triage")
   - `TRELLO_LIST_BUGS` — bug column name (default: "Bugs")
   - `TRELLO_LIST_DONE` — done column name (default: "Done")
-- Scripts symlinked into project `scripts/` directory (see Setup below)
+- Scripts invoked from the shared install path `~/.agents/skills/trello-beads/scripts/`, so the command prefix is
+  stable and allowlistable across harnesses
 - Run from inside the repository that holds the board configuration. Its own `.beads`
   store owns every bead the board produces: the scripts prove that store from the Git
   toplevel and run every `bd` call as `bd -C <that repository>`. Outside a repository,
@@ -33,49 +34,15 @@ Interact with Trello boards and integrate with Beads project management.
 
 When invoked as `/trello-beads setup`, or when setting up a new project:
 
-### Step 1: Symlink scripts
+### Step 1: Verify the scripts
 
-Resolve resources in Bash first. A nonempty absolute `SKILLS_DIR` is authoritative; an invalid
-override stops rather than falling back. Otherwise prefer the canonical root, with a Claude alias
-fallback only when this skill unit is absent. Legacy Codex-only roots require explicit `SKILLS_DIR`.
-
-```bash
-set -eu
-if [[ -z "${SKILLS_DIR:-}" ]]; then
-  SKILLS_DIR="$HOME/.agents/skills"
-  if [[ ! -d "$SKILLS_DIR/trello-beads" ]]; then
-    SKILLS_DIR="${CLAUDE_SKILLS_DIR:-${CLAUDE_HOME:-$HOME/.claude}/skills}"
-  fi
-fi
-[[ "$SKILLS_DIR" = /* ]] || { echo "SKILLS_DIR must be absolute" >&2; exit 1; }
-for resource in SKILL.md scripts/trello-api.sh scripts/trello-pull.sh scripts/trello-sync.sh scripts/owning-store.sh; do
-  [[ -f "$SKILLS_DIR/trello-beads/$resource" && -r "$SKILLS_DIR/trello-beads/$resource" ]] || {
-    echo "Missing trello-beads resource: $resource" >&2; exit 1;
-  }
-done
-for script in trello-api.sh trello-pull.sh trello-sync.sh; do
-  [[ -x "$SKILLS_DIR/trello-beads/scripts/$script" ]] || { echo "$script is not executable" >&2; exit 1; }
-done
-```
-
-Missing resources stop setup before linking. Preview and confirm actual source/destination paths;
-never overwrite an existing destination implicitly. Reuse the verified absolute root across tool
-calls (shell variables may not persist). After installation-root changes, repeat approved setup.
+The scripts run in place from the shared install; nothing is linked into the project.
+Remove any legacy `scripts/trello-api`, `scripts/trello-pull` or `scripts/trello-sync`
+symlinks a previous setup created.
 
 ```bash
-for destination in scripts/trello-api scripts/trello-pull scripts/trello-sync; do
-  [[ ! -e "$destination" && ! -L "$destination" ]] || { echo "Destination exists: $destination" >&2; exit 1; }
-done
-mkdir -p scripts
-ln -s "$SKILLS_DIR/trello-beads/scripts/trello-api.sh" scripts/trello-api
-ln -s "$SKILLS_DIR/trello-beads/scripts/trello-pull.sh" scripts/trello-pull
-ln -s "$SKILLS_DIR/trello-beads/scripts/trello-sync.sh" scripts/trello-sync
-```
-
-Verify:
-```bash
-./scripts/trello-api help
-./scripts/trello-pull help
+~/.agents/skills/trello-beads/scripts/trello-api.sh help
+~/.agents/skills/trello-beads/scripts/trello-pull.sh help
 ```
 
 ### Step 2: Create .env.local from template
@@ -93,7 +60,7 @@ TRELLO_LIST_DONE=Done
 
 Find your board ID with:
 ```bash
-./scripts/trello-api boards
+~/.agents/skills/trello-beads/scripts/trello-api.sh boards
 ```
 
 ### Step 3: Ensure .env.local is gitignored
@@ -104,15 +71,15 @@ Check `.gitignore` contains `.env.local` to avoid committing secrets.
 
 ```bash
 direnv allow
-./scripts/trello-api lists
-./scripts/trello-pull list
+~/.agents/skills/trello-beads/scripts/trello-api.sh lists
+~/.agents/skills/trello-beads/scripts/trello-pull.sh list
 ```
 
 ## Usage
 
 ```
 /trello-beads                          # Show board overview
-/trello-beads setup                    # Set up symlinks and config for a project
+/trello-beads setup                    # Set up config for a project
 /trello-beads triage                   # List cards in the triage column
 /trello-beads pull                     # Preview all triage cards → Beads/Trello changes
 /trello-beads pull <card-id>           # Preview a specific card
@@ -129,13 +96,13 @@ direnv allow
 Show all lists and card counts:
 
 ```bash
-./scripts/trello-api lists
+~/.agents/skills/trello-beads/scripts/trello-api.sh lists
 ```
 
 Then for each list with cards, show a summary:
 
 ```bash
-./scripts/trello-api cards-summary "<list-name>"
+~/.agents/skills/trello-beads/scripts/trello-api.sh cards-summary "<list-name>"
 ```
 
 Present as a formatted board overview to the user.
@@ -143,7 +110,7 @@ Present as a formatted board overview to the user.
 ### Triage — List Cards Ready to Pull
 
 ```bash
-./scripts/trello-pull list
+~/.agents/skills/trello-beads/scripts/trello-pull.sh list
 ```
 
 Show the cards with their titles, labels, and Trello URLs.
@@ -154,17 +121,17 @@ First generate a complete read-only plan, present it to the user, and obtain exp
 
 ```bash
 # Preview all triage cards
-./scripts/trello-pull pull
+~/.agents/skills/trello-beads/scripts/trello-pull.sh pull
 
 # Preview a specific card
-./scripts/trello-pull pull <card-id>
+~/.agents/skills/trello-beads/scripts/trello-pull.sh pull <card-id>
 
 # After explicit confirmation, apply that same plan
-./scripts/trello-pull apply <card-id>
+~/.agents/skills/trello-beads/scripts/trello-pull.sh apply <card-id>
 
 # Preview/apply all cards with a custom destination
-./scripts/trello-pull plan-all Backlog
-./scripts/trello-pull apply-all Backlog
+~/.agents/skills/trello-beads/scripts/trello-pull.sh plan-all Backlog
+~/.agents/skills/trello-beads/scripts/trello-pull.sh apply-all Backlog
 ```
 
 `pull`, `plan`, `pull-all`, and `plan-all` never create Beads or mutate Trello. `apply` and `apply-all` are the only pull commands that do.
@@ -189,8 +156,8 @@ Cards from the Bugs column are always type=bug regardless of labels.
 ### Cards — View Any Column
 
 ```bash
-./scripts/trello-api cards-summary "<list-name>"
-./scripts/trello-api cards "<list-name>"     # Full JSON
+~/.agents/skills/trello-beads/scripts/trello-api.sh cards-summary "<list-name>"
+~/.agents/skills/trello-beads/scripts/trello-api.sh cards "<list-name>"     # Full JSON
 ```
 
 ### Sync — Update Trello from Closed Beads
@@ -198,9 +165,9 @@ Cards from the Bugs column are always type=bug regardless of labels.
 Generate and present a sync plan, then require explicit confirmation before applying it:
 
 ```bash
-./scripts/trello-sync sync              # Preview what would move
-./scripts/trello-sync sync --dry-run    # Explicit preview alias
-./scripts/trello-sync sync --apply      # Apply after confirmation
+~/.agents/skills/trello-beads/scripts/trello-sync.sh sync              # Preview what would move
+~/.agents/skills/trello-beads/scripts/trello-sync.sh sync --dry-run    # Explicit preview alias
+~/.agents/skills/trello-beads/scripts/trello-sync.sh sync --apply      # Apply after confirmation
 ```
 
 `sync` and `sync --dry-run` never mutate Trello. Unknown options fail without making requests or moves.
