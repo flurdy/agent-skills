@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * d
 model-tier: standard
 model: opus
 effort: high
-version: "1.5.1"
+version: "1.5.2"
 author: "flurdy"
 ---
 
@@ -125,6 +125,25 @@ After triage, provide:
 2. **Duplicate Check**: Any similar existing beads found
 3. **Created Beads**: List of new beads with IDs
 4. **Open Beads Summary**: Quick stats on current workload
+5. **Closing handoff**: Follow the rule below.
+
+### Closing handoff
+
+This closing rule applies to free-text intake, Jira-sourced intake, and existing-bead refinement.
+Creating or refining a bead never implies starting work in this session.
+When no concrete user-owned decision remains, end with `**Next:** Nothing required.`
+
+Replace that default only for a concrete user-owned pending decision: an unresolved proposal,
+ambiguous ownership, or a named clarifying question. A declined proposal alone does not require a follow-up decision.
+State the actual decision needed, not an invitation to work on the bead.
+
+Do not propose claiming, starting, or implementing the bead in the current session.
+Do not infer which session is for planning or implementation.
+Mention `/next` only when the user asks how to pick the work up elsewhere.
+
+Preserve the explicit `/plan-to-backlog` routing above and the `--human-review` contract
+when those paths apply. Render their required tracking handoffs or pending human question;
+never turn them into an implementation invitation.
 
 ## Implementation
 
@@ -226,7 +245,7 @@ When invoked:
 
    When creating multiple beads from a single Jira ticket, all beads get the same `--external-ref` and `jira` label so they can be traced back to the source ticket.
 
-8. Report results with summary of open beads
+8. Report results with summary of open beads and follow the closing handoff rule above.
 
 ## Refine mode (existing bead)
 

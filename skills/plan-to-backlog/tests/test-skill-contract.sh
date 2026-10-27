@@ -118,6 +118,24 @@ assert_not_contains "$TRIAGE" 'Skill(plan-to-backlog)'
 assert_contains "$TRIAGE" 'paste-ready `/plan-to-backlog <plan-source>` handoff'
 assert_contains "$TRIAGE" 'Do not classify plan children or create beads first.'
 assert_not_contains "$TRIAGE" '/triage plan'
+
+# Tracking is not an invitation to start implementation in the triage session.
+for invariant in \
+    'This closing rule applies to free-text intake, Jira-sourced intake, and existing-bead refinement.' \
+    'Creating or refining a bead never implies starting work in this session.' \
+    '**Next:** Nothing required.' \
+    'Replace that default only for a concrete user-owned pending decision' \
+    'A declined proposal alone does not require a follow-up decision.' \
+    'Do not propose claiming, starting, or implementing the bead in the current session.' \
+    'Do not infer which session is for planning or implementation.' \
+    'Mention `/next` only when the user asks how to pick the work up elsewhere.' \
+    'Preserve the explicit `/plan-to-backlog` routing above and the `--human-review` contract'; do
+    assert_contains "$TRIAGE" "$invariant"
+done
+assert_not_contains "$TRIAGE" '**Next:** Start'
+assert_not_contains "$TRIAGE" '**Next:** Claim'
+assert_not_contains "$TRIAGE" '**Next:** Implement'
+
 assert_contains "$CATALOG" '| plan-to-backlog |'
 assert_contains "$CATALOG" 'approved plan'
 assert_contains "$CATALOG" 'no-item/single-item/epic'
