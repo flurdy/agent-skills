@@ -115,12 +115,20 @@ jq -r \
     if (.blocked_by // [] | length) > 0 then .blocked_by | join(", ")
     elif (.blocked_by_count // 0) > 0 then "\(.blocked_by_count) blockers"
     else "—" end;
+  def elapsed_note($rows):
+    ($rows | map(select(.defer_elapsed == true)) | length) as $count |
+    if $count == 0 then "" else
+      "\n⏰ \($count) elapsed wake \(if $count == 1 then "date" else "dates" end): still stored deferred, not ready. Read-only listing never wakes work; review the awaited event before undeferring.\n"
+    end;
+  def defer_cell:
+    if .defer_elapsed == true then "\(.defer_until | text) ⏰ elapsed" else .defer_until end;
   def non_ready_table($title; $status; $rows; $workspace; $extra):
     ((if $workspace then ["Repo"] else [] end) +
       ["ID", "Pri", "Type", "Labels", "Title"] +
       (if $extra == "" then [] else [$extra] end)) as $headers |
     "\n\n## \($title) (\($rows | length) \($status))\n" +
     (if $title | ascii_downcase | contains("in progress") then "\nTracker claims; session activity unverified.\n" else "" end) +
+    (if $extra == "Defer until" then elapsed_note($rows) else "" end) +
     (if ($rows | length) == 0 then "\n_None._" else
       "\n" + ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
       ($rows | sort_by(.priority, .created_at, (.repository // ""), .id) | map(
@@ -128,7 +136,7 @@ jq -r \
           [.id, (if .priority == null then "—" else "P\(.priority)" end),
            .issue_type, (.labels // [] | if length == 0 then "-" else join(", ") end), .title] +
           (if $extra == "Blocked by" then [blocker_context]
-           elif $extra == "Defer until" then [.defer_until]
+           elif $extra == "Defer until" then [defer_cell]
            elif $extra == "Updated" then [(.updated_at // .created_at // "—")[0:10]]
            else [] end)) | row
       ) | join("\n"))

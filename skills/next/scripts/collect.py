@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -17,6 +18,9 @@ BEADS_READ_TIMEOUT_ENV = "NEXT_BEADS_READ_TIMEOUT_SECONDS"
 MISSING_STORE_ERROR = "missing .beads store"
 DOLT_UNREACHABLE = re.compile(r"Dolt server (?:unreachable|may not be running)", re.IGNORECASE)
 REGISTRATION_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+DEFER_UNTIL = re.compile(
+    r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$"
+)
 MANAGED_DIRECTORIES = (
     "docs",
     "docs/prds",
@@ -412,6 +416,24 @@ def service_labels(issue: dict[str, Any], services: dict[str, str]) -> list[str]
     return [label for label in labels if isinstance(label, str) and label in services]
 
 
+def defer_elapsed(value: Any, now: datetime) -> bool | None:
+    """True when a timezone-aware defer_until instant is at or before now; None when absent or unparseable."""
+    match = DEFER_UNTIL.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        return None
+    *fields, fraction, offset = match.groups()
+    try:
+        if offset == "Z":
+            zone = timezone.utc
+        else:
+            sign = 1 if offset[0] == "+" else -1
+            zone = timezone(sign * timedelta(hours=int(offset[1:3]), minutes=int(offset[4:6])))
+        instant = datetime(*map(int, fields), int((fraction or "0")[:6].ljust(6, "0")), tzinfo=zone)
+    except ValueError:
+        return None
+    return instant <= now
+
+
 def machine_identity() -> dict[str, Any]:
     path = Path.home() / ".agents" / "AGENTS.local.md"
     result: dict[str, Any] = {"id": None, "source": str(path), "state": "missing",
@@ -476,6 +498,7 @@ def machine_eligibility(issue: dict[str, Any], machine: dict[str, Any]) -> dict[
 
 def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
     beads_read_timeout()
+    now = datetime.now(timezone.utc)
     workspace, sources = discover_sources(root)
     payload: dict[str, Any] = {
         "workspace": workspace,
@@ -524,6 +547,10 @@ def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:
     payload["ready"] = [
         {**issue, "machine_eligibility": machine_eligibility(issue, payload["machine"])}
         for issue in payload["ready"]
+    ]
+    payload["deferred"] = [
+        {**issue, "defer_elapsed": defer_elapsed(issue.get("defer_until"), now)}
+        for issue in payload["deferred"]
     ]
     return payload
 

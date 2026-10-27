@@ -224,6 +224,29 @@ test('other-machine rows remain visible but never enter occupancy or eligible qu
   await assert.rejects(classifyCandidates({ ...data, other_machines: [{ ...other, selector: 'workspace:here' }] }), /Duplicate/);
 });
 
+test('elapsed wake dates are marked in the deferred table without touching ready rows', async () => {
+  const deferred = (id, defer_until, defer_elapsed) => ({ id, repository: 'workspace', title: id, priority: 3, issue_type: 'task', labels: [], defer_until, defer_elapsed });
+  const free = async roots => roots.map(root => ({ root, kind: 'free' }));
+  const data = { ...packet([candidate('ready')]), deferred: [
+    deferred('elapsed', '2000-01-01T00:00:00Z', true), deferred('future', '2999-12-31T23:59:59Z', false),
+    deferred('icebox', null, null), deferred('text', 'soon', null), deferred('spoofed', '2000-01-01T00:00:00Z', 'true'),
+  ] };
+  const output = renderSafeList(await classifyCandidates(data, free));
+  const [ready, later] = output.split('## Later — deferred (5; not selectable)');
+  assert.match(ready, /\| 1 \| workspace \| ready .*\| free \|/);
+  assert.doesNotMatch(ready, /elapsed|⏰/);
+  assert.match(later, /^\n\n⏰ 1 elapsed wake date: still stored deferred, not ready\. Read-only listing never wakes work; review the awaited event before undeferring\.\n\n\| Repo \|/);
+  assert.match(later, /\| workspace \| elapsed \| P3 \| task \| - \| elapsed \| 2000-01-01T00:00:00Z ⏰ elapsed \|/);
+  assert.match(later, /\| future \| 2999-12-31T23:59:59Z \|/);
+  assert.match(later, /\| icebox \| — \|/);
+  assert.match(later, /\| text \| soon \|/);
+  assert.match(later, /\| spoofed \| 2000-01-01T00:00:00Z \|/);
+  assert.equal((later.match(/⏰ elapsed/g) ?? []).length, 1);
+  const pending = renderSafeList(await classifyCandidates({ ...data, deferred: data.deferred.slice(1) }, free));
+  assert.match(pending, /## Later — deferred \(4; not selectable\)\n\n\| Repo \|/);
+  assert.doesNotMatch(pending, /elapsed|⏰/);
+});
+
 test('declared roots keep observer priority; label overflow is reported, not treated as free', async () => {
   const declaredRoots = Array.from({ length: 31 }, (_, index) => `/d${index}`);
   const data = packet([

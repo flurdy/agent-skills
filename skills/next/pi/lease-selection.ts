@@ -192,6 +192,9 @@ function leaseCheck(row) {
 }
 
 const shortRoot = root => root.split('/').filter(Boolean).at(-1) ?? root;
+const isElapsed = row => row.defer_elapsed === true;
+const deferCell = row => isElapsed(row) ? `${displayText(row.defer_until)} ⏰ elapsed` : row.defer_until ?? '—';
+const elapsedNote = count => `⏰ ${count} elapsed wake ${count === 1 ? 'date' : 'dates'}: still stored deferred, not ready. Read-only listing never wakes work; review the awaited event before undeferring.`;
 
 export function renderSafeList(result) {
   const rows = ['eligible', 'occupied', 'unknown', 'unavailable', 'tracker_conflicts']
@@ -228,8 +231,10 @@ export function renderSafeList(result) {
     if (!result[key]?.length) continue;
     parts.push(`## ${title} (${result[key].length}; not selectable)`);
     if (key === 'in_progress') parts.push('Tracker claims; session activity unverified.');
+    const elapsed = key === 'deferred' ? result[key].filter(isElapsed).length : 0;
+    if (elapsed) parts.push(elapsedNote(elapsed));
     parts.push(table([...headers, ...(extra ? [extra] : [])], result[key].map(row => [...fields(row),
-      ...(key === 'blocked' ? [row.blocked_by?.join(', ') || '—'] : key === 'deferred' ? [row.defer_until ?? '—'] : [])])));
+      ...(key === 'blocked' ? [row.blocked_by?.join(', ') || '—'] : key === 'deferred' ? [deferCell(row)] : [])])));
   }
   if (result.other_machines?.length) parts.push(`## Other machines (${result.other_machines.length} beads; not selectable here)`,
     'Machine suitability only; lease occupancy was not checked for these rows.',

@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.22.0"
+version: "1.23.0"
 author: "flurdy"
 ---
 
@@ -148,11 +148,14 @@ Tracker claims; session activity unverified.
 |---|---|---|---|---|---|---|
 | events | event-pqr | P2 | task | auth | Update provider | event-jkl |
 
-## Deferred (1 beads; not selectable)
+## Deferred (2 beads; not selectable)
+
+⏰ 1 elapsed wake date: still stored deferred, not ready. Read-only listing never wakes work; review the awaited event before undeferring.
 
 | Repo | ID | Pri | Type | Labels | Title | Defer until |
 |---|---|---|---|---|---|---|
-| workspace | agents-mno | P3 | task | tooling | Revisit tooling | 2026-10-01T00:00:00Z |
+| workspace | agents-mno | P3 | task | tooling | Revisit tooling | 2026-10-01T00:00:00Z ⏰ elapsed |
+| workspace | agents-pqr | P3 | task | vendor | Retry vendor upgrade | 2026-12-01T00:00:00Z |
 
 ## Backlog (1 P4 beads; not auto-pickable, start by ID)
 
@@ -169,6 +172,18 @@ picker numbering; empty non-ready categories show their heading and `_None._`.
 Non-ready tables include all priorities. Blocker IDs (or count) and `defer_until` are shown
 when available; missing context is `—`. Blocked membership retains `bd blocked` semantics;
 deferred membership comes from an explicit `--status=deferred` read, not a date heuristic.
+
+A dated defer is a snooze. Installed `bd` (1.3.1) wakes it only on a *writing* ready-front read
+such as `bd ready`: that read sets the issue back to `open` and clears `defer_until`, so it
+returns as ordinary ready work. The collector's `--readonly` reads never do this: an elapsed
+snooze stays stored `deferred`, is absent from `--ready`, and keeps its past `defer_until`. The
+listing therefore marks such rows `⏰ elapsed` in the Defer until column and adds one attention
+line above the table. Elapsed means a timezone-aware RFC 3339 instant (`Z` or `±HH:MM`) at or
+before one current time captured per listing. Missing, naive or unparseable dates are shown as
+recorded and never called elapsed; `due_at`/deadlines are unrelated. The marker is a reminder to
+review the awaited event, not proof it happened: it never makes a row selectable, alters ranking
+or picker numbers, or wakes, undefers or otherwise mutates the bead.
+
 The Backlog table lists unblocked P4 beads. It appears when fewer than 3 P0–P3 beads are
 ready and backlog exists, or always with `--backlog`. Its rows are unnumbered and never
 auto-picked, but a user may start one by its ID.
@@ -397,7 +412,8 @@ same service as in-progress work** separately, even when scope is unknown. Only
 repository, or for the workspace root a registered repository/infrastructure name.
 Topical labels such as `marketing` never hold work back. A shared service is an advisory
 collision hint, not proof that its source is occupied. In-progress, blocked and deferred
-tables are titled **Claimed — in progress**, **Waiting — blocked** and **Later — deferred**.
+tables are titled **Claimed — in progress**, **Waiting — blocked** and **Later — deferred**;
+the deferred table carries the same `⏰ elapsed` marker and attention line as the ordinary listing.
 A row that is both occupied and overlapping appears only in Occupied. Suppress empty
 auxiliary sections in this safe view only; ordinary `/next list` stays unchanged.
 
