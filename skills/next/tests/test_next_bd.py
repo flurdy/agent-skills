@@ -294,6 +294,57 @@ class NextBdTest(WorkspaceFixture):
                     )
                     self.assertEqual(json.loads(result.stdout)["id"], issue_id)
 
+    def test_full_listings_show_ready_work_last(self) -> None:
+        agents = self.home / ".agents"
+        agents.mkdir()
+        (agents / "AGENTS.local.md").write_text("- Machine: Rivelino.\n", encoding="utf-8")
+        data = {
+            "ready": [
+                issue("ready-task", 2, "task", "2026-01-01T00:00:00Z"),
+                issue("elsewhere", 2, "task", "2026-01-01T00:00:00Z", labels=["run-on:leonidas"]),
+                issue("backlog-chore", 4, "chore", "2026-01-01T00:00:00Z"),
+            ],
+            "in_progress": [issue("claimed", 2, "task", "2026-01-01T00:00:00Z")],
+            "blocked": [issue("blocked", 2, "task", "2026-01-01T00:00:00Z")],
+            "deferred": [issue("later", 3, "task", "2026-01-01T00:00:00Z")],
+        }
+        workspace = self.create_workspace(
+            root_data=data, repositories={"broken": {"faults": {"ready": "error"}}}
+        )
+        local = self.base / "local"
+        self.create_store(local, **data)
+        for directory, owner, notice in ((workspace, "workspace | ", ["## ⚠️ Beads store unavailable"]),
+                                         (local, "", [])):
+            for arguments in (("--list",), ("--list", "--backlog")):
+                with self.subTest(directory=directory, arguments=arguments):
+                    output = self.run_next(directory, *arguments).stdout
+                    headings = [line.split(" (")[0] for line in output.splitlines() if line.startswith("## ")]
+                    self.assertEqual(headings, notice + ["## In Progress", "## Blocked", "## Deferred", "## Backlog",
+                                                         "## Other machines", "## Ready to Work"])
+                    head, tail = output.split("## Ready to Work (1 beads)", 1)
+                    self.assertEqual("Source diagnostics:" in head, bool(notice))
+                    if notice:
+                        self.assertLess(head.index("## Backlog"), head.index("Source diagnostics:"))
+                        self.assertLess(head.index("Source diagnostics:"), head.index("## Other machines"))
+                    self.assertNotIn("## ", tail)
+                    self.assertNotIn("Source diagnostics", tail)
+                    self.assertTrue(output.rstrip("\n").endswith(
+                        f"| 1 | {owner}ready-task | P2 | task | - | Title for ready-task |"), tail)
+                    self.assertEqual(output.count("| # |"), 1)
+            with self.subTest(directory=directory, arguments="--safe"):
+                safe = self.run_next(directory, "--safe").stdout
+                headings = [line.split(" (")[0] for line in safe.splitlines() if line.startswith("## ")]
+                self.assertEqual(headings, notice + ["## Claimed — in progress", "## Waiting — blocked",
+                                                     "## Later — deferred", "## Other machines", "## Ready to review"])
+                tail = safe.split("## Ready to review (1 beads)", 1)[1]
+                self.assertNotIn("## ", tail)
+                blocks = tail.strip("\n").split("\n\n")
+                self.assertEqual([block[:12] for block in blocks], ["| # | " + ("Repo |" if owner else "ID | P"),
+                                                                   "Lease check:", "Numbers are "])
+        compact = self.run_next(local).stdout
+        self.assertTrue(compact.startswith("Machine: rivelino"), compact[:80])
+        self.assertIn("## Ready to Work (1 beads)", compact.split("## Other machines", 1)[0])
+
     def test_listing_instructions_require_all_sections(self) -> None:
         skill = (SKILL_DIR / "SKILL.md").read_text()
         listing = skill.split("## Listing Mode (default and `list`)", 1)[1].split("## Handling Edge Cases", 1)[0]

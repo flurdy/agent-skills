@@ -211,22 +211,6 @@ export function renderSafeList(result) {
     'Work from these stores is not listed below; this is not an empty backlog.',
     stores.map(store => `- **${displayText(store.repository)}** — ${displayText(store.hint ?? store.reason)}`).join('\n')] : [];
   if (result.machine) parts.push(`Machine: ${displayCell(result.machine.id ?? 'unknown')} (${displayCell(result.machine.state)}: ${displayCell(result.machine.reason)}); source: ${displayCell(result.machine.source)}`);
-  parts.push(`## Ready to review (${ready.length} beads)`);
-  if (!ready.length && stores.length) parts.push('_Ready work unknown: the unavailable stores above were not read._');
-  else {
-    parts.push(ready.length ? table(['#', ...headers, 'Lease check'], ready.map((row, index) => [index + 1, ...fields(row), leaseCheck(row)]))
-      : '_No candidates without known occupancy or a shared in-progress service._');
-    const checked = ready.filter(row => leaseCheck(row) === 'free').length;
-    parts.push(`Lease check: ${checked} free, ${ready.length - checked} not checked. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. Local Pi only; no reservation.`);
-  }
-  if (occupied.length) parts.push(`## Occupied — source held by another Pi session (${occupied.length} ${occupied.length === 1 ? 'bead' : 'beads'})`,
-    'held = a declared root is leased; held (label) = a label names a service directory another session leases.',
-    table([...headers, 'Lease check', 'Held roots'], occupied.map(row => [...fields(row), leaseCheck(row),
-      [...new Set([...heldRoots(row).map(item => shortRoot(item.root)), ...(row.label_occupancy ?? []).map(item => item.service)])].join(', ')])));
-  if (overlaps.length) parts.push(`## Held back — same service as in-progress work (${overlaps.length} ${overlaps.length === 1 ? 'bead' : 'beads'})`,
-    'May collide with claimed work; labels only, not lease evidence.',
-    table([...headers, 'Lease check', 'Shared service'], overlaps.map(row => [...fields(row), leaseCheck(row),
-      `${row.shared_services.join(', ')} (${row.tracker_overlap.join(', ')})`])));
   for (const [key, title, extra] of [['in_progress', 'Claimed — in progress', ''], ['blocked', 'Waiting — blocked', 'Blocked by'], ['deferred', 'Later — deferred', 'Defer until']]) {
     if (!result[key]?.length) continue;
     parts.push(`## ${title} (${result[key].length}; not selectable)`);
@@ -236,13 +220,29 @@ export function renderSafeList(result) {
     parts.push(table([...headers, ...(extra ? [extra] : [])], result[key].map(row => [...fields(row),
       ...(key === 'blocked' ? [row.blocked_by?.join(', ') || '—'] : key === 'deferred' ? [deferCell(row)] : [])])));
   }
-  if (result.other_machines?.length) parts.push(`## Other machines (${result.other_machines.length} beads; not selectable here)`,
-    'Machine suitability only; lease occupancy was not checked for these rows.',
-    table([...headers, 'Run on / reason'], result.other_machines.map(row => [...fields(row), row.machine_eligibility.reason])));
   const reasons = rows.flatMap(row => row.occupancy.filter(item => item.kind === 'unavailable')
     .map(item => `${row.selector}: ${item.root}: ${item.reason}`));
   const diagnostics = [...new Set([...result.diagnostics, ...reasons])];
   if (diagnostics.length) parts.push('### Check details', ...diagnostics.map(reason => `- ${displayCell(reason)}`));
+  if (result.other_machines?.length) parts.push(`## Other machines (${result.other_machines.length} beads; not selectable here)`,
+    'Machine suitability only; lease occupancy was not checked for these rows.',
+    table([...headers, 'Run on / reason'], result.other_machines.map(row => [...fields(row), row.machine_eligibility.reason])));
+  if (occupied.length) parts.push(`## Occupied — source held by another Pi session (${occupied.length} ${occupied.length === 1 ? 'bead' : 'beads'})`,
+    'held = a declared root is leased; held (label) = a label names a service directory another session leases.',
+    table([...headers, 'Lease check', 'Held roots'], occupied.map(row => [...fields(row), leaseCheck(row),
+      [...new Set([...heldRoots(row).map(item => shortRoot(item.root)), ...(row.label_occupancy ?? []).map(item => item.service)])].join(', ')])));
+  if (overlaps.length) parts.push(`## Held back — same service as in-progress work (${overlaps.length} ${overlaps.length === 1 ? 'bead' : 'beads'})`,
+    'May collide with claimed work; labels only, not lease evidence.',
+    table([...headers, 'Lease check', 'Shared service'], overlaps.map(row => [...fields(row), leaseCheck(row),
+      `${row.shared_services.join(', ')} (${row.tracker_overlap.join(', ')})`])));
+  parts.push(`## Ready to review (${ready.length} beads)`);
+  if (!ready.length && stores.length) parts.push('_Ready work unknown: the unavailable stores above were not read._');
+  else {
+    parts.push(ready.length ? table(['#', ...headers, 'Lease check'], ready.map((row, index) => [index + 1, ...fields(row), leaseCheck(row)]))
+      : '_No candidates without known occupancy or a shared in-progress service._');
+    const checked = ready.filter(row => leaseCheck(row) === 'free').length;
+    parts.push(`Lease check: ${checked} free, ${ready.length - checked} not checked. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. Local Pi only; no reservation.`);
+  }
   parts.push(`Numbers are for review, not safe claims. ${result.workspace ? 'Selector = Repo:ID.' : 'Selector = local:ID.'} Only a fresh eligible recheck permits a safe claim; picking a not-checked row starts ordinary, not lease-checked, work.`);
   return parts.join('\n\n');
 }

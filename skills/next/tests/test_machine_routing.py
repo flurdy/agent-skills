@@ -58,14 +58,15 @@ class MachineRoutingTest(WorkspaceFixture):
             text = self.listing(flag).stdout
             self.assertIn("Machine: rivelino", text)
             self.assertIn(str(self.context), text)
-            head, other = text.split("## Other machines", 1)
-            self.assertNotIn("| leo |", head)
+            head, ready = text.split("## Ready to", 1)
+            other = head.split("## Other machines", 1)[1]
+            self.assertNotIn("| leo |", ready)
             self.assertIn("| leo |", other)
             self.assertIn("| backlog |", other)
             self.assertIn("| bad |", other)
-            self.assertNotIn("| # |", other)
+            self.assertNotIn("| # |", head)
             for status in ("claimed", "blocked", "deferred"):
-                self.assertIn(f"| {status} |", text)
+                self.assertIn(f"| {status} |", head)
         packet = json.loads(self.listing("--safe-json").stdout)
         self.assertEqual(packet["machine"]["id"], "rivelino")
         self.assertEqual([row["id"] for row in packet["candidates"]], expected)

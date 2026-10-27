@@ -54,11 +54,13 @@ class SourceScopeTest(WorkspaceFixture):
         self.assertIn("| 1 | review |", output)
         main, held = output.split("## Held back — same service as in-progress work (1 beads)")
         self.assertNotIn("| clash |", main)
+        self.assertIn("## Claimed — in progress (1 beads; not selectable)", main)
+        self.assertIn("Tracker claims; session activity unverified.", main)
         self.assertIn("labels only, not lease evidence", held)
         self.assertIn("| Shared service |", held)
         self.assertIn("| hosted (active) |", held)
-        self.assertIn("## Claimed — in progress (1 beads; not selectable)", held)
-        self.assertIn("Tracker claims; session activity unverified.", held)
+        self.assertIn("## Ready to review (1 beads)", held)
+        self.assertNotIn("| clash |", held.split("## Ready to review", 1)[1])
         self.assertNotIn("Tracker label overlap", output)
 
     def test_workspace_root_services_include_registered_repositories(self) -> None:

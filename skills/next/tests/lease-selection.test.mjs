@@ -214,10 +214,11 @@ test('other-machine rows remain visible but never enter occupancy or eligible qu
   assert.equal(result.other_machines[0].id, 'remote');
   const text = renderSafeList(result);
   assert.match(text, /Machine: rivelino/);
-  const [ready, foreign] = text.split('## Other machines');
-  assert.doesNotMatch(ready, /remote/);
+  const [foreign, ready] = text.split('## Ready to review');
+  assert.match(foreign, /## Other machines/);
   assert.match(foreign, /requires leonidas/);
   assert.doesNotMatch(foreign, /\| # \||\| free \|/);
+  assert.doesNotMatch(ready, /remote/);
   await assert.rejects(classifyCandidates({ ...data, machine: { id: 'rivelino' } }), /machine identity/);
   await assert.rejects(classifyCandidates({ ...data, other_machines: [{ ...other, labels: 'broken' }] }), /other-machine/);
   await assert.rejects(classifyCandidates({ ...packet([other]), machine }), /source-scope/);
@@ -232,7 +233,9 @@ test('elapsed wake dates are marked in the deferred table without touching ready
     deferred('icebox', null, null), deferred('text', 'soon', null), deferred('spoofed', '2000-01-01T00:00:00Z', 'true'),
   ] };
   const output = renderSafeList(await classifyCandidates(data, free));
-  const [ready, later] = output.split('## Later — deferred (5; not selectable)');
+  const [before, rest] = output.split('## Later — deferred (5; not selectable)');
+  const [later, ready] = rest.split('## Ready to review (1 beads)');
+  assert.doesNotMatch(before, /elapsed|⏰/);
   assert.match(ready, /\| 1 \| workspace \| ready .*\| free \|/);
   assert.doesNotMatch(ready, /elapsed|⏰/);
   assert.match(later, /^\n\n⏰ 1 elapsed wake date: still stored deferred, not ready\. Read-only listing never wakes work; review the awaited event before undeferring\.\n\n\| Repo \|/);
@@ -245,6 +248,25 @@ test('elapsed wake dates are marked in the deferred table without touching ready
   const pending = renderSafeList(await classifyCandidates({ ...data, deferred: data.deferred.slice(1) }, free));
   assert.match(pending, /## Later — deferred \(4; not selectable\)\n\n\| Repo \|/);
   assert.doesNotMatch(pending, /elapsed|⏰/);
+});
+
+test('safe view renders ready work last, directly above the review footer', async () => {
+  const other = { ...candidate('remote', ['/remote']), machine_eligibility: { eligible: false, state: 'mismatch', reason: 'requires leonidas' } };
+  const extra = (id, fields) => ({ id, repository: 'workspace', title: id, priority: 2, issue_type: 'task', labels: [], ...fields });
+  const data = {
+    ...packet([candidate('free'), candidate('held', ['/busy']), candidate('overlap', [], 'unknown', ['web'])],
+      [extra('active', { labels: ['web'], services: ['web'] })]),
+    blocked: [extra('blocked', { blocked_by: ['dep'] })], deferred: [extra('later', { defer_until: null, defer_elapsed: null })],
+    other_machines: [other], unavailable_stores: [downStore], diagnostics: ['fixture diagnostic'],
+    machine: { id: 'rivelino', source: '/home/test/.agents/AGENTS.local.md', state: 'ok', reason: 'user local context' },
+  };
+  const output = renderSafeList(await classifyCandidates(data, async roots => roots.map(root => ({ root, kind: root === '/busy' ? 'held' : 'free' }))));
+  const headings = [...output.matchAll(/^##+ [^(\n]*/gm)].map(match => match[0].trimEnd());
+  assert.deepEqual(headings, ['## ⚠️ Beads store unavailable', '## Claimed — in progress', '## Waiting — blocked', '## Later — deferred',
+    '### Check details', '## Other machines', '## Occupied — source held by another Pi session', '## Held back — same service as in-progress work', '## Ready to review']);
+  const tail = output.split('## Ready to review (1 beads)')[1];
+  assert.deepEqual(tail.trim().split('\n\n').map(block => block.split('\n')[0].slice(0, 12)), ['| # | Repo |', 'Lease check:', 'Numbers are ']);
+  assert.match(tail, /\| 1 \| workspace \| free \| P2 \| task \| - \| free \| free \|/);
 });
 
 test('declared roots keep observer priority; label overflow is reported, not treated as free', async () => {

@@ -202,27 +202,27 @@ jq -r \
     })) as $safe_rows |
     ($safe_rows | map(select(.tracker_overlap | length == 0))) as $review |
     ($safe_rows | map(select(.tracker_overlap | length > 0))) as $overlaps |
-    unavailable_notice($unavailable) + machine_notice($payload.machine) + "\n\n" +
+    unavailable_notice($unavailable) + machine_notice($payload.machine) +
+    (if ($in_progress | length) > 0 then non_ready_table("Claimed — in progress"; "beads; not selectable"; $in_progress; $workspace; "") else "" end) +
+    (if ($payload.blocked | length) > 0 then non_ready_table("Waiting — blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") else "" end) +
+    (if ($payload.deferred | length) > 0 then non_ready_table("Later — deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") else "" end) +
+    (if ($diagnostics | length) > 0 then "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + cell) | join("\n")) else "" end) +
+    other_table($other_machines; $workspace) +
+    (if ($overlaps | length) > 0 then
+      "\n\n" + safe_table("Held back — same service as in-progress work"; $overlaps; $workspace; false; true)
+    else "" end) +
+    "\n\n" +
     (if ($review | length) == 0 and ($unavailable | length) > 0 then
       "## Ready to review (0 beads)\n\n_Ready work unknown: the unavailable stores above were not read._"
     else
       safe_table("Ready to review"; $review; $workspace; true; false) +
       "\n\nLease check: 0 free, \($review | length) not checked; no in-process Pi observer. unknown = no source_scope declaration; partial = incomplete scope; n/a = observer unavailable. Not checked does not mean occupied. No lease was acquired."
     end) +
-    (if ($overlaps | length) > 0 then
-      "\n\n" + safe_table("Held back — same service as in-progress work"; $overlaps; $workspace; false; true)
-    else "" end) +
-    (if ($in_progress | length) > 0 then non_ready_table("Claimed — in progress"; "beads; not selectable"; $in_progress; $workspace; "") else "" end) +
-    (if ($payload.blocked | length) > 0 then non_ready_table("Waiting — blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") else "" end) +
-    (if ($payload.deferred | length) > 0 then non_ready_table("Later — deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") else "" end) +
-    (if ($diagnostics | length) > 0 then "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + cell) | join("\n")) else "" end) +
-    other_table($other_machines; $workspace) +
     "\n\nNumbers are for review, not safe claims. Selector = \(if $workspace then "Repo:ID" else "local:ID" end). Only a fresh eligible recheck permits a safe claim; picking a not-checked row starts ordinary, not lease-checked, work."
   elif $json_output == "true" then
     $ranked
   else
-    unavailable_notice($unavailable) + machine_notice($payload.machine) + "\n\n" +
-    "## Ready to Work (\($ranked | length) beads)\n" +
+    ("## Ready to Work (\($ranked | length) beads)\n" +
     (if $workspace then
       "| # | Repo | ID | Pri | Type | Labels | Title |\n" +
       "|---|---|---|---|---|---|---|\n"
@@ -236,16 +236,22 @@ jq -r \
       else
         "| \(.key + 1) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
       end
-    ) | join("\n")) +
+    ) | join("\n"))) as $ready_table |
+    (if ($diagnostics | length) > 0 then
+      "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + .) | join("\n"))
+    else "" end) as $diagnostics_block |
+    unavailable_notice($unavailable) + machine_notice($payload.machine) +
     if $full_list == "true" then
       non_ready_table("In Progress"; "beads; not selectable"; $in_progress; $workspace; "") +
       non_ready_table("Blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") +
       non_ready_table("Deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") +
-      if $show_backlog == "true" or
+      (if $show_backlog == "true" or
          (($ranked | length) < $backlog_threshold and ($backlog | length) > 0) then
         non_ready_table("Backlog"; "P4 beads; not auto-pickable, start by ID"; $backlog; $workspace; "Updated")
-      else "" end
+      else "" end) +
+      $diagnostics_block + other_table($other_machines; $workspace) + "\n\n" + $ready_table
     elif $show_ip == "true" and ($in_progress | length) > 0 then
+      "\n\n" + $ready_table +
       "\n\nTracker status: in progress (session activity unverified):\n" +
       ($in_progress | map(
         if $workspace then
@@ -253,12 +259,8 @@ jq -r \
         else
           "- `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\""
         end
-      ) | join("\n"))
-    else "" end +
-    if ($diagnostics | length) > 0 then
-      "\n\nSource diagnostics:\n" +
-      ($diagnostics | map("- " + .) | join("\n"))
-    else "" end +
-    other_table($other_machines; $workspace)
+      ) | join("\n")) +
+      $diagnostics_block + other_table($other_machines; $workspace)
+    else "\n\n" + $ready_table + $diagnostics_block + other_table($other_machines; $workspace) end
   end
 ' <<< "$payload"

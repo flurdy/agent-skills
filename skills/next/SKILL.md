@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.23.0"
+version: "1.24.0"
 author: "flurdy"
 ---
 
@@ -68,8 +68,8 @@ never drop `--readonly`, loop, repair, sync or claim a bead as part of recovery.
    - At a valid project-workspace root, collect the root and every registered repository
      with a usable Beads store
    - Exclude `in_progress` beads as tracker claims; session activity remains unverified
-   - In default/list mode, show complete in-progress, blocked, and deferred tables alongside
-     ready work, including repository identity in workspace mode (for awareness, not selection)
+   - In default/list mode, show complete in-progress, blocked, and deferred tables before the
+     ranked ready table, including repository identity in workspace mode (for awareness, not selection)
 
 2. **Rank by Suitability**
    - Apply priority ranking algorithm (see below)
@@ -126,14 +126,6 @@ never drop `--readonly`, loop, repair, sync or claim a bead as part of recovery.
 ## Output Format
 
 ```plaintext
-## Ready to Work (3 beads)
-
-| # | Repo     | ID         | Pri | Type    | Labels          | Title                   |
-|---|----------|------------|-----|---------|-----------------|-------------------------|
-| 1 | frontend | web-abc    | P1  | bug     | login           | Fix login timeout       |
-| 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV       |
-| 3 | events   | event-ghi  | P2  | task    | auth            | Update dependencies     |
-
 ## In Progress (1 beads; not selectable)
 
 Tracker claims; session activity unverified.
@@ -163,8 +155,21 @@ Tracker claims; session activity unverified.
 |---|---|---|---|---|---|---|
 | frontend | web-klm | P4 | chore | - | Replace cookie helper | 2026-05-29 |
 
+## Ready to Work (3 beads)
+
+| # | Repo     | ID         | Pri | Type    | Labels          | Title                   |
+|---|----------|------------|-----|---------|-----------------|-------------------------|
+| 1 | frontend | web-abc    | P1  | bug     | login           | Fix login timeout       |
+| 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV       |
+| 3 | events   | event-ghi  | P2  | task    | auth            | Update dependencies     |
+
 Pick a number from ready work, a ready bead ID, or type task/bug/quick to auto-pick.
 ```
+
+Sections are ordered for bottom-scrolling terminals: the non-selectable tables, source
+diagnostics and Other machines come first, and the ranked **Ready to Work** table is always
+last so it sits immediately above the picker prompt. Its ranking and numbering do not depend
+on that order.
 
 The `Repo` column appears only for validated workspace aggregation. Local single-store
 output omits it in every table. Non-ready rows have no `#` column and are never part of
@@ -396,7 +401,9 @@ guidelines. If the helper is unavailable, reproduce the portable `next-bd --safe
 unchanged instead; do not invent observations.
 
 The helper's compact Markdown is the familiar **Ready to review** ranked table,
-not five diagnostic queues. Preserve its original ranking and all rows. Use the ordinary
+not five diagnostic queues. It is rendered last, after the non-selectable, Occupied and Held
+back tables, so it sits closest to the picker; preserve that order, its original ranking and
+all rows. Use the ordinary
 columns (`#`, optional `Repo`, `ID`, `Pri`, `Type`, `Labels`, `Title`) plus one **Lease check**
 column: `free`, `unknown` (no declaration), `partial`, `invalid`, or `n/a` (observer
 unavailable); Occupied rows show `held` or `held (label)`. A legend line follows the table.
@@ -620,11 +627,13 @@ When listing:
    (add `--backlog` for `/next backlog`).
 2. **Reproduce all four sections, the Backlog section when present, and any source diagnostics
    in your own markdown reply**: every ranked ready row, every in-progress, blocked, and deferred
-   row, and every backlog row, using the Output Format above. Never list bead IDs in prose
+   row, and every backlog row, in the collector's order (non-ready tables first, the ranked
+   Ready to Work table last) using the Output Format above. Never list bead IDs in prose
    instead of a table. Preserve empty-category headings and `_None._`. Never omit non-ready tables
    because ready work exists. Do not truncate to "top 3" or replace tables with a narrative.
 3. *After* the tables, you may add a short note (1–2 sentences) on the strongest candidate(s)
-   and any in-progress overlap — but the tables come first and stay complete. Keep non-ready
+   and any in-progress overlap — but the tables come first and stay complete, with Ready to Work
+   as the final table so it stays next to the picker prompt. Keep non-ready
    rows unnumbered and explicitly non-selectable; their positions are never picker indexes.
 4. End with the picker prompt: `Pick a number from ready work, a ready bead ID, or type task/bug/quick to auto-pick.`
 5. When the user picks a number, pass that index to `next-select` with the same collector
