@@ -53,6 +53,16 @@ for the native schema.
 Shared agents omit `model:` because Pi may honor that field directly. Codex targets
 skip this repository's Claude-style agent layer.
 
+## Response endings
+
+When a user's guidance calls for a `Next` footer, use it for a short, truthful next-step or
+next-state summary. Put concrete user instructions and paste-ready commands separately before
+it. Do not promise automatic continuation while waiting, invent work after completion, or stop
+short of already-authorized work. A read-only recommendation remains read-only; summaries never
+grant implementation, installation, publication, or other approval. Preserve required question
+and confirmation tools. Exact/verbatim output and final protocol-line contracts take precedence
+over adding a generic footer; do not rewrite their fields or add trailing text.
+
 ## Helper scripts and permissions
 
 Put shell commands, API calls, and other executable helpers under a skill's

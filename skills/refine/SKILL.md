@@ -6,7 +6,7 @@ disable-model-invocation: true
 model-tier: standard
 model: opus
 effort: high
-version: "0.1.1"
+version: "0.1.2"
 author: "flurdy"
 ---
 
@@ -133,12 +133,17 @@ Use at most **300 words** before the handoff. No scoring framework, no plan, no 
 **Next:** {see below}
 ```
 
-The `Next` line is the only handoff and is never executed from here:
+The handoff is never executed from here. Put a needed command in its own code block, or a
+missing fact in a short list, before the final `Next` summary:
 
-- **KEEP WHOLE** → `Nothing required.`
-- **CLARIFY** → paste-ready `/triage <repo>:<id> clarify: <the named gap>`
-- **SPLIT** → paste-ready `/triage <repo>:<id> split: <child titles>; <epic yes/no>`
-- **INSUFFICIENT EVIDENCE** → the one fact or qualified selector needed
+| Verdict | Separate handoff, when needed | `Next` summary |
+|---|---|---|
+| **KEEP WHOLE** | None | `Nothing required.` |
+| **CLARIFY** | Paste-ready `/triage <repo>:<id> clarify: <the named gap>` | `Clarification awaits a separate triage request.` |
+| **SPLIT** | Paste-ready `/triage <repo>:<id> split: <child titles>; <epic yes/no>` | `The split proposal awaits a separate triage request.` |
+| **INSUFFICIENT EVIDENCE** | The one fact or qualified selector needed | `Sizing awaits the missing evidence.` |
+
+Do not put commands or detailed user instructions in `Next`, or imply automatic continuation.
 
 Triage refine mode then re-resolves ownership, shows the exact proposal, and requires
 explicit confirmation before each description rewrite, child creation, relationship change,

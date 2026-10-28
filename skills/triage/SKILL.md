@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * d
 model-tier: standard
 model: opus
 effort: high
-version: "1.5.2"
+version: "1.5.3"
 author: "flurdy"
 ---
 
@@ -135,7 +135,9 @@ When no concrete user-owned decision remains, end with `**Next:** Nothing requir
 
 Replace that default only for a concrete user-owned pending decision: an unresolved proposal,
 ambiguous ownership, or a named clarifying question. A declined proposal alone does not require a follow-up decision.
-State the actual decision needed, not an invitation to work on the bead.
+Put the actual question or required user action in a separate short list, table, or command block
+before the final line. Keep `Next` a general summary, such as `Awaiting ownership clarification.`,
+not a command or an invitation to work on the bead. It promises no automatic continuation.
 
 Do not propose claiming, starting, or implementing the bead in the current session.
 Do not infer which session is for planning or implementation.

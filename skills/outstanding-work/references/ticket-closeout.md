@@ -128,8 +128,10 @@ For a before/after comparison, distinguish an actual baseline run from a static 
 do not claim the old skill necessarily missed something simply because it did not require a ledger.
 A genuinely complete ticket with sufficient evidence is a valid outcome; never invent a defect.
 
-End with one useful user action, not automatic mutation. Never update Jira, post comments, close
-tracking, merge, push, install integrations, change credentials or start a follow-up under this mode.
+End with a concise next-state summary, not automatic mutation. Put any needed user action in a
+separate short list or command block before it; if nothing remains, say `Nothing required.`
+Never update Jira, post comments, close tracking, merge, push, install integrations, change
+credentials or start a follow-up under this mode.
 
 ## Maintainer evidence
 

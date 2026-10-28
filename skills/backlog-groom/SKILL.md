@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.2"
+version: "0.2.3"
 author: "flurdy"
 ---
 
@@ -277,7 +277,11 @@ _(Template sections like Acceptance Criteria are not checked unless `lint` was r
 
 ---
 **Summary:** {X safe proposals} · {Y confirm-each} · {B beads to file} · {Z delegated}
-**Next:** re-run `/backlog-groom apply` to action the safe set, or pick a `[confirm]`/`[bead]` item.
+To request changes:
+- Run `/backlog-groom apply` to review the safe set through its confirmation flow, or
+- select a specific `[confirm]`/`[bead]` proposal for review.
+
+**Next:** Grooming proposals await selection.
 ```
 
 Skip empty sections. If nothing needs grooming:
@@ -286,6 +290,8 @@ Skip empty sections. If nothing needs grooming:
 ## Backlog Groom — {YYYY-MM-DD HH:MM}
 ✅ No findings in the fully read {mode}/{statuses} scope — {N} beads across {stores} unique stores.
 _Duplicate coverage is per-store; any cross-store comparisons are identified separately._
+
+**Next:** Nothing required.
 ```
 
 ### 9. Apply (only with `apply`, or on per-finding confirmation)

@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.17.0"
+version: "0.17.1"
 author: "flurdy"
 ---
 
@@ -551,26 +551,59 @@ Select exactly one footer using the client selection from **Important — client
 
 **Pi footer:**
 
-```markdown
+````markdown
 ---
-**Next:** run `/quit` to close this session. Resume tomorrow with `cat ~/.agents/handoffs/{file}.md` (or paste the block above).
+To close this Pi session:
+```text
+/quit
 ```
+
+To resume later, paste the block above or read the verified saved handoff:
+```sh
+cat ~/.agents/handoffs/{file}.md
+```
+
+**Next:** Session closure is manual.
+````
 
 **Claude Code footer:**
 
-```markdown
+````markdown
 ---
-**Next:** run `/exit` to close this session. Resume tomorrow with `cat ~/.agents/handoffs/{file}.md` (or paste the block above).
+To close this Claude Code session:
+```text
+/exit
 ```
+
+To resume later, paste the block above or read the verified saved handoff:
+```sh
+cat ~/.agents/handoffs/{file}.md
+```
+
+**Next:** Session closure is manual.
+````
 
 **Unknown-client footer:**
 
-```markdown
+````markdown
 ---
-**Next:** close this session manually — Pi: `/quit`; Claude Code: `/exit`. Resume tomorrow with `cat ~/.agents/handoffs/{file}.md` (or paste the block above).
+To close this session, use the command for your client:
+- Pi: `/quit`
+- Claude Code: `/exit`
+
+To resume later, paste the block above or read the verified saved handoff:
+```sh
+cat ~/.agents/handoffs/{file}.md
 ```
 
-Include the `cat` half only for the exact path returned by a valid `status: "saved"` response in this wrap-up run. Otherwise drop it and keep just the paste reminder.
+**Next:** Session closure is manual.
+````
+
+Keep commands and user instructions separate from the general `Next` summary. The examples
+above use inner code blocks; use a longer outer fence if quoting a complete footer.
+Include the `cat` block and the verified-saved-handoff wording only for the exact path returned
+by a valid `status: "saved"` response in this wrap-up run. Otherwise drop both and keep just
+“To resume later, paste the block above.” Never imply automatic closure or resumption.
 
 ## Failure modes
 

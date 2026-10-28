@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(*/outstanding-work/scripts/c
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.0"
+version: "0.2.1"
 author: "flurdy"
 ---
 

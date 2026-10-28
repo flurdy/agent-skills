@@ -64,6 +64,40 @@ class SessionBoundaries(unittest.TestCase):
         self.assertIn("next-select stores", grants("backlog-groom"))
         self.assertNotIn("Bash(bd:*)", grants("backlog-groom"))
 
+    def test_response_endings_separate_user_actions_from_next_summaries(self):
+        triage = " ".join(skill("triage").split())
+        for boundary in (
+            "Creating or refining a bead never implies starting work in this session",
+            "Put the actual question or required user action in a separate",
+            "before the final line",
+            "Awaiting ownership clarification.",
+            "It promises no automatic continuation",
+            "Do not propose claiming, starting, or implementing the bead",
+        ):
+            with self.subTest(boundary=boundary):
+                self.assertIn(boundary, triage)
+        refine = skill("refine")
+        self.assertIn("The handoff is never executed from here", refine)
+        self.assertIn("before the final `Next` summary", refine)
+        self.assertNotIn("The `Next` line is the only handoff", refine)
+        groom = skill("backlog-groom")
+        self.assertIn("To request changes:", groom)
+        self.assertIn("**Next:** Grooming proposals await selection.", groom)
+        self.assertIn("**Next:** Nothing required.", groom)
+        for name in ("triage", "refine", "backlog-groom", "wrap-up"):
+            for line in skill(name).splitlines():
+                if line.startswith("**Next:**"):
+                    with self.subTest(skill=name, line=line):
+                        self.assertNotIn("/", line)
+
+    def test_response_formatting_preserves_strict_output_and_read_only_boundaries(self):
+        guide = " ".join((ROOT / "CONTRIBUTING.md").read_text().split())
+        self.assertIn("Exact/verbatim output and final protocol-line contracts take precedence", guide)
+        self.assertIn("required question and confirmation tools", guide)
+        closeout = " ".join((ROOT / "skills/outstanding-work/references/ticket-closeout.md").read_text().split())
+        self.assertIn("separate short list or command block", closeout)
+        self.assertIn("Never update Jira, post comments, close tracking, merge, push", closeout)
+
     def test_coding_skill_reads_continue_without_a_user_prompt(self):
         for name in ("develop", "implement-solution"):
             with self.subTest(skill=name):
