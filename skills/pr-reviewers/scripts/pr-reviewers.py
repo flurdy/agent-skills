@@ -6,6 +6,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import time
@@ -14,12 +15,17 @@ LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
 REPO = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}")
 STATES = {"APPROVED", "CHANGES_REQUESTED", "COMMENTED", "DISMISSED"}
 SAMPLE_SIZE = 30
+SIBLING_SAMPLE_SIZE = 10
+MAX_SIBLINGS = 10
+MAX_ACCESS_CHECKS = 10
+MAX_CANDIDATES = 5
 REVIEW_FIELDS = """
 reviews(first: 100) {
   pageInfo { hasNextPage }
   nodes { state submittedAt author { __typename login } }
 }
 """
+PR_FIELDS = "number state author { __typename login } repository { nameWithOwner } " + REVIEW_FIELDS
 
 
 class CollectionError(Exception):
@@ -64,7 +70,71 @@ def submitted_at(value):
         raise CollectionError("Missing or invalid review timestamp") from error
 
 
-def recommend(response, repo, viewer, number=None):
+def manifest_members(root):
+    """Member checkouts declared by workspace.json or .mgit.conf; None without a manifest."""
+    manifest = root / "workspace.json"
+    config = root / ".mgit.conf"
+    try:
+        if manifest.is_file():
+            entries = json.loads(manifest.read_text(encoding="utf-8")).get("repositories")
+            paths = [entry.get("path") for entry in entries if isinstance(entry, dict)]
+        elif config.is_file():
+            lines = config.read_text(encoding="utf-8").splitlines()
+            services = next((line[len("services="):] for line in lines
+                             if line.startswith("services=")), "")
+            paths = [path.strip() for path in services.split(",")]
+        else:
+            return None
+    except (OSError, UnicodeDecodeError, ValueError, AttributeError, TypeError):
+        return []
+    members = []
+    for path in paths:
+        if not isinstance(path, str) or not path or Path(path).is_absolute():
+            continue
+        member = root / path
+        if (member / ".git").exists():
+            members.append(member.resolve())
+    return members
+
+
+def find_workspace(start, checkout):
+    """Workspace root whose manifest claims the checkout: an ancestor, or a sibling directory."""
+    for directory in (start, *start.parents):
+        members = manifest_members(directory)
+        if members is not None and (directory == checkout or checkout in members):
+            return directory, members
+        try:
+            children = sorted(child for child in directory.iterdir() if child.is_dir())
+        except OSError:
+            children = []
+        for child in children:
+            members = manifest_members(child)
+            if members is not None and checkout in members:
+                return child, members
+    return None
+
+
+def history(prs, repo, viewer, number, errors):
+    """Validated (pr number, reviews) pairs for one repository's closed personal PRs."""
+    seen = set()
+    for pr in prs:
+        pr_number = pr.get("number")
+        author = human(pr.get("author"))
+        identity = pr.get("repository")
+        if (type(pr_number) is not int or pr_number < 1 or pr_number in seen
+                or not isinstance(identity, dict)
+                or str(identity.get("nameWithOwner", "")).casefold() != repo.casefold()
+                or not author or author.casefold() != viewer.casefold()
+                or pr.get("state") not in {"CLOSED", "MERGED"} or pr_number == number):
+            raise CollectionError("Personal history identity mismatch")
+        seen.add(pr_number)
+        reviews, truncated = connection(pr.get("reviews"), 100)
+        if truncated:
+            errors.append(f"Reviews truncated on PR #{pr_number}")
+        yield pr_number, reviews
+
+
+def recommend(response, repo, viewer, number=None, workspace=None, has_access=None):
     if not isinstance(response, dict) or response.get("errors"):
         raise CollectionError("GitHub GraphQL response failed; no ranking produced")
     data = response.get("data")
@@ -82,7 +152,7 @@ def recommend(response, repo, viewer, number=None):
         "target": f"https://github.com/{repo}/pull/{number}" if number else None,
         "sample": {"prs": len(prs), "limit": SAMPLE_SIZE, "matchingPRs": total,
                    "moreHistory": more},
-        "candidates": [], "errors": [],
+        "workspace": None, "candidates": [], "errors": [],
     }
     excluded = {viewer.casefold()}
     if number:
@@ -103,43 +173,72 @@ def recommend(response, repo, viewer, number=None):
                         if (login := human(node.get("requestedReviewer"))))
 
     candidates = {}
-    seen = set()
-    for pr in prs:
-        pr_number = pr.get("number")
-        author = human(pr.get("author"))
-        identity = pr.get("repository")
-        if (type(pr_number) is not int or pr_number < 1 or pr_number in seen
-                or not isinstance(identity, dict)
-                or str(identity.get("nameWithOwner", "")).casefold() != repo.casefold()
-                or not author or author.casefold() != viewer.casefold()
-                or pr.get("state") not in {"CLOSED", "MERGED"} or pr_number == number):
-            raise CollectionError("Personal history identity mismatch")
-        seen.add(pr_number)
-        reviews, truncated = connection(pr.get("reviews"), 100)
-        if truncated:
-            result["errors"].append(f"Reviews truncated on PR #{pr_number}")
+
+    def record(reviews, key, sibling):
         for review in reviews:
             login = human(review.get("author"))
             if not login or login.casefold() in excluded or review.get("state") not in STATES:
                 continue
             date = submitted_at(review.get("submittedAt"))
-            row = candidates.setdefault(login.casefold(), {"login": login, "prs": {}})
-            row["prs"][pr_number] = max(date, row["prs"].get(pr_number, ""))
+            row = candidates.setdefault(login.casefold(),
+                                        {"login": login, "own": {}, "sibling": {}})
+            bucket = row["sibling" if sibling else "own"]
+            bucket[key] = max(date, bucket.get(key, ""))
+
+    for pr_number, reviews in history(prs, repo, viewer, number, result["errors"]):
+        record(reviews, pr_number, sibling=False)
+    if workspace is not None:
+        sampled = 0
+        more_sibling_history = False
+        for index, sibling in enumerate(workspace["siblings"]):
+            nodes, more = connection(data.get(f"s{index}"), SIBLING_SAMPLE_SIZE)
+            more_sibling_history = more_sibling_history or more
+            sampled += len(nodes)
+            for pr_number, reviews in history(nodes, sibling, viewer, None, result["errors"]):
+                record(reviews, (sibling, pr_number), sibling=True)
+        result["workspace"] = {**workspace, "prs": sampled, "moreHistory": more_sibling_history,
+                               "accessChecks": 0}
     if result["errors"]:
         result["status"] = "partial"
         return result
+
+    rows = []
     for row in candidates.values():
-        history = sorted(row["prs"].items(), key=lambda pair: (pair[1], pair[0]), reverse=True)
-        result["candidates"].append({
-            "login": row["login"], "reviewedPRs": len(history), "lastReviewed": history[0][1],
-            "examples": [f"https://github.com/{repo}/pull/{n}" for n, _ in history[:3]],
+        own = sorted(row["own"].items(), key=lambda pair: (pair[1], pair[0]), reverse=True)
+        sibling = sorted(row["sibling"].items(), key=lambda pair: (pair[1], pair[0]), reverse=True)
+        examples = [f"https://github.com/{repo}/pull/{n}" for n, _ in own]
+        examples += [f"https://github.com/{name}/pull/{n}" for (name, n), _ in sibling]
+        rows.append({
+            "login": row["login"], "reviewedPRs": len(own), "siblingPRs": len(sibling),
+            "lastReviewed": max(date for _, date in own + sibling),
+            "examples": examples[:3],
+            "siblingRepositories": sorted({name for (name, _), _ in sibling}),
         })
-    # Stable sorts express count > recency > login without inventing a weighted score.
-    rows = result["candidates"]
+    # Stable sorts express own count > sibling count > recency > login without a weighted score.
     rows.sort(key=lambda row: row["login"].casefold())
     rows.sort(key=lambda row: row["lastReviewed"], reverse=True)
+    rows.sort(key=lambda row: row["siblingPRs"], reverse=True)
     rows.sort(key=lambda row: row["reviewedPRs"], reverse=True)
-    result["candidates"] = rows[:5]
+
+    checks = 0
+    for row in rows:
+        if len(result["candidates"]) == MAX_CANDIDATES:
+            break
+        if not row["reviewedPRs"]:
+            # Reviewing a target PR proves access; sibling-only evidence does not.
+            if checks == MAX_ACCESS_CHECKS:
+                break
+            checks += 1
+            try:
+                allowed = has_access(row["login"])
+            except CollectionError as error:
+                result.update(status="partial", candidates=[], errors=[str(error)])
+                break
+            if not allowed:
+                continue
+        result["candidates"].append(row)
+    if result["workspace"] is not None:
+        result["workspace"]["accessChecks"] = checks
     return result
 
 
@@ -147,7 +246,7 @@ class GhClient:
     def __init__(self):
         self.deadline = time.monotonic() + 90
 
-    def run(self, arguments):
+    def execute(self, argv, cwd=None):
         remaining = self.deadline - time.monotonic()
         if remaining <= 0:
             raise CollectionError("GitHub collection deadline exceeded")
@@ -157,31 +256,90 @@ class GhClient:
         env.update(GH_HOST="github.com", GH_PAGER="cat", PAGER="cat", NO_COLOR="1",
                    GH_PROMPT_DISABLED="1")
         try:
-            completed = subprocess.run(["gh", *arguments], capture_output=True, text=True,
-                                       timeout=remaining, env=env, check=False)
+            completed = subprocess.run(argv, capture_output=True, text=True, timeout=remaining,
+                                       env=env, cwd=cwd, check=False)
         except subprocess.TimeoutExpired as error:
             raise CollectionError("GitHub collection deadline exceeded") from error
         except OSError as error:
-            raise CollectionError("GitHub CLI unavailable") from error
-        if completed.returncode:
-            raise CollectionError("GitHub request failed; check gh authentication and repository access")
+            raise CollectionError(f"{argv[0]} unavailable") from error
         if len(completed.stdout.encode()) + len(completed.stderr.encode()) > 2_000_000:
             raise CollectionError("GitHub response exceeded output limit")
+        return completed
+
+    def run(self, arguments, cwd=None):
+        completed = self.execute(["gh", *arguments], cwd)
+        if completed.returncode:
+            raise CollectionError("GitHub request failed; check gh authentication and repository access")
         try:
             return json.loads(completed.stdout)
         except ValueError as error:
             raise CollectionError("GitHub returned invalid JSON") from error
 
-    def collect(self, repo, number):
-        if repo is None:
-            identity = self.run(["repo", "view", "--json", "nameWithOwner,url"])
-            if not isinstance(identity, dict):
-                raise CollectionError("Repository unavailable")
-            repo = repository_name(identity.get("nameWithOwner"))
-            if identity.get("url") != f"https://github.com/{repo}":
-                raise CollectionError("Only GitHub.com repositories are supported")
+    def has_access(self, repo, login):
+        completed = self.execute(["gh", "api", "--hostname", "github.com",
+                                  f"repos/{repo}/collaborators/{login}/permission"])
+        try:
+            body = json.loads(completed.stdout)
+        except ValueError:
+            body = None
+        if isinstance(body, dict):
+            permission = body.get("permission")
+            if not completed.returncode and permission in {"admin", "write", "read"}:
+                return True
+            if (not completed.returncode and permission == "none") or body.get("status") == "404":
+                return False
+        raise CollectionError("Target repository access could not be verified for sibling reviewers")
+
+    def checkout_repository(self, cwd=None):
+        identity = self.run(["repo", "view", "--json", "nameWithOwner,url"], cwd)
+        if not isinstance(identity, dict):
+            raise CollectionError("Repository unavailable")
+        repo = repository_name(identity.get("nameWithOwner"))
+        if identity.get("url") != f"https://github.com/{repo}":
+            raise CollectionError("Only GitHub.com repositories are supported")
+        return repo
+
+    def checkout_root(self):
+        completed = self.execute(["git", "rev-parse", "--show-toplevel"])
+        if completed.returncode or not completed.stdout.strip():
+            return None
+        return Path(completed.stdout.strip()).resolve()
+
+    def siblings(self, repo, root, discover):
+        """Sibling member repositories from an explicit or discovered workspace manifest."""
+        checkout = None
+        if root is not None:
+            root = root.resolve()
+            members = manifest_members(root)
+            if members is None:
+                raise CollectionError("Workspace manifest unavailable")
+        elif discover and (checkout := self.checkout_root()):
+            found = find_workspace(Path.cwd().resolve(), checkout)
+            if found is None:
+                return None
+            root, members = found
         else:
-            repo = repository_name(repo)
+            return None
+        siblings = []
+        unavailable = 0
+        for member in members:
+            if member == checkout:
+                continue
+            try:
+                identity = self.checkout_repository(member)
+            except CollectionError:
+                unavailable += 1
+                continue
+            if identity.casefold() != repo.casefold() and identity not in siblings:
+                siblings.append(identity)
+        return {"root": str(root), "siblings": siblings[:MAX_SIBLINGS],
+                "omittedSiblings": max(0, len(siblings) - MAX_SIBLINGS),
+                "unavailableMembers": unavailable}
+
+    def collect(self, repo, number, workspace_root=None):
+        discovered = repo is None
+        repo = self.checkout_repository() if discovered else repository_name(repo)
+        workspace = self.siblings(repo, workspace_root, discovered)
         user = self.run(["api", "--hostname", "github.com", "user"])
         viewer = user.get("login") if isinstance(user, dict) else None
         if not isinstance(viewer, str) or not LOGIN.fullmatch(viewer):
@@ -196,21 +354,30 @@ class GhClient:
                 nodes { requestedReviewer { __typename ... on User { login } } }
               }
             }"""
-        query = """query($owner: String!, $name: String!, $search: String!"""
+        siblings = workspace["siblings"] if workspace else []
+        query = "query($owner: String!, $name: String!, $search: String!"
         query += ", $number: Int!" if number else ""
+        query += "".join(f", $s{index}: String!" for index in range(len(siblings)))
         query += ") { repository(owner: $owner, name: $name) { nameWithOwner " + target + " }"
-        query += """ search(type: ISSUE, query: $search, first: 30) {
-          issueCount pageInfo { hasNextPage }
-          nodes { ... on PullRequest {
-            number state author { __typename login } repository { nameWithOwner }
-            """ + REVIEW_FIELDS + " } } } }"
+        query += (" search(type: ISSUE, query: $search, first: 30) {"
+                  " issueCount pageInfo { hasNextPage } nodes { ... on PullRequest { "
+                  + PR_FIELDS + " } } }")
+        for index in range(len(siblings)):
+            query += (f" s{index}: search(type: ISSUE, query: $s{index},"
+                      f" first: {SIBLING_SAMPLE_SIZE}) {{ pageInfo {{ hasNextPage }}"
+                      " nodes { ... on PullRequest { " + PR_FIELDS + " } } }")
+        query += " }"
         owner, name = repo.split("/")
         args = ["api", "--hostname", "github.com", "graphql", "-f", f"query={query}",
                 "-f", f"owner={owner}", "-f", f"name={name}", "-f",
                 f"search=repo:{repo} is:pr is:closed author:{viewer} sort:updated-desc"]
+        for index, sibling in enumerate(siblings):
+            args.extend(["-f", f"s{index}=repo:{sibling} is:pr is:closed author:{viewer}"
+                               " sort:updated-desc"])
         if number:
             args.extend(["-F", f"number={number}"])
-        return recommend(self.run(args), repo, viewer, number)
+        return recommend(self.run(args), repo, viewer, number, workspace,
+                         lambda login: self.has_access(repo, login))
 
 
 def positive_number(value):
@@ -223,9 +390,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", help="One GitHub.com owner/repo; defaults to the current checkout")
     parser.add_argument("--pr", type=positive_number, help="Your open PR; omit for repository-level advice")
+    parser.add_argument("--workspace", type=Path, metavar="ROOT",
+                        help="Workspace root holding workspace.json or .mgit.conf; "
+                             "discovered from the current checkout when --repo is omitted")
     args = parser.parse_args(argv)
     try:
-        result = GhClient().collect(args.repo, args.pr)
+        result = GhClient().collect(args.repo, args.pr, args.workspace)
     except CollectionError as error:
         result = {"schemaVersion": 1, "status": "failed", "candidates": [], "errors": [str(error)]}
     print(json.dumps(result, indent=2))

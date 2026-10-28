@@ -88,7 +88,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | Skill | Description |
 |-------|-------------|
 | pr-review-requests | Read-only inbound PR dashboard with request/update times, exact-head CI, merge state, reviews, feedback, and manual next steps |
-| pr-reviewers | Recommend reviewers from your previous PRs in one repository, with distinct-PR counts and evidence links; read-only, never requests reviews |
+| pr-reviewers | Recommend reviewers from your previous PRs in one repository, adding labelled sibling-workspace evidence filtered to people with target access; read-only, never requests reviews |
 | pr-status | Show enriched status of your open PRs — CI checks, approvals, unresolved review threads, and linked Jira discussion |
 | ready-to-merge | Pre-merge gate — verify a PR is green, approved, in sync, and free of obvious risk, then (on explicit approval) squash-merge it |
 | reply-comments | Publish prepared PR-feedback outcomes through separate confirmed push, reply, and inline-thread resolution gates with race and duplicate protection |
