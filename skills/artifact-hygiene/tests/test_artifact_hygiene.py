@@ -741,7 +741,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             b"+added@example.invalid\n"
         )
 
-        self.assertEqual(helper.added_patch_content(patch), b"added@example.invalid\n")
+        self.assertEqual(helper.added_patch_content(patch), (b"added@example.invalid\n", (2,)))
 
     def test_added_patch_content_preserves_plus_prefixes_and_lf_boundaries(self) -> None:
         helper = load_helper_module()
@@ -772,7 +772,17 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         ]
         for patch, expected in cases:
             with self.subTest(patch=patch):
-                self.assertEqual(helper.added_patch_content(patch), expected)
+                self.assertEqual(helper.added_patch_content(patch)[0], expected)
+
+    def test_added_patch_content_maps_added_lines_to_file_lines(self) -> None:
+        helper = load_helper_module()
+        patch = (
+            b"diff --git a/file.txt b/file.txt\n--- a/file.txt\n+++ b/file.txt\n"
+            b"@@ -3 +3,2 @@ heading\n-old\n+new\n+extra\n"
+            b"@@ -9,0 +10 @@\n+tail\n"
+        )
+
+        self.assertEqual(helper.added_patch_content(patch), (b"new\nextra\ntail\n", (3, 4, 10)))
 
     def test_added_patch_content_rejects_unsupported_hunk_formats(self) -> None:
         helper = load_helper_module()
@@ -830,6 +840,80 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("gitleaks"), "gitleaks is not installed")
     def test_plus_prefixed_history_reaches_real_gitleaks(self) -> None:
         self.assert_plus_prefixed_history_findings(self.real_scanner("plus-history-real-bin"))
+
+    def commit_branch_change(self, path: str, base: list[str], changes: dict[int, str]) -> None:
+        self.repository.write(path, "".join(line + "\n" for line in base))
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+        changed = [changes.get(index, line) for index, line in enumerate(base, 1)]
+        self.repository.write(path, "".join(line + "\n" for line in changed))
+        self.repository.commit_all("branch change")
+
+    def test_history_findings_report_file_lines_not_added_line_ordinals(self) -> None:
+        self.commit_branch_change(
+            "spec.txt", [f"clean {index}" for index in range(1, 11)],
+            {3: "rejects non-auth0 users", 9: "also use-auth0 here"},
+        )
+
+        payload = json.loads(self.run_audit().stdout)
+
+        self.assertEqual(sorted(item["location"]["line"] for item in payload["findings"]), [3, 9])
+
+    @unittest.skipUnless(shutil.which("gitleaks"), "gitleaks is not installed")
+    def test_history_secret_reports_file_line(self) -> None:
+        key = "".join(("AKIA", "ABCDEFGHIJKLMNOP"))
+        self.commit_branch_change(
+            "settings.txt", [f"clean {index}" for index in range(1, 11)],
+            {6: f"aws_access_key_id = {key}"},
+        )
+
+        completed = self.run_audit(scanner=self.real_scanner("line-real-bin"))
+
+        payload = json.loads(completed.stdout)
+        secrets = [item for item in payload["findings"] if item["category"] == "secret"]
+        self.assertEqual({item["location"]["source"] for item in secrets}, {"working-tree", "branch-history"})
+        self.assertEqual({item["location"]["line"] for item in secrets}, {6})
+        self.assertEqual(payload["verdict"], "block")
+        self.assertNotIn(key, completed.stdout)
+
+    def test_generic_bead_shape_is_advisory_but_known_prefix_blocks(self) -> None:
+        self.commit_branch_change("spec.txt", ["clean"], {1: "rejects non-auth0 users"})
+
+        completed = self.run_audit()
+
+        payload = json.loads(completed.stdout)
+        self.assertEqual((payload["status"], payload["verdict"]), ("complete", "advisory"))
+        (item,) = payload["findings"]
+        self.assertEqual((item["detector"], item["policy"]["grade"]), ("beads.generic-shape", "advisory"))
+        self.assertEqual(item["location"]["publication"], "branch-history")
+        self.assertIn("artifactHygiene.beadPrefixes", item["remediation"])
+        self.assertNotIn("non-auth0", completed.stdout)
+
+        self.repository.run("config", "--local", "artifactHygiene.beadPrefixes", "non")
+        payload = json.loads(self.run_audit().stdout)
+        self.assertEqual(payload["verdict"], "block")
+        (item,) = payload["findings"]
+        self.assertEqual((item["detector"], item["policy"]["grade"]), ("beads.reference", "block"))
+
+    def test_published_line_in_edited_file_is_advisory_but_changed_line_blocks(self) -> None:
+        self.repository.write("key.txt", "FINDING_MARKER\nclean\n")
+        self.repository.commit_all("base")
+        self.repository.mark_base()
+
+        self.repository.write("key.txt", "FINDING_MARKER\nchanged\n")
+        payload = json.loads(self.run_audit().stdout)
+        self.assertEqual(payload["verdict"], "advisory")
+        self.assertTrue(payload["findings"])
+        self.assertTrue(all(
+            item["location"]["publication"] == "already-published"
+            and item["policy"]["grade"] == "advisory"
+            for item in payload["findings"]
+        ))
+
+        self.repository.write("key.txt", "FINDING_MARKER edited\nclean\n")
+        payload = json.loads(self.run_audit().stdout)
+        self.assertEqual(payload["verdict"], "block")
+        self.assertIn("working-tree", {item["location"]["publication"] for item in payload["findings"]})
 
     def test_unsupported_history_patch_is_partial_not_clean(self) -> None:
         self.repository.write("file.txt", "base\n")
@@ -961,7 +1045,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(
             {(item["category"], item["detector"]) for item in findings},
             {
-                ("bead-reference", "beads.reference"),
+                ("bead-reference", "beads.generic-shape"),
                 ("personal-data", "pii.email"),
                 ("personal-data", "pii.name"),
                 ("ai-attribution", "ai.attribution"),
@@ -970,7 +1054,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(
             {item["detector"]: item["location"]["line"] for item in findings},
             {
-                "beads.reference": 1,
+                "beads.generic-shape": 1,
                 "pii.email": 2,
                 "pii.name": 3,
                 "ai.attribution": 4,
@@ -1394,7 +1478,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             [item["location"]["line"] for item in findings],
             [len(words) + 1 + offset for offset in range(len(ids))],
         )
-        self.assertTrue(all(item["detector"] == "beads.reference" for item in findings))
+        self.assertTrue(all(item["detector"] == "beads.generic-shape" for item in findings))
 
     def test_generic_bead_suffix_requires_letters_and_digits(self) -> None:
         helper = load_helper_module()
@@ -1405,17 +1489,18 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         )
         positives = ("other-1ab", "other-a1b", "other-ab1", "other-1234567a", "other-ab1.2.3")
         for prefixes in ((), ("project-2",)):
-            detector = helper.build_bead_detector(prefixes)
+            detectors = helper.build_bead_detectors(prefixes)
+            detector = detectors[-1]
             for value in negatives + positives:
                 with self.subTest(prefixes=prefixes, value=value):
                     self.assertEqual(bool(detector.pattern.search(value.encode())), value in positives)
             self.assertTrue(helper.custom_detector_capability_probe(
-                helper.monotonic() + 5, helper.active_detectors(detector),
+                helper.monotonic() + 5, helper.active_detectors(detectors),
             ))
 
     def test_known_bead_prefix_keeps_numeric_and_digitless_suffixes(self) -> None:
         helper = load_helper_module()
-        detector = helper.build_bead_detector(("project-2",))
+        detector = helper.build_bead_detectors(("project-2",))[0]
         for suffix in ("123", "12345678", "xxxx", "a1b", "123.1", "xxxx.1.2"):
             with self.subTest(suffix=suffix):
                 self.assertIsNotNone(detector.pattern.fullmatch(("project-2-" + suffix).encode()))
@@ -1470,7 +1555,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def test_known_prefixes_match_digitless_ids_and_only_widen(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("branch-history")
-        detector = helper.build_bead_detector(("skills", "ai-tools"))
+        detectors = helper.active_detectors(helper.build_bead_detectors(("skills", "ai-tools")))
         data = b"skills-shy\nother-shy\nother-a1b\nai-tools-shy\nskillset-shy\n"
 
         findings = helper.detect_non_secret(
@@ -1479,15 +1564,14 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             path="notes.md",
             deadline=helper.monotonic() + 5,
             coverage=coverage,
-            detectors=helper.active_detectors(detector),
+            detectors=detectors,
         )
 
-        self.assertEqual([item["location"]["line"] for item in findings], [1, 3, 4])
-        self.assertTrue(
-            helper.custom_detector_capability_probe(
-                helper.monotonic() + 5, helper.active_detectors(detector)
-            )
+        self.assertEqual(
+            sorted((item["detector"], item["location"]["line"]) for item in findings),
+            [("beads.generic-shape", 3), ("beads.reference", 1), ("beads.reference", 4)],
         )
+        self.assertTrue(helper.custom_detector_capability_probe(helper.monotonic() + 5, detectors))
 
     def test_bead_prefixes_come_from_clone_config_environment_and_store(self) -> None:
         helper = load_helper_module()
@@ -2007,7 +2091,7 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def test_known_prefix_beads_repository_name_is_not_a_bead_reference(self) -> None:
         helper = load_helper_module()
         coverage = helper.Coverage("branch-history")
-        detector = helper.build_bead_detector(("sample",))
+        detectors = helper.active_detectors(helper.build_bead_detectors(("sample",)))
         data = b"flurdy/sample-beads.git\nsample" + b"-shy\nsample" + b"-beads7\n"
 
         findings = helper.detect_non_secret(
@@ -2016,17 +2100,13 @@ class ArtifactHygieneCliTests(unittest.TestCase):
             path=".beads/config.yaml",
             deadline=helper.monotonic() + 5,
             coverage=coverage,
-            detectors=helper.active_detectors(detector),
+            detectors=detectors,
         )
 
         self.assertEqual(
             [i["location"]["line"] for i in findings if i["detector"] == "beads.reference"], [2, 3]
         )
-        self.assertTrue(
-            helper.custom_detector_capability_probe(
-                helper.monotonic() + 5, helper.active_detectors(detector)
-            )
-        )
+        self.assertTrue(helper.custom_detector_capability_probe(helper.monotonic() + 5, detectors))
 
     def test_name_detector_ignores_camel_case_identifiers(self) -> None:
         helper = load_helper_module()
@@ -2601,7 +2681,6 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("second.txt", "SECOND_FINDING_MARKER\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
         real_git = helper.git
         tip_calls = 0
 
@@ -2637,7 +2716,6 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         (self.repository.root / "old.txt").unlink()
         self.repository.commit_all("remove original")
         self.repository.mark_base()
-        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
         self.repository.write("new.txt", "FINDING_MARKER\n")
         completed = self.run_audit()
         payload = json.loads(completed.stdout)
@@ -2679,49 +2757,50 @@ class ArtifactHygieneCliTests(unittest.TestCase):
     def test_grading_matrix_preserves_publication_floor(self) -> None:
         helper = load_helper_module()
         self.assertTrue(callable(getattr(helper, "finding_grade", None)))
-        benign = {"bead-reference", "ai-attribution", "suppression-attempt"}
-        for category in ("secret", "session-link", "personal-data", *sorted(benign)):
+        categories = ("secret", "session-link", "personal-data", "bead-reference",
+                      "ai-attribution", "suppression-attempt")
+        for category in categories:
             for publication in ("working-tree", "branch-history", "already-published"):
-                for visibility in ("private", "public", "unknown"):
-                    for confidence in ("high", "medium", "low"):
-                        with self.subTest(category=category, publication=publication,
-                                          visibility=visibility, confidence=confidence):
-                            item = helper.finding(
-                                category=category, detector="fixture.rule", severity="high",
-                                confidence=confidence, source="working-tree", path="file.txt",
-                            )
-                            item["location"]["publication"] = publication
-                            expected = "block"
-                            if publication == "already-published" and (visibility == "private" or category in benign):
-                                expected = "advisory"
-                            self.assertEqual(helper.finding_grade(item, visibility), expected)
-                            item["severity"] = "critical"
-                            self.assertEqual(helper.finding_grade(item, visibility), "block")
+                for confidence in ("high", "medium", "low"):
+                    with self.subTest(category=category, publication=publication, confidence=confidence):
+                        item = helper.finding(
+                            category=category, detector="fixture.rule", severity="high",
+                            confidence=confidence, source="working-tree", path="file.txt",
+                        )
+                        item["location"]["publication"] = publication
+                        expected = "advisory" if publication == "already-published" else "block"
+                        self.assertEqual(helper.finding_grade(item), expected)
+                        item["severity"] = "critical"
+                        self.assertEqual(helper.finding_grade(item), "block")
+        generic = helper.finding(
+            category="bead-reference", detector="beads.generic-shape", severity="medium",
+            confidence="low", source="branch-history", path="file.txt",
+        )
+        self.assertEqual(helper.finding_grade(generic), "advisory")
+        generic["severity"] = "critical"
+        self.assertEqual(helper.finding_grade(generic), "block")
         item = helper.finding(
             category="suppression-attempt", detector="scanner.inline-allow", severity="info",
             confidence="high", source="working-tree", path="file.txt",
         )
-        self.assertEqual(helper.finding_grade(item, "unknown"), "advisory")
+        self.assertEqual(helper.finding_grade(item), "advisory")
         for field, value in (("category", "future-category"), ("severity", "invalid"), ("confidence", "invalid")):
             invalid = {**item, field: value}
-            self.assertEqual(helper.finding_grade(invalid, "private"), "block")
-        self.assertEqual(helper.finding_grade(item, "invalid"), "block")
+            self.assertEqual(helper.finding_grade(invalid), "block")
         item["location"]["publication"] = "unknown"
-        self.assertEqual(helper.finding_grade(item, "private"), "block")
+        self.assertEqual(helper.finding_grade(item), "block")
 
-    def test_graded_private_published_secret_is_visible_advisory(self) -> None:
+    def test_graded_published_secret_is_visible_advisory(self) -> None:
         self.repository.write("key.txt", "FINDING_MARKER\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
         before = self.repository.state()
         completed = self.run_audit()
         payload = json.loads(completed.stdout)
         self.assertEqual(completed.returncode, 0, payload)
         self.assertEqual(payload["schemaVersion"], "artifact-hygiene/v2")
         self.assertEqual(payload["verdict"], "advisory")
-        self.assertEqual(payload["target"]["remoteVisibility"], "private")
-        self.assertIn("remote-visibility-private", payload["target"]["policy"])
+        self.assertNotIn("remoteVisibility", payload["target"])
         self.assertEqual(len(payload["findings"]), 1)
         item = payload["findings"][0]
         self.assertEqual(item["policy"]["grade"], "advisory")
@@ -2732,11 +2811,10 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual(self.repository.state(), before)
         self.assertNotIn("FINDING_MARKER", completed.stdout)
 
-    def test_graded_new_and_index_only_secrets_still_block_private(self) -> None:
+    def test_graded_new_and_index_only_secrets_still_block(self) -> None:
         self.repository.write("key.txt", "OLD_FINDING_MARKER\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
         self.repository.write("key.txt", "NEW_FINDING_MARKER\n")
         self.repository.run("add", "key.txt")
         self.repository.write("key.txt", "OLD_FINDING_MARKER\n")
@@ -2758,7 +2836,6 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("link.txt", SHARE_LINK + "original\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
         self.repository.write("link.txt", SHARE_LINK + "new\n")
         self.repository.run("add", "link.txt")
         self.repository.write("link.txt", SHARE_LINK + "original\n")
@@ -2771,26 +2848,17 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.assertEqual({item["policy"]["grade"] for item in links}, {"advisory", "block"})
         self.assertEqual(len({item["occurrenceId"] for item in links}), 2)
 
-    def test_graded_visibility_is_clone_local_only(self) -> None:
+    def test_visibility_configuration_no_longer_affects_grading(self) -> None:
         self.repository.write("key.txt", "FINDING_MARKER\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        config = self.repository.write("visibility.config", "[artifactHygiene]\nremoteVisibility = private\n")
-        self.repository.run("config", "--local", "include.path", str(config))
-        for visibility in (None, "public", "invalid", "private"):
+        for visibility in (None, "public", "private"):
             with self.subTest(visibility=visibility):
                 if visibility:
                     self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", visibility)
-                completed = self.run_audit(extra_environment={
-                    "ARTIFACT_HYGIENE_REMOTE_VISIBILITY": "private",
-                    "GIT_CONFIG_GLOBAL": str(config), "GIT_CONFIG_COUNT": "1",
-                    "GIT_CONFIG_KEY_0": "artifactHygiene.remoteVisibility", "GIT_CONFIG_VALUE_0": "private",
-                })
-                payload = json.loads(completed.stdout)
-                self.assertEqual(completed.returncode, 0, payload)
-                expected = "private" if visibility == "private" else "public" if visibility == "public" else "unknown"
-                self.assertEqual(payload["target"]["remoteVisibility"], expected)
-                self.assertEqual(payload["verdict"], "advisory" if expected == "private" else "block")
+                payload = json.loads(self.run_audit().stdout)
+                self.assertEqual(payload["verdict"], "advisory")
+                self.assertNotIn("remoteVisibility", payload["target"])
 
     def test_graded_incomplete_sources_override_advisory(self) -> None:
         helper = load_helper_module()
@@ -2805,7 +2873,6 @@ class ArtifactHygieneCliTests(unittest.TestCase):
         self.repository.write("key.txt", "FINDING_MARKER\n")
         self.repository.commit_all("base")
         self.repository.mark_base()
-        self.repository.run("config", "--local", "artifactHygiene.remoteVisibility", "private")
         completed = self.run_audit(scanner=self.noop_gitleaks)
         payload = json.loads(completed.stdout)
         self.assertEqual(completed.returncode, 2, payload)

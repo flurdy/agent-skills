@@ -26,7 +26,7 @@ from typing import Any, Iterable, Iterator
 from urllib.parse import urlsplit
 
 SCHEMA_VERSION = "artifact-hygiene/v2"
-HELPER_VERSION = "0.6.7-poc"
+HELPER_VERSION = "0.7.0-poc"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_ROOT = SCRIPT_DIR.parent
 GITLEAKS_CONFIG = SKILL_ROOT / "references" / "gitleaks.toml"
@@ -103,6 +103,11 @@ BEAD_CHILD = rb"(?:\.[0-9]+)*"
 BEAD_GENERIC = (
     rb"[a-z][a-z0-9]*(?:-[a-z][a-z0-9]*)*-(?=[a-z]*[0-9])(?=[0-9]*[a-z])" + BEAD_SUFFIX
 )
+GENERIC_BEAD_REMEDIATION = (
+    "Confirm this is not a private tracker reference. Declare real prefixes with "
+    "git config --local --add artifactHygiene.beadPrefixes <prefix> so they block."
+)
+HUNK_HEADER = re.compile(rb"@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@(?:[ \n]|$)")
 BEAD_CONFIG_PREFIX = re.compile(
     rb"^[ \t]*issue-prefix[ \t]*:[ \t]*\"?([a-z][a-z0-9-]{0,31})\"?[ \t]*$", re.MULTILINE
 )
@@ -121,6 +126,7 @@ class CustomDetector:
     severity: str
     pattern: re.Pattern[bytes]
     canary: bytes
+    confidence: str = "high"
 
 
 CUSTOM_DETECTORS = (
@@ -185,40 +191,61 @@ CUSTOM_DETECTOR_IDS = frozenset(
         "session.share-link",
         "scanner.inline-allow",
         "beads.reference",
+        "beads.generic-shape",
         "pii.email",
         "pii.name",
         "ai.attribution",
     }
 )
+OPTIONAL_DETECTOR_IDS = frozenset({"beads.reference"})
 
 
-def build_bead_detector(prefixes: tuple[str, ...]) -> CustomDetector:
-    """Match Beads IDs: known prefixes with any base36 suffix, plus a generic
-    mixed letter-and-digit suffix so a repository file can only widen detection."""
-    shapes = [BEAD_GENERIC]
-    canary = b"canary" + b"-9yx"
+def bead_pattern(shape: bytes) -> re.Pattern[bytes]:
+    return re.compile(
+        rb"(?<![A-Za-z0-9-])(?:" + shape + rb")" + BEAD_CHILD + rb"(?![A-Za-z0-9-])"
+    )
+
+
+def build_bead_detectors(prefixes: tuple[str, ...]) -> tuple[CustomDetector, ...]:
+    """Known prefixes block with any base36 suffix. The generic mixed letter-and-digit
+    shape is a separate advisory detector that never re-reports a known prefix, so a
+    repository file can only widen detection."""
+    detectors: list[CustomDetector] = []
+    exclusion = b""
     if prefixes:
         alternation = b"|".join(
             re.escape(prefix.encode()) for prefix in sorted(prefixes, key=len, reverse=True)
         )
-        shapes.insert(0, b"(?:" + alternation + b")-(?!beads(?![A-Za-z0-9-]))" + BEAD_SUFFIX)
-        canary = prefixes[0].encode() + b"-shy"
-    return CustomDetector(
-        category="bead-reference",
-        detector="beads.reference",
-        severity="high",
-        pattern=re.compile(
-            rb"(?<![A-Za-z0-9-])(?:" + b"|".join(shapes) + rb")" + BEAD_CHILD + rb"(?![A-Za-z0-9-])"
-        ),
-        canary=canary,
+        detectors.append(
+            CustomDetector(
+                category="bead-reference",
+                detector="beads.reference",
+                severity="high",
+                pattern=bead_pattern(
+                    b"(?:" + alternation + b")-(?!beads(?![A-Za-z0-9-]))" + BEAD_SUFFIX
+                ),
+                canary=prefixes[0].encode() + b"-shy",
+            )
+        )
+        exclusion = b"(?!(?:" + alternation + b")-)"
+    detectors.append(
+        CustomDetector(
+            category="bead-reference",
+            detector="beads.generic-shape",
+            severity="medium",
+            pattern=bead_pattern(exclusion + BEAD_GENERIC),
+            canary=b"canary" + b"-9yx",
+            confidence="low",
+        )
     )
+    return tuple(detectors)
 
 
-def active_detectors(bead_detector: CustomDetector) -> tuple[CustomDetector, ...]:
-    return CUSTOM_DETECTORS[:2] + (bead_detector,) + CUSTOM_DETECTORS[2:]
+def active_detectors(bead_detectors: tuple[CustomDetector, ...]) -> tuple[CustomDetector, ...]:
+    return CUSTOM_DETECTORS[:2] + bead_detectors + CUSTOM_DETECTORS[2:]
 
 
-DEFAULT_DETECTORS = active_detectors(build_bead_detector(()))
+DEFAULT_DETECTORS = active_detectors(build_bead_detectors(()))
 
 
 class AuditError(RuntimeError):
@@ -397,6 +424,69 @@ class SizePolicy:
                 if denied else "Size-only skip; content was not scanned."
             ),
         })
+
+
+@dataclass
+class LineProvenance:
+    """Base-tip content per path, so an unchanged line inside an edited file can
+    still be proven already published."""
+
+    runner: BoundedRunner
+    repository: Path
+    base: str | None
+    contents: dict[str, bytes | None] = field(default_factory=dict)
+
+    def covers(self, path: str, segment: bytes) -> bool:
+        if self.base is None or not segment.strip():
+            return False
+        if path not in self.contents:
+            blob = self.read_base_blob(path)
+            self.contents[path] = None if blob is None else b"\n" + blob + b"\n"
+        content = self.contents[path]
+        return content is not None and b"\n" + segment + b"\n" in content
+
+    def read_base_blob(self, path: str) -> bytes | None:
+        spec = f"{self.base}:{path}"
+        try:
+            size_result = git(
+                self.runner, self.repository, "cat-file", "-s", spec, allowed_returncodes=(0, 128)
+            )
+            if size_result.returncode != 0:
+                return None
+            size = int(decode_text(size_result.stdout))
+            if size > MAX_FILE_BYTES:
+                return None
+            blob = git(self.runner, self.repository, "cat-file", "blob", spec).stdout
+        except AuditError as error:
+            if error.code == "command-timeout":
+                raise
+            return None
+        except ValueError:
+            return None
+        return blob if len(blob) == size else None
+
+
+@dataclass
+class ContentOrigin:
+    """Identity of a scanned buffer: maps its lines to file lines and to
+    already-published state."""
+
+    path: str
+    data: bytes
+    provenance: LineProvenance
+    line_map: tuple[int, ...] | None = None
+    lines: list[bytes] | None = field(default=None, init=False, repr=False)
+
+    def locate(self, start: int | None, end: int | None = None) -> tuple[int | None, bool]:
+        if start is None:
+            return None, False
+        if self.lines is None:
+            self.lines = self.data.split(b"\n")
+        segment = b"\n".join(self.lines[start - 1 : max(start, end or start)])
+        published = self.provenance.covers(self.path, segment)
+        if self.line_map is None:
+            return start, published
+        return (self.line_map[start - 1] if start <= len(self.line_map) else None), published
 
 
 @dataclass
@@ -731,6 +821,7 @@ def finding(
     commit: str | None = None,
     field_name: str | None = None,
     allow_id: str | None = None,
+    publication: str | None = None,
 ) -> dict[str, Any]:
     evidence_tokens = {
         "secret": "[REDACTED:SECRET]",
@@ -748,6 +839,8 @@ def finding(
         "personal-data": "Remove or replace the personal data before publication.",
         "ai-attribution": "Remove the AI attribution boilerplate before publication.",
     }
+    if detector == "beads.generic-shape":
+        remediation[category] = GENERIC_BEAD_REMEDIATION
     result = {
         "occurrenceId": occurrence_id(
             category, source, path, line, commit, detector, allow_id
@@ -762,7 +855,7 @@ def finding(
         "confidence": confidence,
         "location": {
             "source": source,
-            "publication": source,
+            "publication": publication or source,
             "path": path,
             "commit": commit,
             "field": field_name,
@@ -777,7 +870,7 @@ def finding(
     return result
 
 
-def finding_grade(item: dict[str, Any], visibility: str) -> str:
+def finding_grade(item: dict[str, Any]) -> str:
     category = item["category"]
     severity = item["severity"]
     publication = item["location"]["publication"]
@@ -787,15 +880,12 @@ def finding_grade(item: dict[str, Any], visibility: str) -> str:
         or severity not in {"critical", "high", "medium", "low", "info"}
         or item["confidence"] not in {"high", "medium", "low"}
         or publication not in {"working-tree", "branch-history", "already-published"}
-        or visibility not in {"private", "public", "unknown"}
         or severity == "critical"
     ):
         return "block"
     if category == "suppression-attempt" and severity == "info":
         return "advisory"
-    if publication != "already-published":
-        return "block"
-    if visibility == "private" or category in {"bead-reference", "ai-attribution", "suppression-attempt"}:
+    if item["detector"] == "beads.generic-shape" or publication == "already-published":
         return "advisory"
     return "block"
 
@@ -804,15 +894,6 @@ def graded_verdict(findings: list[dict[str, Any]], status: str) -> str:
     if status != "complete" or any(item["policy"].get("grade") != "advisory" for item in findings):
         return "block"
     return "advisory" if findings else "clean"
-
-
-def remote_visibility(runner: BoundedRunner, repository: Path) -> str:
-    result = git(
-        runner, repository, "config", "--local", "--no-includes", "--get-all",
-        "artifactHygiene.remoteVisibility", allowed_returncodes=(0, 1),
-    )
-    values = decode_text(result.stdout).splitlines()
-    return values[0] if len(values) == 1 and values[0] in {"public", "private"} else "unknown"
 
 
 def blob_object_id(data: bytes, object_format: str) -> str:
@@ -828,13 +909,15 @@ def add_candidate_findings(
 ) -> bool:
     if additions:
         published = size_policy.is_published(candidate.object_id)
-        publication = "already-published" if published is True else "working-tree"
         if isinstance(published, str):
             coverage.partial(published)
-            publication = "unknown"
         for item in additions:
             location = item["location"]
-            location.update(publication=publication, blobId=candidate.object_id)
+            if isinstance(published, str):
+                location["publication"] = "unknown"
+            elif published:
+                location["publication"] = "already-published"
+            location["blobId"] = candidate.object_id
             item["occurrenceId"] = occurrence_id(
                 item["category"], location["source"], location["path"], location["line"],
                 location["commit"], item["detector"], candidate.object_id + ":" + item.get("allowId", ""),
@@ -1174,6 +1257,7 @@ def parse_scanner_findings(
     fallback_path: str | None,
     fallback_commit: str | None = None,
     field_name: str | None = None,
+    origin: ContentOrigin | None = None,
 ) -> list[dict[str, Any]]:
     try:
         payload = json.loads(output.decode("utf-8", "replace") or "[]")
@@ -1198,6 +1282,10 @@ def parse_scanner_findings(
             else fallback_commit
         )
         rule = normalized_rule(record.get("RuleID"))
+        line = normalized_line(record.get("StartLine"))
+        published = False
+        if origin is not None:
+            line, published = origin.locate(line, normalized_line(record.get("EndLine")))
         results.append(
             finding(
                 category="secret",
@@ -1206,10 +1294,11 @@ def parse_scanner_findings(
                 confidence="high",
                 source=source,
                 path=path,
-                line=normalized_line(record.get("StartLine")),
+                line=line,
                 commit=commit,
                 field_name=field_name,
                 allow_id=secret_allow_id(rule, record.get("Secret")),
+                publication="already-published" if published else None,
             )
         )
     return results
@@ -1370,7 +1459,8 @@ def bead_prefixes(runner: BoundedRunner, repository: Path) -> tuple[tuple[str, .
 def custom_detector_capability_probe(
     deadline: float, detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS
 ) -> bool:
-    if {detector.detector for detector in detectors} != CUSTOM_DETECTOR_IDS:
+    identifiers = {detector.detector for detector in detectors}
+    if not CUSTOM_DETECTOR_IDS - OPTIONAL_DETECTOR_IDS <= identifiers <= CUSTOM_DETECTOR_IDS:
         return False
     for detector in detectors:
         if monotonic() >= deadline or detector.pattern.search(detector.canary) is None:
@@ -1530,6 +1620,7 @@ def detect_non_secret(
     field_name: str | None = None,
     allowed_categories: frozenset[str] = frozenset(),
     detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS,
+    origin: ContentOrigin | None = None,
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     if monotonic() >= deadline:
@@ -1623,17 +1714,19 @@ def detect_non_secret(
                 return False
             line += data.count(b"\n", cursor, match.start())
             cursor = match.start()
+            file_line, published = origin.locate(line) if origin is not None else (line, False)
             results.append(
                 finding(
                     category=detector.category,
                     detector=detector.detector,
                     severity=detector.severity,
-                    confidence="high",
+                    confidence=detector.confidence,
                     source=source,
                     path=path,
-                    line=line,
+                    line=file_line,
                     commit=commit,
                     field_name=field_name,
+                    publication="already-published" if published else None,
                 )
             )
         if monotonic() >= deadline:
@@ -1846,31 +1939,40 @@ def commit_patch(
     ).stdout
 
 
-def added_patch_content(patch: bytes) -> bytes:
-    """Extract unified hunk additions; leading pluses and embedded CRs are content."""
+def added_patch_content(patch: bytes) -> tuple[bytes, tuple[int, ...]]:
+    """Extract unified hunk additions with their file line numbers; leading pluses
+    and embedded CRs are content."""
     added: list[bytes] = []
+    file_lines: list[int] = []
     in_hunk = False
+    next_line = 0
     for line in io.BytesIO(patch):
         if line.startswith(b"diff --git "):
             in_hunk = False
         elif line.startswith(b"@@"):
-            if re.match(rb"@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@(?:[ \n]|$)", line) is None:
+            header = HUNK_HEADER.match(line)
+            if header is None:
                 raise AuditError("history-read-failed")
             in_hunk = True
+            next_line = int(header.group(1))
         elif line.startswith((b"diff --cc ", b"diff --combined ")):
             raise AuditError("history-read-failed")
         elif in_hunk:
             if line.startswith(b"+"):
                 added.append(line[1:])
-            elif not line.startswith((b"-", b" ", b"\\", b"\n")):
+                file_lines.append(next_line)
+                next_line += 1
+            elif line.startswith(b" "):
+                next_line += 1
+            elif not line.startswith((b"-", b"\\", b"\n")):
                 raise AuditError("history-read-failed")
-    return b"".join(added)
+    return b"".join(added), tuple(file_lines)
 
 
 def history_content(
     runner: BoundedRunner, repository: Path, commit: str,
     changes: list[tuple[str, str, str, str]], coverage: Coverage, size_policy: SizePolicy,
-) -> Iterator[tuple[str, bytes]]:
+) -> Iterator[tuple[str, bytes, tuple[int, ...] | None]]:
     # Group merge-parent changes before generating a combined per-path patch.
     by_path: dict[str, list[tuple[str, str, str]]] = {}
     for path, old, new, mode in changes:
@@ -1888,14 +1990,15 @@ def history_content(
             if set(old) != {"0"}:
                 old_size = int(decode_text(git(runner, repository, "cat-file", "-s", old).stdout))
                 old_large |= old_size > MAX_FILE_BYTES
+        line_map: tuple[int, ...] | None = None
         if old_large:
             content = git(runner, repository, "cat-file", "blob", new).stdout
             if len(content) != size:
                 raise AuditError("history-read-failed")
         else:
-            content = added_patch_content(commit_patch(runner, repository, commit, path))
+            content, line_map = added_patch_content(commit_patch(runner, repository, commit, path))
         if b"\0" not in content:
-            yield path, content
+            yield path, content, line_map
 
 
 def scan_history_records(
@@ -1910,6 +2013,7 @@ def scan_history_records(
     collector: FindingCollector,
     allowed_categories: frozenset[str],
     size_policy: SizePolicy,
+    provenance: LineProvenance,
     detectors: tuple[CustomDetector, ...] = DEFAULT_DETECTORS,
 ) -> None:
     total_bytes = 0
@@ -1982,7 +2086,7 @@ def scan_history_records(
             break
         while True:
             try:
-                path, patch = next(contents)
+                path, patch, line_map = next(contents)
             except StopIteration:
                 break
             except AuditError as error:
@@ -1995,6 +2099,7 @@ def scan_history_records(
                 coverage.partial("byte-limit")
                 break
             total_bytes += len(patch)
+            origin = ContentOrigin(path, patch, provenance, line_map)
             if not collector.add(
                 detect_non_secret(
                     patch,
@@ -2005,6 +2110,7 @@ def scan_history_records(
                     commit=commit,
                     allowed_categories=allowed_categories,
                     detectors=detectors,
+                    origin=origin,
                 ),
                 coverage,
             ):
@@ -2023,6 +2129,7 @@ def scan_history_records(
                         source="branch-history",
                         fallback_path=path,
                         fallback_commit=commit,
+                        origin=origin,
                     ),
                     coverage,
                 ):
@@ -2062,14 +2169,11 @@ def scan(
     allowed_categories, allowed_secret_fingerprints, policy = detector_policy(
         runner, repository
     )
-    visibility = remote_visibility(runner, repository)
-    if visibility != "unknown":
-        policy += "+remote-visibility-" + visibility
     state_before = repository_state(runner, repository)
     working = Coverage("working-tree")
     history = Coverage("branch-history")
     prefixes, bead_prefix_source = bead_prefixes(runner, repository)
-    detectors = active_detectors(build_bead_detector(prefixes))
+    detectors = active_detectors(build_bead_detectors(prefixes))
     custom_detectors = custom_detector_coverage(deadline, detectors)
     try:
         log_options = resolve_history_range(runner, repository, history)
@@ -2080,6 +2184,7 @@ def scan(
     size_policy = large_blob_policy(runner, repository, history)
     if size_policy.allowed:
         policy += "+allow-large-blobs"
+    provenance = LineProvenance(runner, repository, size_policy.base)
     candidates = collect_candidates(runner, repository, working, size_policy)
     collector = FindingCollector(allowed_secret_fingerprints)
     for candidate in candidates:
@@ -2093,6 +2198,7 @@ def scan(
                 coverage=working,
                 allowed_categories=allowed_categories,
                 detectors=detectors,
+                origin=ContentOrigin(candidate.path, candidate.data, provenance),
             ),
             candidate,
             working,
@@ -2150,6 +2256,7 @@ def scan(
                             result.stdout,
                             source="working-tree",
                             fallback_path=candidate.path,
+                            origin=ContentOrigin(candidate.path, candidate.data, provenance),
                         ),
                         candidate,
                         working,
@@ -2178,6 +2285,7 @@ def scan(
                     collector,
                     allowed_categories,
                     size_policy,
+                    provenance,
                     detectors,
                 )
 
@@ -2203,7 +2311,7 @@ def scan(
     complete = all(item.status == "complete" for item in coverages)
     status = "complete" if complete else "partial"
     for item in ordered_findings:
-        item["policy"]["grade"] = finding_grade(item, visibility)
+        item["policy"]["grade"] = finding_grade(item)
     verdict = graded_verdict(ordered_findings, status)
     payload = {
         "schemaVersion": SCHEMA_VERSION,
@@ -2215,7 +2323,6 @@ def scan(
             "head": head,
             "policy": policy,
             "beadPrefixSource": bead_prefix_source,
-            "remoteVisibility": visibility,
         },
         "provenance": {
             "helperVersion": HELPER_VERSION,
@@ -2264,7 +2371,6 @@ def failed_payload(code: str) -> dict[str, Any]:
         "verdict": "block",
         "target": {
             "repository": "unavailable", "head": None, "policy": "defaults",
-            "remoteVisibility": "unknown",
         },
         "provenance": {
             "helperVersion": HELPER_VERSION,

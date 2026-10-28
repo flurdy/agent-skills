@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/artifact-hygiene/scripts/artifact_hygiene.
 model-tier: economy
 model: sonnet
 effort: high
-version: "0.6.8"
+version: "0.7.0"
 author: "flurdy"
 ---
 
@@ -44,6 +44,8 @@ Patches use uncolored, separate-parent unified diffs with root-commit patches en
 of local presentation settings.
 Hunk-aware, LF-delimited extraction preserves added content beginning with `++`, including lines
 resembling file headers; unsupported hunk formats produce partial coverage, never a clean result.
+Hunk offsets map every added line back to its file line, so history findings report the file line
+rather than the position among a commit's added lines.
 Blob sizes are checked before generating patches; deletions introduce no content. When a large
 predecessor becomes a small file, the full new file is scanned conservatively instead of building a
 huge deletion patch. Such findings can include unchanged lines. Repository diff attributes cannot hide
@@ -66,9 +68,13 @@ personal-data matches in dependency lockfiles are ignored, as are email addresse
 Email addresses in the `owner`, `created_by`, and `assignee` fields of Beads `.beads/issues.jsonl`
 records are treated as structural attribution; unrelated fields remain reportable.
 
-The Bead-reference detector matches known prefixes with any 3–8 character base36 suffix and
-optional `.N` children, plus a generic shape requiring both letters and digits in the 3–8 character
-suffix so a checked-in file can only widen detection. Generic matching ignores numeric-only fixture
+The Bead-reference detectors are split by certainty. `beads.reference` matches known prefixes with
+any 3–8 character base36 suffix and optional `.N` children, and blocks new content.
+`beads.generic-shape` matches any other hyphenated word whose 3–8 character suffix contains both
+letters and digits (for example `non-auth0`); it is a low-confidence advisory finding whose
+remediation names `git config --local --add artifactHygiene.beadPrefixes <prefix>`, so ordinary
+words never block while declared prefixes do. It never re-reports a known prefix, so a checked-in
+file can only widen detection. Generic matching ignores numeric-only fixture
 values such as `test-stt-123` and `member-uuid-123`; known prefixes still match numeric-only IDs.
 Unknown-prefix numeric-only and digitless IDs are not detected by this heuristic. Generic prefixes
 require each hyphen-separated segment to start with a letter, so prefixes such as `project-2` need
@@ -175,10 +181,9 @@ never relabels a secret match as a verified false positive or a confirmed live c
 | Partial/failed coverage, unknown category/severity/confidence/location, or failed publication proof | `block` |
 | Critical severity | `block` |
 | Informational scanner-control finding | `advisory` |
+| Generic-shape Bead reference (`beads.generic-shape`) | `advisory` |
+| Already-published, non-critical finding | `advisory` |
 | New working-tree/index or branch-history finding | `block` |
-| Already-published, private repository, non-critical finding | `advisory` |
-| Already-published Bead reference, AI attribution, or scanner-control finding | `advisory` |
-| Already-published secret, session link, or personal data in public/unknown repository | `block` |
 
 Known confidence levels (`high`, `medium`, `low`) are recorded and validated; lower confidence alone
 never permits a new finding. Unknown and future categories fail closed. Complete reports with no
@@ -187,28 +192,25 @@ Suppressed exact fingerprint matches remain separately visible and do not count 
 
 `location.publication` distinguishes `working-tree`, `branch-history`, and `already-published`.
 Working-tree includes staged/index candidates: each occurrence is bound to its containing `blobId`,
-so a published file cannot mask different staged bytes at the same path and line. Only proof that the
-exact blob is reachable from the remote-backed default base permits `already-published`. Hashes use
+so a published file cannot mask different staged bytes at the same path and line. Proof that the
+exact blob is reachable from the remote-backed default base permits `already-published`. So does
+line proof: the finding's own line text appears contiguously in the same path at the default-base
+tip, so an old finding on an unchanged line of an edited file stays advisory while new or changed
+lines still block. Line proof reads only that one base-tip blob (at most 1 MB) and never walks
+history. Hashes use
 raw bytes without Git filters; CRLF conversion, LFS, or other filters can therefore conservatively
-leave a working-tree finding blocking even when its index copy is published. Branch history remains conservatively blocking even if a commit was pushed to a feature branch: the scan
+leave a working-tree finding blocking even when its index copy is published. Branch history without line proof remains conservatively blocking even if a commit was pushed to a feature branch: the scan
 range is relative to the default base, not a claim that all those commits are unpushed. Full local
 history fallback is reported as `coverage.base: all-reachable`, not as a coverage error when that
 scan completes. The informational scanner-control row is the explicit exception to new-content
 blocking; repository controls still cannot suppress the scan.
 
-Visibility is an owner assertion, not inferred from a URL, host, or authentication. No network lookup
-is performed. The default is `unknown`, which uses the public-safe policy. Only one valid direct
-clone-local Git config value is accepted, with includes disabled:
-
-```bash
-git config --local artifactHygiene.remoteVisibility private  # or public
-```
-
-The result is reported in `target.remoteVisibility` and `target.policy`. Checked-in files, included or
-global Git config, and environment variables cannot supply visibility or grading rules. Do not set it
-automatically. A private assertion is not proof of the audience of a future push; recheck it when the
-repository destination or visibility changes. Advisory findings still deserve review, not rotation
-or suppression based solely on the scanner result.
+Repository visibility is not an input: an already-published finding is advisory whatever the
+audience, because pushing the branch cannot expose it further. The advisory is still rendered and
+deserves review, and rotation when a credential is live, but it is no reason to rewrite history or
+block the push. The former `artifactHygiene.remoteVisibility` setting is ignored and the report no
+longer carries `target.remoteVisibility`. Checked-in files, included or global Git config, and
+environment variables cannot supply grading rules.
 
 Consumers must validate `artifact-hygiene/v2`, complete coverage, and the verdict's consistency with
 finding grades. A v1/v2 mismatch denies; deploy the helper and gate contracts together. Advisory
@@ -250,8 +252,7 @@ Render coverage before findings:
 2. List each source and its `complete`, `partial`, or `failed` status plus safe error codes. If
    `summary.truncated` is true, state explicitly that finding counts are incomplete.
 3. Group findings by grade, severity, and category, using only the normalized location, evidence
-   token, and remediation supplied by the helper. Show `location.publication` and the asserted or
-   unknown visibility. An advisory does not mean the content was verified harmless.
+   token, and remediation supplied by the helper. Show `location.publication`. An advisory does not mean the content was verified harmless.
 4. Report any `suppressed` count and state that clone-local fingerprint allowances were applied; use
    only normalized fields and never attempt to recover the matched value.
 5. Render `sizeDecisions`, including every `skipped-by-policy` entry and its reason/blob ID. For

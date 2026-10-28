@@ -34,7 +34,8 @@ for required in \
   'skipped-by-policy' \
   'publication-proof-failed' \
   'artifact-hygiene/v2' \
-  'artifactHygiene.remoteVisibility' \
+  'beads.generic-shape' \
+  'line proof' \
   '`advisory`' \
   '`block`' \
   '`policy.grade`' \
