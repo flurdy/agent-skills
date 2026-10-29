@@ -248,6 +248,15 @@ class SessionBoundaries(unittest.TestCase):
         for required in ("/landscape quick", "### 1. 📋 Jira", "### 2. 🔀 PRs", "### 4. 📍 Working copy", "Only the full/quick modes", "display order, not a selectable"):
             self.assertIn(required, text)
 
+    def test_landscape_review_requests_are_full_mode_only_and_degrade(self):
+        text = skill("landscape")
+        section = text.split("### 2b. 👀 Review requests", 1)[1].split("### 3. 🎯 Beads", 1)[0]
+        for required in ("Full mode only", "quick", "make no request", "gh-pr-review-requests.py --timeout 60", "No open PRs requesting your review", "Review requests unavailable", "Incomplete", "ciHeadSha == headSha"):
+            self.assertIn(required, section)
+        self.assertNotIn("--state-stdin", section.split("```bash", 1)[1].split("```", 1)[0])
+        self.assertNotIn("gh-pr-review-requests", text.split("## Resume mode", 1)[1].split("## What It Shows", 1)[0])
+        self.assertIn("Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py:*)", grants("landscape"))
+
     def test_handoff_picker_counts_remaining_current_and_member_rows(self):
         text = skill("handoffs")
         for obsolete in ("Only pickable rows (✅)", "If `current_repo_total == 0`, skip this step", "between 1 and 4", "skip the pickable table and step 4"):
