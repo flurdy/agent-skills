@@ -288,9 +288,10 @@ Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `k
 
 ## §Cells — compact table cells
 
-Wide tables make Claude Code fall back to per-row key/value cards. Keep every handoff table rendered
-by `/handoffs` and `/handoffs-tidy` within about **150 display columns** including borders, so it
-stays a real table in a ~180-column terminal or split pane.
+Wide tables make Claude Code fall back to per-row key/value cards, and Pi wraps their cells. Keep
+handoff tables rendered by `/handoffs` and `/handoffs-tidy` within about **150 display columns**
+including borders; the workspace-member table's extra Repo column may reach about 160 in the worst
+case. Both stay one line per row in a ~180-column terminal.
 
 Shorten a value only when it exceeds its cap: keep its first `cap − 1` characters and append one
 `…`. A tail ellipsis keeps the branch type and ticket key that distinguish rows.
