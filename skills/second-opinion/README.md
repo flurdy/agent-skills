@@ -108,6 +108,11 @@ counted. See
 [review-panels.md](references/review-panels.md) for the supported schema, built-ins, per-route
 model/effort overrides, and limits.
 
+To keep particular models or local agents out of reviews for chosen directories, add an optional
+user-owned deny policy at `~/.agents/disabled-models.json`. Denied direct agents stop, `peer` skips
+them, and denied panel routes are reported but never run; they still count towards thresholds. See
+[disabled-models.md](references/disabled-models.md). Every route needs Python 3.10+ to evaluate it.
+
 OpenRouter panels additionally require `curl` and either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT` in your shell or secret
 manager. Put exact OpenRouter model IDs in the local configuration, never in this shared README.
 
@@ -190,3 +195,4 @@ settings are reported as `native-default`—see
 - [Panel configuration and execution](references/review-panels.md)
 - [OpenRouter safety and consent](references/openrouter-consensus.md)
 - [Model and effort resolution](references/external-model-resolution.md)
+- [Disabled-model policy](references/disabled-models.md)

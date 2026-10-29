@@ -172,6 +172,7 @@ test-second-opinion:
 	@python3 -B -m unittest discover -s skills/second-opinion/tests -p 'test_panel_stdin.py'
 	@python3 -m unittest discover -s skills/second-opinion/tests -p 'test_billing_evidence.py'
 	@python3 -m unittest discover -s skills/second-opinion/tests -p 'test_subscription_route_check.py'
+	@python3 -B -m unittest discover -s skills/second-opinion/tests -p 'test_disabled_models.py'
 	@skills/second-opinion/tests/test-skill-contract.sh
 	@skills/second-opinion/tests/test-review-panel.sh
 	@skills/second-opinion/tests/test-openrouter-panel.sh

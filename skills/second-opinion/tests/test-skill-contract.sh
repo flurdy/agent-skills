@@ -67,6 +67,13 @@ for invariant in 'review-panel-stdin.py' 'single quotes' 'SIGKILL' 'not a sandbo
   grep -Fq -- "$invariant" "$TRANSPORT" || fail "missing stdin transport contract: $invariant"
 done
 grep -Fq 'instead of every caller-file preparation' "$SKILL" || fail 'guarded sessions still prepare caller files'
+POLICY="$ROOT/skills/second-opinion/references/disabled-models.md"
+for invariant in 'Bash(~/.agents/skills/second-opinion/scripts/disabled-models.py:*)' 'check-direct {claude|codex|gemini}' 'do not substitute another agent' 'ineligible for `peer`' 'policyDeniedRoutes' 'never invoked'; do
+  grep -Fq -- "$invariant" "$SKILL" || fail "missing disabled-model invariant: $invariant"
+done
+for invariant in '.agents/disabled-models.json' 'rejects any attempt to supply one' 'only make a threshold harder' 'fresh check and consent' 'not universal model enforcement'; do
+  grep -Fq -- "$invariant" "$POLICY" || fail "missing disabled-model contract: $invariant"
+done
 python3 - "$SKILL" <<'PY'
 import pathlib
 import sys

@@ -760,4 +760,61 @@ legacy_budget_check="$("${RUN_ENV[@]}" "$HELPER" check --config "$TMP_DIR/legacy
 jq -se 'map(select(.model == "qwen/legacy-a")) | length == 1 and
   .[0].max_tokens == 80 and .[0].reasoning == {effort:"high"}' "$REQUEST_LOG" \
   >/dev/null || fail "legacy reasoning/budget was dropped"
+# Workspace-disabled routes: still counted for quorum, never invoked, bound into digests.
+POLICY_WORKSPACE="$TMP_DIR/policy-workspace"
+POLICY_OUTSIDE="$TMP_DIR/policy-outside"
+POLICY_FILE="$TMP_DIR/home/.agents/disabled-models.json"
+mkdir -p "$POLICY_WORKSPACE/member" "$POLICY_OUTSIDE" "$TMP_DIR/home/.agents"
+write_policy() {
+  jq -n --arg root "$POLICY_WORKSPACE" --argjson agents "$1" '{version:1, rules:[{id:"work", roots:[$root],
+    agents:$agents, models:["openrouter/qwen/model-a"], reason:"not approved here"}]}' > "$POLICY_FILE"
+}
+panel_in() {
+  local directory="$1"
+  shift
+  (cd "$directory" && "${RUN_ENV[@]}" "$HELPER" "$@")
+}
+write_policy '["codex"]'
+policy_check="$(panel_in "$POLICY_WORKSPACE/member" check --config "$CONFIG" --panel mixed --prompt-file "$PROMPT")"
+jq -e '
+  .quorum == 2 and .consensusQuorum == 3 and .disabledModels.matchedRules == ["work"] and
+  ([.policyDeniedRoutes[].id] == ["codex-main", "qwen-a"]) and
+  (.policyDeniedRoutes[0].policyReasons == ["work: not approved here"]) and
+  ([.routes[] | select(.availability == "disabled-by-policy") | .id] == ["codex-main", "qwen-a"]) and
+  ([.localRoutes[].id] == ["claude-main"]) and ([.openrouterRoutes[].id] == ["qwen-b"]) and
+  .openrouter.requestCount == 1
+' <<< "$policy_check" >/dev/null || fail "policy-denied routes were not reported or excluded: $policy_check"
+outside_check="$(panel_in "$POLICY_OUTSIDE" check --config "$CONFIG" --panel mixed --prompt-file "$PROMPT")"
+jq -e '.policyDeniedRoutes == [] and .disabledModels.matchedRules == [] and (.localRoutes | length) == 2' \
+  <<< "$outside_check" >/dev/null || fail "policy applied outside its roots"
+[[ "$(jq -r '.panelSha256' <<< "$outside_check")" != "$(jq -r '.panelSha256' <<< "$policy_check")" ]] || \
+  fail "panel digest does not bind policy denials"
+policy_args=(--config "$CONFIG" --panel mixed --prompt-file "$PROMPT"
+  --panel-sha256 "$(jq -r '.panelSha256' <<< "$policy_check")"
+  --prompt-sha256 "$(jq -r '.promptSha256' <<< "$policy_check")")
+: > "$AGENT_LOG"
+panel_in "$POLICY_WORKSPACE" run-local "${policy_args[@]}" > "$TMP_DIR/policy-local.json"
+[[ "$(cut -d'|' -f1 "$AGENT_LOG")" == "claude" ]] || fail "policy-denied local route was invoked"
+: > "$REQUEST_LOG"
+panel_in "$POLICY_WORKSPACE" run-openrouter --confirmed "${policy_args[@]}" \
+  --openrouter-sha256 "$(jq -r '.openrouterSha256' <<< "$policy_check")" > "$TMP_DIR/policy-openrouter.json"
+jq -se 'map(.model) == ["QWEN/model-b"]' "$REQUEST_LOG" >/dev/null || fail "policy-denied OpenRouter route was requested"
+printf '%s\n' "$policy_check" > "$TMP_DIR/policy-check.json"
+"$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/policy-check.json" \
+  --results-file "$TMP_DIR/policy-local.json" --results-file "$TMP_DIR/policy-openrouter.json" > "$TMP_DIR/policy-eval.json"
+jq -e '
+  ([.results[] | select(.status == "disabled-by-policy") | .id] == ["codex-main", "qwen-a"]) and
+  ([.unavailableRoutes[].id] == ["codex-main", "qwen-a"]) and
+  (.results[] | select(.id == "codex-main") | .error | contains("work: not approved here")) and
+  .quorumRequired == 2 and .successfulRouteCount == 2 and .quorumMet and
+  .consensusQuorumRequired == 3 and (.consensusEligible | not)
+' "$TMP_DIR/policy-eval.json" >/dev/null || fail "evaluation lowered thresholds or hid policy denials"
+write_policy '["codex", "claude"]'
+expect_failure 'panel changed since check' panel_in "$POLICY_WORKSPACE" run-local "${policy_args[@]}"
+printf '%s' '{' > "$POLICY_FILE"
+expect_failure 'disabled-model policy' panel_in "$POLICY_WORKSPACE" check --config "$CONFIG" --panel mixed
+expect_failure 'malformed JSON; no panel routes run' panel_in "$POLICY_WORKSPACE" run-local "${policy_args[@]}"
+[[ "$(wc -l < "$AGENT_LOG")" -eq 1 ]] || fail "changed or invalid policy still invoked routes"
+rm -f "$POLICY_FILE"
+
 printf '%s\n' 'review-panel tests passed'

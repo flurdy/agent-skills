@@ -1,11 +1,11 @@
 ---
 name: second-opinion
 description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Bash(printf '%s' * | python3 ~/.agents/skills/second-opinion/scripts/review-panel-stdin.py),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(~/.agents/skills/second-opinion/scripts/disabled-models.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Bash(printf '%s' * | python3 ~/.agents/skills/second-opinion/scripts/review-panel-stdin.py),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.8.0"
+version: "3.9.0"
 author: "flurdy"
 ---
 
@@ -48,6 +48,9 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 
 - Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
 - Panel orchestration: `jq` plus `scripts/review-panel.sh`.
+- Every route: Python 3.10+ for `scripts/disabled-models.py`, which applies the optional user-owned
+  [disabled-model policy](references/disabled-models.md). Read it when a route is denied or the
+  policy is reported invalid.
 - OpenRouter subset only: `curl`, plus either `OPENROUTER_API_KEY` or `secret-api-key` with `SECRET_API_KEY_PROJECT`, and a configured panel/profile in
   `~/.agents/second-opinion/config.json`. Optional exact-model `modelPolicies` in that user-local
   file may set `consent: "allow"`; absent or invalid policies remain confirmation-required.
@@ -75,6 +78,10 @@ A second opinion should come from a different vendor than the model that produce
 
 `peer` is the explicit name for this selection and is also the no-`--agent` default. Direct
 `claude`, `codex`, and `gemini` remain supported.
+
+Agents denied for the invoking directory by the [disabled-model policy](references/disabled-models.md)
+are ineligible for `peer`: skip them and report each skipped agent with its rule and reason. An
+explicitly requested denied agent stops without substitution.
 
 Prefer subscription/OAuth routes for one peer. Treat API-key/BYOK and unknown-cost direct routes as
 metered and obtain current-run consent before invocation. A loaded user-owned
@@ -183,7 +190,13 @@ contract; it receives no tools or repository access.
 ## 3. Execute one peer/direct agent
 
 Resolve `peer` using the independence rule, then invoke exactly one eligible route. Pass the actual
-assembled packet without allowing writes. PR mode must pass its just-in-time local preflight first;
+assembled packet without allowing writes.
+
+Immediately before every direct launch, from the invoking directory, run
+`~/.agents/skills/second-opinion/scripts/disabled-models.py check-direct {claude|codex|gemini}`.
+Exit 0 continues to the route's own checks. Exit 3 means the policy denies that agent here: do not
+launch, report its `reasons`, and do not substitute another agent. Exit 2 means the policy is
+invalid: launch nothing and report its `policy.error`. PR mode must pass its just-in-time local preflight first;
 an unavailable route is not permission to substitute another provider or cwd.
 
 ### Claude
@@ -253,9 +266,11 @@ Retain and display:
 - ordered route IDs, kinds, providers, roles, availability, effective model/effort, and provenance;
 - configured quorum and consensus thresholds, enabled/disabled routes, and limits, including fixed
   OpenRouter completion-contract bytes;
-- `panelSha256`, `openrouterSha256`, and `promptSha256`.
+- `panelSha256`, `openrouterSha256`, and `promptSha256`;
+- `disabledModels` (policy status and matched rules) and every `policyDeniedRoutes` entry with its
+  reasons. Denied routes still count towards both thresholds but are never invoked.
 
-If profile validation fails, stop before any route invocation. Missing route prerequisites degrade the
+If profile validation fails or the disabled-model policy is invalid, stop before any route invocation. Missing route prerequisites degrade the
 panel; they do not authorize substitution.
 
 ### 4.2 Run the local subset
@@ -277,7 +292,7 @@ with the context reason and let evaluation preserve missing results. Never forge
 Preserve the returned JSON array exactly (inline for the private transport; a mode-private file
 for the caller-file interface). The coordinator invokes each enabled
 local route at most once, in bounded parallel batches, with read-only tools/sandboxing and prompt
-stdin. Disabled routes are not invoked. Preserve missing CLIs, timeouts, and failures.
+stdin. Disabled and policy-denied routes are not invoked. Preserve missing CLIs, timeouts, and failures.
 
 ### 4.3 Decide the OpenRouter subset
 

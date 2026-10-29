@@ -96,6 +96,8 @@ print("fixture review", end="")
     def test_rejects_paths_options_and_malformed_input(self):
         for fields in ({"config": "/tmp/config"}, {"promptFile": "/tmp/prompt"},
                        {"output": "/tmp/output"}, {"cwd": "/other"}, {"command": "touch x"},
+                       {"disabledModels": "/tmp/policy.json"}, {"policyPath": "/tmp/policy.json"},
+                       {"home": "/tmp/home"},
                        {"prompt": ""}, {"prompt": "x" * 65537}, {"version": 2},
                        {"timeout": True}, {"routeModels": {"--config": "/tmp/config"}},
                        {"action": "run-local", "panelSha256": "bad"}):

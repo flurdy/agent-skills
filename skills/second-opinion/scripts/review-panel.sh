@@ -37,6 +37,8 @@ be disabled; quorum counts enabled routes while optional consensusQuorum counts
 unique providers. Built-in focused is used when absent from config. Local response
 and error capture are bounded while streaming. OpenRouter effort is passed as
 reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 128,000).
+Routes denied for the current directory by ~/.agents/disabled-models.json still count
+towards thresholds but are never run; an invalid policy stops every command but evaluate.
 USAGE
 }
 
@@ -341,6 +343,26 @@ apply_effort_override() {
   ' <<< "$PANEL_JSON")"
 }
 
+# The user-owned deny policy marks matching routes without disabling them, so quorum and
+# consensus thresholds keep counting them: denied routes are reported, never invoked.
+apply_disabled_models_policy() {
+  require_command python3
+  local policy status=0
+  policy="$(python3 -I "$SCRIPT_DIR/disabled-models.py" evaluate)" || status=$?
+  jq -e '.status | type == "string"' <<< "$policy" >/dev/null 2>&1 || die "disabled-model policy could not be evaluated"
+  if (( status != 0 )); then
+    die "disabled-model policy $(jq -r '.path' <<< "$policy") is invalid: $(jq -r '.error' <<< "$policy"); no panel routes run"
+  fi
+  PANEL_JSON="$(jq -c --argjson policy "$policy" '
+    .disabledModels = ($policy | {status, revision, matchedRules}) |
+    .routes |= map(
+      del(.policyDenied, .policyReasons) |
+      (if .kind == "local" then $policy.deniedAgents[.agent] else $policy.deniedModels[.model] end) as $reasons |
+      if .enabled and $reasons != null then . + {policyDenied: true, policyReasons: $reasons} else . end
+    )
+  ' <<< "$PANEL_JSON")"
+}
+
 validate_and_apply_overrides() {
   validate_limits_and_routes
   local override
@@ -357,6 +379,7 @@ validate_and_apply_overrides() {
   for override in "${ROUTE_EFFORTS[@]}"; do
     apply_effort_override "$override"
   done
+  apply_disabled_models_policy
 
   PANEL_CANONICAL="$(jq -cS . <<< "$PANEL_JSON")"
   PANEL_SHA256="$(printf '%s' "$PANEL_CANONICAL" | sha256_stream)" || die "a SHA-256 command is required"
@@ -367,7 +390,7 @@ validate_and_apply_overrides() {
     --argjson contract_bytes "$completion_contract_bytes" \
     --arg contract_sha256 "$completion_contract_sha256" '
     {
-      routes: [.routes[] | select(.kind == "openrouter" and .enabled)],
+      routes: [.routes[] | select(.kind == "openrouter" and .enabled and (.policyDenied | not))],
       limits,
       completionContract: {bytes: $contract_bytes, sha256: $contract_sha256}
     }
@@ -427,6 +450,7 @@ check_panel() {
     [.routes[] | . + {
       availability: (
         if (.enabled | not) then "disabled"
+        elif .policyDenied then "disabled-by-policy"
         elif .kind != "openrouter" then "unchecked"
         elif $openrouter_availability != "available" then "unavailable"
         elif .consentPolicy == "allow" then "configured-allow"
@@ -436,8 +460,8 @@ check_panel() {
     }]
   ' <<< "$PANEL_JSON")"
   local local_routes openrouter_routes
-  local_routes="$(jq '[.[] | select(.kind == "local" and .enabled)]' <<< "$routes")"
-  openrouter_routes="$(jq '[.[] | select(.kind == "openrouter" and .enabled)]' <<< "$routes")"
+  local_routes="$(jq '[.[] | select(.kind == "local" and .enabled and (.policyDenied | not))]' <<< "$routes")"
+  openrouter_routes="$(jq '[.[] | select(.kind == "openrouter" and .enabled and (.policyDenied | not))]' <<< "$routes")"
 
   local route_count completion_contract_bytes=0
   route_count="$(jq 'length' <<< "$local_routes")"
@@ -481,6 +505,8 @@ check_panel() {
       consensusQuorum: $panel_data.consensusQuorum,
       consensusQuorumUnit: "providers",
       limits: $panel_data.limits,
+      disabledModels: $panel_data.disabledModels,
+      policyDeniedRoutes: [$routes[] | select(.policyDenied) | {id, kind, agent, model, policyReasons}],
       panelSha256: $panel_sha256,
       openrouterSha256: $openrouter_sha256,
       promptSha256: (if $prompt_sha256 == "" then null else $prompt_sha256 end),
@@ -752,7 +778,7 @@ run_local() {
   local max_parallel
   max_parallel="$(jq -r '.limits.maxParallel' <<< "$PANEL_JSON")"
   local routes_json count
-  routes_json="$(jq -c '[.routes[] | select(.kind == "local" and .enabled)]' <<< "$PANEL_JSON")"
+  routes_json="$(jq -c '[.routes[] | select(.kind == "local" and .enabled and (.policyDenied | not))]' <<< "$PANEL_JSON")"
   count="$(jq 'length' <<< "$routes_json")"
   [[ "$count" -gt 0 ]] || { printf '[]\n'; return; }
 
@@ -914,6 +940,12 @@ evaluate_results() {
       if ($route.enabled | not) then
         $route + {
           status:"disabled", response:null, error:"route disabled by panel configuration",
+          panelSha256:$panel.panelSha256, promptSha256:$panel.promptSha256
+        }
+      elif ($route.policyDenied // false) then
+        $route + {
+          status:"disabled-by-policy", response:null,
+          error:("route disabled by disabled-model policy: " + ($route.policyReasons | join("; "))),
           panelSha256:$panel.panelSha256, promptSha256:$panel.promptSha256
         }
       elif $result == null then
