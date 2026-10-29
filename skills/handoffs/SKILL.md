@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.24.0"
+version: "0.25.0"
 author: "flurdy"
 ---
 
@@ -102,15 +102,17 @@ If `current_repo_total > 0`:
 ```markdown
 ### 🧷 Handoffs — this repo ({count})
 
-| Date | Slug | Branch | Where | Worktree | Status | Archive |
-|------|------|--------|-------|----------|--------|---------|
+| Date | Slug | Branch | Where | Status | Archive |
+|------|------|--------|-------|--------|---------|
 ```
+
+Keep cells compact per **REFERENCE §Cells** (width budget, caps, ellipsis) so the table survives
+~180-column terminals instead of collapsing into per-row cards.
 
 - **Date**: render `{date} {time}` (e.g. `2026-06-03 14:32`) so same-day handoffs are distinguishable at a glance. Drop the time and show just `{date}` when `{time}` is `?` (neither header time nor mtime was available).
 - **Slug**: from the filename (e.g. `ab-1107-cta-event`).
-- **Branch**: from the parsed line; `?` if unknown.
-- **Where**: basename of the recorded cwd. Append ` (current)` if it matches pwd. Special cases: empty cwd → `—`; cwd ending in `/` → use the next-up segment, e.g. `worktrees/` → `(worktrees root)`.
-- **Worktree**: ✅ if `exists=Y`; ✂️ (icon only, no word) if `exists=N`. The ✂️ reads as "pruned" and the footnote legend below spells it out; everything in the current-repo table is pickable by definition (handoffs that couldn't be matched to a repo never reach this table), so no separate Pickable column.
+- **Branch**: from the parsed line, capped per REFERENCE §Cells; `?` if unknown.
+- **Where**: worktree glyph plus optional location label per REFERENCE §Cells — e.g. `✅ here`, `✅` (main checkout or branch-derived worktree), `✂️` (pruned). The ✂️ reads as "pruned" and the footnote legend below spells it out; everything in the current-repo table is pickable by definition (handoffs that couldn't be matched to a repo never reach this table), so no separate Pickable column.
   - Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️` (the wide colored forms, not the narrow text `✂︎`/`⚠︎`). Mixing the two presentations across rows makes column widths jump — keep one form so the cells line up.
 - **Status**: classify the row per **REFERENCE §Status** (the 9-step precedence: supersede → open PR → merged PR → beads-done → Jira-Done → closed PR → merged → gone → live). Emit the glyphs exactly as written there.
 - **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—`. Recent non-superseded rows stay `—` even when Status says merged/done/stale; a §1a Jira-Done promotion counts as `safe` only outside the recent window.
@@ -142,11 +144,12 @@ Render from `---WORKSPACE-MEMBER-HANDOFFS---` (26 fields: the usual 24 plus
 ```markdown
 ### 🧱 Handoffs — workspace members ({workspace_member_handoffs})
 
-| Date | Repo | Slug | Branch | Worktree | Status | Archive |
-|------|------|------|--------|----------|--------|---------|
+| Date | Repo | Slug | Branch | Where | Status | Archive |
+|------|------|------|--------|-------|--------|---------|
 ```
 
-- Same column semantics as §2, plus **Repo** = `{member-display}`.
+- Same column semantics and REFERENCE §Cells caps as §2, plus **Repo** = `{member-display}`.
+  **Where** judges the main checkout against `{member-path}`, so most member rows show the glyph alone.
 - **Status** and **Archive**: classify exactly as §2 (REFERENCE §Status / §Archive-glyph). Member
   rows are classified against their own repo, so `✅ PR merged` / `⚪ branch gone` are meaningful here.
 - Sort newest-first (the emitted order); group visually by repo only if it aids scanning.
@@ -199,7 +202,7 @@ Pull each row's `{path}` straight from the `---HANDOFFS---` section where `repo-
 _⚠️ {unresolved} handoff(s) could not be matched to any repo or directory (recorded path is invalid or gone). Run `grep -L "Repo root:" ~/.agents/handoffs/*.md` to find them._
 ```
 
-**Do not add a global pruned-count footnote.** The Worktree column in the current-repo table already makes pruning visible per-row. Add a one-time pickability hint immediately under the current-repo table (when `current_repo_pruned > 0`):
+**Do not add a global pruned-count footnote.** The Where column's ✂️ in the current-repo table already makes pruning visible per-row. Add a one-time pickability hint immediately under the current-repo table (when `current_repo_pruned > 0`):
 
 ```markdown
 _✂️ = original worktree was pruned (no longer exists); still pickable — you'll resume in your current checkout or a fresh worktree._
@@ -263,7 +266,7 @@ With zero rows, skip only this picker. With one row, ask in plain text to load i
 do not construct a one-option questionnaire. With 2–4 rows, use `AskUserQuestion`:
 
 - Option label: `{date} {slug}` (truncate slug if needed to stay under the chip width).
-- Option description: `{time} · Branch: {branch} | Where: {basename of cwd}` (lead with the `HH:MM` so several same-day handoffs are distinguishable here; omit the `{time} · ` prefix when `{time}` is `?`).
+- Option description: `{time} · Branch: {branch} | Where: {basename of cwd}`, both uncapped (lead with the `HH:MM` so several same-day handoffs are distinguishable here; omit the `{time} · ` prefix when `{time}` is `?`).
 
 With more than four remaining displayed rows, do **not** force the picker. Instead, print:
 
@@ -271,7 +274,7 @@ With more than four remaining displayed rows, do **not** force the picker. Inste
 **Pick one to load:** reply with the slug or filename (e.g. `ab-1344-login-state-decision` or `2026-05-21-ab-1344-login-state-decision.md`).
 ```
 
-Every remaining displayed row in §2/§2b is pickable; Worktree ✅/✂️ describes path existence only.
+Every remaining displayed row in §2/§2b is pickable; Where ✅/✂️ describes path existence only.
 Pruned-worktree handoffs are pickable — they just resume in a different checkout. Unresolved rows
 are not recovery targets; offer read-only access to the exact listed file instead.
 

@@ -257,7 +257,7 @@ If the Jira MCP errors or isn't configured, skip silently — never fail over Ji
 
 Pick the first that applies, in this order:
 
-1. `superseded-by` non-empty → `⏩ superseded` with the newer handoff's slug and reason, e.g. `⏩ by ab-1470-complete (same branch)`. Humanise the reason: `branch` → "same branch", `slug` → "same topic", `collision` → "same-day re-wrap". Derive the newer slug from the `superseded-by` filename (strip the `YYYY-MM-DD-` prefix and `.md`).
+1. `superseded-by` non-empty → `⏩ by {newer-slug}`, e.g. `⏩ by ab-1470-complete`, with the slug shortened per §Cells. Derive the newer slug from the `superseded-by` filename (strip the `YYYY-MM-DD-` prefix and `.md`). The reason stays out of the table cell; prompts that need it humanise it: `branch` → "same branch", `slug` → "same topic", `collision` → "same-day re-wrap".
 2. `pr-state` = `open` → `🟠 PR #{pr-number} open` (active work — link `pr-url` if rendering allows).
 3. `pr-state` = `merged` → `✅ PR #{pr-number} merged` (definitive — survives squash-merge).
 4. `beads-done` = `Y` → `✅ done (beads closed)` (every referenced bead is closed — the finished-work signal when there's no live branch/PR, e.g. trunk repos).
@@ -286,6 +286,38 @@ Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `k
 
 ---
 
+## §Cells — compact table cells
+
+Wide tables make Claude Code fall back to per-row key/value cards. Keep every handoff table rendered
+by `/handoffs` and `/handoffs-tidy` within about **150 display columns** including borders, so it
+stays a real table in a ~180-column terminal or split pane.
+
+Shorten a value only when it exceeds its cap: keep its first `cap − 1` characters and append one
+`…`. A tail ellipsis keeps the branch type and ticket key that distinguish rows.
+
+| Cell | Cap | Example |
+|------|-----|---------|
+| Branch | 24 | `feat/GE-1296-fix-silent…` |
+| Where label | 14 | `✅ shared-old-c…` |
+| Superseding slug in Status | 16 | `⏩ by ge-2592-refineme…` |
+
+Never shorten Date, Repo, Slug (the pick key), or the rest of a Status/Archive glyph. Emoji
+presentation rules above still apply.
+
+**Where** combines worktree existence and location: `✅` when `exists=Y`, `✂️` when `exists=N`,
+then an optional label from the recorded cwd basename:
+
+- `here` when the cwd matches pwd.
+- No label when the basename names the repo's main checkout (current-repo root or `{member-path}`
+  basename) or appears case-insensitively in the branch name (a branch-derived worktree).
+- `worktrees root` when the cwd ends in `/` under `worktrees/`; `—` alone when the cwd is empty.
+- Otherwise the basename, capped as above.
+
+Full values are never lost: picker descriptions carry the full branch and cwd, archive prompt
+descriptions carry the full superseding slug and reason, and loading renders the handoff verbatim.
+
+---
+
 ## §Archive-flow — the opt-in archive cleanup
 
 Skip entirely only if `current_repo_superseded == 0`, `current_repo_stale == 0`, **and** §Jira-Done
@@ -311,7 +343,7 @@ archivable belongs in the Superseded group (supersede is the safest reason to ar
 Prompt with `AskUserQuestion` (multiSelect). One option per candidate, labelled `{date} {slug}`,
 described by its group:
 
-- superseded → `⏩ superseded by {newer-slug}`
+- superseded → `⏩ superseded by {newer-slug} ({humanised reason})`
 - done → `✅ PR #{pr-number} merged` / `✅ beads closed` / `✅ {KEY} done` / `🔵 branch merged`
 - stale → `🚫 PR #{pr-number} closed — no newer handoff` / `⚪ branch gone — no newer handoff`
 
@@ -368,6 +400,8 @@ Render the candidates grouped by member repo, newest first:
 | Repo | Date | Slug | Branch | Status |
 |------|------|------|--------|--------|
 ```
+
+Cap Branch and Status cells per §Cells.
 
 **Confirm one repo at a time.** Do *not* enumerate candidates as individual options: `AskUserQuestion`
 caps at 4 options, and a member repo can easily hold more (the case that motivated this had 8 in one

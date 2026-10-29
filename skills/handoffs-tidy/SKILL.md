@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.8.0"
+version: "0.9.0"
 author: "flurdy"
 ---
 
@@ -113,7 +113,8 @@ for current-repo `needs-review`, step 5c for current-repo `needs-age-review`, or
 |----------|------|------|--------|--------|-------|
 ```
 
-- **Status**: the §Status glyph for the row.
+- **Branch** and **Status**: the row's branch and §Status glyph, capped per REFERENCE §Cells so the
+  table stays within ~150 columns.
 - **Group**: `Superseded` / `Done` / `Stale`. A row that is both superseded and otherwise archivable
   goes in **Superseded** (the safest reason to archive). Order the table Superseded → Done → Stale.
 - **Archive?**: label `safe` as a recommendation and `keep` as requiring care, not selected choices.
