@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.24.0"
+version: "1.25.0"
 author: "flurdy"
 ---
 
@@ -74,7 +74,7 @@ never drop `--readonly`, loop, repair, sync or claim a bead as part of recovery.
 2. **Rank by Suitability**
    - Apply priority ranking algorithm (see below)
    - Bugs generally rank higher than features at same priority
-   - Epics rank lower (they represent larger work)
+   - Priority always wins; epics rank last only within their priority
 
 3. **Present Options**
    - Show every ranked candidate in listing modes with key details
@@ -250,7 +250,7 @@ When invoked:
    - `safe`: Follow **Lease-aware safe selection** below; do not equate `--avoid-busy` with source safety
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
    - `task`: Use `next-bd --json`, auto-select the top-ranked bead, and start it through `next-select start <selector>`
-   - `quick`: Use `next-bd --json --avoid-busy`, apply the quick heuristics, and start it through `next-select start <selector>`
+   - `quick`: Use `next-bd --json --avoid-busy`, exclude epics without reordering, and start the first remaining candidate through `next-select start <selector>`
    - `bug`: Use `next-bd --json --type=bug`, auto-select the top-ranked bug, and start it through `next-select start <selector>`
    - `<bead-id>` or `<repo>:<bead-id>`: Start that specific bead
 
@@ -656,32 +656,41 @@ Listing mode never marks anything `in_progress`. It only selects work once the u
 
 ## Priority Ranking Algorithm
 
-Rank ready beads in this order (first match wins):
+Sort ready beads by these keys, in order:
 
-| Rank | Criteria                        |
-|------|---------------------------------|
-| 1    | Any P0 issue (any type)         |
-| 2    | P1 bug                          |
-| 3    | P2 bug                          |
-| 4    | P1 feature or task              |
-| 5    | P1 epic                         |
-| 6    | P2 feature or task              |
-| 7    | P3 bug, feature, or task        |
-| 8    | P2 epic                         |
-| 9    | P3 epic                         |
-| 10   | Any other non-P4 issue          |
+| Key | Order |
+|-----|-------|
+| Priority | P0 → P1 → P2 → P3; no issue type can leapfrog a higher priority |
+| Type within priority | bug → feature/task (tied) → other types (tied) → epic |
+| Age within priority/type | `created_at` ascending (oldest first) |
+| Stable ties | repository, then ID, ascending |
+
+P0 uses the same type/age rules; epics are last within their own priority, not below
+lower-priority work. For example, a P1 task and a P1 epic both precede a P2 bug.
+The numeric JSON `rank` encodes priority/type as `priority * 4 + type_order`, with
+`type_order` 1–4 from the table above; it is not a picker index. No caller should depend
+on the former rank values.
+
+Lists, JSON, task auto-pick and safe views consume this shared order. Bug mode filters
+by type without reordering; quick mode applies the exclusions below without reordering.
+Sprint mode retains its sprint buckets, using this order **within each bucket**. Numbered
+ordinary picks resolve against the collector's current order; `--expect-id` rejects stale
+numbers rather than claiming a different bead.
 
 **Important**: P4 items are backlog/future work and must NEVER be auto-picked. `next-bd`
 already filters candidates to P0–P3; do not invent a `--priority-max` flag. P4 beads appear
 only in the separate, unnumbered Backlog table and start only by explicit ID.
 
-## Quick Task Heuristics
+## Quick Task Selection
 
-When `/next quick` is used, prefer:
-1. Type: task > bug > feature (tasks are usually smaller)
-2. Priority: P3 > P2 > P1 (lower priority = less complex)
-3. Exclude epics (too large for quick wins)
-4. Title keywords: "fix", "update", "add" > "implement", "refactor", "redesign"
+When `/next quick` is used:
+1. Collect `next-bd --json --avoid-busy` to exclude same-store busy-label overlaps.
+2. Exclude epics, preserving the collector's priority/type/age order.
+3. Pick the first remaining candidate by its owner-qualified `selector`.
+
+Do not prefer lower priorities, tasks over bugs, or title keywords. Quick is a filtered
+priority-first selection, not an estimate of implementation effort. If no candidates remain,
+report that without claiming anything; never fall back to P4 or busy work.
 
 ## Sprint Mode
 

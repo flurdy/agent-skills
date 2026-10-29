@@ -57,8 +57,8 @@ class NextBdTest(WorkspaceFixture):
         self.assertEqual(
             [(candidate["repository"], candidate["id"]) for candidate in candidates],
             [
-                ("repo-b", "repo-bug"),
                 ("repo-a", "repo-feature"),
+                ("repo-b", "repo-bug"),
                 ("repo-b", "root-blocked"),
                 ("workspace", "root-task"),
             ],
@@ -70,6 +70,64 @@ class NextBdTest(WorkspaceFixture):
                 for candidate in candidates
             )
         )
+
+    def test_priority_then_type_then_age_across_candidate_views(self) -> None:
+        types = ("bug", "task", "feature", "spike", "chore", "epic")
+        rows = [
+            issue(f"p{priority}-{kind}", priority, kind,
+                  f"2026-01-{20 - index:02}T00:00:00Z")
+            for priority in range(5)
+            for index, kind in enumerate(types)
+        ]
+        workspace = self.create_workspace(root_data={"ready": list(reversed(rows))})
+        expected = [
+            f"p{priority}-{kind}" for priority in range(4)
+            for kind in ("bug", "feature", "task", "chore", "spike", "epic")
+        ]
+        for flags in (("--json",), ("--json", "--avoid-busy"), ("--safe-json",)):
+            with self.subTest(flags=flags):
+                result = json.loads(self.run_next(workspace, *flags).stdout)
+                candidates = result["candidates"] if "--safe-json" in flags else result
+                self.assertEqual([row["id"] for row in candidates], expected)
+                self.assertEqual([row["rank"] for row in candidates],
+                                 sorted(row["rank"] for row in candidates))
+                if "--avoid-busy" in flags:
+                    quick = [row for row in candidates if row["issue_type"] != "epic"]
+                    self.assertEqual([row["id"] for row in quick],
+                                     [key for key in expected if not key.endswith("-epic")])
+        for flag in ("--list", "--safe"):
+            markdown = self.run_next(workspace, flag).stdout
+            positions = [markdown.index(f"| {key} |") for key in expected]
+            self.assertEqual(positions, sorted(positions))
+            for priority in range(4):
+                self.assertIn(f"| {priority * 6 + 1} | workspace | p{priority}-bug |", markdown)
+            self.assertNotIn("| p4-", markdown)
+        bugs = json.loads(self.run_next(workspace, "--json", "--type=bug").stdout)
+        self.assertEqual([row["id"] for row in bugs], [f"p{p}-bug" for p in range(4)])
+
+    def test_equal_priority_type_and_age_use_repository_then_id(self) -> None:
+        date = "2026-01-01T00:00:00Z"
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("root", 1, "task", date)]},
+            repositories={
+                "repo-b": {"ready": [issue("a", 1, "feature", date)]},
+                "repo-a": {"ready": [issue("z", 1, "task", date), issue("a", 1, "feature", date)]},
+            },
+        )
+        candidates = json.loads(self.run_next(workspace, "--json").stdout)
+        self.assertEqual([(row["repository"], row["id"]) for row in candidates],
+                         [("repo-a", "a"), ("repo-a", "z"), ("repo-b", "a"), ("workspace", "root")])
+
+    def test_auto_pick_and_sprint_instructions_preserve_collector_order(self) -> None:
+        skill = (SKILL_DIR / "SKILL.md").read_text()
+        quick = skill.split("## Quick Task Selection", 1)[1].split("## Sprint Mode", 1)[0]
+        for required in ("--json --avoid-busy", "Exclude epics", "preserving the collector's priority/type/age order",
+                         "first remaining candidate", "never fall back to P4 or busy work"):
+            self.assertIn(required, quick)
+        self.assertNotIn("P3 > P2 > P1", skill)
+        self.assertIn("Within each bucket, preserve the `next-bd` rank order", skill)
+        self.assertIn("`task`: Use `next-bd --json`, auto-select the top-ranked bead", skill)
+        self.assertIn("`bug`: Use `next-bd --json --type=bug`, auto-select the top-ranked bug", skill)
 
     def test_safe_filter_and_in_progress_output_are_owner_scoped(self) -> None:
         workspace = self.create_workspace(
@@ -683,7 +741,7 @@ class NextBdTest(WorkspaceFixture):
 
         candidates = json.loads(self.run_next(local, "--json").stdout)
         self.assertEqual(candidates[0]["id"], "local-task")
-        self.assertEqual(candidates[0]["rank"], 6)
+        self.assertEqual(candidates[0]["rank"], 10)
         self.assertNotIn("repository", candidates[0])
         self.assertNotIn("repository_path", candidates[0])
         self.assertNotIn("selector", candidates[0])

@@ -51,6 +51,24 @@ class NextSelectTest(WorkspaceFixture):
             if call["arguments"][:2] == ["comments", "add"]
         ]
 
+    def test_priority_first_picker_rejects_old_index_and_claims_displayed_row(self) -> None:
+        workspace = self.create_workspace(
+            root_data={"ready": [issue("p1-task", 1, "task", "2026-01-02T00:00:00Z")]},
+            repositories={"repo-a": {"ready": [
+                issue("p2-bug", 2, "bug", "2026-01-01T00:00:00Z")]}},
+        )
+        result = self.run_select(workspace, "resolve", "1", "--expect-id", "p1-task")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads(result.stdout)["repository"], "workspace")
+        stale = self.run_select(workspace, "start", "1", "--expect-id", "p2-bug")
+        self.assertEqual(stale.returncode, 6)
+        self.assertEqual(self.update_calls(), [])
+        self.assertEqual(self.comment_add_calls(), [])
+        started = self.run_select(workspace, "start", "1", "--expect-id", "p1-task")
+        self.assertEqual(started.returncode, 0, started.stdout)
+        self.assertEqual(len(self.update_calls()), 1)
+        self.assertEqual(self.update_calls()[0]["arguments"][1], "p1-task")
+
     def test_invalid_read_budget_fails_before_any_read_or_claim(self) -> None:
         workspace = self.colliding_workspace()
         for value in ("", "0", "121", "1.5", "nan", "private-invalid-value"):

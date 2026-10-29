@@ -170,17 +170,12 @@ jq -r \
     else . end |
     map(. + {
       rank: (
-        if .priority == 0 then 1
-        elif .priority == 1 and .issue_type == "bug" then 2
-        elif .priority == 2 and .issue_type == "bug" then 3
-        elif .priority == 1 and (.issue_type == "feature" or .issue_type == "task") then 4
-        elif .priority == 1 and .issue_type == "epic" then 5
-        elif .priority == 2 and (.issue_type == "feature" or .issue_type == "task") then 6
-        elif .priority == 3 and (.issue_type == "bug" or .issue_type == "feature" or .issue_type == "task") then 7
-        elif .priority == 2 and .issue_type == "epic" then 8
-        elif .priority == 3 and .issue_type == "epic" then 9
-        else 10
-        end
+        .priority * 4 +
+        (if .issue_type == "bug" then 1
+         elif .issue_type == "feature" or .issue_type == "task" then 2
+         elif .issue_type == "epic" then 4
+         else 3
+         end)
       )
     }) |
     sort_by(.rank, .created_at, (.repository // ""), .id)
