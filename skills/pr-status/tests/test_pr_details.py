@@ -279,10 +279,10 @@ class RenderingContractTests(unittest.TestCase):
         cells = self.approved_cells()
         self.assertEqual(cells, {
             "`reviewDecision` `APPROVED`": "one ✅ per approver",
-            "`REVIEW_REQUIRED` with approvers": "one ☑️ per approver (stale approvals)",
+            "`REVIEW_REQUIRED` with approvers": "one 🔄 per approver (stale approvals)",
             "`CHANGES_REQUESTED`": "👎",
             "Draft with no approvers": "`—`",
-            "Awaiting review, `reviewRequestCount` 0": "⚠️ 0",
+            "Awaiting review, `reviewRequestCount` 0": "🔕 0",
             "Awaiting review, `reviewRequestCount` N > 0": "🔔 N (e.g. 🔔 2)",
             "Awaiting review, `reviewRequestCount` null or missing": "🔔",
         })
@@ -291,7 +291,7 @@ class RenderingContractTests(unittest.TestCase):
 
     def test_reviewer_suggestion_requires_known_zero(self):
         self.assertIn(
-            "| → ⚠️ 0 awaiting review with no requests | "
+            "| → 🔕 0 awaiting review with no requests | "
             "`gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |",
             self.text,
         )

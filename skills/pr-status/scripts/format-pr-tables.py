@@ -140,14 +140,14 @@ def approved(row):
     if decision == "APPROVED":
         return "✅" * max(1, len(approvers))
     if approvers and decision != "CHANGES_REQUESTED":
-        return "☑️" * len(approvers)
+        return "🔄" * len(approvers)
     if decision == "CHANGES_REQUESTED":
         return "👎"
     if row.get("isDraft"):
         return "—"
     count = row.get("reviewRequestCount")
     if count == 0:
-        return "⚠️ 0"
+        return "🔕 0"
     if isinstance(count, int) and count > 0:
         return f"🔔 {count}"
     return "🔔"
@@ -212,7 +212,7 @@ def closed_row(now, row):
         ticket(row.get("title")),
         jira_cell(now, row),
         cell(title),
-        "🔀" if merged else "🗑️",
+        "🔀" if merged else "🚫",
         ci,
         relative(now, row.get("readyAt")),
         wait,

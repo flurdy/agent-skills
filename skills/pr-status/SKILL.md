@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.19.0"
+version: "1.20.0"
 author: "flurdy"
 ---
 
@@ -242,7 +242,7 @@ contract below, which is also the reason the output is portable across harnesses
 - **PR**: plain `#123`; the link `[#123](https://github.com/{owner}/{repo}/pull/123)` goes on the `Links:` line
 - **Repo**: repository name
 - **Ticket**: Jira ID matched by `/[A-Z]+-\d+/` against the PR title, or `—`
-- **Status**: 🔀 merged / 🗑️ closed unmerged — emoji only
+- **Status**: 🔀 merged / 🚫 closed unmerged — emoji only
 - **CI**: post-merge checks on the merge commit (`mainChecksState`), only if merged and `mergeCommitAt` is within the last 2 days — otherwise `—`
 - **Ready**: relative time since `readyAt` (short units: `Nm`, `Nh`, `Nd`)
 - **Wait**: `closedAt - readyAt` — how long the PR waited for review/merge
@@ -270,23 +270,27 @@ contract below, which is also the reason the output is portable across harnesses
 | Evidence | Cell |
 |---|---|
 | `reviewDecision` `APPROVED` | one ✅ per approver |
-| `REVIEW_REQUIRED` with approvers | one ☑️ per approver (stale approvals) |
+| `REVIEW_REQUIRED` with approvers | one 🔄 per approver (stale approvals) |
 | `CHANGES_REQUESTED` | 👎 |
 | Draft with no approvers | `—` |
-| Awaiting review, `reviewRequestCount` 0 | ⚠️ 0 |
+| Awaiting review, `reviewRequestCount` 0 | 🔕 0 |
 | Awaiting review, `reviewRequestCount` N > 0 | 🔔 N (e.g. 🔔 2) |
 | Awaiting review, `reviewRequestCount` null or missing | 🔔 |
 
 Awaiting review means not draft, no approvers and no changes requested. Render one bell with the
 count — never a bell per reviewer — and no question mark: unknown stays a bare 🔔, distinct from
-⚠️ 0 in session state. The column keeps its width; the count never changes the ✅, ☑️, 👎 or
+🔕 0 in session state. The column keeps its width; the count never changes the ✅, 🔄, 👎 or
 LGTM rules.
+
+Table glyphs are natively wide emoji only, never a narrow symbol made wide by U+FE0F (such as
+⚠️, ☑️ or 🗑️): Pi pads those to two columns while xterm.js Unicode 11 terminals such as Orca
+draw them in one, which shifts every later border in the row.
 
 Title truncation (50 characters closed, 25 open) is applied by the formatter; the open table has 13 columns and wide rows break Claude Code's table renderer.
 
 ### 5. Summarise changes
 
-After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`, `#6150 requests: 🔔 2 → ⚠️ 0`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update.
+After the tables, list deltas since the last check in this session as bullets (e.g. `#6142 CI: ❌ → ✅`, `#6150 requests: 🔔 2 → 🔕 0`). Treat an increase in a linked ticket's comment total as a delta, e.g. `AB-649 Jira discussion: 2 → 3 (Jane, 40m)`. Do not report a count decrease as a discussion update.
 
 For PR feedback, compare the inventory by `identity`; the same identity with a later `updatedAt` is
 an edit, not a second comment. Use `stateKey` to detect lifecycle-only changes such as resolution or
@@ -307,7 +311,7 @@ Fire on transitions, not standing state: on the first check of a session list th
 | → 🚀 LGTM (newly mergeable) | `/ready-to-merge {n}` |
 | new or materially edited feedback candidate, or → 👎 changes requested | `/review-comments {n}` |
 | → ⏪ (fell behind its base) | `/rebase main` (on that PR's branch); stacked: `/rebase parent {base}` |
-| → ⚠️ 0 awaiting review with no requests | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
+| → 🔕 0 awaiting review with no requests | `gh pr edit {n} --repo {owner}/{repo} --add-reviewer <handle>` |
 
 Fire the reviewer suggestion only for a known zero: a PR enters that state when it leaves draft with
 no requests, or its last outstanding request is withdrawn or answered without approval. 🔔 N means
@@ -317,7 +321,7 @@ The ⏪ suggestion fires when Sync enters ⏪ from any other state, regardless o
 approval state: rebasing before approval avoids invalidating it later. A PR already ⏪ stays
 quiet; a growing count is not a new transition (mention the `behindBy` count in the bullet).
 
-Order most actionable first (🚀 → 💬 → ⏪ → ⚠️ 0 no requests); omit the section when no PR
+Order most actionable first (🚀 → 💬 → ⏪ → 🔕 0 no requests); omit the section when no PR
 changed state.
 
 Use the normalized record's author and bounded gist in the bullet. Keep its `identity` and

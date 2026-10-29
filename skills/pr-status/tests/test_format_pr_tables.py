@@ -170,7 +170,8 @@ class StatusCellTests(unittest.TestCase):
                       open_pr(3, reviewRequestCount=4, unresolvedThreads=2, checksState="PENDING"),
                       open_pr(4, reviewDecision="CHANGES_REQUESTED", checksState="FAILURE", jira={"error": True}),
                       open_pr(5, reviewRequestCount=None, jira={"total": 0}),
-                      open_pr(6, approvers=["c"], checksState=None, branch="chore/tidy", title="no ticket here")])
+                      open_pr(6, approvers=["c"], checksState=None, branch="chore/tidy", title="no ticket here"),
+                      open_pr(7)])
         self.assertEqual(cells(out, OPEN_COLUMNS, 1)["Ready"], "🚧")
         self.assertEqual(cells(out, OPEN_COLUMNS, 1)["Approved"], "—")
         self.assertEqual(cells(out, OPEN_COLUMNS, 2)["Approved"], "✅✅")
@@ -182,7 +183,8 @@ class StatusCellTests(unittest.TestCase):
         five = cells(out, OPEN_COLUMNS, 5)
         self.assertEqual((five["Approved"], five["Jira 💬"]), ("🔔", "—"))
         six = cells(out, OPEN_COLUMNS, 6)
-        self.assertEqual((six["Approved"], six["CI"], six["Ticket"], six["Branch"]), ("☑️", "—", "—", "tidy"))
+        self.assertEqual((six["Approved"], six["CI"], six["Ticket"], six["Branch"]), ("🔄", "—", "—", "tidy"))
+        self.assertEqual(cells(out, OPEN_COLUMNS, 7)["Approved"], "🔕 0")
         one = cells(out, OPEN_COLUMNS, 1)
         self.assertEqual((one["Ticket"], one["Jira 💬"], one["Push"], one["Approved"]),
                          ("AB-1", "💬 7 · Ivar · 2d", "2h", "—"))
@@ -194,7 +196,7 @@ class StatusCellTests(unittest.TestCase):
         one = cells(out, CLOSED_COLUMNS, 1)
         self.assertEqual((one["Repo"], one["Status"], one["CI"], one["Ready"], one["Wait"], one["Closed"]),
                          ("widgets", "🔀", "✅", "3d", "2d", "1d"))
-        self.assertEqual(cells(out, CLOSED_COLUMNS, 2)["Status"], "🗑️")
+        self.assertEqual(cells(out, CLOSED_COLUMNS, 2)["Status"], "🚫")
         self.assertEqual(cells(out, CLOSED_COLUMNS, 2)["CI"], "—")
         self.assertEqual(cells(out, CLOSED_COLUMNS, 3)["CI"], "—")
 
@@ -203,6 +205,26 @@ class StatusCellTests(unittest.TestCase):
                       open_pr(2, lastPush="2026-10-18T15:00:00Z", readyAt="2026-10-01T00:00:00Z")])
         self.assertEqual((cells(out, OPEN_COLUMNS, 1)["Push"], cells(out, OPEN_COLUMNS, 1)["Ready"]), ("25m", "0m"))
         self.assertEqual((cells(out, OPEN_COLUMNS, 2)["Push"], cells(out, OPEN_COLUMNS, 2)["Ready"]), ("1d", "18d"))
+
+    def test_generated_glyphs_have_one_unambiguous_width(self):
+        """Pi pads an emoji presentation sequence (narrow base + U+FE0F) to two columns, but
+        xterm.js Unicode 11 terminals such as Orca draw it in one, shifting every later border."""
+        approvals = [{"reviewDecision": "APPROVED", "approvers": ["a", "b"]}, {"approvers": ["c"]},
+                     {"reviewDecision": "CHANGES_REQUESTED"}, {"isDraft": True}, {"reviewRequestCount": 0},
+                     {"reviewRequestCount": 3}, {"reviewRequestCount": None}]
+        states = [{"mergeable": "CONFLICTING"}, {"behindBy": 2, "checksState": "FAILURE"},
+                  {"checksState": "PENDING", "unresolvedThreads": 4}, {"mergeable": "UNKNOWN", "checksState": None},
+                  {"base": "feat/AB-1-parent", "jira": {"error": True}},
+                  {"reviewDecision": "APPROVED", "approvers": ["a"]}]
+        rows = [open_pr(n, **overrides) for n, overrides in enumerate(approvals + states, start=1)]
+        out = render(rows, [closed_pr(90), closed_pr(91, mergeCommitSha=None)])
+        self.assertIn("🚀", out)
+        self.assertNotIn("\ufe0f", out)
+        self.assertNotIn("\ufe0e", out)
+        narrow_text = {"—", "·", "…"}
+        for char in sorted({char for char in out if ord(char) > 127}):
+            with self.subTest(char=char, codepoint=f"U+{ord(char):04X}"):
+                self.assertTrue(unicodedata.east_asian_width(char) in "WF" or char in narrow_text)
 
     def test_invalid_input_fails_clearly(self):
         result = subprocess.run([sys.executable, "-I", str(FORMAT)], input="not json",
