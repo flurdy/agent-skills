@@ -4,11 +4,12 @@
 # and exact path. Sections delimited by `---<NAME>---` markers. Companion to the
 # wrap-up skill. Exit 3 means the inventory is partial (see ---SOURCES---).
 #
-# Usage: list.sh [--recent-days N] [--stale-days N] [--summary-only] [--bead ID] [--ticket KEY]
+# Usage: list.sh [--recent-days N] [--retention-days N] [--stale-days N] [--summary-only] [--bead ID] [--ticket KEY]
 #   --recent-days N   override the "recent" window (default: 3, with Mon=3, Tue=4
 #                     weekend buffer to mirror gh-pr-list-closed.sh)
+#   --retention-days N retain context after handoff/completion (default: 14 days)
 #   --stale-days N    age floor for assisted review of otherwise unclassifiable
-#                     handoffs (default: recent window; never auto-archives)
+#                     handoffs (default/minimum: retention window; never auto-archives)
 #   --summary-only    suppress per-file lines in the HANDOFFS section (landscape's
 #                     footer only needs the SUMMARY counts)
 #   --bead ID         emit a `---MATCHED-HANDOFFS---` section: current-repo, active
@@ -22,6 +23,14 @@
 #                     without it only supersede filtering applies. Leaves every other
 #                     section byte-identical, so existing callers are unaffected.
 set -uo pipefail
+
+RETENTION_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/retention.py"
+if ! python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' 2>/dev/null \
+    || [ ! -r "$RETENTION_HELPER" ]; then
+    echo "ERROR: handoff retention requires Python 3.10+ and retention.py" >&2
+    exit 2
+fi
+retention() { python3 "$RETENTION_HELPER" "$@"; }
 
 # Records are pipe-delimited and REFERENCE.md has the model read them by field
 # position, so a literal `|` in free text (a path, branch, slug or header field)
@@ -105,6 +114,7 @@ case "$STORAGE_STATUS" in
 esac
 
 RECENT_DAYS=""
+RETENTION_DAYS="14"
 STALE_DAYS=""
 SUMMARY_ONLY=0
 CHECK_BRANCHES=0
@@ -113,6 +123,12 @@ MATCH_TICKET=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --recent-days) RECENT_DAYS="$2"; shift 2 ;;
+        --retention-days)
+            if [ $# -lt 2 ] || ! [[ "$2" =~ ^[1-9][0-9]*$ ]]; then
+                echo "ERROR: --retention-days must be a positive integer" >&2
+                exit 2
+            fi
+            RETENTION_DAYS="$2"; shift 2 ;;
         --stale-days) STALE_DAYS="$2"; shift 2 ;;
         --summary-only) SUMMARY_ONLY=1; shift ;;
         --check-branches) CHECK_BRANCHES=1; shift ;;
@@ -140,7 +156,7 @@ field_has_token() {
     done
     return 1
 }
-TODAY="${HANDOFFS_TODAY:-$(date +%Y-%m-%d)}"
+TODAY="${HANDOFFS_TODAY:-$(date -u +%Y-%m-%d)}"
 DOW=$(date -d "$TODAY" +%u 2>/dev/null \
     || date -j -f "%Y-%m-%d" "$TODAY" +%u 2>/dev/null)
 if [ -z "$RECENT_DAYS" ]; then
@@ -154,13 +170,13 @@ if ! [[ "$RECENT_DAYS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: --recent-days must be a positive integer" >&2
     exit 2
 fi
-[ -n "$STALE_DAYS" ] || STALE_DAYS="$RECENT_DAYS"
+[ -n "$STALE_DAYS" ] || STALE_DAYS="$RETENTION_DAYS"
 if ! [[ "$STALE_DAYS" =~ ^[1-9][0-9]*$ ]]; then
     echo "ERROR: --stale-days must be a positive integer" >&2
     exit 2
 fi
-if (( 10#$STALE_DAYS < 10#$RECENT_DAYS )); then
-    STALE_DAYS="$RECENT_DAYS"
+if (( 10#$STALE_DAYS < 10#$RETENTION_DAYS )); then
+    STALE_DAYS="$RETENTION_DAYS"
 fi
 
 # Check whether any sibling of $1 has a *bare* `.claude` symlink pointing at
@@ -386,8 +402,8 @@ setup_liveness() {
     fi
     if command -v gh >/dev/null 2>&1; then
         if PR_LINES=$(cd "$LIVENESS_DIR" 2>/dev/null && $TIMEOUT gh pr list --state all --limit 200 \
-            --json number,state,headRefName,url \
-            --jq '.[] | [.headRefName, (.state|ascii_downcase), (.number|tostring), .url] | @tsv' \
+            --json number,state,headRefName,url,mergedAt,closedAt \
+            --jq '.[] | [.headRefName, (.state|ascii_downcase), (.number|tostring), .url, ((if .state == "MERGED" then .mergedAt else .closedAt end) // "-")] | @tsv' \
             2>/dev/null); then
             PR_OK=1
         fi
@@ -434,10 +450,9 @@ fi
 # where wrap-up recorded `main` as the branch (the feature branch was already
 # gone) but stored the real PR number in the body. Without the number fallback
 # such handoffs look up `main`, match nothing, and wrongly render 🟢 live.
-# Echoes `{state}|{number}|{url}` where state ∈ merged|open|closed (a real PR
-# exists), `none||` when gh ran but found no PR, or `unknown||` when gh wasn't
-# consulted (no --check-branches, no gh, offline). Precedence across all
-# matching PRs (branch- or number-matched): merged > open > closed.
+# Echoes `{state}|{number}|{url}|{completed-at}`; timing is empty unless every
+# matching PR at the winning precedence has a valid timestamp. Open PRs win;
+# otherwise merged > closed. Dates never stand in for missing completion evidence.
 pr_state() {
     local b="$1" prfield="${2:-}"
     [ "$PR_OK" -eq 1 ] || { echo "unknown||"; return; }
@@ -446,8 +461,9 @@ pr_state() {
     # Nothing to match on at all (branch `?` and no recorded numbers) → unknown.
     { [ "$b" != "?" ] || [ -n "$nums" ]; } || { echo "unknown||"; return; }
     local best_rank=0 best="none||"
-    local hb st num url rank match
-    while IFS=$'\t' read -r hb st num url; do
+    local hb st num url completed rank match
+    local completed_times=()
+    while IFS=$'\t' read -r hb st num url completed; do
         [ -n "$hb" ] || continue
         match=0
         [ "$b" != "?" ] && [ "$hb" = "$b" ] && match=1
@@ -456,17 +472,19 @@ pr_state() {
         fi
         [ "$match" -eq 1 ] || continue
         case "$st" in
-            merged) rank=3 ;;
-            open)   rank=2 ;;
+            open)   rank=3 ;;
+            merged) rank=2 ;;
             closed) rank=1 ;;
             *)      rank=0 ;;
         esac
         if [ "$rank" -gt "$best_rank" ]; then
             best_rank=$rank
             best="${st}|${num}|${url}"
+            completed_times=()
         fi
+        [ "$rank" -eq "$best_rank" ] && completed_times+=("$completed")
     done <<< "$PR_LINES"
-    echo "$best"
+    echo "${best}|$(retention latest -- "${completed_times[@]}")"
 }
 
 # --- Bead-closure setup (local; no network, no --check-branches needed) -------
@@ -542,7 +560,7 @@ ws_index_for_key() {
     return 1
 }
 
-# Echo "{closed} {total}" for the beads named in field $1 (backtick/comma
+# Echo "{closed} {total} {latest-closed-at}" for the beads named in field $1 (backtick/comma
 # flattened, filtered to `{prefix}-{suffix}` shapes — bd-123, ab-1505,
 # myrepo-lf9d). "0 0" when beads are unavailable, the field is empty, the
 # field is truncated with "(+N more)" (can't verify all — conservative), or no
@@ -560,14 +578,9 @@ beads_counts() {
         esac
     done
     [ -n "$ids" ] || { echo "0 0"; return; }
-    local json total closed
-    json=$(bd -C "$BEADS_DIR" list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || { echo "0 0"; return; }
-    [ -n "$json" ] || { echo "0 0"; return; }
-    # Count occurrences (grep -o → one match per line → wc -l) rather than
-    # matching lines, so a future compact-JSON `bd` doesn't collapse to 1.
-    total=$(printf '%s' "$json" | grep -oE '"status":[[:space:]]*"[a-z_]+"' | wc -l | tr -d ' ')
-    closed=$(printf '%s' "$json" | grep -oE '"status":[[:space:]]*"closed"' | wc -l | tr -d ' ')
-    echo "$closed $total"
+    local json
+    json=$(bd -C "$BEADS_DIR" --readonly list --id "$ids" --all --json --limit 0 --no-pager 2>/dev/null) || return 1
+    retention beads --ids "$ids" <<< "$json"
 }
 
 # Classify one branch as live / merged / gone / unknown. `unknown` means we
@@ -622,6 +635,10 @@ echo "$CURRENT_KIND"
 echo "---RECENT-WINDOW-DAYS---"
 echo "$RECENT_DAYS"
 
+echo "---RETENTION-DAYS---"
+echo "$RETENTION_DAYS"
+echo "---AS-OF-DATE---"
+echo "$TODAY"
 echo "---STALE-DAYS---"
 echo "$STALE_DAYS"
 
@@ -739,14 +756,14 @@ if [ "${#ENTRY_LINES[@]}" -gt 0 ]; then
 
         # Beads/Jira/PRs header fields. Parsed conditionally so the hot path
         # (wrap-up's no-flag call) pays only for what it uses:
-        #   - Beads: when a --bead/--ticket filter is active, OR beads exist
-        #     locally (the bead-closure "done" check needs it).
+        #   - Beads: with a filter, local beads, or --check-branches (members may
+        #     own stores even when the root has none).
         #   - Jira: when filtering, OR under --check-branches (the skill resolves
         #     Jira-Done for live rows from this field).
         #   - PRs: under --check-branches only (PR-number fallback for pr_state).
         # Strip the `**Field:**` label; keep the raw token list.
         BEADS_FIELD=""; DELIV_FIELD=""; JIRA_FIELD=""; PRS_FIELD=""
-        if [ -n "$MATCH_FILTER" ] || [ -n "$BEADS_AVAILABLE" ]; then
+        if [ -n "$MATCH_FILTER" ] || [ -n "$BEADS_AVAILABLE" ] || [ "$CHECK_BRANCHES" -eq 1 ]; then
             BEADS_FIELD=$(grep -m1 '^\*\*Beads:\*\*' "$F" 2>/dev/null | sed 's/^\*\*Beads:\*\*[[:space:]]*//' || true)
             # `**Deliverable:**` (wrap-up v0.10.0+) names just the own-work beads —
             # the subset whose closure means this handoff is finished. Keys the
@@ -1031,14 +1048,14 @@ done
 # reusable across repos instead of being hard-wired to pwd.
 classify_row() {
     local i="$1" scope="$2"
-    local state="unknown" ps="unknown" pnum="" purl=""
+    local state="unknown" ps="unknown" pnum="" purl="" pcompleted="" completed=""
     local archclass="" beadsdone="" beadsprogress="" needsreview="" needsagereview="" inactive=""
-    local bead_src bclosed btotal recordedpr=""
+    local bead_src counts bclosed=0 btotal=0 bcompleted="" beadsunknown="" recordedpr=""
     printf '%s' "${R_PRS[$i]}" | grep -qE '#[0-9]+' && recordedpr="Y"
 
     if [ "$CHECK_BRANCHES" -eq 1 ]; then
         state=$(branch_state "${R_BRANCH[$i]}")
-        IFS='|' read -r ps pnum purl <<< "$(pr_state "${R_BRANCH[$i]}" "${R_PRS[$i]}")"
+        IFS='|' read -r ps pnum purl pcompleted <<< "$(pr_state "${R_BRANCH[$i]}" "${R_PRS[$i]}")"
     fi
 
     # Bead-closure is local — computed whenever beads exist, even without
@@ -1051,10 +1068,14 @@ classify_row() {
     if [ -n "$BEADS_AVAILABLE" ]; then
         bead_src="${R_DELIV[$i]}"
         [ -n "$bead_src" ] || bead_src="${R_BEADS[$i]}"
-        read -r bclosed btotal <<< "$(beads_counts "$bead_src")"
-        if [ "$btotal" -gt 0 ]; then
-            beadsprogress="${bclosed}/${btotal}"
-            [ "$bclosed" -eq "$btotal" ] && beadsdone="Y"
+        if counts=$(beads_counts "$bead_src"); then
+            read -r bclosed btotal bcompleted <<< "$counts"
+            if [ "$btotal" -gt 0 ]; then
+                beadsprogress="${bclosed}/${btotal}"
+                [ "$bclosed" -eq "$btotal" ] && beadsdone="Y"
+            fi
+        else
+            beadsunknown="Y"
         fi
     fi
 
@@ -1064,10 +1085,14 @@ classify_row() {
         archclass=""
     elif [ "$ps" = "merged" ]; then
         archclass="safe"
+        completed="$pcompleted"
+        [ -z "$beadsdone" ] || completed=$(retention latest -- "$pcompleted" "$bcompleted")
     elif [ -n "$beadsdone" ]; then
         archclass="safe"
+        completed="$bcompleted"
     elif [ "$ps" = "closed" ]; then
         archclass="keep"
+        completed="$pcompleted"
     elif [ "$state" = "merged" ]; then
         archclass="safe"
     elif [ "$state" = "gone" ]; then
@@ -1075,15 +1100,14 @@ classify_row() {
     fi
     [ -n "$archclass" ] && inactive="Y"
 
-    # Keep recent handoffs in the picker even when they are demonstrably done
-    # or stale. Superseded rows remain immediately archivable because their
-    # context continues in a newer handoff.
+    # Completion status and archive eligibility are separate. Missing clocks
+    # retain context; ancestry or a vanished branch cannot date its completion.
     if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ] \
-        && [ -n "${R_DATE[$i]}" ] \
-        && { [[ "${R_DATE[$i]}" > "$CUTOFF" ]] || [ "${R_DATE[$i]}" = "$CUTOFF" ]; }; then
+        && ! retention expired --handoff-date "${R_DATE[$i]}" --completed-at "$completed" \
+            --today "$TODAY" --days "$RETENTION_DAYS"; then
         archclass=""
     fi
-    # "stale" group = archivable after applying the recent-retention guard,
+    # "stale" group = archivable after applying the completion-retention guard,
     # but not via supersede.
     if [ -z "${R_SUPBY[$i]}" ] && [ -n "$archclass" ]; then
         if [ "$scope" = "cur" ]; then CUR_STALE=$((CUR_STALE+1)); else WS_STALE=$((WS_STALE+1)); fi
@@ -1095,7 +1119,9 @@ classify_row() {
     if [ -z "$archclass" ] && [ -z "$inactive" ] && [ -z "${R_DELIV[$i]}" ] \
         && is_trunk_branch "${R_BRANCH[$i]}" && [ -n "$beadsprogress" ] \
         && [ "${beadsprogress%%/*}" -gt 0 ] \
-        && [ -n "${R_DATE[$i]}" ] && [[ "${R_DATE[$i]}" < "$CUTOFF" ]]; then
+        && [ "$ps" != "open" ] \
+        && retention expired --handoff-date "${R_DATE[$i]}" --completed-at "$bcompleted" \
+            --today "$TODAY" --days "$RETENTION_DAYS"; then
         needsreview="Y"
     fi
     # Age is only a reason to ask, never evidence of completion. Flag old
@@ -1108,7 +1134,7 @@ classify_row() {
         && [ -z "$archclass" ] && [ -z "$inactive" ] && [ -z "$needsreview" ] \
         && [ "$state" = "unknown" ] \
         && { [ "$ps" = "none" ] || { [ "$ps" = "unknown" ] && [ -z "$recordedpr" ]; }; } \
-        && [ -z "$beadsprogress" ] && [ -n "${R_DATE[$i]}" ] \
+        && [ -z "$beadsprogress" ] && [ -z "$beadsunknown" ] && [ -n "${R_DATE[$i]}" ] \
         && [[ "${R_DATE[$i]}" < "$AGE_REVIEW_CUTOFF" ]]; then
         needsagereview="Y"
         if [ "$scope" = "cur" ]; then

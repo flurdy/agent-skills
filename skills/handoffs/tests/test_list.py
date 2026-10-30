@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import os
 import subprocess
 import sys
@@ -86,11 +87,16 @@ print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
         )
         date.chmod(0o755)
 
-    def add_beads_store(self, *statuses: str) -> None:
-        (self.repo / ".beads").mkdir()
-        payload = "[" + ",".join(
-            f'{{"status":"{status}"}}' for status in statuses or ("open",)
-        ) + "]"
+    def add_beads_store(
+        self, *statuses: str, closed_at: str | None = "2000-01-01T00:00:00Z",
+        repo: Path | None = None, records: list[dict] | None = None,
+    ) -> None:
+        (repo or self.repo).joinpath(".beads").mkdir()
+        payload = json.dumps(records if records is not None else [
+            {"id": f"repo-{status}" if len(statuses) > 1 else "repo-123",
+             "status": status, "closed_at": closed_at}
+            for status in statuses or ("open",)
+        ])
         bd = self.bin / "bd"
         bd.write_text(
             f"#!/bin/sh\nprintf '%s\\n' '{payload}'\n",
@@ -432,7 +438,7 @@ class ArchiveRetentionTests(unittest.TestCase):
             fixture = HandoffListFixture(
                 Path(tmp),
                 "feature/complete\tmerged\t123\thttps://example.test/pr/123\n"
-                "feature/old\tmerged\t124\thttps://example.test/pr/124",
+                "feature/old\tmerged\t124\thttps://example.test/pr/124\t2000-01-01T00:00:00Z",
                 today=self.MONDAY,
             )
             member = fixture.add_workspace_member()
@@ -443,7 +449,7 @@ class ArchiveRetentionTests(unittest.TestCase):
                 repo=member,
             )
             old = fixture.add_handoff(
-                4,
+                15,
                 "member-old",
                 branch="feature/old",
                 repo=member,
@@ -505,6 +511,162 @@ class ArchiveRetentionTests(unittest.TestCase):
             self.assertIn("3", section(output, "RECENT-WINDOW-DAYS"))
             self.assertEqual(fields[13], "")
             self.assertIn("current_repo_stale=0", section(output, "SUMMARY"))
+
+
+class CompletionClockTests(unittest.TestCase):
+    TODAY = dt.date(2026, 8, 20)
+
+    def test_old_pr_handoff_uses_completion_clock_in_both_scopes(self) -> None:
+        for member_scope in (False, True):
+            for state, eligible_class in (("merged", "safe"), ("closed", "keep")):
+                for completed, expected in (
+                    ("2026-08-20T10:00:00Z", ""),
+                    ("2026-08-06T00:00:00Z", ""),
+                    ("2026-08-05T23:59:59Z", eligible_class),
+                    ("2026-08-05T23:30:00-02:00", ""),
+                    ("", ""), ("invalid", ""), ("2026-08-01", ""),
+                    ("2000-01-01T00:00:00+00:99", ""),
+                ):
+                    with self.subTest(member=member_scope, state=state, completed=completed):
+                        with tempfile.TemporaryDirectory() as tmp:
+                            fixture = HandoffListFixture(
+                                Path(tmp), f"feature/work\t{state}\t123\thttps://example.test/pr/123\t{completed}",
+                                today=self.TODAY,
+                            )
+                            repo = fixture.add_workspace_member() if member_scope else fixture.repo
+                            fixture.add_handoff(40, "completed", branch="feature/work", repo=repo)
+                            rows = section(fixture.run(), "WORKSPACE-MEMBER-HANDOFFS" if member_scope else "HANDOFFS")
+                            fields = rows[0].split("|")
+                            self.assertEqual(fields[10], state)
+                            self.assertEqual(fields[13], expected)
+                            self.assertEqual(fields[20:22], ["", ""])
+
+    def test_old_bead_handoff_uses_latest_complete_timestamp(self) -> None:
+        for member_scope in (False, True):
+            for completed, expected in (
+                ("2026-08-20T00:00:00Z", ""), ("2026-08-06T00:00:00Z", ""),
+                ("2026-08-05T23:59:59Z", "safe"), (None, ""), ("bad", ""),
+            ):
+                with self.subTest(member=member_scope, completed=completed):
+                    with tempfile.TemporaryDirectory() as tmp:
+                        fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+                        repo = fixture.add_workspace_member() if member_scope else fixture.repo
+                        fixture.add_beads_store(repo=repo, records=[
+                            {"id": "repo-one", "status": "closed", "closed_at": "2000-01-01T00:00:00Z"},
+                            {"id": "repo-two", "status": "closed", "closed_at": completed},
+                        ])
+                        fixture.add_handoff(40, "bead-done", beads="`repo-one`, `repo-two`", repo=repo)
+                        fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+                        self.assertEqual(fields[17], "Y")
+                        self.assertEqual(fields[13], expected)
+                        self.assertEqual(fields[20:22], ["", ""])
+
+    def test_multiple_prs_use_latest_clock_and_open_pr_wins(self) -> None:
+        for extra, expected_state, expected_class in (
+            ("merged\t124\thttps://example.test/pr/124\t2026-08-20T00:00:00Z", "merged", ""),
+            ("merged\t124\thttps://example.test/pr/124\t-", "merged", ""),
+            ("merged\t124\thttps://example.test/pr/124\t2000-01-02T00:00:00Z", "merged", "safe"),
+            ("open\t124\thttps://example.test/pr/124\t-", "open", ""),
+        ):
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as tmp:
+                fixture = HandoffListFixture(
+                    Path(tmp), "feature/work\tmerged\t123\thttps://example.test/pr/123\t2000-01-01T00:00:00Z\n"
+                    + "feature/work\t" + extra, today=self.TODAY,
+                )
+                fixture.add_handoff(40, "multi-pr", branch="feature/work")
+                fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+                self.assertEqual(fields[10], expected_state)
+                self.assertEqual(fields[13], expected_class)
+                self.assertEqual(fields[20:22], ["", ""])
+
+    def test_recent_bead_completion_is_not_masked_by_old_pr_merge(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp), "main\tmerged\t123\thttps://example.test/pr/123\t2000-01-01T00:00:00Z",
+                today=self.TODAY,
+            )
+            fixture.add_beads_store("closed", closed_at="2026-08-20T00:00:00Z")
+            fixture.add_handoff(40, "both-signals", beads="repo-123")
+            fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+            self.assertEqual(fields[10], "merged")
+            self.assertEqual(fields[17], "Y")
+            self.assertEqual(fields[13], "")
+            self.assertEqual(fields[20:22], ["", ""])
+
+    def test_malformed_unrelated_bead_does_not_erase_done_signal(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+            fixture.add_beads_store(records=[
+                {"id": "repo-123", "status": "closed", "closed_at": None}, {"id": []},
+            ])
+            fixture.add_handoff(40, "done-undated", beads="repo-123")
+            fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+            self.assertEqual(fields[17], "Y")
+            self.assertEqual(fields[13], "")
+            self.assertEqual(fields[20:22], ["", ""])
+
+    def test_bead_lookup_or_parser_failure_is_not_assisted_review_evidence(self) -> None:
+        for body in ("exit 1", "printf 'invalid json'"):
+            with self.subTest(body=body), tempfile.TemporaryDirectory() as tmp:
+                fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+                fixture.add_beads_store("closed")
+                (fixture.bin / "bd").write_text(f"#!/bin/sh\n{body}\n")
+                fixture.add_handoff(40, "unavailable", beads="repo-123")
+                fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+                self.assertEqual(fields[13], "")
+                self.assertEqual(fields[20:22], ["", ""])
+
+    def test_missing_bead_cannot_prove_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+            fixture.add_beads_store("closed")
+            fixture.add_handoff(40, "unresolved", beads="repo-123 repo-missing")
+            fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+            self.assertEqual(fields[17], "")
+            self.assertEqual(fields[13], "")
+
+    def test_recent_or_undated_partial_closure_cannot_bypass_retention(self) -> None:
+        for completed in ("2026-08-20T00:00:00Z", None):
+            with self.subTest(completed=completed), tempfile.TemporaryDirectory() as tmp:
+                fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+                fixture.add_beads_store("closed", "open", closed_at=completed)
+                fixture.add_handoff(40, "partial", beads="repo-closed repo-open")
+                fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+                self.assertEqual(fields[19], "1/2")
+                self.assertEqual(fields[20:22], ["", ""])
+
+    def test_branch_ancestry_is_not_a_completion_clock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+            subprocess.run(["git", "-C", str(fixture.repo), "branch", "feature/landed"], check=True)
+            fixture.add_handoff(40, "ancestry", branch="feature/landed")
+            fields = section(fixture.run(), "HANDOFFS")[0].split("|")
+            self.assertEqual(fields[9], "merged")
+            self.assertEqual(fields[13], "")
+            self.assertEqual(fields[20:22], ["", ""])
+
+    def test_retention_option_is_independent_of_recent_activity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(
+                Path(tmp), "main\tmerged\t123\thttps://example.test/pr/123\t2000-01-01T00:00:00Z",
+                today=self.TODAY,
+            )
+            fixture.add_handoff(8, "retained")
+            default = fixture.run("--recent-days", "1")
+            self.assertEqual(section(default, "RETENTION-DAYS"), ["14"])
+            self.assertEqual(section(default, "HANDOFFS")[0].split("|")[13], "")
+            shorter = fixture.run("--retention-days", "7", "--stale-days", "1")
+            self.assertEqual(section(shorter, "STALE-DAYS"), ["7"])
+            self.assertEqual(section(shorter, "HANDOFFS")[0].split("|")[13], "safe")
+
+    def test_invalid_retention_option_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = HandoffListFixture(Path(tmp), today=self.TODAY)
+            for value in ("0", "-1", "bad", "1.5", ""):
+                with self.subTest(value=value):
+                    result = fixture.run_script(SCRIPT, "--retention-days", value)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertIn("--retention-days", result.stderr)
 
 
 class TrunkReviewClassificationTests(unittest.TestCase):
@@ -580,14 +742,14 @@ class AgeReviewClassificationTests(unittest.TestCase):
             output = fixture.run("--stale-days", "1")
             fields = section(output, "HANDOFFS")[0].split("|")
 
-            self.assertIn("3", section(output, "STALE-DAYS"))
+            self.assertIn("14", section(output, "STALE-DAYS"))
             self.assertEqual(fields[21], "")
 
     def test_bsd_date_fallback_computes_cutoffs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fixture = HandoffListFixture(Path(tmp), today=ArchiveRetentionTests.MONDAY)
             fixture.force_bsd_date_fallback()
-            fixture.add_handoff(4, "bsd-cutoff")
+            fixture.add_handoff(15, "bsd-cutoff")
 
             output = fixture.run()
             fields = section(output, "HANDOFFS")[0].split("|")
@@ -595,15 +757,15 @@ class AgeReviewClassificationTests(unittest.TestCase):
             self.assertIn("2026-07-31", section(output, "CUTOFF"))
             self.assertEqual(fields[21], "Y")
 
-    def test_default_age_floor_starts_after_the_recent_window(self) -> None:
+    def test_default_age_floor_starts_after_the_retention_window(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             fixture = HandoffListFixture(Path(tmp), today=ArchiveRetentionTests.MONDAY)
-            fixture.add_handoff(4, "default-threshold")
+            fixture.add_handoff(15, "default-threshold")
 
             output = fixture.run()
             fields = section(output, "HANDOFFS")[0].split("|")
 
-            self.assertIn("3", section(output, "STALE-DAYS"))
+            self.assertIn("14", section(output, "STALE-DAYS"))
             self.assertEqual(fields[21], "Y")
 
     def test_recent_equivalent_is_not_offered(self) -> None:
@@ -739,7 +901,7 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("Only `safe` rows are offered here.", reference)
         self.assertIn("A recent row is also", reference)
         self.assertIn("Supersede remains immediately `safe`", reference)
-        self.assertIn("inside the recent grace window", tidy)
+        self.assertIn("retained pending age/completion timing", tidy)
 
 
 class ListingOutputContractTests(unittest.TestCase):

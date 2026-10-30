@@ -1,11 +1,11 @@
 ---
 name: handoffs
 description: Browse and load current-repo or workspace-member handoffs, including pruned worktrees. Optional confirmed archiving and checkout recovery; loading alone never executes the saved task.
-allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Bash(python3 ~/.agents/skills/handoffs/scripts/retention.py:*), Bash(git worktree add:*), Bash(git rev-parse:*), Bash(git status:*), Bash(git branch:*), Bash(git checkout:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.25.1"
+version: "0.26.0"
 author: "flurdy"
 ---
 
@@ -59,15 +59,20 @@ from subsequent tables and the picker; the initial inventory still must precede 
 ### 1. Run the helper
 
 ```bash
-~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
+~/.agents/skills/handoffs/scripts/list.sh --check-branches [--retention-days N] [--stale-days N]
 ```
 
-Forward `--stale-days N` when the user supplied it; otherwise let the script match the age-review
-floor to its recent window (3 days, or 4 on Tuesday). Shorter values are clamped to that window. The
-flag only controls the assisted §3d and §3f groups and never marks a row stale.
+Forward supplied retention/stale flags. Completion-aware retention defaults to **14 days**;
+missing completion timestamps retain context without archive suggestions. The age-review floor
+defaults/clamps to retention. Follow **REFERENCE §Retention**, including the inclusive UTC boundary
+and suppression of assisted prompts for retained Done rows. Recent-activity summaries stay separate.
+
+Runtime: Bash, Git, standard Unix tools and GNU/BSD `date`, plus Python 3.10+ (standard library only).
+Missing Python or `retention.py` fails clearly; optional `gh`, `bd`, and Jira access degrade gracefully.
+No retention metadata is written.
 
 `--check-branches` adds branch-liveness + PR classification for current-repo and workspace-member handoffs. The full flag
-semantics, the 22-field `---HANDOFFS---` line format, and every field's meaning (supersede,
+semantics, the 24-field `---HANDOFFS---` line format, and every field's meaning (supersede,
 branch-state, pr-state, archive-class, beads-done, deliverable-field, beads-progress, needs-review,
 needs-age-review)
 are specified once in
@@ -94,7 +99,8 @@ renders the full table instead and can ignore them.
 "finished" signal is its ticket being closed in Jira still arrives with `archive-class` empty
 (`🟢 live`). Close that gap here, model-side, per **REFERENCE §Jira-Done**: same gate (only under
 `--check-branches`, only for rows without another done/stale/supersede signal that name a ticket),
-same batched JQL query, and the same recent-retention rule. Skip silently if the Jira MCP errors or
+same batched status/resolution-date query for current-repo and workspace-member rows, and the same
+completion-aware retention helper. Clear both assisted flags on every Jira-Done row, retained or eligible. Skip silently if the Jira MCP errors or
 isn't configured.
 
 ### 2a. Storage notice
@@ -130,7 +136,7 @@ Keep cells compact per **REFERENCE §Cells** (width budget, caps, ellipsis) so t
 - **Where**: worktree glyph plus optional location label per REFERENCE §Cells — e.g. `✅ here`, `✅` (main checkout or branch-derived worktree), `✂️` (pruned). The ✂️ reads as "pruned" and the footnote legend below spells it out; everything in the current-repo table is pickable by definition (handoffs that couldn't be matched to a repo never reach this table), so no separate Pickable column.
   - Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️` (the wide colored forms, not the narrow text `✂︎`/`⚠︎`). Mixing the two presentations across rows makes column widths jump — keep one form so the cells line up.
 - **Status**: classify the row per **REFERENCE §Status** (the 9-step precedence: supersede → open PR → merged PR → beads-done → Jira-Done → closed PR → merged → gone → live). Emit the glyphs exactly as written there.
-- **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—`. Recent non-superseded rows stay `—` even when Status says merged/done/stale; a §1a Jira-Done promotion counts as `safe` only outside the recent window.
+- **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty → `—`. Retained non-superseded rows stay `—` even when Status says merged/done/stale; a §1a Jira-Done promotion counts as `safe` only after REFERENCE §Retention passes. Unknown completion timing stays retained.
 
 If `current_repo_total == 0` and `CURRENT-REPO != NONE`:
 `_No handoffs for this repo ({CURRENT-REPO-DISPLAY})._`
@@ -270,7 +276,7 @@ confirmed selection in one `archive.sh` call. Drop archived member rows from the
 ### 3f. 🕰️ Old workspace-member handoffs worth a look (opt-in)
 
 After the evidence-backed member flow, run **REFERENCE §Age-review-members** when
-`workspace_member_age_review > 0`. Offer each old signal-less member row unchecked, grouped by member
+member rows still have `needs-age-review=Y` after §1a (raw counts may include now-retained Jira-Done rows). Offer each remaining old signal-less member row unchecked, grouped by member
 repo, and archive only explicit selections. These rows retain an empty `archive-class` and must never
 be included in §3e's bulk-safe choice. Drop archived member rows from the table and picker.
 
@@ -511,7 +517,7 @@ Each step is independent — a failure in one should not block the others.
 
 - Handoffs are written by `/wrap-up`. If a session ends without `/wrap-up`, there is nothing here to recover. That's intentional — the index lists `/wrap-up` next to `/handoffs` for a reason.
 - File naming convention: `~/.agents/handoffs/YYYY-MM-DD-{slug}.md`. Collision suffixes from wrap-up (`-2`, `-3`, …) are preserved as part of the slug.
-- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after the recent grace window (superseded rows are the sole immediate exception); §3d separately offers older signal-less current-repo rows for explicit judgement, §3e offers eligible `safe` workspace-member rows, and §3f offers old signal-less member rows unchecked. No flow touches live/open-PR work automatically or sweeps anything by itself.
+- Picking a handoff does **not** clean it up. Old handoffs accumulate by design — they're cheap and grep-friendly. The §3b archive step only offers *superseded*, *done*, or *stale* current-repo rows after completion-aware retention (superseded rows are the sole immediate exception); §3d separately offers older signal-less current-repo rows for explicit judgement, §3e offers eligible `safe` workspace-member rows, and §3f offers old signal-less member rows unchecked. No flow touches live/open-PR work automatically or sweeps anything by itself.
 - **"Done" detection** has three independent sources, each ground truth in its own domain: a **merged PR** (matched by branch *or* by a number recorded in the body — the latter rescues trunk-parked handoffs that recorded `main`), **all referenced beads closed** (local `bd`, works even on trunk repos with no PR), and a **Jira ticket in the Done category** (§1a, skill-resolved). Any one is enough; together they cover the cases — trunk-based completion, post-merge wrap-ups on `main`, ticket-only closure — that the old branch/PR-only check reported as `🟢 live`.
 - Supersede classification comes from `list.sh`, shared with `/handoffs-tidy`; wrap-up does not
   perform an at-save archive sweep. Reasons: `branch` > `slug` > `collision`; ticket/cwd overlap is excluded.

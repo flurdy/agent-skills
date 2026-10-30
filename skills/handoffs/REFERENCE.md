@@ -3,7 +3,7 @@
 Normative reference for **`/handoffs`** (the picker) and **`/handoffs-tidy`** (the pruner). Both
 skills run `list.sh` and `Read` this file; it is the single source of truth for **how to read the
 script's output, classify each handoff, and run the archive flow**. The *signals* themselves come
-from `list.sh` (the `archive-class` field already encodes the safe/keep verdict after recent-retention) — this file is the
+from `list.sh` (the `archive-class` field already encodes the safe/keep verdict after completion-aware retention) — this file is the
 single source for how to render and act on them, so the two skills can never drift on classification.
 
 ## Prompt boundaries
@@ -29,21 +29,24 @@ exceptions to the automatic-candidate restrictions in §Archive-flow, not permis
 disabled until `~/.claude/handoffs` is migrated (or the unreadable location is fixed), and ask no
 archive question: `archive.sh` refuses while the legacy location exists.
 
-Cite sections by anchor: §Run, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review, §Age-review-members.
+Cite sections by anchor: §Run, §Retention, §Fields, §Jira-Done, §Status, §Archive-glyph, §Archive-flow, §Trunk-review, §Age-review, §Age-review-members.
 
 ---
 
 ## §Run — invoking `list.sh`
 
 ```bash
-~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
+~/.agents/skills/handoffs/scripts/list.sh --check-branches [--retention-days N] [--stale-days N]
 ```
 
-`--stale-days` sets the positive-integer age floor for §Age-review and §Age-review-members. By default it matches the recent
-window (3 days, or 4 on Tuesday), so signal-less rows become reviewable only after the same grace
-period that protects completed rows. An explicit value can extend that floor; shorter values are
-clamped to the recent window so assisted review cannot bypass retention. It never changes
-`archive-class`.
+`--retention-days` sets the positive-integer retention period (default **14**); see §Retention.
+`--stale-days` sets the age floor for §Age-review and §Age-review-members. It defaults to the
+retention period; shorter values are clamped to it. It never changes `archive-class`.
+`--recent-days` still controls only recent-activity summaries (3 days, or 4 on Tuesday), not archiving.
+
+Required runtimes: Bash, Git, standard Unix text tools and GNU/BSD `date`, plus **Python 3.10+**
+(standard library only) for `scripts/retention.py`. A missing Python/helper fails clearly with exit 2.
+Optional `gh`, `bd`, and Jira access degrade as described below. Listing never writes retention state.
 
 `--check-branches` adds branch-liveness classification (the `branch-state` field) for current-repo
 and discovered workspace-member handoffs. It runs one `git ls-remote` (network, timeout-guarded) plus
@@ -59,6 +62,42 @@ and **supersede** — are computed on every call regardless of `--check-branches
 
 ---
 
+## §Retention — completion-aware archive eligibility
+
+Completed context remains visible and pickable; completion is not an archive deadline. Both skills
+and all current-repo and workspace-member flows use the same policy:
+
+- Default **14 calendar days**, configurable with `--retention-days N`; no sprint-calendar integration.
+- Capture one UTC `---AS-OF-DATE---`. Compare calendar dates, not elapsed hours. Retain the boundary
+  day: eligibility requires **both** the handoff date and completion date to be strictly earlier
+  than `as-of-date − retention-days`. On 20 August with 14 days, 6 August is retained; 5 August may
+  be offered. The later date therefore controls retention.
+- Accept only valid timezone-aware completion timestamps; normalize to UTC before taking the date.
+  PRs use `mergedAt` (merged) or `closedAt` (closed unmerged). Beads use the latest `closed_at` across
+  the closure-check set; missing/unresolved IDs cannot prove all-closed. Jira uses the latest
+  `resolutiondate` across every referenced Done ticket. Never use `updated_at`, commit author dates,
+  file mtime, handoff age, or the time completion was first observed as a closure timestamp.
+- For multiple matching PRs at the winning status, use the latest timestamp and require all clocks
+  to be valid. An open PR wins over merged/closed matches. When both merged PR and all-closed Beads
+  signals exist, retain until both clocks pass. A newer completion cannot be masked by an older one.
+- Missing, malformed, naive, or future timing **never** earns an archive suggestion. Keep accurate
+  merged/done/stale Status and empty Archive. Branch ancestry or disappearance alone has no trustworthy
+  completion date, so those rows stay retained. There is no first-observation cache or listing write.
+- Superseded continuations are the sole immediate exception: newer context replaces them. Supersede
+  remains distinct from merely completed work and still requires explicit archive confirmation.
+- Assisted prompts cannot bypass retention. Partial-bead trunk review requires the handoff and every
+  known closed bead's timestamp to pass the same clock; an unknown closed timestamp suppresses it.
+  Signal-less age review uses the clamped age floor; a failed Beads lookup/parser is not evidence
+  for that prompt. Once Jira proves completion, suppress both
+  assisted flags even when completion timing is missing or retention has not elapsed.
+
+`retention.py` is the clock authority for the lister and §Jira-Done. It is read-only and never
+archives. These rules change suggestions, not the explicit confirmation requirement or pickability.
+Retained completed rows are not active-work resume nudges: `/landscape` and exact task matches
+continue to exclude done/stale rows independently of archive eligibility.
+
+---
+
 ## §Fields — reading the output
 
 Delimited sections:
@@ -67,7 +106,9 @@ Delimited sections:
 - `---CURRENT-REPO-DISPLAY---` — short label (basename of the repo root, or of the directory), or `NONE`.
 - `---CURRENT-REPO-KIND---` — `repo`, `dir` (not in a git repo; matching is by exact directory, no branch/PR liveness or workspace members), or `NONE`.
 - `---RECENT-WINDOW-DAYS---` — days used for the "recent" filter (3 default; Mon → 3, Tue → 4 weekend buffer).
-- `---STALE-DAYS---` — configured age floor for assisted age review (the recent-window size by default).
+- `---RETENTION-DAYS---` — completion-aware archive retention period (14 by default).
+- `---AS-OF-DATE---` — UTC calendar date captured once for this listing; use it for §Jira-Done too.
+- `---STALE-DAYS---` — assisted age-review floor (defaults/clamps to the retention period).
 - `---HANDOFFS-DIR---` — the canonical directory (`~/.agents/handoffs`). Rows carry their own
   `{path}`; load that, never `{HANDOFFS-DIR}/{filename}`.
 - `---STORAGE---` — which locations were read:
@@ -163,26 +204,27 @@ row wrongly shows `🟢 live`, but the merged PR's number is still in the body).
 
 ### Beads / Jira (`beads-field`, `jira-field`, `beads-done`, `deliverable-field`, `beads-progress`, `needs-review`, `needs-age-review`)
 
-- `{beads-field}` — raw `**Beads:**` token list (own-work **and** context/epic beads); empty unless beads exist locally or a `--bead`/`--ticket` filter is active.
+- `{beads-field}` — raw `**Beads:**` token list (own-work **and** context/epic beads); populated when beads exist locally, a `--bead`/`--ticket` filter is active, or `--check-branches` enables member-store checks.
 - `{jira-field}` — raw `**Jira:**` token list; populated under `--check-branches` (and filters). Bash can't call the Jira MCP, so the script never sets a jira-done flag — it only hands you the keys (see §Jira-Done).
 - `{deliverable-field}` — raw `**Deliverable:**` token list: just the **own-work** beads this handoff was advancing (wrap-up v0.10.0+), the subset whose closure means the handoff is finished. Empty for older handoffs that predate the field.
 - `{beads-done}` — `Y` when **every** bead in the **closure-check set** is closed (all resolve to `status=closed`), else empty. The closure-check set is the **`**Deliverable:**` field when present**, else the full `**Beads:**` field (legacy fallback). Computed locally via `bd` for current-repo rows whenever beads exist — **independent of `--check-branches`**. A field truncated with `(+N more)` can't be fully verified and stays empty (conservative).
   - **Why Deliverable matters:** in trunk repos all work commits to `master`, so wrap-up records every handoff with `branch: master` → `branch-state=unknown` (the default-branch guard) and no PR. The bead is then the only "done" signal — but the `**Beads:**` list mixes own work with recurring "in-progress elsewhere" context beads and parent epics that never close, so an all-`**Beads:**`-closed rule can never fire. Keying off `**Deliverable:**` (own work only) fixes that. Safety: over-including a bead in Deliverable only ever *under*-detects (a never-closing bead keeps the row live); **omitting** an own-work bead is the only way to false-positive, so wrap-up errs toward including.
 - `{beads-progress}` — `{closed}/{total}` over the closure-check set (Deliverable if present, else Beads), or empty when there are no resolvable beads. Lets a caller distinguish *partial* closure (something shipped, something open) from all-open (nothing done) and all-closed (done).
-- `{needs-review}` — `Y` for a current-repo row outside the recent window that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are already `safe`; all-open rows are genuinely live.
+- `{needs-review}` — `Y` for a current-repo row passing §Retention (including its closed beads' timestamps) that **can't be auto-classified** and warrants the assisted prompt (see §Trunk-review): it renders `🟢 live` (`archive-class` empty), is **trunk-parked** (branch is `main`/`master`/the default), has **no `**Deliverable:**` field** (a legacy handoff), and shows **partial** bead closure (`beads-progress` with closed ≥ 1). Rows with a Deliverable field never set this — they classify cleanly. All-closed rows are done (retained or `safe`); all-open rows are genuinely live.
 - `{needs-age-review}` — `Y` for an old current-repo or workspace-member row that has no usable completion or liveness signal and warrants §Age-review or §Age-review-members: `--check-branches` was used, the row is older than `---STALE-DAYS---`, `branch-state=unknown`, it has no usable PR signal (`pr-state=none`, including a handoff whose recorded links belong to another repo; or `unknown` with no recorded PR number), and it has no resolvable beads (`beads-progress` empty). Age is not evidence of doneness, so this flag never changes `archive-class` or stale counts. Rows with an open/merged/closed PR, a known-live branch, or an unknown lookup plus a recorded PR number are not flagged.
 
 ### Archive-class (`archive-class`) — current-repo and workspace-member rows
 
 The script's per-row archive recommendation, so callers read straight off it instead of re-deriving:
 
-- `safe` — superseded, or an **older-than-recent** row with `pr-state=merged`, `beads-done=Y`, or `branch-state=merged`. Low regret — the context lives on, or the work demonstrably shipped.
-- `keep` — an **older-than-recent** row with `pr-state=closed`, or `branch-state=gone` with no merged/done evidence. Higher regret — may be the only record.
-- empty — live/unknown work, or a recent non-superseded row retained by the grace window. **Not an archive candidate.** Status still comes from §Status, so a retained row can truthfully show `✅ merged` while its Archive column stays `—`.
+- `safe` — superseded, or a merged-PR/all-closed-Beads row that passes §Retention. Low regret — the context continues elsewhere, or completion and its age are verified.
+- `keep` — a closed-unmerged PR that passes §Retention. Higher regret — may be the only record.
+- empty — live/unknown work, or non-superseded context retained by §Retention (including unknown completion dates). **Not an archive candidate.** Status remains truthful, so a retained row can show `✅ merged` with Archive `—`.
 
 Precedence before retention: supersede > open PR > merged PR > **beads-done** > closed PR > local `merged` > `gone`.
-Supersede remains immediately `safe`; every other non-empty result is cleared while `{date}` is inside
-`---RECENT-WINDOW-DAYS---` (inclusive). This applies identically to current-repo and workspace-member rows.
+Supersede remains immediately `safe`; every other result must pass §Retention. Branch-only merged/gone
+signals retain their Status but have no completion clock, so their archive class stays empty.
+This applies identically to current-repo and workspace-member rows.
 Beads-done (keyed off `**Deliverable:**` when present, else the full `**Beads:**` field) sits just
 under a merged PR (the finished-work signal when there's no live branch/PR — the trunk case) but
 **below** an open PR. Jira-Done is *not* in this list — the script can't query Jira; the skill folds
@@ -236,8 +278,8 @@ directory change explicit, not by hiding the handoff.
 network-/tool-light may skip it and let the PR/bead/supersede classification stand.
 
 **Gate — skip entirely unless _all_ of:** you ran with `--check-branches`, the Jira MCP is
-configured, and there is at least one current-repo row with no existing done/stale/supersede signal
-**and** a non-`—` `{jira-field}`. A recent completed row can also have empty `archive-class`, so do not
+configured, and there is at least one current-repo or workspace-member row with no existing
+done/stale/supersede signal, no open PR, **and** a non-`—` `{jira-field}`. A recent completed row can also have empty `archive-class`, so do not
 use that field alone as the live-row test. If none qualify, do nothing.
 
 For the qualifying rows, collect the distinct Jira keys and resolve their status in **one batched** query:
@@ -247,17 +289,32 @@ mcp__jira__jira_get
   path: /rest/api/3/search/jql
   queryParams:
     jql: key in (KEY-1, KEY-2, …) AND statusCategory = Done
-    fields: status
-  jq: issues[*].key
+    fields: status,resolutiondate
+  jq: '{issues: issues}'
 ```
 
-Any key the query returns is **Done** (Jira's `Done` status *category* covers Done / Closed /
-Resolved / Won't Do across workflow variants). For each live row whose ticket is in that set,
-**promote it to done**: render the Jira-Done status, and treat its `archive-class` as `safe` only when
-the row is outside `---RECENT-WINDOW-DAYS---`. A recent Jira-Done row stays retained with an empty
-`archive-class`. A row with several tickets counts as done only when **every** ticket it names is Done.
+Use the available Jira search tool for this same field set; collect all pages before promotion.
+Jira's `Done` status category covers Done / Closed / Resolved / Won't Do across workflow variants.
+For each qualifying row, pass the returned `{issues: [...]}` JSON on stdin to the shared helper:
 
-If the Jira MCP errors or isn't configured, skip silently — never fail over Jira.
+```bash
+python3 ~/.agents/skills/handoffs/scripts/retention.py jira --keys ABC-123,ABC-456 --handoff-date YYYY-MM-DD --today YYYY-MM-DD --days N
+```
+
+Supply the exact comma-separated keys from that row, its handoff date, `---AS-OF-DATE---`, and
+`---RETENTION-DAYS---`; do not substitute today's date or a hand-computed threshold. Input contains
+only keys and the requested status/resolution fields; do not persist the tracker response.
+The helper returns `{"done": true|false, "archive_class": "safe"|""}`. A row counts as done only
+when **every** named ticket is returned in the Done category. Missing/reopened tickets never prove done.
+
+On `done=true`, render Jira-Done and use the returned class. A recent Jira-Done row stays retained,
+as does an old handoff with recent or unknown resolution timing. **Always clear both `needs-review` and `needs-age-review`**
+for that row, not only when `archive_class=safe`; otherwise assisted review would bypass retention.
+Apply this overlay to both current and member tables, candidate gates and review counts; raw script
+counters cannot include Jira results. Preserve the row in the picker until explicitly archived.
+
+If Jira access errors or isn't configured, skip silently — never fail over Jira. If the retention
+helper fails, do not promote archive eligibility or offer assisted review for a row already known Done.
 
 ---
 
@@ -278,7 +335,7 @@ Pick the first that applies, in this order:
 Supersede wins because "a newer handoff continues this" is the most actionable signal. PR state beats
 `branch-state` because it's ground truth (and the only thing that catches a squash-merge); an open PR
 specifically means *don't archive*. The two `✅ done` states (beads / Jira) rank above closed/gone for
-the same reason a merged PR does — the work shipped. Recent-retention can still leave
+the same reason a merged PR does — the work shipped. Completion-aware retention can still leave
 `archive-class` empty; status and archive eligibility are deliberately separate.
 
 Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️`
@@ -289,7 +346,7 @@ Emit emoji glyphs **exactly as written here**, including the variation selector 
 ## §Archive-glyph — archive recommendation column
 
 Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty →
-`—` (a §Jira-Done promotion is `safe` only outside the recent window). `safe` is low-regret (superseded / merged / done);
+`—` (a §Jira-Done promotion is `safe` only after §Retention passes). `safe` is low-regret (superseded / merged / done);
 `keep?` is higher-regret (abandoned / branch gone with no merge evidence).
 
 ---
@@ -346,7 +403,7 @@ them as **distinct groups** and be honest about the difference:
 
 A row is **never** a candidate while its PR is open (`🟠`) — that's live work. A recent row is also
 never a candidate unless it is superseded; completion and stale signals remain visible in Status but
-receive no archive glyph until the grace window passes. A row that is both superseded and otherwise
+receive no archive glyph until §Retention passes with a trustworthy completion clock. A row that is both superseded and otherwise
 archivable belongs in the Superseded group (supersede is the safest reason to archive).
 
 Prompt with `AskUserQuestion` (multiSelect). One option per candidate, labelled `{date} {slug}`,
@@ -482,10 +539,10 @@ A handoff with `branch-state=unknown` can remain `🟢 live` forever when it has
 no resolvable beads, and no other completion signal. This includes trunk-parked rows and feature
 branches whose liveness cannot be established. Age does **not** prove that it finished; it only makes
 the row worth asking about. `list.sh` flags these current-repo rows with `needs-age-review=Y` once they
-are older than `---STALE-DAYS---` (the recent-window size by default, configurable with `--stale-days N`).
+are older than `---STALE-DAYS---` (the retention period by default, configurable with `--stale-days N`).
 
-Run this after §Jira-Done. If Jira promoted a flagged row to `safe`, handle it as Done instead and do
-not include it here. Present the remaining rows as a separate assisted group, never mixed into
+Run this after §Jira-Done. Exclude **every** Jira-Done row, including retained Done rows with empty
+archive class; only expired `safe` ones enter the Done archive group. Present the remaining rows as a separate assisted group, never mixed into
 §Archive-flow or §Trunk-review:
 
 ```markdown
@@ -522,7 +579,8 @@ workspace root forces the user to discover and enter each member repo before the
 `list.sh` therefore sets `needs-age-review=Y` for member rows using the same classifier as §Age-review
 and counts them in `workspace_member_age_review`.
 
-Run this after §Archive-flow-members when `workspace_member_age_review > 0`. This remains distinct
+Run this after §Jira-Done and §Archive-flow-members when member rows still have `needs-age-review=Y`
+after the Jira overlay; exclude retained Jira-Done rows even if the raw counter is nonzero. This remains distinct
 from the evidence-backed member archive flow: every row has an empty `archive-class`, age is not a
 done signal, and no option is preselected.
 

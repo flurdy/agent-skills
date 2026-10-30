@@ -1,11 +1,11 @@
 ---
 name: handoffs-tidy
 description: "Review handoffs for confirmed archiving: superseded, done or stale candidates, plus separate assisted review of old/uncertain rows. Age alone never proves completion. Archives files, never deletes or resumes work."
-allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Read, AskUserQuestion, mcp__jira__jira_get"
+allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agents/skills/handoffs/scripts/archive.sh:*), Bash(python3 ~/.agents/skills/handoffs/scripts/retention.py:*), Read, AskUserQuestion, mcp__jira__jira_get"
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.9.1"
+version: "0.10.0"
 author: "flurdy"
 ---
 
@@ -22,8 +22,9 @@ completion/staleness evidence; the fourth is explicitly uncertain:
 - **Old and signal-less** — unknown branch liveness with no usable PR signal or resolvable beads. Age only earns an assisted
   question; it never makes the handoff an automatic archive candidate.
 
-This command finds all four and archives the ones you confirm. A recent handoff is retained even when
-finished or stale; superseded rows are the sole immediate exception. Nothing is deleted — archived
+This command finds all four and archives the ones you confirm. Completed context is retained for
+**14 days** after both handoff creation and verified completion, or while completion timing is unknown;
+superseded rows are the sole immediate exception. Nothing is deleted — archived
 files move to `~/.agents/handoffs/archive/` and stay greppable.
 
 Run it **ad-hoc** whenever the picker feels noisy, or right after a `/wrap-up`. It is the standalone
@@ -66,12 +67,16 @@ each row, and run the archive flow — the same definitions `/handoffs` uses, so
 ### 2. Run the lister with liveness
 
 ```bash
-~/.agents/skills/handoffs/scripts/list.sh --check-branches [--stale-days N]
+~/.agents/skills/handoffs/scripts/list.sh --check-branches [--retention-days N] [--stale-days N]
 ```
 
-Forward `--stale-days N` when the user supplied it; otherwise let the script match the age-review
-floor to the recent window (3 days, or 4 on Tuesday). Shorter values are clamped to that window. The
-threshold only controls the assisted age-review group and never changes `archive-class`.
+Forward supplied retention/stale flags. Follow **REFERENCE §Retention**: 14 days by default,
+inclusive UTC boundary, with unknown completion dates retained and no assisted-review bypass.
+The age-review floor defaults/clamps to retention; recent-activity summaries remain independent.
+
+Runtime: Bash, Git, standard Unix tools and GNU/BSD `date`, plus Python 3.10+ (standard library only).
+Missing Python or `retention.py` fails clearly; optional `gh`, `bd`, and Jira access degrade gracefully.
+Listing writes no retention state.
 
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is
 present) `pr-state`, so the script can mark merged PRs, landed branches, and closed PRs. Bead-closure
@@ -87,7 +92,8 @@ never automatic archive candidates.
 
 ### 3. Resolve Jira-Done (optional)
 
-Follow REFERENCE §Jira-Done for any current-repo row without another done/stale/supersede signal that names a Jira ticket. This catches
+Follow REFERENCE §Jira-Done for qualifying current-repo and workspace-member rows that name Jira tickets.
+Use its shared retention helper and clear both assisted flags on every Done row, even when retained. This catches
 handoffs whose *only* finished signal is a closed ticket (no merged PR, no closed beads). It's gated
 exactly as REFERENCE describes and degrades silently if the Jira MCP isn't configured — skip it freely
 if you want to stay network-light; PR/bead/branch/supersede classification still stands.
@@ -100,7 +106,7 @@ member row is archivable (step 5d's gate) or has `needs-age-review=Y` (step 5e),
 stop at step 6 — the picker is already tidy:
 
 ```markdown
-_No archivable handoffs — remaining rows are live, unknown, or still inside the recent grace window._
+_No archivable handoffs — remaining rows are live, unknown, or retained pending age/completion timing._
 ```
 
 > **Check step 5d's gate before stopping.** In a multi-repo workspace the current repo can be
@@ -170,7 +176,7 @@ already classified against their own repo when `--check-branches` was passed.
 
 Key points from that section, so they aren't missed:
 
-- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`; recent non-superseded member rows have an empty class and are not offered here.
+- **Gate**: `--check-branches` was passed, and at least one member row is `archive-class=safe`; retained non-superseded member rows (including unknown completion dates) have an empty class and are not offered here.
 - **Only `safe` rows are offered from here.** `keep`-class member rows (PR closed unmerged, branch
   gone with no merge evidence) are higher-regret — name them and point at `cd {path} && /handoffs-tidy`
   rather than offering them.
@@ -183,10 +189,10 @@ Skip the step entirely when the gate doesn't pass.
 
 ### 5e. 🕰️ Old workspace-member handoffs worth a look
 
-If any workspace-member row has `needs-age-review=Y`, run the separate assisted prompt exactly as
+If any workspace-member row still has `needs-age-review=Y` after step 3, run the separate assisted prompt exactly as
 **REFERENCE §Age-review-members** specifies. These old unknown rows are not `safe` member candidates:
 leave every option unselected, offer per-row choices grouped by member repo, and archive only explicit
-selections. Skip entirely when `workspace_member_age_review == 0`.
+selections. Skip when no effective flags remain; raw counters may include retained Jira-Done rows.
 
 ### 6. Done
 
