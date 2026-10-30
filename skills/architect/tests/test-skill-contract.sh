@@ -22,6 +22,22 @@ fi
 brief=$(grep -nF '### Decision brief' "$SKILL" | head -1 | cut -d: -f1)
 tier=$(grep -nF '### Planning tier' "$SKILL" | head -1 | cut -d: -f1)
 ((brief < tier)) || fail 'decision brief must precede planning detail'
+impl_tier=$(grep -nF '### Recommended implementation tier' "$SKILL" | head -1 | cut -d: -f1)
+necessity=$(grep -nF '### Necessity check' "$SKILL" | head -1 | cut -d: -f1)
+tldr=$(grep -nF '### TL;DR' "$SKILL" | head -1 | cut -d: -f1)
+[[ -n "$impl_tier" && -n "$necessity" && -n "$tldr" ]] || fail 'plan template must end with a necessity check and TL;DR'
+((impl_tier < necessity && necessity < tldr)) || fail 'necessity check and TL;DR must close the plan template, in that order'
+for invariant in \
+    'PROCEED | SIMPLIFY | DEFER | DO NOT DO IT | INSUFFICIENT EVIDENCE' \
+    '../do-i-need-this/SKILL.md' \
+    'never invokes that skill' \
+    'must agree with the Decision brief' \
+    'Omit both only for a purely'; do
+    grep -Fq "$invariant" "$SKILL" || fail "missing necessity-check invariant: $invariant"
+done
+if grep -Eq 'Skill\(do-i-need-this\)' "$SKILL"; then
+    fail 'architect must not pre-approve invoking do-i-need-this'
+fi
 for invariant in 'Exactly one blocked human review owner' 'existing matching review' 'source spike/design bead' 'canonical `human` label' 'status `blocked`' 'type `decision`' 'immediately before any tracker mutation' 'partial state' 'same item' '**Approve**' '**Defer or reject**' '**Request revision**' 'No implementation children' 'instruction-level'; do
     grep -Fq "$invariant" "$HUMAN" || fail "missing triage-owned decision invariant: $invariant"
 done

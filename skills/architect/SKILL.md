@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git status:*),Bash(git diff:*),Bash(git log:
 model-tier: premium
 model: fable
 effort: xhigh
-version: "2.0.1"
+version: "2.1.0"
 author: "flurdy"
 ---
 
@@ -271,7 +271,31 @@ The final user-facing plan starts with the decision summary, before investigatio
 
 ### Recommended implementation tier
 <standard/high is safe | use premium/high | retain premium/xhigh for implementation or final review>
+
+### Necessity check
+- Verdict: <PROCEED | SIMPLIFY | DEFER | DO NOT DO IT | INSUFFICIENT EVIDENCE>
+- Do nothing: <what happens without this work: existing capability, tolerable cost, or material risk>
+- Smallest sufficient option: <existing capability, narrower change, manual step, or the proposed scope>
+- Would change the verdict: <specific evidence or condition>
+
+### TL;DR
+<one or two plain-language sentences: what to do and why>
 ```
+
+End every plan that makes a recommendation with **Necessity check** and **TL;DR**, in that
+order, immediately before the closing next-action line. Omit both only for a purely
+informational answer that recommends nothing. In long plans the Decision brief has scrolled away
+by the end; these two sections restate the outcome where the reader decides.
+
+The necessity check is an inline YAGNI pass, about three lines. It reuses the verdict names and
+meaning from [do-i-need-this](../do-i-need-this/SKILL.md) but never invokes that skill; it
+weighs doing nothing and the smallest sufficient alternative against the plan's own evidence.
+Both sections must agree with the Decision brief at the top. A verdict other than **PROCEED**
+also appears in the brief's recommendation, never only at the bottom. For **DO NOT DO IT** or
+**INSUFFICIENT EVIDENCE**, keep the plan proportionate: render the brief, goal, context,
+necessity check and TL;DR, and compress or omit delivery sections (slices, test strategy,
+rollout) that would only speculate, saying which were omitted. **SIMPLIFY** plans the smaller
+option; **DEFER** names the revisit trigger in the next-action line.
 
 Pair every implementation slice with both an observable outcome and the evidence that proves it.
 The pair is the slice's acceptance contract, not a duplicate test plan:
@@ -415,11 +439,12 @@ accordingly, and explicitly state that external validation was skipped.
 - Prefer small, reversible implementation slices with observable outcomes and proportionate proof.
 - Do not invent commands for documentation-only or inherently manual acceptance; name the
   necessary source evidence or UAT flow instead.
-- Flag YAGNI: avoid introducing new abstractions unless they pay for themselves now.
+- Flag YAGNI: avoid introducing new abstractions unless they pay for themselves now; the
+  closing necessity check records the verdict rather than leaving it implicit.
 - Do not claim the ecosystem lacks a solution without bounded, source-backed research; do not run
   that research when a routine local change already has an obvious path.
 - Prefer repository and installed-capability evidence before external lookup, and prefer official or
   upstream evidence over commentary when external lookup is warranted.
 - Call out when the right answer is “do the simple thing” rather than architecting.
 - If requirements are unclear, list open questions and recommend the smallest discovery step.
-- End with the next concrete action the implementation agent should take.
+- End with the next concrete action the implementation agent should take, after the TL;DR.
