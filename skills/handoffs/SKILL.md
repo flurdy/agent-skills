@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.25.0"
+version: "0.25.1"
 author: "flurdy"
 ---
 
@@ -36,6 +36,21 @@ Browse handoff files written by `/wrap-up` (in `~/.agents/handoffs/`) and pick o
 - It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
 - It **cannot pick handoffs from unrelated repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in an unrelated repo, `cd` there and run `/handoffs` again. **Exception:** repos in the same multi-repo workspace are listed and pickable (§2b/§4b), because from a workspace root they'd otherwise be invisible; picking one requires an explicit `cd` before any repo-scoped command runs.
 - It **never deletes** handoff files. The opt-in archive steps (§3b–§3f) only *move* explicitly confirmed candidates into `~/.agents/handoffs/archive/` — they stay on disk and greppable.
+
+## Output contract — tables before prompts
+
+The inventory is mandatory visible Markdown in your response, not just helper output. Render
+§2a's applicable storage notices, §2's current-repo table (or documented empty-state line),
+§2b's workspace-members table when present, and §3's other-repos summary and applicable notices,
+in that order, **before any `AskUserQuestion`, archive/age-review prompt, or picker text**.
+Preserve each section's skip rules and §2b's 10-row cap; do not invent empty tables.
+
+Never replace these tables with a prose summary or assume collapsed tool output is visible.
+When a question uses a tool, send the tables as a visible assistant message before calling it;
+do not postpone them until the final response after the user answers. Archive flows (§3b–§3f)
+and the §4 picker may follow only after this inventory is on screen. Their additional candidate
+previews follow REFERENCE §Prompt boundaries. After archiving, exclude confirmed archived rows
+from subsequent tables and the picker; the initial inventory still must precede confirmation.
 
 ## Instructions
 
@@ -268,7 +283,8 @@ do not construct a one-option questionnaire. With 2–4 rows, use `AskUserQuesti
 - Option label: `{date} {slug}` (truncate slug if needed to stay under the chip width).
 - Option description: `{time} · Branch: {branch} | Where: {basename of cwd}`, both uncapped (lead with the `HH:MM` so several same-day handoffs are distinguishable here; omit the `{time} · ` prefix when `{time}` is `?`).
 
-With more than four remaining displayed rows, do **not** force the picker. Instead, print:
+With more than four remaining displayed rows, refer to the §2/§2b tables already rendered above;
+do **not** force the picker or substitute this prompt for those tables. Then print:
 
 ```markdown
 **Pick one to load:** reply with the slug or filename (e.g. `ab-1344-login-state-decision` or `2026-05-21-ab-1344-login-state-decision.md`).

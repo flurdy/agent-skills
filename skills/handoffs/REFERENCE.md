@@ -8,6 +8,14 @@ single source for how to render and act on them, so the two skills can never dri
 
 ## Prompt boundaries
 
+**Visible preview first.** In both `/handoffs` and `/handoffs-tidy`, render the applicable
+candidate or assisted-review table as visible Markdown before any archive question (structured
+or plain text). Include every row that question offers, even if it was outside the capped member
+inventory. Never replace the preview with a prose summary or rely on collapsed tool output.
+Send the preview in an assistant message before calling `AskUserQuestion`, not in a final
+response after it returns. `/handoffs` additionally renders its full prescribed inventory before
+entering these flows; `/handoffs-tidy` needs only the relevant candidate previews, not that inventory.
+
 All archive flows below require explicit filename selections. Suggestions are not preselected
 consent. Use 2–4 options per structured question; for a single candidate offer Archive / Keep.
 For more than four candidates, use bounded batches or a plain-text filename selection with an exact

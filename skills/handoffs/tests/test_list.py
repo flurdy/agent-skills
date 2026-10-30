@@ -742,6 +742,37 @@ class AgeReviewClassificationTests(unittest.TestCase):
         self.assertIn("inside the recent grace window", tidy)
 
 
+class ListingOutputContractTests(unittest.TestCase):
+    """Protect the prompt contract, not a guarantee of model compliance."""
+
+    def test_handoffs_requires_visible_inventory_before_any_prompt(self) -> None:
+        handoffs = HANDOFFS_SKILL.read_text(encoding="utf-8")
+        contract = handoffs.split("## Output contract — tables before prompts", 1)[1].split("## Instructions", 1)[0]
+
+        for required in (
+            "§2a", "§2", "§2b", "§3", "visible Markdown",
+            "before any `AskUserQuestion`", "Never replace", "prose summary",
+            "collapsed tool output", "empty-state", "10-row cap",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, contract)
+        picker = handoffs.split("### 4. Pick a handoff", 1)[1].split("### 4b.", 1)[0]
+        self.assertIn("tables already rendered above", picker)
+        self.assertIn("With more than four remaining displayed rows", picker)
+
+    def test_archive_previews_are_required_in_both_consumers(self) -> None:
+        tidy = TIDY_SKILL.read_text(encoding="utf-8")
+        reference = REFERENCE.read_text(encoding="utf-8")
+        boundaries = reference.split("## Prompt boundaries", 1)[1].split("## §Run", 1)[0]
+
+        self.assertIn("before any archive question", boundaries)
+        self.assertIn("visible Markdown", boundaries)
+        self.assertIn("collapsed tool output", boundaries)
+        self.assertIn("assisted-review", boundaries)
+        self.assertIn("candidate preview", tidy)
+        self.assertIn("REFERENCE §Prompt boundaries", tidy.split("## Instructions", 1)[0])
+
+
 class DirectoryIdentityTests(unittest.TestCase):
     """Outside any git repo the directory itself is the identity, so handoffs
     written from a non-git workspace root are pickable from that directory."""

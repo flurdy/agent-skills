@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.9.0"
+version: "0.9.1"
 author: "flurdy"
 ---
 
@@ -41,6 +41,14 @@ ever archives explicit selections. Automatic candidate groups exclude live/unkno
 - After a `/wrap-up` whose handoff continued an earlier thread, or whose work has now shipped.
 - Periodically, when `/handoffs` shows entries you've moved past — merged PRs, closed beads, dead branches.
 - Not needed if you keep only one live handoff per topic and archive as you go.
+
+## Output contract — preview before confirmation
+
+Every candidate preview in steps 4–5e is mandatory visible Markdown before its archive or
+assisted-review question, per REFERENCE §Prompt boundaries. Never substitute a prose summary
+or collapsed helper output for the table. Send it before calling `AskUserQuestion`, not after
+the answer. This applies even when only assisted or workspace-member candidates exist and
+step 4 skips directly to their flow; it does not require `/handoffs`'s full inventory or picker.
 
 ## Instructions
 
