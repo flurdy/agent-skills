@@ -112,8 +112,8 @@ class LayoutTests(unittest.TestCase):
         self.assertIn(f"[#7433]({URL.format(7433)})", out)
 
     def test_stacked_target_is_capped_with_marker_and_full_name_available(self):
-        parent = "feat/GE-2150-fe-renewals-restructure-upload-your-document"
-        out = render([open_pr(7437, base=parent, branch="feat/GE-2508-work-email-verification-error-states")])
+        parent = "feat/ABC-101-restructure-the-document-upload-flow"
+        out = render([open_pr(7437, base=parent, branch="feat/ABC-102-add-email-verification-error-states")])
         row = cells(out, OPEN_COLUMNS, 7437)
         self.assertTrue(row["Target"].startswith("📌 "))
         self.assertTrue(row["Target"].endswith("…"))
@@ -122,7 +122,7 @@ class LayoutTests(unittest.TestCase):
         self.assertLessEqual(visible_width(row["Branch"]), 30)
         self.assertEqual(row["LGTM"], "🚧")
         self.assertIn(f"#7437 target {parent}", out)
-        self.assertIn("#7437 branch feat/GE-2508-work-email-verification-error-states", out)
+        self.assertIn("#7437 branch feat/ABC-102-add-email-verification-error-states", out)
 
     def test_default_base_target_is_plain_and_not_listed_as_truncated(self):
         out = render([open_pr(1)])

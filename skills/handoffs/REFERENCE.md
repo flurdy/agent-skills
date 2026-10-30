@@ -132,7 +132,7 @@ read from. `{filename}` alone is ambiguous when both locations hold the same nam
 ### Supersede (`superseded-by`, `supersede-reason`)
 
 - `superseded-by` is the filename of the **newest** handoff in the same repo that continues this thread, or empty if this is the live tip. `supersede-reason` is `branch` (same branch), `slug` (same exact topic slug), or `collision` (same-day re-wrap). Ticket/cwd overlap is deliberately *not* a supersede signal — a ticket legitimately spans many handoffs.
-- Recency is date first, then the `# Resume:` time when both records have one. Equal or unknown same-day times are conservatively unordered, except an established filename collision family (`topic` → `topic-2` → `topic-3`): higher collision suffixes are newer. A trailing numeric topic component such as `GE-1869` is never a global recency signal unless an unsuffixed `GE` handoff establishes that exact collision family.
+- Recency is date first, then the `# Resume:` time when both records have one. Equal or unknown same-day times are conservatively unordered, except an established filename collision family (`topic` → `topic-2` → `topic-3`): higher collision suffixes are newer. A trailing numeric topic component such as `ABC-123` is never a global recency signal unless an unsuffixed `ABC` handoff establishes that exact collision family.
 - **A same-named copy never supersedes.** The same filename in both storage locations is a copy,
   not a newer thread (see `---SOURCE-COLLISIONS---`). Different filenames across locations
   supersede normally, so a newer canonical handoff still retires an older legacy one; resolve
@@ -306,9 +306,9 @@ Shorten a value only when it exceeds its cap: keep its first `cap − 1` charact
 
 | Cell | Cap | Example |
 |------|-----|---------|
-| Branch | 24 | `feat/GE-1296-fix-silent…` |
+| Branch | 24 | `feat/ABC-123-fix-silent…` |
 | Where label | 14 | `✅ shared-old-c…` |
-| Superseding slug in Status | 16 | `⏩ by ge-2592-refineme…` |
+| Superseding slug in Status | 16 | `⏩ by abc-456-refineme…` |
 
 Never shorten Date, Repo, Slug (the pick key), or the rest of a Status/Archive glyph. Emoji
 presentation rules above still apply.

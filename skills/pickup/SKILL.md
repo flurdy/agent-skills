@@ -5,7 +5,7 @@ allowed-tools: "Read, Bash(python3 ~/.agents/skills/pickup/scripts/pickup.py:*),
 model-tier: economy
 model: sonnet
 effort: high
-version: "0.7.0"
+version: "0.7.1"
 author: "flurdy"
 ---
 
@@ -43,11 +43,11 @@ answers "what unclaimed work is ready?".
 
 ```toml
 [jira]
-projects = ["GE"]                 # required
+projects = ["ABC"]                # required
 ready_statuses = ["Ready to Work"]  # required; exact status names
 labels = ["FE", "BE", "FS"]       # optional; any-of. Omit for all labels
 exclude_types = ["Epic"]          # default ["Epic"]
-holding_sprints = ["READY FOR ENGINEERING"]  # optional; fetched and shown after the real future sprints
+holding_sprints = ["Ready Queue"]  # optional; fetched and shown after the real future sprints
 active_limit = 50                 # max results per bucket, 1-100
 next_limit = 10                   # real future sprints, and again per holding sprint
 backlog_limit = 10
@@ -137,30 +137,30 @@ story_points = "customfield_10016"
    as complete.
 
    ```markdown
-   ## Pickup — GE · FE, BE, FS
+   ## Pickup — ABC · FE, BE, FS
 
    ### Parked with you
    | Key | Status | Sprint | Pri | Pts | Summary |
    |-----|--------|--------|-----|-----|---------|
-   | [GE-2101](…) | Ready for QA | backlog | P3 | 2 | … |
+   | [ABC-101](…) | In Review | backlog | P3 | 2 | … |
 
    ### Already yours, not started
    | Key | Sprint | Pri | Pts | Summary |
    |-----|--------|-----|-----|---------|
-   | [GE-2257](…) | GE Sprint 27.13 | P3 | 3 | Add Employment Status, Sector … |
+   | [ABC-102](…) | ABC Sprint 2 | P3 | 3 | Add profile fields … |
 
-   ### Active — GE Sprint 27.12
+   ### Active — ABC Sprint 1
    |   | Key | Pri | Pts | Labels | Epic | Summary |
    |---|-----|-----|-----|--------|------|---------|
-   | ★ | [GE-2410](…) | P3 | 3 | FE | STT verification | Add Amplitude tracking for … |
+   | ★ | [ABC-103](…) | P3 | 3 | FE | Onboarding | Add analytics tracking for … |
 
-   ### Next — GE Sprint 27.13
+   ### Next — ABC Sprint 2
    |   | Key | Pri | Pts | Labels | Epic | Summary |
    |---|-----|-----|-----|--------|------|---------|
 
    _Showing 10; more in Jira — raise next_limit in pickup.toml to see them._
 
-   ### READY FOR ENGINEERING
+   ### Ready Queue
    |   | Key | Pri | Pts | Labels | Epic | Summary |
    |---|-----|-----|-----|--------|------|---------|
 
@@ -171,8 +171,8 @@ story_points = "customfield_10016"
    ### Flagged / blocked
    | Key | Bucket | Pri | Pts | Why | Summary |
    |-----|--------|-----|-----|-----|---------|
-   | [GE-2430](…) | active | P3 | 2 | ⚑ Impediment | … |
-   | [GE-1234](…) | next | P2 | 1 | blocked by GE-1200 (in progress) | … |
+   | [ABC-104](…) | active | P3 | 2 | ⚑ Impediment | … |
+   | [ABC-105](…) | next | P2 | 1 | blocked by ABC-100 (in progress) | … |
    ```
 
    When any ★ appears, add a legend line:

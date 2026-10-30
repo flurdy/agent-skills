@@ -264,7 +264,7 @@ class CollectorTest(WorkspaceCase):
                 {
                     "issues": [
                         {
-                            "key": "GE-1",
+                            "key": "ABC-1",
                             "fields": {
                                 "summary": "Fix it",
                                 "status": {"name": "In Progress"},
@@ -285,12 +285,12 @@ class CollectorTest(WorkspaceCase):
             [
                 {
                     "source": "jira",
-                    "id": "GE-1",
+                    "id": "ABC-1",
                     "title": "Fix it",
                     "priority": 1,
                     "due": "2026-03-01",
                     "status": "In Progress",
-                    "url": "https://x.atlassian.net/browse/GE-1",
+                    "url": "https://x.atlassian.net/browse/ABC-1",
                     "repository": "acme-workspace",
                     "delegable": False,
                 }
@@ -299,7 +299,7 @@ class CollectorTest(WorkspaceCase):
 
     def test_jira_collector_fails_closed_on_unmapped_priority(self) -> None:
         source = self.root / "jira.json"
-        source.write_text(json.dumps([{"key": "GE-2", "summary": "x", "priority": "Blocker"}]))
+        source.write_text(json.dumps([{"key": "ABC-2", "summary": "x", "priority": "Blocker"}]))
         with self.assertRaises(self.module.PlanDayError) as raised:
             self.module.collect_jira(self.workspace(), "acme", source)
         self.assertIn("Blocker", str(raised.exception))

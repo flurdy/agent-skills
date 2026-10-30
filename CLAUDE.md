@@ -31,6 +31,15 @@ Keep generated or disposable output under ignored `/.artifacts/`; do not commit 
 without an explicit retention decision. Mark superseded durable records with their replacement,
 not a generic archive folder.
 
+## Public repository: no client details
+
+This repo is public. Never commit employer or client specifics in skills, examples, tests,
+fixtures, or docs: Jira project keys, real ticket numbers or summaries, sprint or board names,
+custom field values, branch names, hostnames, repo or service names, or people. Use neutral
+placeholders (`ABC-123`, `ABC Sprint 1`, `example.atlassian.net`). Generic workflow terms such as
+`Ready for QA` are fine. Real values belong in the private workspace config the skill reads, or in
+the private client layer (`agent-skills-private`).
+
 ## Authoring conventions
 
 - A skill is `skills/<name>/SKILL.md`; declare `model-tier` (`economy`, `standard`, or
