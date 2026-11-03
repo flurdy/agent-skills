@@ -165,17 +165,24 @@ class AssembleTest(unittest.TestCase):
         self.assertFalse((self.codex / "alpha").exists())
         self.assertFalse((self.codex / "alpha").is_symlink())
 
-    def test_astra_prompt_installs_via_managed_aliases_after_dry_run(self) -> None:
-        source = REPOSITORY / "prompts" / "ask-astra.md"
-        shutil.copyfile(source, self.shared / "prompts" / source.name)
+    def test_shared_prompts_install_via_managed_aliases_after_dry_run(self) -> None:
+        sources = [REPOSITORY / "prompts" / name for name in ("ask-astra.md", "draft-message.md")]
+        for source in sources:
+            shutil.copyfile(source, self.shared / "prompts" / source.name)
         preview = self.run_assembler("apply", "--dry-run")
-        self.assertIn("ask-astra.md", preview.stdout)
+        for source in sources:
+            self.assertIn(source.name, preview.stdout)
+        self.assertFalse(self.prompts.exists())
         self.assertFalse(self.pi_prompts.exists())
+        self.assertFalse(self.claude_commands.exists())
         self.run_assembler("apply")
-        self.assert_link(self.prompts / source.name, self.shared / "prompts" / source.name)
-        self.assert_link(self.pi_prompts / source.name, self.prompts / source.name)
-        self.assert_link(self.claude_commands / source.name, self.prompts / source.name)
-        self.assertEqual((self.pi_prompts / source.name).read_text(), source.read_text())
+        for source in sources:
+            with self.subTest(prompt=source.name):
+                self.assert_link(self.prompts / source.name, self.shared / "prompts" / source.name)
+                self.assert_link(self.pi_prompts / source.name, self.prompts / source.name)
+                self.assert_link(self.claude_commands / source.name, self.prompts / source.name)
+                for alias in (self.pi_prompts, self.claude_commands):
+                    self.assertEqual((alias / source.name).read_text(), source.read_text())
         self.run_assembler("doctor")
 
     def test_retired_skills_migrate_to_yesterday_prompt_without_losing_overlays(self) -> None:

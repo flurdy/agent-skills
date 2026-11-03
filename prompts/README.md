@@ -11,6 +11,7 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 - [`/ask-quorum <question>`](ask-quorum.md) — ask the default multi-provider quorum for a repository-grounded second opinion
 - [`/ask-sol <question>`](ask-sol.md) — ask Codex Sol for a repository-grounded second opinion
 - [`/discuss <question>`](discuss.md) — inspect and research without changing files or external state
+- [`/draft-message <context-or-rough-draft>`](draft-message.md) — draft a concise workplace message without posting it
 - [`/plain <topic-or-text>`](plain.md) — explain a topic clearly for a smart non-specialist
 - [`/quota`](quota.md) — report Codex and Claude usage windows plus OpenRouter account credits, via the independent ai-tools `codex-quota`, `claude-quota` and `openrouter-quota` helpers
 - [`/squash-msg [PR-number]`](squash-msg.md) — draft a squash-merge commit message for approval
@@ -21,6 +22,13 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 
 Codex uses `/today --previous-workday` directly because repository prompt templates are not installed there.
 See [installation and configuration](../docs/installation.md#prompt-templates) for client setup.
+
+## Message drafting
+
+`/draft-message` turns supplied context or a rough draft into 1–3 short, natural sentences,
+without posting or inventing work. If the intent is unclear, it asks one clarifying question.
+Unlike `/plain`, which explains a topic, this prepares a message; `jira-comment` owns drafting
+and separately confirmed Jira publication. This template does not invoke either workflow.
 
 ## Ticket closeout
 
