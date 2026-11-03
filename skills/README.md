@@ -48,7 +48,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 |-------|-------------|
 | architect | Read-only architecture and implementation planning with evidence-backed research, acceptance slices, and explicit tracking handoffs; never writes code or tracker records |
 | breakdown | Lightweight read-only Jira overview grounded in relevant code: Problem, Solution, Steps, and Open questions; hands complex planning and tracking to their owners |
-| do-i-need-this | Explicit read-only necessity check for one idea or task; weighs doing nothing and smaller alternatives, labels insufficient evidence, and stops after advice |
+| do-i-need-this | Read-only necessity check for one idea or task, standalone or called by a skill that names it; weighs doing nothing and smaller alternatives, labels insufficient evidence, and returns advice only |
 | reassess | Explicit read-only project reassessment comparing intent, implementation, unfinished work, interrupted artifacts and revision-qualified checks; proposes keep/update/add/retire without acting |
 | sanity-check | Explicit read-only mid-session direction checkpoint with bounded evidence, labelled self-assessment and optional one-shot peer review; never acts on its recommendation |
 | second-opinion | Independent advisory claims from one peer or a configured panel; PR evidence uses pinned snapshots and explicit stale-safety checks |

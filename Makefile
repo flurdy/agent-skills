@@ -25,7 +25,7 @@ COMMON_ENV := SHARED_REPO="$(SHARED_REPO)" PRIVATE_REPO="$(PRIVATE_REPO)" \
 CLAUDE_ENV := $(COMMON_ENV) AGENTS_DIR="$(AGENTS_DIR)"
 CODEX_ENV := $(COMMON_ENV) SKIP_AGENTS=1 SKIP_PROMPTS=1
 
-.PHONY: help check test test-session-boundaries test-portability test-contract-check lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-pickup test-plan-day test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-state test-release-status test-today test-yesterday test-wrap-up test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
+.PHONY: help check test test-session-boundaries test-portability test-contract-check lint-python clean-code security-scan validate-skills test-validate-skills test-assemble test-artifact-hygiene test-second-opinion test-trello-beads test-project-brief test-skill-pilot test-architect test-do-i-need-this test-plan-to-backlog test-beads test-next test-handoffs test-pi-spend test-pickup test-plan-day test-review-pr test-review-requests test-pr-feedback test-pr-feedback-actions test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-thoughtbox test-release-ci test-release-order test-release-state test-release-status test-today test-yesterday test-wrap-up test-watch-pr-feedback test-watch-prs test-watch-release test-watch-review-requests test-watch-rollouts test-watch-protocols list doctor doctor-codex clean clean-dry-run apply apply-codex dry-run dry-run-codex
 
 help:
 	@echo "make check   (clean-code, lint-python, validate-skills, security-scan, test)"
@@ -46,6 +46,7 @@ help:
 	@echo "make test-project-brief"
 	@echo "make test-skill-pilot"
 	@echo "make test-architect"
+	@echo "make test-do-i-need-this"
 	@echo "make test-pedantic-review"
 	@echo "make test-verify-task"
 	@echo "make test-sanity-check"
@@ -119,7 +120,7 @@ clean-code:
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
 TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-contract-check test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-outstanding-work test-skill-pilot \
-  test-architect test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
+  test-architect test-do-i-need-this test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
   test-pi-spend test-prompt-patterns test-pickup test-review-pr test-thoughtbox test-pr-status test-pr-reviewers test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-state test-release-status \
   test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check
@@ -196,6 +197,9 @@ test-skill-pilot:
 
 test-architect:
 	@bash skills/architect/tests/test-skill-contract.sh
+
+test-do-i-need-this:
+	@bash skills/do-i-need-this/tests/test-skill-contract.sh
 
 test-pedantic-review:
 	@bash skills/pedantic-review/tests/test-skill-contract.sh
