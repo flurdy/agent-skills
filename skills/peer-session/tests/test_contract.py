@@ -37,7 +37,8 @@ class PeerSessionContractTests(unittest.TestCase):
         self.assert_phrases(
             "## Choose one transport",
             "another live Claude Code session on this machine",
-            "Pi callers or recipients, other machines",
+            "Pi callers or recipients, other machines without a native Remote Control row",
+            "a Remote Control session `ListAgents` lists from another machine",
             "`ToolSearch` **if exposed**",
             "Use only `to`, `message`, `summary` and `notify_when_idle`",
             "native is unavailable for this run",
@@ -54,7 +55,10 @@ class PeerSessionContractTests(unittest.TestCase):
     def test_native_binding_excludes_self_and_never_guesses(self):
         self.assert_phrases(
             "Call `ListAgents` once",
-            "subagents, agent-team teammates, cloud and Remote Control",
+            "Remote Control sessions on other machines",
+            "subagents, agent-team teammates, cloud rows",
+            "a Remote Control row may be this session itself",
+            "same name, kind, short identifier and working directory",
             "can't receive cross-session messages",
             "not proof of identity, ownership or liveness",
             "Exclude self only when this session is positively identified",

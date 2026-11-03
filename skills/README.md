@@ -120,7 +120,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | handoffs | Browse/load current-repo and workspace-member handoffs, with optional confirmed archiving and checkout recovery; never executes saved work merely by loading |
 | handoffs-tidy | Review completion/staleness candidates and separate uncertain/aged groups; archive explicit selections, never delete or resume work |
 | name-session | Derive a conventional session name from the branch ticket, active bead, open PR, and current work — prints the active client's paste-ready rename command |
-| peer-session | Send one human-approved live ask or instruction to a peer via native Claude Code messaging for local sessions or Orca otherwise; verify correlated evidence without automatic retries, transport switching, spawning or offline queueing |
+| peer-session | Send one human-approved live ask or instruction to a peer via native Claude Code messaging for local or Remote Control sessions, or Orca otherwise; verify correlated evidence without automatic retries, transport switching, spawning or offline queueing |
 | wrap-up | Report session activity, artifact hygiene and working-copy/tracker/settings risks, then save a resume handoff; no unrelated repairs or archive sweep |
 
 ## Agent configuration and usage

@@ -23,7 +23,12 @@ pings included, keeps the skill's per-send approval.
    the request ID and that an idle notice alone is reported as response unverified.
 4. Set one recipient's `crossSessionInbound` to `refuse`. Confirm the outcome is reported
    as refused or unverified and is never retried.
-5. Repeat one Orca `ask` from Pi to confirm that path is unchanged.
+5. From a session on another machine with Remote Control connected, run
+   `/peer-session ask <project> <question>` against a session listed as a Remote Control
+   row. Confirm the approval shows its kind and machine label, the caller is never bound
+   to its own Remote Control row, and the correlated reply arrives (or is reported as
+   response unverified).
+6. Repeat one Orca `ask` from Pi to confirm that path is unchanged.
 
 Record the date, Claude Code and Orca versions, observed results and gaps in the owning
 task. Static tests and same-session self-review never count as observed delivery.

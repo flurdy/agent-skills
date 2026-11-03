@@ -5,7 +5,7 @@ allowed-tools: "Read,AskUserQuestion,ToolSearch,ListAgents,SendMessage,Skill(orc
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.2"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -55,8 +55,8 @@ Choose exactly one transport before preparing the message, and show it in the ap
 
 | Transport | Use when | Mechanics |
 |---|---|---|
-| **Native** | The caller is Claude Code exposing `ListAgents` and `SendMessage`, the recipient is another live Claude Code session on this machine, and the request is status, facts, decisions or one question | Claude Code tools, as below |
-| **Orca** | Pi callers or recipients, other machines, non-Claude recipients, authorized action instructions, or a peer native cannot bind | **orca-cli** |
+| **Native** | The caller is Claude Code exposing `ListAgents` and `SendMessage`, the recipient is another live Claude Code session on this machine or a Remote Control session `ListAgents` lists from another machine, and the request is status, facts, decisions or one question | Claude Code tools, as below |
+| **Orca** | Pi callers or recipients, other machines without a native Remote Control row, non-Claude recipients, authorized action instructions, or a peer native cannot bind | **orca-cli** |
 
 Native tools may be deferred. If they are not visible, use `ToolSearch` **if exposed**,
 once, to load their schemas, and inspect each schema before invocation. Use only `to`,
@@ -72,9 +72,12 @@ separately approved request, subject to the uncertain-send rule in section 2.
 
 ### Native
 
-Call `ListAgents` once. Consider only rows for other local Claude Code sessions; drop
-subagents, agent-team teammates, cloud and Remote Control rows, and any row marked
-`offline` or `can't receive cross-session messages`. Narrow to the requested project by
+Call `ListAgents` once. Consider only rows for other local Claude Code sessions and
+Remote Control sessions on other machines; drop subagents, agent-team teammates, cloud
+rows (they cannot message back), and any row marked `offline` or `can't receive
+cross-session messages`. Keep each Remote Control row's listed kind and machine label
+with its address; a Remote Control row may be this session itself, so the self-exclusion
+rule below applies to it too. Narrow to the requested project by
 session name and listed working directory; never message sessions to explore. Names,
 working directories and listing order are hints, not proof of identity, ownership or
 liveness.
@@ -195,9 +198,10 @@ or a separately approved `tell`; never silently downgrade or arrange access late
 
 ### Approve every send
 
-Show the exact transport and recipient (native: name, short identifier and working
-directory as listed; Orca: the bound tuple), full message, native `summary` and
-`notify_when_idle` values, requested action, evidence/write/read paths and limits.
+Show the exact transport and recipient (native: name, kind, machine label when listed,
+short identifier and working directory as listed; Orca: the bound tuple), full message,
+native `summary` and `notify_when_idle` values, requested action, evidence/write/read
+paths and limits.
 Explain that the request can run the peer's current model and use its normal quota or
 credits; unknown billing needs explicit current-request consent. Obtain fresh human
 approval **before every send**, even for an ask, ping batch or follow-up. Discovery,
@@ -215,7 +219,7 @@ only exception is the single correlated native reply to an `ask` or ping.
 ### Native
 
 Immediately before sending, call `ListAgents` again. The bound address must still
-resolve to one row with the same name, short identifier and working directory; any
+resolve to one row with the same name, kind, short identifier and working directory; any
 change, like a changed message or field, invalidates approval. Call `SendMessage`
 exactly once with the approved values. Interpret only what its result states; do not
 invent result fields.
@@ -327,6 +331,9 @@ choose. After tightening the scope wording, a fresh approval-screen retest offer
 the two user-named candidates, labelled withheld project-directory evidence as unconfirmed,
 and stopped without sending. Exact runtime versions and raw tool payloads were not
 captured. Hold/refusal, missing-self identity and other-machine paths were not exercised.
+Remote Control rows were admitted to the native transport afterwards; delivery, holds and
+the correlated reply from another machine remain unverified until the manual pilot's
+Remote Control step is run.
 `make test-peer-session` checks this file's static contract and is not live-delivery
 evidence. The manual pilot is in [tests/README.md](tests/README.md).
 
