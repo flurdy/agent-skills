@@ -56,4 +56,20 @@ for invariant in \
   grep -Fq -- "$invariant" "$skill_file" || { echo "missing timing invariant: $invariant" >&2; exit 1; }
 done
 
+sync_contract="$skill_dir/references/default-sync.md"
+grep -Fq 'references/default-sync.md' "$skill_file" || { echo 'missing post-merge update handoff' >&2; exit 1; }
+for invariant in \
+  'two separate confirmations' \
+  'Never use `git pull`' \
+  'merge --ff-only --no-autostash' \
+  'No automatic retries' \
+  'not an atomic lock' \
+  'never acquire an unrelated lease' \
+  'Never fall back to raw Git' \
+  'mergeCommit.oid' \
+  'source/target branches and inventory membership to remain unchanged' \
+  'local update failed/unconfirmed; PR remains merged'; do
+  grep -Fq "$invariant" "$sync_contract" || { echo "missing local-sync invariant: $invariant" >&2; exit 1; }
+done
+
 echo "ready-to-merge skill contract tests passed"

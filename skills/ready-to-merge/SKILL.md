@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh pr list:*),Bash(gh pr view:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.3.1"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -323,6 +323,12 @@ EOF
 
 **Idempotency:** if the command prints `Pull request ... was already merged` (e.g. a prior attempt merged remotely before erroring on local cleanup), treat that as **success** — do not retry or alarm. Confirm with `gh pr view {number} --json state --jq .state` (expect `MERGED`) if unsure.
 
+After confirming the selected PR is `MERGED`, follow
+[post-merge local default-branch update](references/default-sync.md). Its read-only planner offers
+separately confirmed fetch and fast-forward commands without switching checkouts. Dirty, diverged,
+ambiguous or guard-denied targets are skipped with a reason. Merge approval never authorizes local
+synchronization. This step is independent of remote-branch cleanup; report its outcome separately.
+
 After merging, remote-branch cleanup is a **separately confirmed** action, not part of merge approval.
 Never infer deletion permission from merge approval. First re-read the selected PR, repository default
 branch, and dependent PRs read-only:
@@ -389,9 +395,12 @@ Then list **post-merge follow-ups** as a checklist (do NOT execute them):
 - [ ] Transition Jira {KEY} → Test/Review (or Done)
 - [ ] `bd close {bead-id}` if a bead is still in_progress
 - [ ] `/rebase merged {this-branch}` on stacked child PR(s): #{n1}, #{n2}
-- [ ] Pull the default branch locally and remove the merged worktree/branch (only if the remote-branch delete above was denied or skipped)
+- [ ] Revisit the local default-branch update if skipped or unconfirmed (include its reason)
+- [ ] Remove the merged local worktree/branch if wanted; remote deletion does not remove it
 
-Don't auto-perform these — they're explicit user follow-ups, often touching other branches/repos. In particular, do not switch the local checkout to the default branch or run `git worktree`/`git branch -d` yourself.
+Don't auto-perform these — they're explicit user follow-ups, often touching other branches/repos.
+Never switch the local checkout or run mutating `git worktree`/`git branch -d` commands yourself;
+read-only `git worktree list` belongs to the local-update inspection.
 
 ## Operating rules
 

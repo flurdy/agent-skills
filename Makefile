@@ -330,6 +330,7 @@ test-ready-to-merge:
 	@bash skills/ready-to-merge/tests/test-skill-contract.sh
 	@python3 -m unittest discover -s skills/ready-to-merge/tests -p 'test_branch_wrappers.py'
 	@python3 -m unittest discover -s skills/ready-to-merge/tests -p 'test_merge_timing.py'
+	@python3 -m unittest discover -s skills/ready-to-merge/tests -p 'test_default_sync.py'
 
 test-ready-to-release:
 	@python3 -m unittest discover -s skills/ready-to-release/tests -p 'test_release_gates.py'
