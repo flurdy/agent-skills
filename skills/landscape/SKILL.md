@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-bd:*), Bash(date:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.14.0"
+version: "0.14.1"
 author: "flurdy"
 ---
 
@@ -370,7 +370,7 @@ Render one table from `multirepo.sh`'s `---REPOS---`, in emitted order (root fir
 - **Repo**: the `{name}` field. Append ` 📍` to the root row — that's where you're standing.
 - **Branch**: the `{branch}` field. Do not abbreviate; a member sitting on an unexpected branch is a real signal.
 - **Unpushed**: `{ahead}`, or `local-only` when `upstream=no` (never pushed — for a deliberately local repo this is the intended state, not a warning).
-- **Behind**: `{behind}` when >0, else `—`. When **diverged** (ahead>0 AND behind>0) it needs a rebase/pull before it can push — flag it in this cell: `⚠️ diverged — N ahead / M behind`.
+- **Behind**: `{behind}` when >0, else `—`. When **diverged** (ahead>0 AND behind>0) it needs a rebase/pull before it can push — flag it in this cell: `🔶 diverged — N ahead / M behind`.
 - **Uncommitted**: `{modified} modified / {untracked} untracked`, omitting zero parts; `✅ clean` when both are zero.
 
 Then skip §4b entirely — this table is §4b, promoted. Carry the most urgent member (diverged, then unpushed, then uncommitted) into §5 exactly as §4b specifies.
@@ -463,7 +463,7 @@ It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---
 ```
 
 - **Unpushed**: `{ahead}`, or `no upstream` when upstream=no (local-only, never pushed).
-- **Behind**: show only when >0. A member that's **diverged** (ahead>0 AND behind>0) needs a rebase/pull before it can push — flag it explicitly: `⚠️ diverged — N ahead / M behind`.
+- **Behind**: show only when >0. A member that's **diverged** (ahead>0 AND behind>0) needs a rebase/pull before it can push — flag it explicitly: `🔶 diverged — N ahead / M behind`.
 - **Uncommitted**: `{modified} modified / {untracked} untracked` (omit zero parts).
 
 Carry the most urgent member (diverged, then unpushed, then uncommitted) into the §5 Next suggestion — a sibling repo left in that state is exactly what a fresh session forgets.

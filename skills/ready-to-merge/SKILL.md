@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh pr list:*),Bash(gh pr view:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.4.0"
+version: "0.4.1"
 author: "flurdy"
 ---
 
@@ -226,8 +226,8 @@ Render compactly. Skip empty sections.
 | Threads      | ✅ 0 / 💬 N unresolved               |
 | Sync w/ base | ✅ clean / ❌ behind / 💥 conflict   |
 | Mergeable    | ✅ / ❌ {reason}                     |
-| Contracts    | ✅ / ⚠️ / —                          |
-| Tests        | ✅ N test files touched / ⚠️ none    |
+| Contracts    | ✅ / 🔶 / —                          |
+| Tests        | ✅ N test files touched / 🔶 none    |
 
 **Linked work**
 - Jira: [{KEY}]({url}) — {summary} _(status: {status})_

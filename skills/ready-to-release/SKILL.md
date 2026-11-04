@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/ready-to-release/scripts/release-gate
 model-tier: economy
 model: sonnet
 effort: high
-version: "2.2.0"
+version: "2.2.1"
 author: "flurdy"
 ---
 
@@ -47,7 +47,7 @@ symlinks during a readiness check.
 ## Output
 
 Render the returned service's `gates` as one table: `Gate | Result | Evidence`.
-Map `pass` → `✅ pass`, `hold` → `⚠️ hold`, `block` → `❌ block`, `na` → `➖ N/A`.
+Map `pass` → `✅ pass`, `hold` → `⏳ hold`, `block` → `❌ block`, `na` → `➖ N/A`.
 Include the observation time, `notes`, and any top-level `errors`. Render any `configUptake`
 entries below the table as advisory lines (`id`, `state`, desired/applied/effective revisions,
 `evidence`): they never change the verdict. A `maintenance.restart` entry is a handoff to

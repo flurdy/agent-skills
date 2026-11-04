@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.17.1"
+version: "0.17.2"
 author: "flurdy"
 ---
 
@@ -150,7 +150,7 @@ For `OK` or `ERROR`, parse the three JSON arrays. De-duplicate (a PR may appear 
 |-------|----|------|-------|
 ```
 
-- **Event**: 🆕 created / 🚀 merged / 🗑️ closed-unmerged / 📝 draft (created and still draft).
+- **Event**: 🆕 created / 🚀 merged / 🚫 closed-unmerged / 📝 draft (created and still draft).
 - **PR**: markdown link `[#{number}]({url})`.
 
 Skip the section entirely if all three arrays are empty.
@@ -281,7 +281,7 @@ It emits `---MARKER---` (`mgit` | `submodules` | `none`), `---ROOT---`, and `---
 ```
 
 - **Unpushed**: `{ahead}`, or `no upstream` when upstream=no (local-only, never pushed).
-- **Behind**: show only when >0. A member that's **diverged** (ahead>0 AND behind>0) needs a rebase/pull before it can push — flag it explicitly: `⚠️ diverged — N ahead / M behind`.
+- **Behind**: show only when >0. A member that's **diverged** (ahead>0 AND behind>0) needs a rebase/pull before it can push — flag it explicitly: `🔶 diverged — N ahead / M behind`.
 - **Uncommitted**: `{modified} modified / {untracked} untracked` (omit zero parts).
 
 Load-bearing for resume: a service repo left ahead-but-unpushed, or a deploy/config repo left diverged, is exactly what tomorrow forgets. Feed any unpushed/diverged members into the resume block's **Open threads** or **Blocked on you** field (§4).

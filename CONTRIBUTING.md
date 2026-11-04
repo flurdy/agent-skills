@@ -63,6 +63,27 @@ grant implementation, installation, publication, or other approval. Preserve req
 and confirmation tools. Exact/verbatim output and final protocol-line contracts take precedence
 over adding a generic footer; do not rewrite their fields or add trailing text.
 
+## Table glyphs
+
+Prescribed table-cell icons must be natively wide (East Asian Width W/F) or plain narrow text,
+without U+FE0F/U+FE0E variation selectors. Pi and xterm.js Unicode 11 disagree on narrow symbols
+with emoji presentation; padding with Pi's width alone cannot detect the resulting shifted borders.
+Keep field definitions, legends and example rows consistent. Headings/prose may retain selectors;
+arbitrary user data such as PR titles is outside this rule unless the owning renderer normalizes it.
+
+`make test-table-glyphs` checks literal skill tables and the affected cell prescriptions. For an
+installed-runtime comparison, use the reviewed local Pi module and Orca renderer bundle containing
+its Unicode 11 provider (no download or installation required):
+
+```text
+node tests/check_table_glyph_widths.mjs <pi-tui/dist/index.js> <Orca-renderer-bundle.js>
+```
+
+This parses only numeric range data from the bundle and compares Pi-rendered border columns,
+including negative controls that reproduce the old mismatch. Unsupported bundle layouts fail
+rather than silently substituting a width model. It does not prove Claude Code visual rendering;
+check `tests/fixtures/table-glyphs.md` in that client separately when validating cross-client layout.
+
 ## Helper scripts and permissions
 
 Put shell commands, API calls, and other executable helpers under a skill's

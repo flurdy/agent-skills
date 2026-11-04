@@ -39,6 +39,7 @@ help:
 	@echo "make test-contract-check"
 	@echo "make test-portability"
 	@echo "make test-prompt-catalog"
+	@echo "make test-table-glyphs"
 	@echo "make test-session-boundaries"
 	@echo "make test-artifact-hygiene"
 	@echo "make test-second-opinion"
@@ -118,7 +119,7 @@ clean-code:
 
 # Every test-* suite. test-pr-feedback-actions and the individual watch-* suites
 # are omitted because test-pr-feedback and test-watch-protocols already run them.
-TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-contract-check test-artifact-hygiene \
+TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-portability test-prompt-catalog test-table-glyphs test-contract-check test-artifact-hygiene \
   test-second-opinion test-trello-beads test-project-brief test-outstanding-work test-skill-pilot \
   test-architect test-do-i-need-this test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
   test-pi-spend test-prompt-patterns test-pickup test-review-pr test-thoughtbox test-pr-status test-pr-reviewers test-review-requests test-pr-feedback \
@@ -152,7 +153,11 @@ test-session-boundaries:
 test-portability:
 	@python3 -m unittest discover -s tests -p 'test_portability.py'
 
-.PHONY: test-prompt-catalog
+.PHONY: test-prompt-catalog test-table-glyphs
+
+test-table-glyphs:
+	@python3 -m unittest discover -s tests -p 'test_table_glyphs.py'
+
 test-prompt-catalog:
 	@python3 -m unittest discover -s tests -p 'test_prompt_catalog.py'
 

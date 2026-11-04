@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-review-requests.py
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.2.0"
+version: "1.2.1"
 author: "flurdy"
 ---
 
@@ -171,23 +171,23 @@ Use a single table across repositories; repository-qualified PR links avoid ambi
 - **CI:** ✅ passing, ❌ failing, ⏳ running, ? unknown. Map SUCCESS to ✅, FAILURE/ERROR to ❌,
   and PENDING/EXPECTED to ⏳; do not repeat the raw state. Trust `checksState` only when
   `ciHeadSha == headSha`; no status rollup or mismatched identity is unknown, not passing.
-- **Merge:** ✅ Clean; ⚠️ Behind; 💥 Conflict; 🚧 Blocked; Unstable; ? unknown; or Checking.
+- **Merge:** ✅ Clean; 🔶 Behind; 💥 Conflict; 🚧 Blocked; Unstable; ? unknown; or Checking.
   Map CLEAN, BEHIND, DIRTY, BLOCKED, UNSTABLE, UNKNOWN/null, and other values respectively.
-  Drafts → 🚧 Draft. 🔀 Merged and 🗑️ Closed belong in Recent transitions, never outstanding
+  Drafts → 🚧 Draft. 🔀 Merged and 🚫 Closed belong in Recent transitions, never outstanding
   request rows. Never infer merge readiness from CI or approvals alone.
-- **Reviews:** `You: {priorReview.state or —} · others: {compact summary}`, with ✅ Approved, ☑️ Stale approval,
+- **Reviews:** `You: {priorReview.state or —} · others: {compact summary}`, with ✅ Approved, 🔄 Stale approval,
   👎 Changes requested, 💬 Commented, 🔔 Awaiting review, and — unknown. Reduce `otherReviews`
   to latest submitted review per author; mark an approval/review on a different `headSha` as
-  ☑️ Stale approval. `reviewDecision` is the aggregate gate, not your review or proof that every
+  🔄 Stale approval. `reviewDecision` is the aggregate gate, not your review or proof that every
   historical approval remains valid. A null `otherReviews` means unknown, not none. Bound long
   summaries; show names/state details in relevant deltas.
 - **Feedback:** `💬 {threads} open · {conversationCount} comments · {latest author, age}`;
   omit empty activity segments, use — only for a complete empty source. For incomplete feedback,
   prefix ? and call counts observed/lower-bound, never exact or zero.
 - **Next:** 🚧 Draft → Wait for ready; unavailable/incomplete/unknown evidence → Recheck; failing
-  or running CI → ⏳ Wait for CI; conflict/behind → ✍️ Await author; changes requested, open
+  or running CI → ⏳ Wait for CI; conflict/behind → 📝 Await author; changes requested, open
   threads, or other feedback candidates → 💬 Resolve discussion; otherwise → 🔎 Review. Use
-  ✍️ Await author only when the bounded feedback evidence shows an unresolved reviewer request
+  📝 Await author only when the bounded feedback evidence shows an unresolved reviewer request
   with no newer author response; do not infer it from a changes-requested review alone. These are
   manual workflow suggestions, never an approval verdict. A current viewer approval may say
   🚀 Await merge only if aggregate approval, clean merge, passing CI, and complete empty actionable

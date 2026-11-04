@@ -338,14 +338,14 @@ specifically means *don't archive*. The two `✅ done` states (beads / Jira) ran
 the same reason a merged PR does — the work shipped. Completion-aware retention can still leave
 `archive-class` empty; status and archive eligibility are deliberately separate.
 
-Emit emoji glyphs **exactly as written here**, including the variation selector on `✂️` and `⚠️`
-(the wide colored forms, not the narrow text `✂︎`/`⚠︎`) — mixing presentations makes column widths jump.
+Use natively wide emoji or plain text in prescribed cells, with no U+FE0F/U+FE0E sequences.
+Pi and xterm.js disagree on variation-selector widths; do not add selectors to these glyphs.
 
 ---
 
 ## §Archive-glyph — archive recommendation column
 
-Render directly from the `archive-class` field — `safe` → `🗄️ safe`, `keep` → `⚠️ keep?`, empty →
+Render directly from the `archive-class` field — `safe` → `📦 safe`, `keep` → `🔶 keep?`, empty →
 `—` (a §Jira-Done promotion is `safe` only after §Retention passes). `safe` is low-regret (superseded / merged / done);
 `keep?` is higher-regret (abandoned / branch gone with no merge evidence).
 
@@ -370,7 +370,7 @@ Shorten a value only when it exceeds its cap: keep its first `cap − 1` charact
 Never shorten Date, Repo, Slug (the pick key), or the rest of a Status/Archive glyph. Emoji
 presentation rules above still apply.
 
-**Where** combines worktree existence and location: `✅` when `exists=Y`, `✂️` when `exists=N`,
+**Where** combines worktree existence and location: `✅` when `exists=Y`, `pruned` when `exists=N`,
 then an optional label from the recorded cwd basename:
 
 - `here` when the cwd matches pwd.
