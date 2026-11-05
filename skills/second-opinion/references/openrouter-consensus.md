@@ -129,7 +129,8 @@ focused summary before `check`; never silently truncate.
 
 ### 2. Resolve the full panel without network access
 
-Write the exact sanitized prompt to a mode-`600` temporary file, then run:
+Write the exact sanitized prompt into the private directory from `review-panel.sh scratch`
+(SKILL.md §4), then run:
 
 ```bash
 ~/.agents/skills/second-opinion/scripts/review-panel.sh check \

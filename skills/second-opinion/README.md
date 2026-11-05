@@ -24,6 +24,8 @@ material enough to justify the extra time, review effort, and—where configured
 In guarded Pi plan/file-only sessions, direct read-only routes remain eligible. Named panels use
 an installed [private stdin helper](references/panel-stdin.md) with a supporting guard, without
 source leases or general temporary-file grants. See the [support matrix](references/guarded-plan.md).
+Claude Code pre-approves only the documented read-only invocations; see
+[permissions and portability](references/permissions.md).
 
 ## Direct peer review
 

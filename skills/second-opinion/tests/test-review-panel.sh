@@ -817,4 +817,32 @@ expect_failure 'malformed JSON; no panel routes run' panel_in "$POLICY_WORKSPACE
 [[ "$(wc -l < "$AGENT_LOG")" -eq 1 ]] || fail "changed or invalid policy still invoked routes"
 rm -f "$POLICY_FILE"
 
+# Caller-file scratch: private, fixed shape under TMPDIR; cleanup refuses everything else.
+SCRATCH_ROOT="$TMP_DIR/scratch-root"
+mkdir -p "$SCRATCH_ROOT/nested"
+scratch="$(TMPDIR="$SCRATCH_ROOT/" "$HELPER" scratch)"
+[[ "$scratch" =~ ^"$SCRATCH_ROOT"/second-opinion\.[A-Za-z0-9]{10}$ ]] || fail "unexpected scratch path: $scratch"
+[[ -n "$(find "$scratch" -maxdepth 0 -perm 700)" ]] || fail "scratch directory is not private"
+printf 'prompt' > "$scratch/prompt.md"
+expect_failure 'takes no arguments' env TMPDIR="$SCRATCH_ROOT" "$HELPER" scratch extra
+expect_failure 'must be an absolute path' env TMPDIR=relative "$HELPER" scratch
+expect_failure 'exactly one scratch directory' env TMPDIR="$SCRATCH_ROOT" "$HELPER" cleanup
+mkdir "$SCRATCH_ROOT/nested/second-opinion.ABCDEFGHIJ" "$SCRATCH_ROOT/other.ABCDEFGHIJ"
+for refused in "$SCRATCH_ROOT" "$SCRATCH_ROOT/other.ABCDEFGHIJ" "$SCRATCH_ROOT/nested/second-opinion.ABCDEFGHIJ" \
+  "$SCRATCH_ROOT/nested/../second-opinion.ABCDEFGHIJ" "$SCRATCH_ROOT/second-opinion.SHORT" \
+  "second-opinion.ABCDEFGHIJ" "$TMP_DIR/home"; do
+  expect_failure 'not a second-opinion scratch directory' env TMPDIR="$SCRATCH_ROOT" "$HELPER" cleanup "$refused"
+done
+[[ -d "$SCRATCH_ROOT/nested/second-opinion.ABCDEFGHIJ" && -d "$SCRATCH_ROOT/other.ABCDEFGHIJ" ]] || \
+  fail "cleanup removed a refused directory"
+ln -s "$TMP_DIR/home" "$SCRATCH_ROOT/second-opinion.LINKLINKLI"
+: > "$SCRATCH_ROOT/second-opinion.FILEFILEFI"
+for refused in "$SCRATCH_ROOT/second-opinion.LINKLINKLI" "$SCRATCH_ROOT/second-opinion.FILEFILEFI"; do
+  expect_failure 'not a directory owned by the current user' env TMPDIR="$SCRATCH_ROOT" "$HELPER" cleanup "$refused"
+done
+[[ -d "$TMP_DIR/home" && -L "$SCRATCH_ROOT/second-opinion.LINKLINKLI" ]] || fail "cleanup followed or removed a symlink"
+TMPDIR="$SCRATCH_ROOT" "$HELPER" cleanup "$scratch/" || fail "cleanup refused its own scratch directory"
+[[ ! -e "$scratch" ]] || fail "cleanup left the scratch directory behind"
+TMPDIR="$SCRATCH_ROOT" "$HELPER" cleanup "$scratch" || fail "repeated cleanup was not a no-op"
+
 printf '%s\n' 'review-panel tests passed'

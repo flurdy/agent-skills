@@ -30,6 +30,8 @@ Usage:
                                      --openrouter-sha256 DIGEST --prompt-sha256 DIGEST
                                      [panel and route override options]
   review-panel.sh evaluate --policy quorum|consensus --check-file FILE --results-file FILE...
+  review-panel.sh scratch
+  review-panel.sh cleanup DIRECTORY
 
 Profiles live under version-1 config "profiles". A profile contains either legacy
 OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes may
@@ -39,6 +41,8 @@ and error capture are bounded while streaming. OpenRouter effort is passed as
 reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 128,000).
 Routes denied for the current directory by ~/.agents/disabled-models.json still count
 towards thresholds but are never run; an invalid policy stops every command but evaluate.
+scratch prints a new private directory under $TMPDIR for caller files; cleanup removes
+only such a directory.
 USAGE
 }
 
@@ -998,6 +1002,35 @@ evaluate_results() {
     }'
 }
 
+scratch_root() {
+  local root="${TMPDIR:-/tmp}"
+  [[ "$root" == /* ]] || die "TMPDIR must be an absolute path"
+  while [[ "$root" == */ && "$root" != / ]]; do root="${root%/}"; done
+  printf '%s\n' "$root"
+}
+
+# Caller files live in one fixed-shape directory so cleanup can refuse anything else.
+create_scratch() {
+  [[ $# -eq 0 ]] || die "scratch takes no arguments"
+  local root directory
+  root="$(scratch_root)"
+  directory="$(mktemp -d "$root/second-opinion.XXXXXXXXXX")" || die "could not create a scratch directory under $root"
+  chmod 700 "$directory"
+  printf '%s\n' "$directory"
+}
+
+remove_scratch() {
+  [[ $# -eq 1 ]] || die "cleanup takes exactly one scratch directory"
+  local root directory="${1%/}"
+  root="$(scratch_root)"
+  [[ "${directory%/*}" == "$root" && "${directory##*/}" =~ ^second-opinion\.[A-Za-z0-9]{10}$ ]] || \
+    die "refusing to remove $1: not a second-opinion scratch directory directly under $root"
+  [[ -e "$directory" || -L "$directory" ]] || return 0
+  [[ -d "$directory" && ! -L "$directory" && -O "$directory" ]] || \
+    die "refusing to remove $1: not a directory owned by the current user"
+  rm -rf -- "$directory"
+}
+
 command_name="${1:-help}"
 shift || true
 case "$command_name" in
@@ -1006,6 +1039,8 @@ case "$command_name" in
   run-openrouter) run_openrouter "$@" ;;
   decline-openrouter) decline_openrouter "$@" ;;
   evaluate) evaluate_results "$@" ;;
+  scratch) create_scratch "$@" ;;
+  cleanup) remove_scratch "$@" ;;
   help|--help|-h) usage ;;
   *) die "unknown command: $command_name" ;;
 esac

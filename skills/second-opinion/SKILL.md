@@ -1,11 +1,11 @@
 ---
 name: second-opinion
 description: Query an independent peer or a configurable local/OpenRouter review panel, with distinct quorum and evidence-backed consensus interpretation policies.
-allowed-tools: "Read,Write,Bash(claude:*),Bash(codex:*),Bash(gemini:*),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(~/.agents/skills/second-opinion/scripts/disabled-models.py:*),Bash(git ls-files:*),Bash(git status:*),Bash(git diff:*),Bash(git log:*),Bash(git rev-parse:*),Bash(pwd:*),Bash(mktemp:*),Bash(chmod:*),Bash(rm:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Bash(printf '%s' * | python3 ~/.agents/skills/second-opinion/scripts/review-panel-stdin.py),Grep,Glob,AskUserQuestion"
+allowed-tools: "Read,Edit(//tmp/**/second-opinion.*/**),Bash(claude -p * --tools Read,Grep,Glob),Bash(codex exec --sandbox read-only *),Bash(gemini --sandbox -o text *),Bash(~/.agents/skills/second-opinion/scripts/subscription-route-check.py:*),Bash(~/.agents/skills/second-opinion/scripts/disabled-models.py:*),Bash(git ls-files:*),Bash(~/.agents/skills/review-pr/scripts/gh-pr-snapshot.py:*),Bash(~/.agents/skills/second-opinion/scripts/review-panel.sh:*),Grep,Glob,AskUserQuestion"
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.9.0"
+version: "3.10.0"
 author: "flurdy"
 ---
 
@@ -48,6 +48,8 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 
 - Single/local routes: the selected `claude`, `codex`, or `gemini` CLI installed and authenticated.
 - Panel orchestration: `jq` plus `scripts/review-panel.sh`.
+- Claude Code pre-approval: `allowed-tools` covers only the documented invocations below; see
+  [permissions and portability](references/permissions.md). Other clients use their own settings.
 - Every route: Python 3.10+ for `scripts/disabled-models.py`, which applies the optional user-owned
   [disabled-model policy](references/disabled-models.md). Read it when a route is denied or the
   policy is reported invalid.
@@ -208,10 +210,18 @@ model literally, and when effort is explicit, pass it through to Claude Code. Im
 `subscriptionLogin: true`, its declared login classification, the requested model in its allowlist,
 and no `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, or Bedrock/Vertex/Foundry
 API override. Report the route and policy provenance, never credential values. If any check fails,
-obtain current-run confirmation. Otherwise make the existing read-only `claude -p` call without a
+obtain current-run confirmation. Otherwise run the read-only call below without a
 billing prompt. Model aliases and internal helper models are deliberately outside this stable user
 preference; Claude remains responsible for its subscription behavior. Preserve and report actual
 model usage when available, but do not turn it into another approval list.
+
+```bash
+claude -p "{assembled_prompt}" {model_flag} {effort_flag} --tools Read,Grep,Glob
+```
+
+`{model_flag}` is `--model <id>` unless the CLI-native default is retained; `{effort_flag}` is
+`--effort <level>` only when explicit. `--tools` grants the panel route's read-only tools and must
+stay last, because it takes a list and would otherwise absorb the following arguments.
 
 ### Codex
 
@@ -232,8 +242,10 @@ current-run confirmation. Never print credential values.
 ### Gemini
 
 ```bash
-gemini -p "{assembled_prompt}" --sandbox -o text {model_flag}
+gemini --sandbox -o text {model_flag} -p "{assembled_prompt}"
 ```
+
+`{model_flag}` is `-m <id>` for an explicit model and empty for the native default.
 
 Apply the parsed timeout. If the route fails or times out, preserve the error and offer another
 independent direct route; never retry or substitute silently.
@@ -248,9 +260,12 @@ system message.
 stages below; do not create caller files. The literal JSON packet is visible in the Bash tool call
 and transcript, so it must already be sanitized. Do not place prompt text in provider CLI argv.
 
-**Existing caller-file interface outside guarded sessions:** create a private file with `mktemp`,
-set mode `600`, and write the prompt with `Write`. The commands below describe this interface;
-guarded sessions send the equivalent fields to the stdin helper, preserving the same gates.
+**Caller-file interface outside guarded sessions:** create one private scratch directory with
+`~/.agents/skills/second-opinion/scripts/review-panel.sh scratch`. It prints a fresh mode-700
+directory under `$TMPDIR` (default `/tmp`). Keep every caller file there: write the prompt with
+`Write` and save each command's JSON output, for example by redirecting stdout. The commands below
+describe this interface; guarded sessions send the equivalent fields to the stdin helper, preserving
+the same gates. [Permissions](references/permissions.md) explains why files remain here.
 
 ### 4.1 Check and bind
 
@@ -289,8 +304,8 @@ For PR mode, perform the local preflight from the evidence contract immediately 
 If the invoking checkout is ineligible, do not run the local subset; report its routes unavailable
 with the context reason and let evaluation preserve missing results. Never forge successful results.
 
-Preserve the returned JSON array exactly (inline for the private transport; a mode-private file
-for the caller-file interface). The coordinator invokes each enabled
+Preserve the returned JSON array exactly (inline for the private transport; a file in the scratch
+directory for the caller-file interface). The coordinator invokes each enabled
 local route at most once, in bounded parallel batches, with read-only tools/sandboxing and prompt
 stdin. Disabled and policy-denied routes are not invoked. Preserve missing CLIs, timeouts, and failures.
 
@@ -320,7 +335,7 @@ or expand a metered subset.
 
 ### 4.4 Evaluate mechanical quorum
 
-For the caller-file interface, write the `check`, local-result, and OpenRouter-result JSON to private files, then run:
+For the caller-file interface, save the `check`, local-result, and OpenRouter-result JSON in the scratch directory, then run:
 
 ```bash
 ~/.agents/skills/second-opinion/scripts/review-panel.sh evaluate \
@@ -339,8 +354,10 @@ calls. The helper strips the marker and classifies every other transport-success
 `incomplete`; this is protocol completion, not semantic validation. Results retain bounded response
 ID/model/provider, normalized and native finish reasons, usage, and tool-call count, but never tool
 arguments or hidden reasoning text. The evaluator deliberately does not compare natural-language
-claims. The stdin helper owns its private-file cleanup; for the caller-file interface, remove all private
-prompt/result files after evaluation, success or failure.
+claims. The stdin helper owns its private-file cleanup. For the caller-file interface, run
+`~/.agents/skills/second-opinion/scripts/review-panel.sh cleanup {scratch_dir}` after evaluation,
+success or failure, and whenever the run stops early. It removes only a directory `scratch` could
+have created.
 
 ## 5. Present panel results
 
