@@ -6,7 +6,7 @@ disable-model-invocation: true
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.1.2"
+version: "0.1.3"
 author: "flurdy"
 ---
 
@@ -68,20 +68,22 @@ Report exit/result and its scope separately: metadata, catalog parity and refere
 mechanical checks, not semantic validation. A failure may justify a small repair proposal,
 never an automatic fix/retry loop. If unavailable, continue content review with the gap.
 
-## 3. Investigate within a budget
+## 3. Investigate a focused sample
 
-After catalog screening, use at most **120,000 characters** of substantive source evidence
-in total: bodies, references, helpers, tests and caller excerpts. Typically select a few
-interacting or uncertain workflows; the cap, not a target number of findings, binds.
-Count before each read/search, bound output to the remaining allowance, and stop at the
-budget—do not paginate or batch around it. A different budget needs explicit agreement
-before the review. Metadata-only screening and mechanical results are separate from this
-budget; disclose truncation or gaps there too. No background reviewers or external fetches.
+After catalog screening, use **roughly 120,000 characters** of substantive source evidence
+as a sizing guide, not a quota or hard ceiling: bodies, references, helpers, tests and
+caller excerpts. Select a few related or uncertain workflows; do not try to review the
+whole collection every time or read more just to fill the allowance. Exact character
+counts and per-read accounting are unnecessary. Finish a relevant body, exception or
+caller rather than stopping mid-investigation to meet the estimate. Metadata-only
+screening and mechanical results are separate; disclose truncation or gaps there too.
+No background reviewers or external fetches.
 
 Label each body **full or partial** and record unread references/callers. Partial evidence
 may support a tentative question, not a whole-workflow verdict. Before proposing trim,
 split, merge or retire, read the full implicated bodies and relevant exceptions/callers;
-if that exceeds the budget, defer the recommendation. Length alone is not a defect.
+if that would substantially expand the sample, defer the recommendation rather than
+broadening the review. Length alone is not a defect.
 
 Look for needless mandatory steps, contradictory or stale instructions, overlapping
 responsibility, unclear discovery triggers and a demonstrated need for an extension.

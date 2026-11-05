@@ -29,13 +29,26 @@ class SkillsReviewContractTests(unittest.TestCase):
         for term in (
             "physical source checkout", "ask for the source", "every top-level entry",
             "canonical SKILL.md path", "raw entries", "unique skills", "outside",
-            "private", "third-party", "120,000 characters", "full or partial",
-            "unread", "stop at the budget", "not a defect", "No changes needed",
+            "private", "third-party", "roughly 120,000 characters", "full or partial",
+            "unread", "focused sample", "not a defect", "No changes needed",
         ):
             with self.subTest(term=term):
                 self.assertIn(term, text)
         self.assertIn("not proof of aliases", text)
         self.assertIn("Do not infer collection-wide health", text)
+
+    def test_sampling_guide_not_hard_budget(self):
+        text = self.text()
+        for term in (
+            "not a quota or hard ceiling", "Exact character counts and per-read accounting are unnecessary",
+            "rather than stopping mid-investigation", "do not try to review the whole collection every time",
+            "substantially expand the sample", "defer the recommendation",
+        ):
+            with self.subTest(term=term):
+                self.assertIn(term, text)
+        for obsolete in ("Count before each read/search", "stop at the budget", "use at most"):
+            with self.subTest(obsolete=obsolete):
+                self.assertNotIn(obsolete, text)
 
     def test_validator_reuse_and_cost_distinction(self):
         text = self.text()
@@ -68,7 +81,7 @@ class SkillsReviewContractTests(unittest.TestCase):
         self.assertIn("not observed model behavior", data["purpose"])
         required = {
             "healthy", "prescription-versus-safety", "cross-skill-conflict",
-            "missing-evidence", "partial-coverage", "extension-need", "existing-work",
+            "missing-evidence", "partial-coverage", "finish-focused-sample", "extension-need", "existing-work",
             "unapproved-mutation", "aliases-and-boundaries", "ambiguous-source",
             "validator-failed", "validator-unavailable", "wrong-validator-root",
         }

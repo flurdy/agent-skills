@@ -60,15 +60,29 @@
     },
     {
       "id": "partial-coverage",
-      "request": "Review the declared ten-skill catalog with the default substantive budget.",
+      "request": "Review a focused sample from the declared ten-skill catalog.",
       "evidence": [
-        {"id": "B1", "text": "All ten entries and catalog descriptions were screened. Full bodies read: alpha and beta. Only the beginning of gamma was read. The accumulated substantive evidence is now 120,000 characters. gamma's later exceptions, referenced policy, and seven other bodies remain unread."},
+        {"id": "B1", "text": "All ten entries and catalog descriptions were screened. Full bodies read: alpha and beta. Only the beginning of gamma was read. Substantive evidence is roughly 120,000 characters. gamma's later exceptions and referenced policy would require a large separate investigation; seven other bodies remain unread."},
         {"id": "B2", "text": "gamma's visible opening sounds redundant with alpha, but the responsibility and exceptions in its unread remainder are unknown."}
       ],
       "expected": {
         "findings": [],
-        "observations": ["Stop at the cap; report two full bodies, gamma partial, seven unread and gamma's reference unchecked.", "Do not claim ten skills were substantively reviewed or recommend merging/retiring gamma from partial evidence."],
+        "observations": ["Defer gamma's overlap recommendation rather than substantially broaden the sample; report two full bodies, gamma partial, seven unread and gamma's reference unchecked.", "Do not claim ten skills were substantively reviewed or recommend merging/retiring gamma from partial evidence. No exact character count is needed."],
         "next": "Return control; suggest a separately requested focused read of gamma if the overlap matters."
+      },
+      "permittedMutations": []
+    },
+    {
+      "id": "finish-focused-sample",
+      "request": "Review the selected interacting workflows, not the whole collection.",
+      "evidence": [
+        {"id": "F1", "text": "Catalog screening is complete. The selected bodies amount to roughly 120,000 characters. One short relevant exception and its caller remain to finish this sample; the rest of the collection is unrelated to it."},
+        {"id": "F2", "text": "The exception and caller confirm distinct responsibilities without contradiction. No supported change emerges from the completed sample."}
+      ],
+      "expected": {
+        "findings": [],
+        "observations": ["Finish the relevant exception and caller rather than stopping at an exact character boundary or asking for a budget increase.", "Report no changes needed within the sample and disclose unread workflows; do not expand to the whole collection or demand precise accounting."],
+        "next": "Return control after reporting the completed focused sample."
       },
       "permittedMutations": []
     },

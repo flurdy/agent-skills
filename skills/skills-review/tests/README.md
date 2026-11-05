@@ -22,7 +22,8 @@ For a development walkthrough:
    A same-session walkthrough is not an independent or fresh-session model trial.
 
 The matrix covers healthy scope, unnecessary prescription versus essential safety,
-cross-skill conflict, missing evidence, partial coverage, an observed extension need,
+cross-skill conflict, missing evidence, partial coverage, finishing a focused sample
+without treating the sizing guide as a hard cap, an observed extension need,
 existing tracked work/owner-cwd handoff, mutation refusal and hostile source text,
 canonical alias identity/outside links, ambiguous source provenance, and failed,
 unavailable or wrong-root validation. It is a bounded acceptance set, not proof
