@@ -6,7 +6,7 @@ disable-model-invocation: true
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.1.1"
+version: "0.1.2"
 author: "flurdy"
 ---
 
@@ -70,7 +70,7 @@ never an automatic fix/retry loop. If unavailable, continue content review with 
 
 ## 3. Investigate within a budget
 
-After catalog screening, use at most **30,000 characters** of substantive source evidence
+After catalog screening, use at most **120,000 characters** of substantive source evidence
 in total: bodies, references, helpers, tests and caller excerpts. Typically select a few
 interacting or uncertain workflows; the cap, not a target number of findings, binds.
 Count before each read/search, bound output to the remaining allowance, and stop at the

@@ -29,7 +29,7 @@ class SkillsReviewContractTests(unittest.TestCase):
         for term in (
             "physical source checkout", "ask for the source", "every top-level entry",
             "canonical SKILL.md path", "raw entries", "unique skills", "outside",
-            "private", "third-party", "30,000 characters", "full or partial",
+            "private", "third-party", "120,000 characters", "full or partial",
             "unread", "stop at the budget", "not a defect", "No changes needed",
         ):
             with self.subTest(term=term):

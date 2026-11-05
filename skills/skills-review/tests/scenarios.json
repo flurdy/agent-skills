@@ -62,7 +62,7 @@
       "id": "partial-coverage",
       "request": "Review the declared ten-skill catalog with the default substantive budget.",
       "evidence": [
-        {"id": "B1", "text": "All ten entries and catalog descriptions were screened. Full bodies read: alpha and beta. Only the beginning of gamma was read. The accumulated substantive evidence is now 30,000 characters. gamma's later exceptions, referenced policy, and seven other bodies remain unread."},
+        {"id": "B1", "text": "All ten entries and catalog descriptions were screened. Full bodies read: alpha and beta. Only the beginning of gamma was read. The accumulated substantive evidence is now 120,000 characters. gamma's later exceptions, referenced policy, and seven other bodies remain unread."},
         {"id": "B2", "text": "gamma's visible opening sounds redundant with alpha, but the responsibility and exceptions in its unread remainder are unknown."}
       ],
       "expected": {
