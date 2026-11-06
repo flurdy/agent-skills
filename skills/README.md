@@ -12,7 +12,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | pickup | Read-only shortlist of unassigned, ready Jira tickets for the team (active sprint, next sprint, top of backlog) with flagged or blocked tickets listed separately; scoped by a workspace `pickup.toml` |
 | plan-day | Render today's plan from a My PA workspace: ranked Jira, Trello, Beads and Thoughtbox items assigned to work, project-session, evening or skip blocks, flagged when delegable to an unattended session, written to a dated ephemeral plan file |
 | project-brief | Read-only workspace-level synthesis of project outcomes, requirement linkage, delivery evidence, coordination risks, and the single most important next coordination action |
-| today | Read-only same-day or previous-workday activity recap; owns shared rendering, with current-session context in same-day mode |
+| today | Read-only activity recap for today, the previous workday, or explicit dates/ranges; same-day mode adds current-session context |
 
 ## Backlog and Beads
 

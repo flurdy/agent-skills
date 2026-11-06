@@ -39,7 +39,8 @@ for forbidden in 'activity.sh' 'issuekey IN updatedBy' '/rest/api/3/' \
   'allowed-tools:' 'model-tier:' 'model:' 'effort:'; do
   assert_not_contains "$PROMPT" "$forbidden"
 done
-assert_contains "$CANONICAL" 'Accept no arguments (same-day mode) or exactly `--previous-workday`'
+assert_contains "$CANONICAL" 'Accept no arguments (same-day mode), exactly `--previous-workday`, or one explicit selector'
+assert_contains "$CANONICAL" 'Conflicting selectors are rejected'
 assert_contains "$CANONICAL" 'Reject unknown arguments and repeated flags before collecting'
 assert_contains "$CANONICAL" 'prompt'
 assert_contains "$CANONICAL" 'Codex uses'

@@ -117,10 +117,17 @@ preserves this default no-argument contract, resolves members through
 mode also emits the generic `BEADS-CREATED` marker with every issue created in the window,
 including issues now closed; the compatibility `BEADS-CREATED-TODAY` marker retains the existing
 open-only behavior. `--workspace --previous-workday` selects Friday on Monday and the preceding
-calendar day otherwise for `/yesterday`. The helper converts the emitted local
-`WINDOW-START`/`WINDOW-END` interval to UTC for timestamp filtering and requires Python 3.10+ for
-date and JSON processing. Do not parse workspace configuration or reproduce date-window logic in
-consumers.
+calendar day otherwise for `/yesterday`. Explicit `--workspace --date YYYY-MM-DD` or
+`--workspace --since YYYY-MM-DD [--until YYYY-MM-DD]` selects up to 31 inclusive local days;
+omitted `--until` means today. Future, inverted and conflicting selectors fail before collection.
+Workspace output adds `DATE-END`, weekday-labelled `DATE-LABEL`, and `COMMIT-DIAGNOSTICS`.
+Its `activity-commits.py` helper scans local branches, worktree HEADs and cached default refs,
+matching exact local/GitHub author emails, deduplicating SHAs and reporting absolute committer times.
+The no-argument wrap-up commit schema/selection is unchanged. See [today](../today/SKILL.md)
+for recap identity, cached-history and rendering rules. The helper converts the emitted local
+`WINDOW-START`/`WINDOW-END` interval to UTC for timestamp filtering and requires Python 3.10+
+(standard library only), Bash 4+ and, for workspace commit collection, Git 2.37+.
+Do not parse workspace configuration or reproduce date-window logic in consumers.
 
 #### Commits
 

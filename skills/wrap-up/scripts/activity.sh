@@ -7,33 +7,70 @@ set -uo pipefail
 
 WORKSPACE_MODE=0
 PREVIOUS_WORKDAY=0
-for arg in "$@"; do
+DATE_ARG=''
+SINCE_ARG=''
+UNTIL_ARG=''
+declare -A SEEN=()
+while [[ $# -gt 0 ]]; do
+    arg=$1
+    if [[ -z "$arg" ]]; then
+        echo 'ERROR: empty argument' >&2
+        exit 2
+    fi
+    if [[ -n "${SEEN[$arg]:-}" ]]; then
+        echo "ERROR: repeated argument: $arg" >&2
+        exit 2
+    fi
+    SEEN[$arg]=1
     case "$arg" in
         --workspace) WORKSPACE_MODE=1 ;;
         --previous-workday) PREVIOUS_WORKDAY=1 ;;
-        *)
-            echo "ERROR: unknown argument: $arg" >&2
-            exit 2
+        --date|--since|--until)
+            if [[ $# -lt 2 || ! $2 =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+                echo "ERROR: $arg requires YYYY-MM-DD" >&2
+                exit 2
+            fi
+            case "$arg" in
+                --date) DATE_ARG=$2 ;;
+                --since) SINCE_ARG=$2 ;;
+                --until) UNTIL_ARG=$2 ;;
+            esac
+            shift
             ;;
+        *) echo "ERROR: unknown argument: $arg" >&2; exit 2 ;;
     esac
+    shift
 done
-if [[ $PREVIOUS_WORKDAY -eq 1 && $WORKSPACE_MODE -ne 1 ]]; then
-    echo "ERROR: --previous-workday requires --workspace" >&2
+if [[ $WORKSPACE_MODE -ne 1 && ( $PREVIOUS_WORKDAY -eq 1 || -n "$DATE_ARG$SINCE_ARG$UNTIL_ARG" ) ]]; then
+    echo "ERROR: date selectors require --workspace" >&2
+    exit 2
+fi
+if [[ ( $PREVIOUS_WORKDAY -eq 1 && -n "$DATE_ARG$SINCE_ARG$UNTIL_ARG" ) ||
+      ( -n "$DATE_ARG" && -n "$SINCE_ARG$UNTIL_ARG" ) ||
+      ( -n "$UNTIL_ARG" && -z "$SINCE_ARG" ) ]]; then
+    echo "ERROR: use one of --previous-workday, --date, or --since [--until]" >&2
     exit 2
 fi
 
 BASE_DATE=${ACTIVITY_TODAY:-$(date +%F)}
-if ! WINDOW=$(python3 - "$BASE_DATE" "$PREVIOUS_WORKDAY" <<'PY'
+if ! WINDOW=$(python3 - "$BASE_DATE" "$PREVIOUS_WORKDAY" "$DATE_ARG" "$SINCE_ARG" "$UNTIL_ARG" <<'PY'
 from datetime import date, datetime, time, timedelta, timezone
 import sys
 
 try:
     base = date.fromisoformat(sys.argv[1])
-except ValueError as error:
+    previous, selected, since, until = sys.argv[2:]
+    activity = base - timedelta(days=3 if previous == "1" and base.weekday() == 0 else int(previous))
+    if selected or since:
+        activity = date.fromisoformat(selected or since)
+    last = date.fromisoformat(until) if until else (base if since else activity)
+    if activity > last or last > base:
+        raise ValueError("range must be ordered and not in the future")
+    if (last - activity).days >= 31:
+        raise ValueError("range cannot exceed 31 inclusive days")
+    window_end_date = last + timedelta(days=1)
+except (ValueError, OverflowError) as error:
     raise SystemExit(f"ERROR: invalid activity date: {error}")
-
-activity = base - timedelta(days=3 if sys.argv[2] == "1" and base.weekday() == 0 else int(sys.argv[2]))
-window_end_date = activity + timedelta(days=1)
 window_start = datetime.combine(activity, time.min).astimezone()
 window_end = datetime.combine(window_end_date, time.min).astimezone()
 window_start_utc = window_start.astimezone(timezone.utc)
@@ -46,6 +83,7 @@ def utc(value):
 
 print(
     activity.isoformat(),
+    last.isoformat(),
     window_start.isoformat(timespec="seconds"),
     window_end.isoformat(timespec="seconds"),
     utc(window_start_utc),
@@ -57,7 +95,18 @@ PY
 ); then
     exit 2
 fi
-read -r TODAY SINCE UNTIL WINDOW_START_UTC WINDOW_END_UTC BEADS_AFTER_UTC GH_DATE_RANGE <<<"$WINDOW"
+read -r TODAY LAST_DATE SINCE UNTIL WINDOW_START_UTC WINDOW_END_UTC BEADS_AFTER_UTC GH_DATE_RANGE <<<"$WINDOW"
+DATE_LABEL=$(python3 - "$TODAY" "$LAST_DATE" <<'PY'
+from datetime import date
+import sys
+
+def label(value):
+    day = date.fromisoformat(value)
+    return f"{('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')[day.weekday()]} {value}"
+
+print(label(sys.argv[1]) if sys.argv[1] == sys.argv[2] else f"{label(sys.argv[1])} – {label(sys.argv[2])}")
+PY
+)
 GIT_UNTIL=$(python3 - "$UNTIL" <<'PY'
 from datetime import datetime, timedelta
 import sys
@@ -127,6 +176,10 @@ json.dump(items, sys.stdout, separators=(",", ":"))
 ' "$field" 2>/dev/null
 }
 
+github_limit_reached() {
+    python3 -c 'import json, sys; sys.exit(0 if len(json.load(sys.stdin)) >= 1000 else 1)' 2>/dev/null
+}
+
 emit_github_activity() {
     local status created merged closed raw
     local -a diagnostics=()
@@ -139,27 +192,36 @@ emit_github_activity() {
     else
         status="OK"
         if raw=$(gh search prs --author=@me --created="$GH_DATE_RANGE" \
-            --json number,title,url,repository,state,isDraft,createdAt --limit 100 2>/dev/null) &&
+            --json number,title,url,repository,state,isDraft,createdAt --limit 1000 2>/dev/null) &&
            created=$(printf '%s\n' "$raw" | filter_json_window createdAt | strip_json_field createdAt); then
-            :
+            if printf '%s\n' "$raw" | github_limit_reached; then
+                status="ERROR"
+                diagnostics+=("Created-PR query reached the 1000-result cap; coverage may be incomplete.")
+            fi
         else
             created="[]"
             status="ERROR"
             diagnostics+=("Created-PR query failed.")
         fi
         if raw=$(gh search prs --author=@me --merged --merged-at="$GH_DATE_RANGE" \
-            --json number,title,url,repository,closedAt --limit 100 2>/dev/null) &&
+            --json number,title,url,repository,closedAt --limit 1000 2>/dev/null) &&
            merged=$(printf '%s\n' "$raw" | filter_json_window closedAt | strip_json_field closedAt); then
-            :
+            if printf '%s\n' "$raw" | github_limit_reached; then
+                status="ERROR"
+                diagnostics+=("Merged-PR query reached the 1000-result cap; coverage may be incomplete.")
+            fi
         else
             merged="[]"
             status="ERROR"
             diagnostics+=("Merged-PR query failed.")
         fi
         if raw=$(gh search prs --author=@me --closed="$GH_DATE_RANGE" --state=closed \
-            --json number,title,url,repository,closedAt --limit 100 2>/dev/null) &&
+            --json number,title,url,repository,closedAt --limit 1000 2>/dev/null) &&
            closed=$(printf '%s\n' "$raw" | filter_json_window closedAt | strip_json_field closedAt); then
-            :
+            if printf '%s\n' "$raw" | github_limit_reached; then
+                status="ERROR"
+                diagnostics+=("Closed-PR query reached the 1000-result cap; coverage may be incomplete.")
+            fi
         else
             closed="[]"
             status="ERROR"
@@ -180,10 +242,9 @@ emit_github_activity() {
 }
 
 emit_workspace_activity() {
-    local script_dir multirepo marker root scope current name dir author wt wt_branch wt_base out filtered
-    local worktrees log_output failures
+    local script_dir multirepo marker root scope current name dir out filtered failures
     local -a member_paths=() multirepo_diagnostics=() repo_names=() repo_dirs=() diagnostics=()
-    local -a commit_status=() commit_lines=()
+    local -a commit_args=()
     local -a beads_status=() beads_in_progress=() beads_created=() beads_created_legacy=() beads_closed=()
     local -a beads_in_progress_ok=() beads_created_ok=() beads_closed_ok=()
 
@@ -238,6 +299,10 @@ emit_workspace_activity() {
     if [[ ${#repo_dirs[@]} -gt 0 ]]; then echo "OK"; else echo "NO_GIT"; fi
     echo "---DATE---"
     echo "$TODAY"
+    echo "---DATE-END---"
+    echo "$LAST_DATE"
+    echo "---DATE-LABEL---"
+    echo "$DATE_LABEL"
     echo "---WINDOW-START---"
     echo "$SINCE"
     echo "---WINDOW-END---"
@@ -258,43 +323,15 @@ emit_workspace_activity() {
     for ((i = 0; i < ${#repo_dirs[@]}; i++)); do
         name=${repo_names[$i]}
         dir=${repo_dirs[$i]}
-        author=$(git -C "$dir" config user.email 2>/dev/null || true)
-        if [[ -z "$author" ]]; then
-            commit_status[$i]="NO_AUTHOR"
-            continue
-        fi
-        if ! worktrees=$(git -C "$dir" worktree list --porcelain 2>/dev/null); then
-            commit_status[$i]="ERROR"
-            continue
-        fi
-        commit_status[$i]="OK"
-        while IFS= read -r wt; do
-            [[ -n "$wt" ]] || continue
-            wt_branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-            wt_base=$(basename "$wt")
-            # The git format stays constant. Branch and directory names may contain
-            # % placeholders, which git would expand into the parsed stream.
-            if log_output=$(git -C "$wt" log --since="$SINCE" --until="$GIT_UNTIL" --author="$author" \
-                --format="%h|%s|%ar" --no-merges 2>/dev/null); then
-                if [[ -n "$log_output" ]]; then
-                    while IFS= read -r commit_line || [[ -n "$commit_line" ]]; do
-                        commit_lines[$i]="${commit_lines[$i]:-}${name}|${wt_base}|${wt_branch}|${commit_line}"$'\n'
-                    done <<<"$log_output"
-                fi
-            else
-                commit_status[$i]="ERROR"
-            fi
-        done < <(printf '%s\n' "$worktrees" | awk '/^worktree /{print substr($0,10)}')
+        commit_args+=(--repo "$name" "$dir")
     done
-
-    echo "---COMMIT-STATUS---"
-    for ((i = 0; i < ${#repo_dirs[@]}; i++)); do
-        echo "${repo_names[$i]}|${commit_status[$i]}"
-    done
-    echo "---COMMITS---"
-    for ((i = 0; i < ${#repo_dirs[@]}; i++)); do
-        printf '%s' "${commit_lines[$i]:-}"
-    done
+    if ! python3 "$script_dir/activity-commits.py" --since "$SINCE" --until "$UNTIL" "${commit_args[@]}"; then
+        echo '---COMMIT-STATUS---'
+        for name in "${repo_names[@]}"; do echo "$name|ERROR"; done
+        echo '---COMMIT-DIAGNOSTICS---'
+        echo 'Commit collector failed; other activity sources are still collected.'
+        echo '---COMMITS---'
+    fi
 
     emit_github_activity
 

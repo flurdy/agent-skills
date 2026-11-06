@@ -8,6 +8,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
+  [[ ! -f "$TMP/output" ]] || head -80 "$TMP/output" >&2
   exit 1
 }
 
@@ -90,9 +91,19 @@ set -euo pipefail
 if [[ "${1:-}" == "auth" ]]; then
   exit 0
 fi
+if [[ "${1:-}" == "api" ]]; then
+  exit 1
+fi
 printf '%s\n' "$*" >>"$GH_CALLS"
 if [[ "${GH_FAIL:-}" == "1" && " $* " == *" --merged-at="* ]]; then
   exit 7
+fi
+if [[ "${GH_MANY:-}" == "1" ]]; then
+  python3 - <<'PY'
+import json
+print(json.dumps([{"number": n, "title": "many PRs", "createdAt": "2026-07-31T12:00:00Z", "closedAt": "2026-07-31T12:00:00Z"} for n in range(1000)]))
+PY
+  exit 0
 fi
 if [[ "${GH_WINDOW_FIXTURE:-}" == "1" ]]; then
   if [[ " $* " == *" --created="* ]]; then
@@ -322,5 +333,80 @@ assert_section_not_contains BEADS-CLOSED 'window-today'
     "$SCRIPT" --workspace --previous-workday >"$TMP/output"
 )
 assert_section_contains BEADS-CREATED 'many-51'
+
+# Explicit local-day ranges include weekend work and use the same bounds for all sources.
+: >"$GH_CALLS"
+: >"$BD_CALLS"
+(
+  cd "$TMP/window"
+  PATH="$TMP/bin:$PATH" MGIT_ROOT='' TZ=America/New_York ACTIVITY_TODAY=2026-08-03 \
+    GH_WINDOW_FIXTURE=1 BD_WINDOW_FIXTURE=1 \
+    "$SCRIPT" --workspace --since 2026-07-31 --until 2026-08-02 >"$TMP/output"
+)
+assert_section_value DATE '2026-07-31'
+assert_section_value DATE-END '2026-08-02'
+assert_section_value DATE-LABEL 'Fri 2026-07-31 – Sun 2026-08-02'
+assert_section_value WINDOW-END '2026-08-03T00:00:00-04:00'
+assert_section_contains COMMITS 'friday activity'
+assert_section_contains COMMITS 'saturday boundary'
+assert_section_contains COMMITS 'sunday activity'
+assert_section_contains COMMITS 'Sun 2026-08-02 08:00:00 -0400'
+assert_section_contains PRS-CREATED 'end created'
+assert_section_contains BEADS-CREATED 'end-created'
+grep -Fq -- '--created=2026-07-31..2026-08-03' "$GH_CALLS" || fail 'GitHub range missing'
+grep -Fq -- '--created-before=2026-08-03T04:00:00Z' "$BD_CALLS" || fail 'Beads range missing'
+
+run_window() {
+  (cd "$TMP/window"; PATH="$TMP/bin:$PATH" MGIT_ROOT='' TZ=America/New_York \
+    ACTIVITY_TODAY=2026-11-06 "$SCRIPT" "$@" >"$TMP/output" 2>"$TMP/error")
+}
+run_window --workspace --date 2026-03-08
+assert_section_value DATE-LABEL 'Sun 2026-03-08'
+assert_section_value WINDOW-START '2026-03-08T00:00:00-05:00'
+assert_section_value WINDOW-END '2026-03-09T00:00:00-04:00'
+run_window --workspace --since 2026-10-07
+assert_section_value DATE-END '2026-11-06'
+run_window --workspace --since 2026-11-01 --until 2026-11-01
+assert_section_value DATE-LABEL 'Sun 2026-11-01'
+assert_section_value WINDOW-START '2026-11-01T00:00:00-04:00'
+assert_section_value WINDOW-END '2026-11-02T00:00:00-05:00'
+
+reject_window() {
+  : >"$GH_CALLS"
+  : >"$BD_CALLS"
+  if run_window "$@"; then fail "accepted invalid selector: $*"; fi
+  [[ ! -s "$GH_CALLS" && ! -s "$BD_CALLS" ]] || fail 'invalid selector collected activity'
+  grep -Fq 'ERROR:' "$TMP/error" || fail 'missing selector diagnostic'
+}
+reject_window --workspace --date 2026-02-30
+reject_window --workspace --date 20261101
+reject_window --workspace --date 2026-11-07
+reject_window --workspace --since 2026-11-02 --until 2026-11-01
+reject_window --workspace --since 2026-10-06
+reject_window --workspace --until 2026-11-01
+reject_window --workspace --date
+reject_window --workspace --since
+reject_window --workspace --since 2026-11-01 --until
+reject_window --workspace --date 2026-11-01 --date 2026-11-02
+reject_window --workspace --previous-workday --previous-workday
+reject_window --workspace --previous-workday --date 2026-11-01
+reject_window --workspace --date 2026-11-01 --since 2026-11-01
+reject_window --date 2026-11-01
+reject_window --workspace --unknown
+reject_window --workspace ''
+reject_window --workspace --since 2026-11-01 --until 2026-11-07
+reject_window --workspace --since 2026-11-01 --since 2026-11-02
+reject_window --workspace --since 2026-11-01 --until 2026-11-02 --until 2026-11-03
+
+(
+  cd "$TMP/window"
+  PATH="$TMP/bin:$PATH" MGIT_ROOT='' TZ=UTC ACTIVITY_TODAY=2026-08-03 GH_MANY=1 \
+    "$SCRIPT" --workspace --date 2026-07-31 >"$TMP/output"
+)
+assert_section_value GH-STATUS 'ERROR'
+assert_section_contains GH-DIAGNOSTICS 'Created-PR query reached the 1000-result cap'
+assert_section_contains GH-DIAGNOSTICS 'Merged-PR query reached the 1000-result cap'
+assert_section_contains GH-DIAGNOSTICS 'Closed-PR query reached the 1000-result cap'
+assert_section_contains PRS-CREATED 'many PRs'
 
 printf 'wrap-up activity tests passed\n'
