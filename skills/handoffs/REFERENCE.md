@@ -282,6 +282,11 @@ configured, and there is at least one current-repo or workspace-member row with 
 done/stale/supersede signal, no open PR, **and** a non-`—` `{jira-field}`. A recent completed row can also have empty `archive-class`, so do not
 use that field alone as the live-row test. If none qualify, do nothing.
 
+**Truncated fields never prove Done.** Exclude any row whose `{jira-field}` contains a
+truncation marker such as `(+N more)`, `(+more)` or another `(+…)` suffix, mirroring the
+conservative Beads rule. Visible keys cannot speak for omitted tickets: never promote such a row
+to Jira-Done, and keep its status, archive class and assisted-review flags as the script reported.
+
 For the qualifying rows, collect the distinct Jira keys and resolve their status in **one batched** query:
 
 ```
@@ -301,7 +306,9 @@ For each qualifying row, pass the returned `{issues: [...]}` JSON on stdin to th
 python3 ~/.agents/skills/handoffs/scripts/retention.py jira --keys ABC-123,ABC-456 --handoff-date YYYY-MM-DD --today YYYY-MM-DD --days N
 ```
 
-Supply the exact comma-separated keys from that row, its handoff date, `---AS-OF-DATE---`, and
+Supply every token from that row's field, comma-separated with backticks and spaces removed; never
+drop a token you do not recognise. The helper returns `done=false` unless every token is a well-formed
+key. Also supply its handoff date, `---AS-OF-DATE---`, and
 `---RETENTION-DAYS---`; do not substitute today's date or a hand-computed threshold. Input contains
 only keys and the requested status/resolution fields; do not persist the tracker response.
 The helper returns `{"done": true|false, "archive_class": "safe"|""}`. A row counts as done only

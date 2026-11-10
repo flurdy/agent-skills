@@ -8,6 +8,7 @@ import re
 import sys
 
 
+JIRA_KEY = re.compile(r"[A-Z][A-Z0-9_]*-[1-9][0-9]*")
 TIMESTAMP = re.compile(
     r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]+)?"
     r"(?:Z|[+-](?:[01][0-9]|2[0-3]):?[0-5][0-9])"
@@ -61,7 +62,11 @@ def beads(payload: object, ids: str) -> tuple[int, int, str]:
 
 
 def jira(payload: object, keys: str, handoff_date: str, today: str, days: int) -> dict:
-    expected = set(keys.split(",")) - {""}
+    tokens = keys.split(",")
+    if not all(JIRA_KEY.fullmatch(token) for token in tokens):
+        # A truncation marker or malformed token means the list may omit unfinished tickets.
+        return {"done": False, "archive_class": ""}
+    expected = set(tokens)
     issues = payload.get("issues", []) if isinstance(payload, dict) else []
     rows = [row for row in issues if isinstance(row, dict)
             and isinstance(row.get("key"), str) and row["key"] in expected] if isinstance(issues, list) else []

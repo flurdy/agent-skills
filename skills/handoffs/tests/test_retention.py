@@ -65,6 +65,49 @@ class JiraRetentionTests(unittest.TestCase):
         for rows in (duplicate, list(reversed(duplicate))):
             self.assertEqual(self.run_jira(rows), {"done": False, "archive_class": ""})
 
+    def run_jira_keys(self, keys: str, issues: list[dict]) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(HELPER), "jira", "--keys", keys,
+             "--handoff-date", "2026-07-01", "--today", "2026-08-20", "--days", "14"],
+            input=json.dumps({"issues": issues}), text=True, capture_output=True, check=True,
+        )
+        return json.loads(result.stdout)
+
+    def test_truncated_or_malformed_key_lists_never_prove_done(self) -> None:
+        visible = [self.issue("ABC-123", "2000-01-01T00:00:00Z"),
+                   self.issue("ABC-456", "2000-01-01T00:00:00Z")]
+        self.assertEqual(self.run_jira_keys("ABC-123,ABC-456", visible),
+                         {"done": True, "archive_class": "safe"})
+        for keys in ("ABC-123,ABC-456,(+1 more)", "ABC-123,ABC-456,(+more)", "ABC-123,ABC-456,more)",
+                     "ABC-123,,ABC-456", "ABC-123,abc-456", "ABC-123,ABC-", "ABC-123, ABC-456",
+                     "`ABC-123`,ABC-456"):
+            with self.subTest(keys=keys):
+                # Every visible ticket is Done; an omitted or unparseable one may not be.
+                extra = set(keys.split(",")) - {"ABC-123", "ABC-456"}
+                rows = visible + [{"key": token, "fields": visible[0]["fields"]} for token in sorted(extra)]
+                self.assertEqual(self.run_jira_keys(keys, rows), {"done": False, "archive_class": ""})
+
+    def test_truncated_field_with_unfinished_omitted_ticket_is_not_done(self) -> None:
+        visible = [self.issue("ABC-123", "2000-01-01T00:00:00Z"),
+                   self.issue("ABC-456", "2000-01-01T00:00:00Z")]
+        unfinished = self.issue("ABC-789", None, "indeterminate")
+        for rows in (visible, visible + [unfinished]):
+            with self.subTest(rows=rows):
+                self.assertEqual(self.run_jira_keys("ABC-123,ABC-456,(+1 more)", rows),
+                                 {"done": False, "archive_class": ""})
+        self.assertEqual(self.run_jira_keys("ABC-123,ABC-456,ABC-789", visible + [unfinished]),
+                         {"done": False, "archive_class": ""})
+
+    def test_truncated_jira_fields_are_excluded_and_never_written(self) -> None:
+        skill = HELPER.parents[1]
+        reference = (skill / "REFERENCE.md").read_text()
+        jira_done = reference.split("## §Jira-Done", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("truncation marker", jira_done)
+        self.assertIn("`(+N more)`", jira_done)
+        self.assertIn("never promote", jira_done)
+        wrap_up = (skill.parent / "wrap-up" / "SKILL.md").read_text()
+        self.assertIn("Never truncate `Jira`", wrap_up)
+
     def test_both_consumers_share_completion_clock_and_clear_assisted_flags(self) -> None:
         skill = HELPER.parents[1]
         reference = (skill / "REFERENCE.md").read_text()
