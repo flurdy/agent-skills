@@ -224,7 +224,7 @@ class SanityCheckContractTests(unittest.TestCase):
     def test_catalog_docs_and_test_gate(self):
         catalog = (ROOT / "skills/README.md").read_text()
         self.assertEqual(len(re.findall(r"^\| sanity-check \|", catalog, re.M)), 1)
-        self.assertIn("/skill:sanity-check", (ROOT / "README.md").read_text())
+        self.assertIn("(skills/README.md)", (ROOT / "README.md").read_text())
         makefile = (ROOT / "Makefile").read_text()
         self.assertIn(
             "test-sanity-check", makefile.split("TEST_TARGETS :=", 1)[1].split("test:", 1)[0]
