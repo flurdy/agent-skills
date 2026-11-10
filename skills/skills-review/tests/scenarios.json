@@ -6,13 +6,30 @@
       "id": "healthy",
       "request": "Review the declared /src/collection source. Suggest changes only if justified.",
       "evidence": [
-        {"id": "S1", "text": "Inventory: two ordinary source entries, lookup and draft; two canonical SKILL.md paths. Both descriptions, full bodies and their only shared reference were read. lookup only reads records; draft prepares text without posting. Their triggers and ownership are distinct."},
+        {"id": "S1", "text": "Inventory: two ordinary source entries, lookup and draft; two canonical SKILL.md paths. Both descriptions, full bodies and their only shared reference were read. lookup only reads records; draft prepares text without posting. Their triggers and ownership are distinct. lookup wraps a non-obvious record-store query helper; draft enforces a no-posting boundary. Neither body restates shared guidance or generic practice."},
         {"id": "V1", "text": "Trusted native validator ran with --root /src/collection and passed."}
       ],
       "expected": {
         "findings": [],
-        "observations": ["No changes needed in reviewed scope is success; report 2 entries/2 unique skills, both bodies full and mechanical pass separately.", "Do not invent a merge, reduction target or effectiveness claim."],
+        "observations": ["No changes needed in reviewed scope, with a keep justification per skill: lookup's query helper and draft's no-posting boundary are distinct value; report 2 entries/2 unique skills, both bodies full and mechanical pass separately.", "Do not invent a merge, reduction target or effectiveness claim."],
         "next": "Stop; no tracking or implementation action."
+      },
+      "permittedMutations": []
+    },
+    {
+      "id": "necessity-test",
+      "request": "Review the declared /src/collection source with a skeptical default.",
+      "evidence": [
+        {"id": "N1", "text": "skills/careful-edit/SKILL.md is read in full: read files before editing, keep changes small, run tests afterwards and write clear commit messages. Shared AGENTS.md:12-20 already states the same rules; the body has no helper, contract or safety boundary of its own."},
+        {"id": "N2", "text": "skills/deploy-check/SKILL.md is read in full. Lines 10-40 restate AGENTS.md:30-45 push-approval policy verbatim; lines 41-70 describe a distinct deployment-status helper and its read-only contract. No usage data is available for either skill."}
+      ],
+      "expected": {
+        "findings": [
+          {"kind": "retire", "confidence": "medium", "evidence": ["N1"], "smallestAction": "Propose retiring careful-edit; its full body restates shared guidance and generic practice with no distinct value."},
+          {"kind": "trim", "confidence": "high", "evidence": ["N2"], "smallestAction": "Replace deploy-check's restated push policy with a link to AGENTS.md; keep the helper and its read-only contract."}
+        ],
+        "observations": ["The necessity test, not age or size, supports both findings; keep deploy-check's distinct helper.", "Unknown usage is a disclosed limitation, not a blocker or proof; findings await user selection before triage."],
+        "next": "Offer the retire and trim patterns for selection; no editing or deletion."
       },
       "permittedMutations": []
     },
@@ -48,12 +65,12 @@
       "id": "missing-evidence",
       "request": "Review source old-report; it seems long and perhaps unused.",
       "evidence": [
-        {"id": "M1", "text": "The complete body is 400 lines, with no contradiction found. Last edit was a year ago. There is no reliable usage evidence. Its description is within the native validator's limit."},
+        {"id": "M1", "text": "The complete body is 400 lines, with no contradiction found. Last edit was a year ago. There is no reliable usage evidence. Its description is within the native validator's limit. The body encodes a distinct export contract and helper that no shared guidance or sibling skill covers."},
         {"id": "M2", "text": "No observed user need, failed outcome or measured model-effect evidence is supplied."}
       ],
       "expected": {
         "findings": [],
-        "observations": ["Age, length and absent usage data do not justify retirement or a model-restriction claim.", "Always-listed description cost is distinct from on-demand body/reference cost; no telemetry gathering or paid evaluation is initiated."],
+        "observations": ["Age, length and absent usage data alone do not justify retirement or a model-restriction claim; the necessity test finds distinct value, so record a keep justification.", "Always-listed description cost is distinct from on-demand body/reference cost; no telemetry gathering or paid evaluation is initiated."],
         "next": "Stop with missing effectiveness evidence acknowledged, not a manufactured removal proposal."
       },
       "permittedMutations": []

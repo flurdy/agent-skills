@@ -21,7 +21,9 @@ For a development walkthrough:
 4. Record the case IDs, discrepancies, method and limits in private task evidence.
    A same-session walkthrough is not an independent or fresh-session model trial.
 
-The matrix covers healthy scope, unnecessary prescription versus essential safety,
+The matrix covers healthy scope with keep justifications, the necessity test (retire a
+skill that only restates shared guidance, trim restated policy while keeping a distinct
+helper), unnecessary prescription versus essential safety,
 cross-skill conflict, missing evidence, partial coverage, finishing a focused sample
 without treating the sizing guide as a hard cap, an observed extension need,
 existing tracked work/owner-cwd handoff, mutation refusal and hostile source text,

@@ -50,6 +50,21 @@ class SkillsReviewContractTests(unittest.TestCase):
             with self.subTest(obsolete=obsolete):
                 self.assertNotIn(obsolete, text)
 
+    def test_skeptical_necessity_default(self):
+        text = self.text()
+        for term in (
+            "Default to skepticism", "necessity test", "distinct value", "unprompted",
+            "restate", "size outliers", "Unknown usage", "keep justification", "no mandatory findings",
+        ):
+            with self.subTest(term=term):
+                self.assertIn(term, text)
+        for obsolete in (
+            "Assume useful workflows should survive", "is a successful outcome",
+            "Neither age, word counts", "conservative",
+        ):
+            with self.subTest(obsolete=obsolete):
+                self.assertNotIn(obsolete, (SKILL / "SKILL.md").read_text())
+
     def test_validator_reuse_and_cost_distinction(self):
         text = self.text()
         for term in (
@@ -80,7 +95,7 @@ class SkillsReviewContractTests(unittest.TestCase):
         self.assertEqual(data["schemaVersion"], "skills-review-scenarios/v1")
         self.assertIn("not observed model behavior", data["purpose"])
         required = {
-            "healthy", "prescription-versus-safety", "cross-skill-conflict",
+            "healthy", "necessity-test", "prescription-versus-safety", "cross-skill-conflict",
             "missing-evidence", "partial-coverage", "finish-focused-sample", "extension-need", "existing-work",
             "unapproved-mutation", "aliases-and-boundaries", "ambiguous-source",
             "validator-failed", "validator-unavailable", "wrong-validator-root",

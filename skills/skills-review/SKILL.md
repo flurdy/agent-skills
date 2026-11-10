@@ -1,19 +1,20 @@
 ---
 name: skills-review
-description: Explicit, conservative review of a source skill collection. Screens the catalog, samples content within a stated budget, and proposes evidence-backed improvements; read-only until selected findings are handed to triage.
+description: Explicit, skeptical review of a source skill collection. Screens the catalog, tests sampled skills' necessity, and proposes evidence-backed trims, merges, retirements or fixes; read-only until selected findings go to triage.
 allowed-tools: "Read,Grep,Glob,AskUserQuestion,Skill(triage)"
 disable-model-invocation: true
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.1.3"
+version: "0.2.0"
 author: "flurdy"
 ---
 
 # Skills review
 
 A manual maintenance review every few weeks, when requested—not a delivery gate or
-scheduler. Assume useful workflows should survive. This reviews skill content and
+scheduler. Default to skepticism: every deeply reviewed skill must show distinct value
+to stay, and is kept, trimmed, merged or retired on evidence. This reviews skill content and
 interactions, not the backlog (`backlog-groom`) or session direction (`sanity-check`).
 
 ```text
@@ -72,7 +73,8 @@ never an automatic fix/retry loop. If unavailable, continue content review with 
 
 After catalog screening, use **roughly 120,000 characters** of substantive source evidence
 as a sizing guide, not a quota or hard ceiling: bodies, references, helpers, tests and
-caller excerpts. Select a few related or uncertain workflows; do not try to review the
+caller excerpts. Select a few related or uncertain workflows, favouring size outliers and
+workflows not reviewed in recent runs; do not try to review the
 whole collection every time or read more just to fill the allowance. Exact character
 counts and per-read accounting are unnecessary. Finish a relevant body, exception or
 caller rather than stopping mid-investigation to meet the estimate. Metadata-only
@@ -83,16 +85,27 @@ Label each body **full or partial** and record unread references/callers. Partia
 may support a tentative question, not a whole-workflow verdict. Before proposing trim,
 split, merge or retire, read the full implicated bodies and relevant exceptions/callers;
 if that would substantially expand the sample, defer the recommendation rather than
-broadening the review. Length alone is not a defect.
+broadening the review. Length alone is not a defect, but it is a reason to look closely.
+
+Apply a **necessity test** to every fully read skill: what does it add beyond what a
+current capable model does unprompted with the repository's shared guidance? Separate
+instructions that restate shared policy, a sibling skill or generic good practice from
+those encoding a non-obvious contract, helper, ownership boundary or safety/consent rule.
+Recommend trimming restated material, merging overlapping responsibilities and retiring a
+skill whose distinct value is negligible. A skill whose only distinct value is its trigger
+may fit better as a short prompt.
 
 Look for needless mandatory steps, contradictory or stale instructions, overlapping
 responsibility, unclear discovery triggers and a demonstrated need for an extension.
 Compare callers with their authoritative workflow rather than copying its policy.
 Preserve essential safety, consent and authorization boundaries; distinguish those from
 procedural prescription with no benefit for the actual task. Propose the smallest action,
-not a redesign of otherwise healthy workflows. No scoring system or reduction quotas.
+not a redesign of otherwise healthy workflows. No scoring system, reduction quotas or
+no mandatory findings: a skill that passes the necessity test stays.
 
-Neither age, word counts, absent usage data nor reviewer preference justifies culling.
+Age, size or absent usage data alone never prove obsolescence, and reviewer preference
+is not evidence; base retire/merge recommendations on the necessity test. Unknown usage
+is a disclosed limitation, not a blocker.
 Separate always-listed catalog-description cost from on-demand loaded bodies/references.
 Claims about model restriction or improved behavior remain hypotheses unless supported
 by observed evidence; name a focused validation idea, never launch an evaluation here.
@@ -103,8 +116,10 @@ Extensions need an observed user need or failure, not speculative capability wis
 Give a short prioritized report, grouping repeated evidence into one pattern. Each
 trim/fix/extend/split/merge/retire candidate needs file/line citations, a concrete problem
 or benefit, confidence (high/medium/uncertain), and the smallest action. Missing evidence
-is a limitation, not a manufactured finding. **No changes needed** is a successful outcome
-within reviewed scope. Do not infer collection-wide health from a sample or validator PASS.
+is a limitation, not a manufactured finding. **No changes needed** stands within reviewed
+scope only with a one-line keep justification per fully reviewed skill, naming the distinct
+value that passed the necessity test. Do not infer collection-wide health from a sample or
+validator PASS.
 
 ```markdown
 **Scope:** {source; raw entries / unique skills / aliases / exclusions}
@@ -112,6 +127,7 @@ within reviewed scope. Do not infer collection-wide health from a sample or vali
 **Mechanical:** {scope-matched result or unavailable; separate from judgment}
 | Priority | Candidate | Evidence and benefit/problem | Confidence | Smallest action |
 |---|---|---|---|---|
+**Kept:** {each fully reviewed skill without a candidate — its distinct value}
 **Limits:** {unchecked areas and behavioral hypotheses, if any}
 **Next:** {select a pattern for triage, request focused evidence, or nothing required}
 ```
