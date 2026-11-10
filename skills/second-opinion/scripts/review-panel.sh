@@ -20,6 +20,8 @@ usage() {
 Usage:
   review-panel.sh check [--panel NAME] [--config FILE] [--prompt-file FILE]
                         [--route-model ID=MODEL] [--route-effort ID=EFFORT]...
+                        [--sample COUNT [--sample-seed SEED] [--sample-quorum N]
+                         [--exclude-provider PROVIDER]...]
   review-panel.sh run-local --prompt-file FILE --panel-sha256 DIGEST --prompt-sha256 DIGEST
                             [panel and route override options] [--timeout SECONDS]
   review-panel.sh run-openrouter (--confirmed|--configured-consent) --prompt-file FILE
@@ -41,6 +43,9 @@ and error capture are bounded while streaming. OpenRouter effort is passed as
 reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 128,000).
 Routes denied for the current directory by ~/.agents/disabled-models.json still count
 towards thresholds but are never run; an invalid policy stops every command but evaluate.
+--sample chooses COUNT routes once from the enabled, permitted and non-excluded routes,
+preferring distinct providers. check reports the seed; later stages must repeat it and
+every other sampling option unchanged. Sampled quorum defaults to COUNT.
 scratch prints a new private directory under $TMPDIR for caller files; cleanup removes
 only such a directory.
 USAGE
@@ -95,6 +100,10 @@ parse_panel_options() {
   PROMPT_FILE=""
   ROUTE_MODELS=()
   ROUTE_EFFORTS=()
+  SAMPLE_COUNT=""
+  SAMPLE_SEED=""
+  SAMPLE_QUORUM=""
+  EXCLUDE_PROVIDERS=()
   REMAINING_ARGS=()
 
   while [[ $# -gt 0 ]]; do
@@ -124,12 +133,57 @@ parse_panel_options() {
         ROUTE_EFFORTS+=("$2")
         shift 2
         ;;
+      --sample)
+        [[ $# -ge 2 ]] || die "--sample requires a count"
+        SAMPLE_COUNT="$2"
+        shift 2
+        ;;
+      --sample-seed)
+        [[ $# -ge 2 ]] || die "--sample-seed requires a value"
+        SAMPLE_SEED="$2"
+        shift 2
+        ;;
+      --sample-quorum)
+        [[ $# -ge 2 ]] || die "--sample-quorum requires a count"
+        SAMPLE_QUORUM="$2"
+        shift 2
+        ;;
+      --exclude-provider)
+        [[ $# -ge 2 ]] || die "--exclude-provider requires a provider"
+        EXCLUDE_PROVIDERS+=("$2")
+        shift 2
+        ;;
       *)
         REMAINING_ARGS+=("$1")
         shift
         ;;
     esac
   done
+  validate_sampling_options
+}
+
+validate_sampling_options() {
+  if [[ -z "$SAMPLE_COUNT" ]]; then
+    [[ -z "$SAMPLE_SEED" && -z "$SAMPLE_QUORUM" && ${#EXCLUDE_PROVIDERS[@]} -eq 0 ]] || \
+      die "--sample-seed, --sample-quorum and --exclude-provider require --sample"
+    return 0
+  fi
+  [[ "$SAMPLE_COUNT" =~ ^[1-8]$ ]] || die "--sample must be an integer from 1 to $HARD_MAX_ROUTES"
+  if [[ -n "$SAMPLE_QUORUM" ]]; then
+    [[ "$SAMPLE_QUORUM" =~ ^[1-8]$ ]] && (( SAMPLE_QUORUM <= SAMPLE_COUNT )) || \
+      die "--sample-quorum must be an integer from 1 to the sample count ($SAMPLE_COUNT)"
+  fi
+  [[ -z "$SAMPLE_SEED" || "$SAMPLE_SEED" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || \
+    die "--sample-seed must be 1-64 letters, digits, dots, underscores or hyphens"
+  local provider
+  for provider in "${EXCLUDE_PROVIDERS[@]}"; do
+    [[ "$provider" =~ ^[a-z0-9][a-z0-9._-]{0,63}$ ]] || \
+      die "--exclude-provider must be a lowercase provider such as anthropic, openai or google"
+  done
+}
+
+generate_sample_seed() {
+  od -An -N8 -tx1 /dev/urandom | tr -d ' \n'
 }
 
 load_raw_profile() {
@@ -367,6 +421,54 @@ apply_disabled_models_policy() {
   ' <<< "$PANEL_JSON")"
 }
 
+# Sampling ranks eligible routes by SHA-256(seed, route ID): the same seed and pool always yield
+# the same routes, and only those routes remain in the panel, so every digest binds the choice.
+apply_sampling() {
+  [[ -n "$SAMPLE_COUNT" ]] || return 0
+  local excluded eligible_ids id rank keys='{}' pool_size
+  excluded="$(jq -cn '$ARGS.positional | unique' --args "${EXCLUDE_PROVIDERS[@]}")"
+  eligible_ids="$(jq -r --argjson excluded "$excluded" '
+    .routes[] | select(.enabled and (.policyDenied | not) and (.provider as $p | $excluded | index($p) | not)) | .id
+  ' <<< "$PANEL_JSON")"
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    rank="$(printf '%s\n%s' "$SAMPLE_SEED" "$id" | sha256_stream)" || die "a SHA-256 command is required"
+    keys="$(jq -c --arg id "$id" --arg rank "$rank" '.[$id] = $rank' <<< "$keys")"
+  done <<< "$eligible_ids"
+  pool_size="$(jq 'length' <<< "$keys")"
+  (( pool_size >= SAMPLE_COUNT )) || \
+    die "sample of $SAMPLE_COUNT needs $SAMPLE_COUNT eligible routes; panel $PANEL_NAME has $pool_size after disabled, policy-denied and excluded-provider routes"
+
+  PANEL_JSON="$(jq -c \
+    --argjson keys "$keys" \
+    --argjson excluded "$excluded" \
+    --argjson count "$SAMPLE_COUNT" \
+    --arg seed "$SAMPLE_SEED" \
+    --arg quorum "$SAMPLE_QUORUM" '
+    .routes as $routes |
+    ([$routes[] | select($keys[.id] != null)] | sort_by($keys[.id])) as $ranked |
+    (reduce $ranked[] as $route ([]; if any(.[]; .provider == $route.provider) then . else . + [$route] end)) as $distinct |
+    ($distinct + [$ranked[] | select(.id as $id | all($distinct[]; .id != $id))])[:$count] as $picked |
+    [$picked[].id] as $picked_ids |
+    .sampling = {
+      method: "sha256-rank-v1",
+      count: $count,
+      seed: $seed,
+      excludedProviders: $excluded,
+      pool: [$routes[] | select($keys[.id] != null) | .id],
+      selected: [$routes[] | select(.id as $id | $picked_ids | index($id)) | .id],
+      ineligible: [$routes[] | select($keys[.id] == null) | {
+        id, provider,
+        reason: (if (.enabled | not) then "disabled" elif .policyDenied then "disabled-by-policy" else "excluded-provider" end)
+      }],
+      sameProviderFill: (($picked | length) > ([$picked[].provider] | unique | length))
+    } |
+    .routes = [$routes[] | select(.id as $id | $picked_ids | index($id))] |
+    .quorum = (if $quorum == "" then $count else ($quorum | tonumber) end) |
+    .consensusQuorum = ([.quorum, ([.routes[].provider] | unique | length)] | min)
+  ' <<< "$PANEL_JSON")"
+}
+
 validate_and_apply_overrides() {
   validate_limits_and_routes
   local override
@@ -384,6 +486,7 @@ validate_and_apply_overrides() {
     apply_effort_override "$override"
   done
   apply_disabled_models_policy
+  apply_sampling
 
   PANEL_CANONICAL="$(jq -cS . <<< "$PANEL_JSON")"
   PANEL_SHA256="$(printf '%s' "$PANEL_CANONICAL" | sha256_stream)" || die "a SHA-256 command is required"
@@ -437,6 +540,10 @@ check_panel() {
   parse_panel_options "$@"
   [[ ${#REMAINING_ARGS[@]} -eq 0 ]] || die "unknown check argument: ${REMAINING_ARGS[0]}"
   require_command jq
+  if [[ -n "$SAMPLE_COUNT" && -z "$SAMPLE_SEED" ]]; then
+    SAMPLE_SEED="$(generate_sample_seed)"
+    [[ "$SAMPLE_SEED" =~ ^[a-f0-9]{16}$ ]] || die "could not generate a sample seed"
+  fi
   normalize_profile
   local prompt_sha
   prompt_sha="$(prompt_digest)"
@@ -510,6 +617,7 @@ check_panel() {
       consensusQuorumUnit: "providers",
       limits: $panel_data.limits,
       disabledModels: $panel_data.disabledModels,
+      sampling: ($panel_data.sampling // null),
       policyDeniedRoutes: [$routes[] | select(.policyDenied) | {id, kind, agent, model, policyReasons}],
       panelSha256: $panel_sha256,
       openrouterSha256: $openrouter_sha256,
@@ -554,6 +662,7 @@ parse_run_args() {
   done
 
   [[ -n "$PROMPT_FILE" ]] || die "--prompt-file is required"
+  [[ -z "$SAMPLE_COUNT" || -n "$SAMPLE_SEED" ]] || die "--sample requires the --sample-seed reported by check"
   [[ "$EXPECTED_PANEL_SHA" =~ ^[a-f0-9]{64}$ ]] || die "--panel-sha256 must be the digest from check"
   [[ "$EXPECTED_PROMPT_SHA" =~ ^[a-f0-9]{64}$ ]] || die "--prompt-sha256 must be the digest from check"
   if [[ "$require_openrouter_digest" == true ]]; then
@@ -993,8 +1102,10 @@ evaluate_results() {
       consensusEligible: (
         $policy == "consensus" and
         (($successful_routes | length) >= $panel.quorum) and
-        (($successful_providers | length) >= $panel.consensusQuorum)
+        (($successful_providers | length) >= $panel.consensusQuorum) and
+        ($panel.sampling == null or ($successful_providers | length) >= 2)
       ),
+      sampling: ($panel.sampling // null),
       results: $ordered,
       unavailableRoutes: $unavailable,
       sameProviderCorroboration: $same_provider,

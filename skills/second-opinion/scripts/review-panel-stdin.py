@@ -14,7 +14,8 @@ import time
 MAX_BYTES = 16 * 1024 * 1024
 MAX_PROMPT_BYTES = 65536
 HELPER = Path(__file__).resolve().with_name("review-panel.sh")
-COMMON = {"version", "action", "panel", "prompt", "routeModels", "routeEfforts"}
+SAMPLING = {"sample", "sampleSeed", "sampleQuorum", "excludeProviders"}
+COMMON = {"version", "action", "panel", "prompt", "routeModels", "routeEfforts"} | SAMPLING
 DIGESTS = {"panelSha256", "promptSha256", "openrouterSha256"}
 ACTIONS = {"check", "run-local", "run-openrouter", "decline-openrouter", "evaluate"}
 
@@ -58,6 +59,7 @@ def validate(request):
         for key, value in values.items():
             text(key, r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", "invalid route ID")
             text(value, r"[A-Za-z0-9][A-Za-z0-9._/+:-]{0,255}", "invalid route override")
+    validate_sampling(request)
     timeout = request.get("timeout", 1800)
     require(type(timeout) is int and 1 <= timeout <= 1800, "timeout must be 1..1800 seconds")
     if action in {"run-local", "run-openrouter", "decline-openrouter"}:
@@ -75,6 +77,38 @@ def validate(request):
                 and all(isinstance(rows, list) and len(rows) <= 8 for rows in results),
                 "results must contain at most two route-result arrays")
     return action
+
+
+def count(value, maximum, message):
+    require(type(value) is int and 1 <= value <= maximum, message)
+
+
+def validate_sampling(request):
+    if "sample" not in request:
+        require(not request.keys() & SAMPLING, "sampling fields require sample")
+        return
+    count(request["sample"], 8, "sample must be an integer from 1 to 8")
+    if "sampleQuorum" in request:
+        count(request["sampleQuorum"], request["sample"], "sampleQuorum must be from 1 to sample")
+    if "sampleSeed" in request:
+        text(request["sampleSeed"], r"[A-Za-z0-9._-]{1,64}", "invalid sampleSeed")
+    providers = request.get("excludeProviders", [])
+    require(isinstance(providers, list) and len(providers) <= 8, "excludeProviders must be a list")
+    for provider in providers:
+        text(provider, r"[a-z0-9][a-z0-9._-]{0,63}", "invalid excluded provider")
+
+
+def sampling_arguments(request):
+    if "sample" not in request:
+        return []
+    args = ["--sample", str(request["sample"])]
+    if "sampleSeed" in request:
+        args += ["--sample-seed", request["sampleSeed"]]
+    if "sampleQuorum" in request:
+        args += ["--sample-quorum", str(request["sampleQuorum"])]
+    for provider in request.get("excludeProviders", []):
+        args += ["--exclude-provider", provider]
+    return args
 
 
 def save(directory, name, value):
@@ -98,6 +132,7 @@ def arguments(request, directory):
     for field, flag in (("routeModels", "--route-model"), ("routeEfforts", "--route-effort")):
         for key, value in request.get(field, {}).items():
             args += [flag, f"{key}={value}"]
+    args += sampling_arguments(request)
     for field, flag in (("panelSha256", "--panel-sha256"), ("promptSha256", "--prompt-sha256"),
                         ("openrouterSha256", "--openrouter-sha256")):
         if field in request:

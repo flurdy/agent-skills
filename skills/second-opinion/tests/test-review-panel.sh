@@ -17,7 +17,7 @@ expect_failure() {
   if "$@" > /dev/null 2> "$ERROR_LOG"; then
     fail "command unexpectedly succeeded: $*"
   fi
-  grep -Fq "$message" "$ERROR_LOG" || {
+  grep -Fq -- "$message" "$ERROR_LOG" || {
     cat "$ERROR_LOG" >&2
     fail "missing expected error: $message"
   }
@@ -815,6 +815,131 @@ printf '%s' '{' > "$POLICY_FILE"
 expect_failure 'disabled-model policy' panel_in "$POLICY_WORKSPACE" check --config "$CONFIG" --panel mixed
 expect_failure 'malformed JSON; no panel routes run' panel_in "$POLICY_WORKSPACE" run-local "${policy_args[@]}"
 [[ "$(wc -l < "$AGENT_LOG")" -eq 1 ]] || fail "changed or invalid policy still invoked routes"
+rm -f "$POLICY_FILE"
+
+# Opt-in sampling: chosen once per seed from eligible routes, bound into every digest.
+SAMPLE_CONFIG="$TMP_DIR/sample.json"
+jq '.profiles.pool = {
+  quorum: 2, consensusQuorum: 2,
+  routes: [
+    {id:"claude-a",kind:"local",agent:"claude",model:"fable",effort:"high",role:"reasoning"},
+    {id:"claude-b",kind:"local",agent:"claude",model:"opus",role:"critique"},
+    {id:"codex-a",kind:"local",agent:"codex",role:"verification"},
+    {id:"qwen-a",kind:"openrouter",model:"openrouter/qwen/model-a",vendor:"Qwen",effort:"low",maxOutputTokens:50,role:"verification"},
+    {id:"grok",kind:"openrouter",model:"openrouter/x-ai/grok",vendor:"xAI",role:"adversarial"},
+    {id:"gemini-off",kind:"local",agent:"gemini",enabled:false,role:"off"}
+  ],
+  limits:{maxParallel:4,maxPromptBytes:4096,maxOutputTokensPerModel:100,defaultTimeoutSeconds:5}
+}' "$CONFIG" > "$SAMPLE_CONFIG"
+sample_check() {
+  "${RUN_ENV[@]}" "$HELPER" check --config "$SAMPLE_CONFIG" --panel pool --prompt-file "$PROMPT" "$@"
+}
+
+unsampled="$(sample_check)"
+jq -e '.sampling == null and (.routes | length) == 6' <<< "$unsampled" >/dev/null || \
+  fail "unsampled panel changed shape"
+sampled_one="$(sample_check --sample 2 --sample-seed fixed-seed)"
+sampled_two="$(sample_check --sample 2 --sample-seed fixed-seed)"
+[[ "$(jq -c '[.sampling.selected, .panelSha256]' <<< "$sampled_one")" == \
+   "$(jq -c '[.sampling.selected, .panelSha256]' <<< "$sampled_two")" ]] || fail "same seed chose a different sample"
+jq -e '
+  .sampling.method == "sha256-rank-v1" and .sampling.count == 2 and .sampling.seed == "fixed-seed" and
+  (.sampling.selected | length) == 2 and [.routes[].id] == .sampling.selected and
+  ([.routes[].provider] | unique | length) == 2 and (.sampling.sameProviderFill | not) and
+  .sampling.pool == ["claude-a","claude-b","codex-a","qwen-a","grok"] and
+  .sampling.ineligible == [{"id":"gemini-off","provider":"google","reason":"disabled"}] and
+  .quorum == 2 and .consensusQuorum == 2 and .policyDeniedRoutes == []
+' <<< "$sampled_one" >/dev/null || fail "sampled check was not bounded and distinct: $sampled_one"
+[[ "$(jq -r .panelSha256 <<< "$sampled_one")" != "$(jq -r .panelSha256 <<< "$unsampled")" ]] || \
+  fail "panel digest does not bind the sample"
+for seed in seed-1 seed-2 seed-3 seed-4 seed-5 seed-6; do
+  jq -e --argjson original "$unsampled" '
+    . as $check |
+    all(.routes[]; . as $route | ($original.routes[] | select(.id == $route.id)) as $base |
+      [$route | .effectiveModel, .effectiveEffort, .effectiveMaxOutputTokens, .role, .consentPolicy] ==
+      [$base | .effectiveModel, .effectiveEffort, .effectiveMaxOutputTokens, .role, .consentPolicy]) and
+    ([.routes[].id] | unique | length) == 4 and ([.routes[].provider] | unique | length) == 4
+  ' <<< "$(sample_check --sample 4 --sample-seed "$seed")" >/dev/null || \
+    fail "sample $seed changed route settings, duplicated identities or skipped a distinct provider"
+done
+jq -e '(.sampling.selected | length) == 5 and .sampling.sameProviderFill and .quorum == 5 and .consensusQuorum == 4' \
+  <<< "$(sample_check --sample 5 --sample-seed fill)" >/dev/null || fail "same-provider fill was not disclosed"
+jq -e '.quorum == 1 and .consensusQuorum == 1' <<< "$(sample_check --sample 3 --sample-seed q --sample-quorum 1)" \
+  >/dev/null || fail "explicit sample quorum was not applied"
+
+independent="$(sample_check --sample 3 --sample-seed any --exclude-provider anthropic)"
+jq -e '
+  .sampling.selected == ["codex-a","qwen-a","grok"] and .sampling.excludedProviders == ["anthropic"] and
+  ([.sampling.ineligible[] | select(.reason == "excluded-provider") | .id] == ["claude-a","claude-b"]) and
+  [.localRoutes[].id] == ["codex-a"] and [.openrouterRoutes[].id] == ["qwen-a","grok"]
+' <<< "$independent" >/dev/null || fail "excluded originating provider was sampled: $independent"
+expect_failure 'sample of 4 needs 4 eligible routes' sample_check --sample 4 --sample-seed x --exclude-provider anthropic
+for invalid in 0 9 two; do
+  expect_failure '--sample must be an integer from 1 to 8' sample_check --sample "$invalid"
+done
+expect_failure '--sample-quorum must be an integer from 1 to the sample count' \
+  sample_check --sample 2 --sample-quorum 3
+expect_failure '--sample-seed must be' sample_check --sample 2 --sample-seed 'bad seed'
+expect_failure '--exclude-provider must be' sample_check --sample 2 --exclude-provider Anthropic
+expect_failure 'require --sample' sample_check --sample-seed lonely
+expect_failure 'require --sample' sample_check --exclude-provider openai
+
+generated="$(sample_check --sample 1)"
+jq -e '.sampling.seed | test("^[a-f0-9]{16}$")' <<< "$generated" >/dev/null || fail "check did not report a generated seed"
+
+sample_args=(--config "$SAMPLE_CONFIG" --panel pool --prompt-file "$PROMPT" --sample 3 --exclude-provider anthropic
+  --panel-sha256 "$(jq -r .panelSha256 <<< "$independent")" --prompt-sha256 "$(jq -r .promptSha256 <<< "$independent")")
+expect_failure 'requires the --sample-seed reported by check' "${RUN_ENV[@]}" "$HELPER" run-local "${sample_args[@]}"
+expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-local "${sample_args[@]}" --sample-seed other
+RESHAPED_POOL_CONFIG="$TMP_DIR/reshaped-pool.json"
+jq '.profiles.pool.routes[0].enabled = false' "$SAMPLE_CONFIG" > "$RESHAPED_POOL_CONFIG"
+expect_failure 'panel changed since check' "${RUN_ENV[@]}" "$HELPER" run-local "${sample_args[@]}" \
+  --sample-seed any --config "$RESHAPED_POOL_CONFIG"
+: > "$AGENT_LOG"
+printf 'fail' > "$TMP_DIR/home/fake-agent-mode-codex"
+"${RUN_ENV[@]}" "$HELPER" run-local "${sample_args[@]}" --sample-seed any > "$TMP_DIR/sample-local.json"
+rm -f "$TMP_DIR/home/fake-agent-mode-codex"
+[[ "$(cut -d'|' -f1 "$AGENT_LOG")" == "codex" ]] || fail "sampling ran an unselected local route"
+jq -e '.openrouter.consentRequired and .openrouter.requestCount == 2' <<< "$independent" >/dev/null || \
+  fail "sampling hid metered consent"
+: > "$CURL_LOG"
+expect_failure 'configured consent does not authorize every OpenRouter route' "${RUN_ENV[@]}" "$HELPER" \
+  run-openrouter --configured-consent "${sample_args[@]}" --sample-seed any \
+  --openrouter-sha256 "$(jq -r .openrouterSha256 <<< "$independent")"
+[[ ! -s "$CURL_LOG" ]] || fail "sampled ask-policy routes ran without fresh consent"
+: > "$REQUEST_LOG"
+"${RUN_ENV[@]}" "$HELPER" run-openrouter --confirmed "${sample_args[@]}" --sample-seed any \
+  --openrouter-sha256 "$(jq -r .openrouterSha256 <<< "$independent")" > "$TMP_DIR/sample-openrouter.json"
+jq -se 'map(.model) | sort == ["qwen/model-a","x-ai/grok"]' "$REQUEST_LOG" >/dev/null || \
+  fail "sampled OpenRouter subset was not exact"
+printf '%s\n' "$independent" > "$TMP_DIR/sample-check.json"
+"$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/sample-check.json" \
+  --results-file "$TMP_DIR/sample-local.json" --results-file "$TMP_DIR/sample-openrouter.json" > "$TMP_DIR/sample-eval.json"
+jq -e '
+  .sampling.selected == ["codex-a","qwen-a","grok"] and [.results[].id] == ["codex-a","qwen-a","grok"] and
+  (.results[0].status == "error") and .successfulRouteCount == 2 and .quorumRequired == 3 and
+  (.quorumMet | not) and (.consensusEligible | not)
+' "$TMP_DIR/sample-eval.json" >/dev/null || fail "failed sampled route was replaced or lowered quorum"
+
+single="$(sample_check --sample 1 --sample-seed solo --exclude-provider anthropic --exclude-provider qwen --exclude-provider x-ai)"
+single_args=(--config "$SAMPLE_CONFIG" --panel pool --prompt-file "$PROMPT" --sample 1 --sample-seed solo
+  --exclude-provider anthropic --exclude-provider qwen --exclude-provider x-ai
+  --panel-sha256 "$(jq -r .panelSha256 <<< "$single")" --prompt-sha256 "$(jq -r .promptSha256 <<< "$single")")
+"${RUN_ENV[@]}" "$HELPER" run-local "${single_args[@]}" > "$TMP_DIR/single-local.json"
+printf '%s\n' "$single" > "$TMP_DIR/single-check.json"
+"$HELPER" evaluate --policy consensus --check-file "$TMP_DIR/single-check.json" \
+  --results-file "$TMP_DIR/single-local.json" > "$TMP_DIR/single-eval.json"
+jq -e '.quorumMet and .successfulProviderCount == 1 and (.consensusEligible | not)' "$TMP_DIR/single-eval.json" \
+  >/dev/null || fail "one sampled opinion was treated as consensus"
+
+write_policy '["codex"]'
+denied_sample="$(cd "$POLICY_WORKSPACE" && sample_check --sample 3 --sample-seed any)"
+jq -e '
+  ([.sampling.ineligible[] | select(.reason == "disabled-by-policy") | .id] == ["codex-a","qwen-a"]) and
+  all(.sampling.selected[]; . != "codex-a" and . != "qwen-a")
+' <<< "$denied_sample" >/dev/null || fail "policy-denied routes entered the sample pool"
+expect_failure 'sample of 4 needs 4 eligible routes' bash -c 'cd "$1" && shift && "$@"' _ "$POLICY_WORKSPACE" \
+  "${RUN_ENV[@]}" "$HELPER" check --config "$SAMPLE_CONFIG" --panel pool --sample 4
 rm -f "$POLICY_FILE"
 
 # Caller-file scratch: private, fixed shape under TMPDIR; cleanup refuses everything else.

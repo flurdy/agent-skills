@@ -80,6 +80,43 @@ print("fixture review", end="")
         self.assertEqual(evaluated.returncode, 0, evaluated.stderr)
         self.assertTrue(json.loads(evaluated.stdout)["quorumMet"])
 
+    def test_sampling_parity_with_coordinator(self):
+        config = json.loads(self.config.read_text())
+        config["profiles"]["fixture"]["routes"].append(
+            {"id": "codex", "kind": "local", "agent": "codex", "role": "review"})
+        self.config.write_text(json.dumps(config))
+        sample = {"sample": 1, "excludeProviders": ["openai"]}
+        result = self.call("check", **sample)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        check = json.loads(result.stdout)
+        self.assertEqual(check["sampling"]["selected"], ["claude"])
+        self.assertEqual(check["sampling"]["excludedProviders"], ["openai"])
+        seed = check["sampling"]["seed"]
+        unseeded = self.call("run-local", **sample, **self.digests(check))
+        self.assertNotEqual(unseeded.returncode, 0)
+        self.assertIn("--sample-seed reported by check", unseeded.stderr)
+        rerolled = self.call("run-local", **sample, sampleSeed="other", **self.digests(check))
+        self.assertIn("panel changed", rerolled.stderr)
+        self.assertFalse(self.marker.exists())
+        result = self.call("run-local", **sample, sampleSeed=seed, **self.digests(check))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        rows = json.loads(result.stdout)
+        self.assertEqual([row["id"] for row in rows], ["claude"])
+        evaluated = json.loads(self.call("evaluate", policy="consensus", check=check, results=[rows]).stdout)
+        self.assertTrue(evaluated["quorumMet"])
+        self.assertFalse(evaluated["consensusEligible"])
+        self.assertEqual(evaluated["sampling"]["seed"], seed)
+
+    def test_rejects_invalid_sampling_fields(self):
+        for fields in ({"sample": 0}, {"sample": 9}, {"sample": True}, {"sample": "2"},
+                       {"sampleSeed": "lonely"}, {"sample": 1, "sampleSeed": "bad seed"},
+                       {"sample": 1, "sampleQuorum": 2}, {"sample": 1, "excludeProviders": "openai"},
+                       {"sample": 1, "excludeProviders": ["--config"]}):
+            with self.subTest(fields=fields):
+                result = self.call("check", **fields)
+                self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(self.marker.exists())
+
     def test_rejects_prompt_and_panel_drift_before_launch(self):
         check = self.checked()
         changed_prompt = self.call("run-local", prompt="changed", **self.digests(check))

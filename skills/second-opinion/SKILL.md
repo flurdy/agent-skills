@@ -5,7 +5,7 @@ allowed-tools: "Read,Edit(//tmp/**/second-opinion.*/**),Bash(claude -p * --tools
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.10.0"
+version: "3.11.0"
 author: "flurdy"
 ---
 
@@ -39,6 +39,10 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 /second-opinion review-pr --agent consensus --panel large
 /second-opinion ask "..." --agent quorum --panel large \
   --route-model claude-fable=opus --route-effort claude-fable=max
+
+# Opt-in random sample of a selected panel (defaults unchanged without --sample)
+/second-opinion ask "..." --agent quorum --panel large --sample 1
+/second-opinion validate-plan "..." --agent consensus --panel large --sample 3 --sample-seed s1
 
 ```
 
@@ -123,7 +127,9 @@ Extract:
 - agent: `peer`, `claude`, `codex`, `gemini`, `quorum`, or `consensus`;
 - panel: a local profile name;
 - timeout: 1–30 minutes, default 10;
-- direct model and optional effort, or repeated route-specific model/effort overrides.
+- direct model and optional effort, or repeated route-specific model/effort overrides;
+- panel-only sampling: `--sample <1-8>`, optional `--sample-seed <seed>` and
+  `--sample-quorum <n>`.
 
 Defaults and validation:
 
@@ -133,7 +139,9 @@ Defaults and validation:
 - reject unsupported agent names;
 - reject `--panel`, `--route-model`, or `--route-effort` for a direct single agent;
 - accept direct `--effort low|medium|high|xhigh|max` only for the Claude route; reject it for Codex/Gemini;
-- reject generic `--model` for `quorum` or `consensus`.
+- reject generic `--model` for `quorum` or `consensus`;
+- reject `--sample`, `--sample-seed`, or `--sample-quorum` for a direct single agent, and the seed
+  or quorum without `--sample`. Sampling is never inferred or defaulted.
 
 If no mode is supplied, ask what to review. `consensus` must always be explicitly named; never infer
 it from task risk, panel size, or an API key.
@@ -284,6 +292,14 @@ Retain and display:
 - `panelSha256`, `openrouterSha256`, and `promptSha256`;
 - `disabledModels` (policy status and matched rules) and every `policyDeniedRoutes` entry with its
   reasons. Denied routes still count towards both thresholds but are never invoked.
+
+With `--sample`, read [route sampling](references/review-panels.md#opt-in-route-sampling) first.
+Pass `--exclude-provider` for the current session's provider (`anthropic`, `openai`, or `google`)
+unless the user explicitly asked for same-provider routes. Display `sampling` (seed, pool, selected,
+ineligible routes and reasons, `sameProviderFill`) and repeat every sampling option, including the
+reported `--sample-seed`, unchanged in every later stage. Insufficient pools stop; never widen the
+pool, lower the count, re-check with another seed to avoid a route, or replace a failed route.
+One sampled opinion is never consensus.
 
 If profile validation fails or the disabled-model policy is invalid, stop before any route invocation. Missing route prerequisites degrade the
 panel; they do not authorize substitution.

@@ -18,6 +18,7 @@ quick-start and deliberately links to the detailed policy rather than reproducin
 | Ask a specific provider | `/second-opinion ask "…" --agent codex` | Runs exactly the named local CLI route. |
 | Check panel coverage | `/second-opinion review-pr 123 --agent quorum --panel focused` | Runs a named panel and reports whether enough configured routes returned. |
 | Compare panel claims | `/second-opinion validate-plan "…" --agent consensus --panel extreme` | Runs a named panel, then compares claims only if its consensus threshold is met. |
+| Hear an occasional different voice | `/second-opinion ask "…" --agent quorum --panel large --sample 1` | Randomly picks one eligible route from that panel, independent of the session's provider. |
 
 Use one peer for ordinary decisions. Use a panel when different provider perspectives are
 material enough to justify the extra time, review effort, and—where configured—cost.
@@ -84,6 +85,11 @@ Useful commands:
 `focused` is the local Claude-and-Codex built-in and may be overridden by an explicit local profile.
 Direct `peer` remains dynamic and is not a panel route. Timeouts default to 10 minutes and can be set
 from 1 to 30 minutes with `--timeout <minutes>`.
+
+Add `--sample <n>` to run only *n* routes chosen once from the selected panel, preferring distinct
+providers and skipping disabled, denied and same-as-session providers. The reported seed reproduces
+the choice (`--sample-seed`); failed routes are not replaced and one route is never consensus. See
+[route sampling](references/review-panels.md#opt-in-route-sampling).
 
 ## Setup
 

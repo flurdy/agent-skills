@@ -28,8 +28,11 @@ fresh private temporary directory. It never calls another action automatically.
 
 All requests require `version: 1`, `action`, and the same exact nonempty sanitized `prompt`.
 Optional `panel` defaults to `focused`. Optional `routeModels` and `routeEfforts` map exact route IDs
-to the overrides already supported by the coordinator (at most eight each). Repeat the same panel,
-prompt and overrides for every stage. Unknown fields, duplicate JSON keys and CLI arguments fail.
+to the overrides already supported by the coordinator (at most eight each). Optional
+[sampling](review-panels.md#opt-in-route-sampling) fields map to the coordinator flags: `sample`
+(integer 1–8), `sampleSeed`, `sampleQuorum` (integer) and `excludeProviders` (list of lowercase
+providers); the others require `sample`. Repeat the same panel, prompt, overrides and sampling
+fields for every stage, adding the `sampleSeed` that `check` reported. Unknown fields, duplicate JSON keys and CLI arguments fail.
 
 | Action | Additional fields | Result / authority |
 |---|---|---|

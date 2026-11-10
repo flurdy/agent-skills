@@ -74,6 +74,14 @@ done
 for invariant in '.agents/disabled-models.json' 'rejects any attempt to supply one' 'only make a threshold harder' 'fresh check and consent' 'not universal model enforcement'; do
   grep -Fq -- "$invariant" "$POLICY" || fail "missing disabled-model contract: $invariant"
 done
+PANELS="$ROOT/skills/second-opinion/references/review-panels.md"
+for invariant in '--exclude-provider' 'never consensus' 'repeat every sampling option' 'never widen'; do
+  grep -Fq -- "$invariant" "$SKILL" || fail "missing sampling invariant: $invariant"
+done
+for invariant in '## Opt-in route sampling' 'sha256-rank-v1' 'never replaced' 'never authorizes'; do
+  grep -Fq -- "$invariant" "$PANELS" || fail "missing sampling contract: $invariant"
+done
+grep -Fq 'sampleSeed' "$TRANSPORT" || fail 'stdin transport does not document sampling'
 python3 - "$SKILL" <<'PY'
 import pathlib
 import sys

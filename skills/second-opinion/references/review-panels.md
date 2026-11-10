@@ -211,6 +211,39 @@ Gemini effort are rejected. `--route-effort` also supports OpenRouter routes and
 included in consent binding. Generic `--model` remains for a single direct agent only and
 is invalid with `quorum` or `consensus`.
 
+## Opt-in route sampling
+
+Without `--sample`, panels run every enabled route as before. With it, the coordinator chooses a
+fixed number of routes from the selected profile once, before any launch:
+
+```text
+--sample 2 [--sample-seed SEED] [--sample-quorum N] [--exclude-provider anthropic]...
+```
+
+- **Pool:** enabled routes of the selected profile only, after disabled routes, directory-denied
+  routes and every `--exclude-provider` match are removed. Profiles are never merged; route IDs and
+  model identities are already unique, so no model gains extra weight.
+- **Choice:** routes are ranked by SHA-256 of the seed and route ID (`sha256-rank-v1`). The first
+  route of each provider is taken in rank order, then same-provider routes fill any remainder;
+  `sameProviderFill` discloses that fill. Route role, model, effort, output caps and consent policy
+  are unchanged. Availability is reported by `check`, not used to choose.
+- **Insufficient pool:** fewer eligible routes than the count fails with the reason. Nothing widens.
+- **Reproducibility:** `check` generates a 16-hex-digit seed when none is given and reports it in
+  `sampling`, together with the pool, selected IDs and each ineligible route's reason (`disabled`,
+  `disabled-by-policy`, `excluded-provider`). Every later stage must repeat the same sampling options
+  and that seed; a run stage without a seed fails.
+- **Binding:** only selected routes stay in the panel, and the sampling record is part of it, so the
+  panel, OpenRouter subset and consent digests bind the exact choice. A different seed, count,
+  quorum, exclusion, pool or policy is a stale check. Failed, declined, denied or timed-out sampled
+  routes are never replaced.
+- **Thresholds:** route `quorum` defaults to the sample count; `--sample-quorum` may lower it to
+  1..count. `consensusQuorum` becomes the smaller of that quorum and the sampled unique providers;
+  the profile's own thresholds do not apply. Consensus additionally needs at least two successful
+  providers, so one sampled opinion is never consensus.
+
+Sampling selects routes; it never authorizes them. Subscription checks, configured or fresh
+OpenRouter consent, and read-only/sanitization rules apply to the sampled routes as usual.
+
 ## Coordinator protocol
 
 The skill invokes `scripts/review-panel.sh` in four bounded stages. Guarded Pi sessions use the
