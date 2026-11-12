@@ -20,6 +20,56 @@ class NextBdTest(WorkspaceFixture):
     def run_next(self, directory: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
         return self.run_script(SCRIPT, directory, *arguments)
 
+    def test_parent_context_is_display_only_and_survives_filtered_parents(self) -> None:
+        date = "2026-01-01T00:00:00Z"
+        child = {**issue("child", 2, "task", date), "parent": "group"}
+        epic = issue("group", 2, "epic", date)
+        hidden = {**issue("hidden-child", 3, "feature", date), "parent": "closed-task"}
+        standalone = issue("group.1", 3, "task", date)
+        data = {
+            "ready": [epic, child, hidden, standalone,
+                      {**issue("backlog", 4, "task", date), "parent": "group"}],
+            "other": [{**issue("closed-task", 2, "task", date), "status": "closed"}],
+            **{category: [{**issue(category, 2, "task", date), "parent": "a|b\n\u001b"}]
+               for category in ("in_progress", "blocked", "deferred")},
+        }
+        workspace = self.create_workspace(root_data=data, repositories={
+            "repo-a": {"ready": [{**child, "parent": "other-group"}, epic]},
+        })
+        local = self.base / "local"
+        self.create_store(local, **data)
+        for directory, owner in ((workspace, "workspace | "), (local, "")):
+            with self.subTest(workspace=bool(owner)):
+                expected = ["child", "group", "group.1", "hidden-child"]
+                rows = json.loads(self.run_next(directory, "--json").stdout)
+                owned = [row for row in rows if row.get("repository", "workspace") == "workspace"]
+                self.assertEqual([row["id"] for row in owned], expected)
+                self.assertEqual(owned[0]["parent"], "group")
+                for flags in (("--list", "--backlog"), ("--safe",), ("--in-progress",)):
+                    output = self.run_next(directory, *flags).stdout
+                    self.assertIn("| Labels | Title | Parent |", output)
+                    self.assertIn(f"| {owner}child | P2 | task | - | Title for child | group |", output)
+                    self.assertIn(f"| {owner}group.1 | P3 | task | - | Title for group.1 | — |", output)
+                    self.assertIn("Title for hidden-child | closed-task |", output)
+                    self.assertNotIn("| Title for closed-task |", output)
+                    if "--in-progress" not in flags:
+                        for category in ("in_progress", "blocked", "deferred"):
+                            self.assertIn(f"Title for {category} | a&#124;b  |", output)
+                        self.assertNotIn("\u001b", output)
+                    if "--backlog" in flags:
+                        self.assertIn("Title for backlog | group |", output)
+                    if owner:
+                        self.assertIn("| repo-a | child | P2 | task | - | Title for child | other-group |", output)
+                filtered = self.run_next(directory, "--type=task").stdout
+                self.assertIn("Title for child | group |", filtered)
+                self.assertNotIn("Title for group |", filtered)
+                safe = json.loads(self.run_next(directory, "--safe-json").stdout)
+                self.assertEqual([(row["id"], row.get("parent"), row["rank"]) for row in safe["candidates"]],
+                                 [(row["id"], row.get("parent"), row["rank"]) for row in rows])
+        calls = self.recorded_calls()
+        self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
+        self.assertTrue(all(call["arguments"][0] in ("list", "blocked") for call in calls))
+
     def test_help_prints_supported_options_without_collecting(self) -> None:
         result = self.run_next(self.base, "--help")
 
@@ -176,7 +226,7 @@ class NextBdTest(WorkspaceFixture):
         )
 
         markdown = self.run_next(workspace, "--in-progress").stdout
-        self.assertIn("| # | Repo | ID | Pri | Type | Labels | Title |", markdown)
+        self.assertIn("| # | Repo | ID | Pri | Type | Labels | Title | Parent |", markdown)
         self.assertIn(
             "Tracker status: in progress (session activity unverified):", markdown
         )
@@ -215,7 +265,7 @@ class NextBdTest(WorkspaceFixture):
                 for category in ("in_progress", "blocked", "deferred"):
                     for index in range(55):
                         self.assertIn(f"| {owner}{category}-{index} | P4 |", result.stdout)
-                self.assertIn(f"| {owner}deferred-1 | P4 | task | scope | Title for deferred-1 | — |", result.stdout)
+                self.assertIn(f"| {owner}deferred-1 | P4 | task | scope | Title for deferred-1 | — | — |", result.stdout)
                 self.assertEqual("| Repo |" in result.stdout, bool(owner))
                 self.assertEqual(result.stdout.count("| # |"), 1)
                 self.assertEqual(result.stdout.count("| 1 |"), 1)
@@ -265,10 +315,10 @@ class NextBdTest(WorkspaceFixture):
                 self.assertIn("## Backlog (1 P4 beads; not auto-pickable, start by ID)", markdown)
                 self.assertIn("| Updated |", markdown)
                 self.assertIn(
-                    f"| {owner}backlog-chore | P4 | chore | - | Title for backlog-chore | 2026-05-29 |",
+                    f"| {owner}backlog-chore | P4 | chore | - | Title for backlog-chore | — | 2026-05-29 |",
                     markdown,
                 )
-                self.assertNotIn("| blocked-p4 | P4 | task | - | Title for blocked-p4 | 2026-01-03 |", markdown)
+                self.assertNotIn("| blocked-p4 | P4 | task | - | Title for blocked-p4 | — | 2026-01-03 |", markdown)
                 self.assertEqual(markdown.count("| # |"), 1)
                 candidates = json.loads(self.run_next(directory, "--list", "--json").stdout)
                 self.assertEqual([row["id"] for row in candidates], ["ready-task"])
@@ -387,7 +437,7 @@ class NextBdTest(WorkspaceFixture):
                     self.assertNotIn("## ", tail)
                     self.assertNotIn("Source diagnostics", tail)
                     self.assertTrue(output.rstrip("\n").endswith(
-                        f"| 1 | {owner}ready-task | P2 | task | - | Title for ready-task |"), tail)
+                        f"| 1 | {owner}ready-task | P2 | task | - | Title for ready-task | — |"), tail)
                     self.assertEqual(output.count("| # |"), 1)
             with self.subTest(directory=directory, arguments="--safe"):
                 safe = self.run_next(directory, "--safe").stdout
@@ -747,7 +797,7 @@ class NextBdTest(WorkspaceFixture):
         self.assertNotIn("selector", candidates[0])
 
         markdown = self.run_next(local, "--in-progress").stdout
-        self.assertIn("| # | ID | Pri | Type | Labels | Title |", markdown)
+        self.assertIn("| # | ID | Pri | Type | Labels | Title | Parent |", markdown)
         self.assertNotIn("| Repo |", markdown)
         self.assertIn(
             "Tracker status: in progress (session activity unverified):", markdown

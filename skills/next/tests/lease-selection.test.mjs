@@ -42,8 +42,8 @@ test('safe display keeps the familiar ranking with explicit lease checks, no emp
     ? { kind: 'unavailable', reason: 'no observation' } : { kind: root === '/busy' ? 'held' : 'free', root }));
   const output = renderSafeList(result);
   assert.match(output, /## Ready to review \(3 beads\)/);
-  assert.match(output, /\| # \| Repo \| ID \| Pri \| Type \| Labels \| Title \| Lease check \|/);
-  assert.match(output, /\| 1 \| workspace \| unknown \| P2 \| task \| - \| unknown \| unknown \|/);
+  assert.match(output, /\| # \| Repo \| ID \| Pri \| Type \| Labels \| Title \| Parent \| Lease check \|/);
+  assert.match(output, /\| 1 \| workspace \| unknown \| P2 \| task \| - \| unknown \| — \| unknown \|/);
   assert.match(output, /\| 2 \| workspace \| free .*\| free \|/);
   assert.match(output, /\| 3 \| workspace \| unavailable .*\| n\/a \|/);
   const main = output.split('## Occupied')[0];
@@ -62,6 +62,46 @@ test('safe display keeps the familiar ranking with explicit lease checks, no emp
   assert.match(output, /no observation|observer unavailable/);
 });
 
+test('parent context survives every safe queue without changing classification or numbering', async () => {
+  const child = { ...candidate('child'), parent: 'group' };
+  const epic = { ...candidate('group'), issue_type: 'epic' };
+  const generic = { ...candidate('generic'), parent: 'closed-task' };
+  const sameId = { ...child, repository: 'repo-a', selector: 'repo-a:child', parent: 'other-group' };
+  const data = {
+    ...packet([child, epic, generic, candidate('group.1'), sameId,
+      { ...candidate('held', ['/busy']), parent: 'group' },
+      { ...candidate('overlap', ['/api'], 'declared', ['web']), parent: 'group' }],
+    [{ ...candidate('active', [], 'unknown', ['web']), parent: 'a|b\n\u001b' }]),
+    blocked: [{ ...candidate('blocked'), parent: 'group' }],
+    deferred: [{ ...candidate('deferred'), parent: 'group' }],
+    other_machines: [{ ...candidate('remote'), parent: 'group',
+      machine_eligibility: { eligible: false, reason: 'requires another machine' } }],
+  };
+  const observer = async roots => roots.map(root => ({ root, kind: root === '/busy' ? 'held' : 'free' }));
+  for (const workspace of [true, false]) {
+    const result = await classifyCandidates({ ...data, workspace }, observer);
+    assert.deepEqual(result.eligible.map(row => row.id), ['child', 'group', 'generic', 'group.1', 'child']);
+    assert.deepEqual(result.occupied.map(row => row.id), ['held']);
+    assert.deepEqual(result.tracker_conflicts.map(row => row.id), ['overlap']);
+    const output = renderSafeList(result);
+    const owner = workspace ? 'workspace | ' : '';
+    assert.ok(output.includes('| Labels | Title | Parent | Lease check |'));
+    assert.ok(output.includes(`| 1 | ${owner}child | P2 | task | - | child | group | free |`));
+    assert.ok(output.includes(`| 2 | ${owner}group | P2 | epic | - | group | — | free |`));
+    assert.ok(output.includes(`| 3 | ${owner}generic | P2 | task | - | generic | closed-task | free |`));
+    assert.ok(output.includes(`| 4 | ${owner}group.1 | P2 | task | - | group.1 | — | free |`));
+    assert.ok(output.includes('| child | other-group | free |'));
+    assert.match(output, /\| active \| a&#124;b +\|/);
+    for (const id of ['held', 'overlap', 'blocked', 'deferred', 'remote']) {
+      assert.ok(output.includes(`| ${id} | group |`), id);
+    }
+    assert.doesNotMatch(output, /\u001b/);
+  }
+  const filtered = renderSafeList(await classifyCandidates(packet([child]), observer));
+  assert.ok(filtered.includes('| child | group | free |'));
+  assert.doesNotMatch(filtered, /\| group \| P2/);
+});
+
 test('local unknown-only display does not pretend no work or expose selector boilerplate in each row', async () => {
   const data = packet([candidate('a', [], 'unknown'), candidate('b', [], 'partial')]);
   data.workspace = false;
@@ -69,7 +109,7 @@ test('local unknown-only display does not pretend no work or expose selector boi
   for (const row of data.candidates) { row.repository = 'local'; row.selector = `local:${row.id}`; }
   const result = await classifyCandidates(data);
   const output = renderSafeList(result);
-  assert.match(output, /\| # \| ID \| Pri \| Type \| Labels \| Title \| Lease check \|/);
+  assert.match(output, /\| # \| ID \| Pri \| Type \| Labels \| Title \| Parent \| Lease check \|/);
   assert.match(output, /\| 1 \| a .*\| unknown \|/);
   assert.match(output, /\| 2 \| b .*\| partial \|/);
   assert.doesNotMatch(output, /\| local:a \||None eligible|## Occupied/);
@@ -239,11 +279,11 @@ test('elapsed wake dates are marked in the deferred table without touching ready
   assert.match(ready, /\| 1 \| workspace \| ready .*\| free \|/);
   assert.doesNotMatch(ready, /elapsed|⏰/);
   assert.match(later, /^\n\n⏰ 1 elapsed wake date: still stored deferred, not ready\. Read-only listing never wakes work; review the awaited event before undeferring\.\n\n\| Repo \|/);
-  assert.match(later, /\| workspace \| elapsed \| P3 \| task \| - \| elapsed \| 2000-01-01T00:00:00Z ⏰ elapsed \|/);
-  assert.match(later, /\| future \| 2999-12-31T23:59:59Z \|/);
-  assert.match(later, /\| icebox \| — \|/);
-  assert.match(later, /\| text \| soon \|/);
-  assert.match(later, /\| spoofed \| 2000-01-01T00:00:00Z \|/);
+  assert.match(later, /\| workspace \| elapsed \| P3 \| task \| - \| elapsed \| — \| 2000-01-01T00:00:00Z ⏰ elapsed \|/);
+  assert.match(later, /\| future \| — \| 2999-12-31T23:59:59Z \|/);
+  assert.match(later, /\| icebox \| — \| — \|/);
+  assert.match(later, /\| text \| — \| soon \|/);
+  assert.match(later, /\| spoofed \| — \| 2000-01-01T00:00:00Z \|/);
   assert.equal((later.match(/⏰ elapsed/g) ?? []).length, 1);
   const pending = renderSafeList(await classifyCandidates({ ...data, deferred: data.deferred.slice(1) }, free));
   assert.match(pending, /## Later — deferred \(4; not selectable\)\n\n\| Repo \|/);
@@ -266,7 +306,7 @@ test('safe view renders ready work last, directly above the review footer', asyn
     '### Check details', '## Other machines', '## Occupied — source held by another Pi session', '## Held back — same service as in-progress work', '## Ready to review']);
   const tail = output.split('## Ready to review (1 beads)')[1];
   assert.deepEqual(tail.trim().split('\n\n').map(block => block.split('\n')[0].slice(0, 12)), ['| # | Repo |', 'Lease check:', 'Numbers are ']);
-  assert.match(tail, /\| 1 \| workspace \| free \| P2 \| task \| - \| free \| free \|/);
+  assert.match(tail, /\| 1 \| workspace \| free \| P2 \| task \| - \| free \| — \| free \|/);
 });
 
 test('declared roots keep observer priority; label overflow is reported, not treated as free', async () => {

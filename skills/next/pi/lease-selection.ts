@@ -153,6 +153,7 @@ export async function classifyCandidates(packet, observer, signal) {
     const row = {
       position, selector: candidate.selector, id: candidate.id, repository: candidate.repository ?? 'local',
       priority: candidate.priority, issue_type: candidate.issue_type, title: candidate.title,
+      parent: candidate.parent ?? null,
       labels: candidate.labels ?? [], source_scope: scope, occupancy, tracker_overlap: conflicts,
       shared_services: [...new Set(overlaps.flatMap(row => row.services))].sort(),
       label_occupancy: labelOccupancy,
@@ -204,8 +205,8 @@ export function renderSafeList(result) {
   const ready = rows.filter(row => !occupied.includes(row) && row.tracker_overlap.length === 0);
   const repoHeaders = result.workspace ? ['Repo'] : [];
   const fields = row => [...(result.workspace ? [row.repository] : []), row.id, `P${row.priority}`,
-    row.issue_type, row.labels?.length ? row.labels.join(', ') : '-', row.title];
-  const headers = [...repoHeaders, 'ID', 'Pri', 'Type', 'Labels', 'Title'];
+    row.issue_type, row.labels?.length ? row.labels.join(', ') : '-', row.title, row.parent || '—'];
+  const headers = [...repoHeaders, 'ID', 'Pri', 'Type', 'Labels', 'Title', 'Parent'];
   const stores = result.unavailable_stores ?? [];
   const parts = stores.length ? [`## ⚠️ Beads store unavailable (${stores.length})`,
     'Work from these stores is not listed below; this is not an empty backlog.',

@@ -79,12 +79,15 @@ jq -r \
     [$claims[] | select((.repository // "") == ($candidate.repository // "")) |
       {id, services: [(.services // [])[] | select(. as $service | ($candidate.services // []) | index($service))]} |
       select(.services | length > 0)];
+  def parent_cell: if .parent == null or .parent == "" then "—" else .parent end;
+  def issue_headers($workspace):
+    (if $workspace then ["Repo"] else [] end) + ["ID", "Pri", "Type", "Labels", "Title", "Parent"];
   def issue_fields($workspace):
     (if $workspace then [.repository] else [] end) +
-    [.id, "P\(.priority)", .issue_type, (.labels // [] | if length == 0 then "-" else join(", ") end), .title];
+    [.id, (if .priority == null then "—" else "P\(.priority)" end), .issue_type,
+     (.labels // [] | if length == 0 then "-" else join(", ") end), .title, parent_cell];
   def safe_table($title; $rows; $workspace; $numbered; $overlap):
-    ((if $numbered then ["#"] else [] end) + (if $workspace then ["Repo"] else [] end) +
-      ["ID", "Pri", "Type", "Labels", "Title", "Lease check"] +
+    ((if $numbered then ["#"] else [] end) + issue_headers($workspace) + ["Lease check"] +
       (if $overlap then ["Shared service"] else [] end)) as $headers |
     "## \($title) (\($rows | length) beads)\n\n" +
     (if $overlap then "May collide with claimed work; labels only, not lease evidence.\n\n" else "" end) +
@@ -100,8 +103,8 @@ jq -r \
   def other_table($rows; $workspace):
     if ($rows | length) == 0 then "" else
       "\n\n## Other machines (\($rows | length) beads; not selectable here)\n\n" +
-      (((if $workspace then ["Repo"] else [] end) + ["ID", "Pri", "Type", "Labels", "Title", "Run on / reason"]) | row) + "\n" +
-      (((if $workspace then ["Repo"] else [] end) + ["ID", "Pri", "Type", "Labels", "Title", "Run on / reason"]) | map("---") | row) + "\n" +
+      ((issue_headers($workspace) + ["Run on / reason"]) | row) + "\n" +
+      ((issue_headers($workspace) + ["Run on / reason"]) | map("---") | row) + "\n" +
       ($rows | sort_by(.priority, .created_at, (.repository // ""), .id) | map(
         issue_fields($workspace) + [.machine_eligibility.reason] | row) | join("\n"))
     end;
@@ -123,18 +126,14 @@ jq -r \
   def defer_cell:
     if .defer_elapsed == true then "\(.defer_until | text) ⏰ elapsed" else .defer_until end;
   def non_ready_table($title; $status; $rows; $workspace; $extra):
-    ((if $workspace then ["Repo"] else [] end) +
-      ["ID", "Pri", "Type", "Labels", "Title"] +
-      (if $extra == "" then [] else [$extra] end)) as $headers |
+    (issue_headers($workspace) + (if $extra == "" then [] else [$extra] end)) as $headers |
     "\n\n## \($title) (\($rows | length) \($status))\n" +
     (if $title | ascii_downcase | contains("in progress") then "\nTracker claims; session activity unverified.\n" else "" end) +
     (if $extra == "Defer until" then elapsed_note($rows) else "" end) +
     (if ($rows | length) == 0 then "\n_None._" else
       "\n" + ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
       ($rows | sort_by(.priority, .created_at, (.repository // ""), .id) | map(
-        ((if $workspace then [.repository] else [] end) +
-          [.id, (if .priority == null then "—" else "P\(.priority)" end),
-           .issue_type, (.labels // [] | if length == 0 then "-" else join(", ") end), .title] +
+        (issue_fields($workspace) +
           (if $extra == "Blocked by" then [blocker_context]
            elif $extra == "Defer until" then [defer_cell]
            elif $extra == "Updated" then [(.updated_at // .created_at // "—")[0:10]]
@@ -217,20 +216,11 @@ jq -r \
   elif $json_output == "true" then
     $ranked
   else
+    (["#"] + issue_headers($workspace)) as $headers |
     ("## Ready to Work (\($ranked | length) beads)\n" +
-    (if $workspace then
-      "| # | Repo | ID | Pri | Type | Labels | Title |\n" +
-      "|---|---|---|---|---|---|---|\n"
-    else
-      "| # | ID | Pri | Type | Labels | Title |\n" +
-      "|---|---|---|---|---|---|\n"
-    end) +
+    ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
     ($ranked | to_entries | map(
-      if $workspace then
-        "| \(.key + 1) | \(.value.repository) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
-      else
-        "| \(.key + 1) | \(.value.id) | P\(.value.priority) | \(.value.issue_type) | \(.value.labels // [] | if length == 0 then "-" else join(", ") end) | \(.value.title) |"
-      end
+      [.key + 1] + (.value | issue_fields($workspace)) | row
     ) | join("\n"))) as $ready_table |
     (if ($diagnostics | length) > 0 then
       "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + .) | join("\n"))
@@ -250,9 +240,9 @@ jq -r \
       "\n\nTracker status: in progress (session activity unverified):\n" +
       ($in_progress | map(
         if $workspace then
-          "- [\(.repository)] `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\""
+          "- [\(.repository)] `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\" (Parent: \(parent_cell | cell))"
         else
-          "- `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\""
+          "- `\(.id)` (P\(.priority) \(.issue_type)) \"\(.title)\" (Parent: \(parent_cell | cell))"
         end
       ) | join("\n")) +
       $diagnostics_block + other_table($other_machines; $workspace)

@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.25.0"
+version: "1.26.0"
 author: "flurdy"
 ---
 
@@ -130,38 +130,38 @@ never drop `--readonly`, loop, repair, sync or claim a bead as part of recovery.
 
 Tracker claims; session activity unverified.
 
-| Repo | ID | Pri | Type | Labels | Title |
-|---|---|---|---|---|---|
-| frontend | web-xyz | P2 | feature | cache | Implement caching layer |
+| Repo | ID | Pri | Type | Labels | Title | Parent |
+| --- | --- | --- | --- | --- | --- | --- |
+| frontend | web-xyz | P2 | feature | cache | Implement caching layer | — |
 
 ## Blocked (1 beads; not selectable)
 
-| Repo | ID | Pri | Type | Labels | Title | Blocked by |
-|---|---|---|---|---|---|---|
-| events | event-pqr | P2 | task | auth | Update provider | event-jkl |
+| Repo | ID | Pri | Type | Labels | Title | Parent | Blocked by |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| events | event-pqr | P2 | task | auth | Update provider | — | event-jkl |
 
 ## Deferred (2 beads; not selectable)
 
 ⏰ 1 elapsed wake date: still stored deferred, not ready. Read-only listing never wakes work; review the awaited event before undeferring.
 
-| Repo | ID | Pri | Type | Labels | Title | Defer until |
-|---|---|---|---|---|---|---|
-| workspace | agents-mno | P3 | task | tooling | Revisit tooling | 2026-10-01T00:00:00Z ⏰ elapsed |
-| workspace | agents-pqr | P3 | task | vendor | Retry vendor upgrade | 2026-12-01T00:00:00Z |
+| Repo | ID | Pri | Type | Labels | Title | Parent | Defer until |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| workspace | agents-mno | P3 | task | tooling | Revisit tooling | — | 2026-10-01T00:00:00Z ⏰ elapsed |
+| workspace | agents-pqr | P3 | task | vendor | Retry vendor upgrade | — | 2026-12-01T00:00:00Z |
 
 ## Backlog (1 P4 beads; not auto-pickable, start by ID)
 
-| Repo | ID | Pri | Type | Labels | Title | Updated |
-|---|---|---|---|---|---|---|
-| frontend | web-klm | P4 | chore | - | Replace cookie helper | 2026-05-29 |
+| Repo | ID | Pri | Type | Labels | Title | Parent | Updated |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| frontend | web-klm | P4 | chore | - | Replace cookie helper | — | 2026-05-29 |
 
 ## Ready to Work (3 beads)
 
-| # | Repo     | ID         | Pri | Type    | Labels          | Title                   |
-|---|----------|------------|-----|---------|-----------------|-------------------------|
-| 1 | frontend | web-abc    | P1  | bug     | login           | Fix login timeout       |
-| 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV       |
-| 3 | events   | event-ghi  | P2  | task    | auth            | Update dependencies     |
+| # | Repo | ID | Pri | Type | Labels | Title | Parent |
+| --- | ---------- | ------------ | ----- | --------- | ----------------- | ------------------------- | --- |
+| 1 | frontend | web-abc | P1 | bug | login | Fix login timeout | — |
+| 2 | workspace | agents-def | P2 | feature | backend, orders | Add export to CSV | agents-epic |
+| 3 | events | event-ghi | P2 | task | auth | Update dependencies | — |
 
 Pick a number from ready work, a ready bead ID, or type task/bug/quick to auto-pick.
 ```
@@ -174,6 +174,13 @@ on that order.
 The `Repo` column appears only for validated workspace aggregation. Local single-store
 output omits it in every table. Non-ready rows have no `#` column and are never part of
 picker numbering; empty non-ready categories show their heading and `_None._`.
+Every bead table includes **Parent** after Title: the recorded parent ID in that row's owning
+store, or `—` when absent/empty. It shows membership even when the parent is filtered out or
+closed; it does not claim that every parent is an epic. Do not infer parents from dotted IDs or
+labels, resolve them in another store, or fetch parent titles per row. JSON preserves `parent`;
+compact in-progress bullets append `(Parent: <id-or-—>)`. This is display context only: do not
+group/reorder rows or change ranking, readiness, counts, picker numbering or selection.
+
 Non-ready tables include all priorities. Blocker IDs (or count) and `defer_until` are shown
 when available; missing context is `—`. Blocked membership retains `bd blocked` semantics;
 deferred membership comes from an explicit `--status=deferred` read, not a date heuristic.
@@ -404,7 +411,7 @@ The helper's compact Markdown is the familiar **Ready to review** ranked table,
 not five diagnostic queues. It is rendered last, after the non-selectable, Occupied and Held
 back tables, so it sits closest to the picker; preserve that order, its original ranking and
 all rows. Use the ordinary
-columns (`#`, optional `Repo`, `ID`, `Pri`, `Type`, `Labels`, `Title`) plus one **Lease check**
+columns (`#`, optional `Repo`, `ID`, `Pri`, `Type`, `Labels`, `Title`, `Parent`) plus one **Lease check**
 column: `free`, `unknown` (no declaration), `partial`, `invalid`, or `n/a` (observer
 unavailable); Occupied rows show `held` or `held (label)`. A legend line follows the table.
 
@@ -738,11 +745,11 @@ Within each bucket, preserve the `next-bd` rank order.
 ```markdown
 ## Ready by Sprint ({total} beads)
 
-| # | Repo | ID | Pri | Type | Jira | Sprint | Status | Title |
-|---|------|----|-----|------|------|--------|--------|-------|
-| 1 | events | mycode-agf | P1 | task | [AB-1088](https://yourorg.atlassian.net/browse/AB-1088) | 31 (active) | In Progress | Replace event attribution wiring... |
-| 2 | workspace | mycode-6ic | P2 | task | [AB-1424](https://yourorg.atlassian.net/browse/AB-1424) | 32 (future) | Backlog | Make analytics client stateless... |
-| 3 | frontend | mycode-y8p | P2 | bug | — | — | — | Auth0 postLogin race... |
+| # | Repo | ID | Pri | Type | Jira | Sprint | Status | Title | Parent |
+| --- | ------ | ---- | ----- | ------ | ------ | -------- | -------- | ------- | --- |
+| 1 | events | mycode-agf | P1 | task | [AB-1088](https://yourorg.atlassian.net/browse/AB-1088) | 31 (active) | In Progress | Replace event attribution wiring... | — |
+| 2 | workspace | mycode-6ic | P2 | task | [AB-1424](https://yourorg.atlassian.net/browse/AB-1424) | 32 (future) | Backlog | Make analytics client stateless... | — |
+| 3 | frontend | mycode-y8p | P2 | bug | — | — | — | Auth0 postLogin race... | — |
 ```
 
 - `#` is a continuous index for the picker.
@@ -750,6 +757,8 @@ Within each bucket, preserve the `next-bd` rank order.
 - `Jira` column: markdown link `[KEY](https://yourorg.atlassian.net/browse/KEY)`. `—` if no key.
 - `Sprint` column: number + state suffix only (`31 (active)`, `32 (future)`). Strip the project prefix from sprint names like `"PROJ Sprint 31"`. For descriptive sprint names without an obvious number, keep the full name. `—` for no-sprint and no-Jira beads.
 - `Status` column: Jira status. `—` for no-Jira beads.
+- `Parent` column: recorded Beads parent ID in the row's owning store, or `—`; not a Jira epic
+  lookup. Preserve it when sprint enrichment fails or the parent is absent from this view.
 - If the Jira call fails: render the table without Sprint/Status columns and with no Jira links. Footnote: `_Jira unavailable: {error}. Showing beads in rank order without sprint info._`
 - If all beads end up in the same sprint, footnote: `_All ready beads in {sprint name}._`
 

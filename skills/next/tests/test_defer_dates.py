@@ -79,14 +79,14 @@ class ElapsedDeferListingTest(WorkspaceFixture):
                 listing = self.run_next(directory, "--list").stdout
                 safe = self.run_next(directory, "--safe").stdout
                 marked = {
-                    f"| {owner}wake-elapsed | P3 | task | - | Title for wake-elapsed | {ELAPSED} ⏰ elapsed |",
-                    f"| {owner}wake-overlap | P2 | task | - | Title for wake-overlap | {ELAPSED} ⏰ elapsed |",
+                    f"| {owner}wake-elapsed | P3 | task | - | Title for wake-elapsed | — | {ELAPSED} ⏰ elapsed |",
+                    f"| {owner}wake-overlap | P2 | task | - | Title for wake-overlap | — | {ELAPSED} ⏰ elapsed |",
                 }
                 plain = {
-                    f"| {owner}wake-future | P3 | task | - | Title for wake-future | {FUTURE} |",
-                    f"| {owner}wake-icebox | P3 | task | - | Title for wake-icebox | — |",
-                    f"| {owner}wake-text | P3 | task | - | Title for wake-text | soon |",
-                    f"| {owner}wake-naive | P3 | task | - | Title for wake-naive | 2000-01-01T00:00:00 |",
+                    f"| {owner}wake-future | P3 | task | - | Title for wake-future | — | {FUTURE} |",
+                    f"| {owner}wake-icebox | P3 | task | - | Title for wake-icebox | — | — |",
+                    f"| {owner}wake-text | P3 | task | - | Title for wake-text | — | soon |",
+                    f"| {owner}wake-naive | P3 | task | - | Title for wake-naive | — | 2000-01-01T00:00:00 |",
                 }
                 for output, heading in ((listing, "## Deferred (6 beads; not selectable)"),
                                         (safe, "## Later — deferred (6 beads; not selectable)")):
@@ -123,8 +123,8 @@ class ElapsedDeferListingTest(WorkspaceFixture):
             output = self.run_next(local, *arguments).stdout
             self.assertNotIn("elapsed", output)
             self.assertNotIn("⏰", output)
-            self.assertIn(f"| Title for later | {FUTURE} |", output)
-            self.assertIn("| Title for icebox | — |", output)
+            self.assertIn(f"| Title for later | — | {FUTURE} |", output)
+            self.assertIn("| Title for icebox | — | — |", output)
 
 
 if __name__ == "__main__":

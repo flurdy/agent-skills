@@ -150,7 +150,7 @@ class SourceScopeTest(WorkspaceFixture):
         self.assertIn("no in-process Pi observer", fallback.stdout)
         self.assertIn("case-2", fallback.stdout)
         self.assertIn("## Ready to review (6 beads)", fallback.stdout)
-        self.assertIn("| # | ID | Pri | Type | Labels | Title | Lease check |", fallback.stdout)
+        self.assertIn("| # | ID | Pri | Type | Labels | Title | Parent | Lease check |", fallback.stdout)
         self.assertIn("| unknown |", fallback.stdout)
         self.assertIn("| n/a |", fallback.stdout)
         self.assertIn("n/a = observer unavailable", fallback.stdout)
