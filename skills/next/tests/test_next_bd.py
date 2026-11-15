@@ -74,7 +74,7 @@ class NextBdTest(WorkspaceFixture):
         result = self.run_next(self.base, "--help")
 
         self.assertIn("Usage: next-bd [OPTIONS]", result.stdout)
-        for option in ("--list", "--backlog", "--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
+        for option in ("--list", "--backlog", "--status", "--in-progress", "--avoid-busy", "--json", "--type=TYPE"):
             self.assertIn(option, result.stdout)
         self.assertEqual(result.stderr, "")
         self.assertEqual(self.recorded_calls(), [])
@@ -282,6 +282,46 @@ class NextBdTest(WorkspaceFixture):
                 self.assertIn("--limit=0", call["arguments"])
         self.assertTrue(any("--status=deferred" in call["arguments"] for call in calls))
 
+    def test_status_view_shows_only_non_ready_tables(self) -> None:
+        date = "2026-01-01T00:00:00Z"
+        data = {
+            "ready": [issue("ready-task", 2, "task", date),
+                      issue("elsewhere", 2, "task", date, labels=["run-on:nowhere"]),
+                      issue("backlog-task", 4, "task", date)],
+            "in_progress": [issue("claimed", 2, "task", date)],
+            "deferred": [{**issue("snoozed", 3, "task", date), "defer_until": "2026-01-02T00:00:00Z"}],
+        }
+        workspace = self.create_workspace(repositories={
+            "repo-a": data,
+            "down": {"faults": {"ready": "dolt-down"}},
+        })
+        local = self.base / "local"
+        self.create_store(local, **data)
+        for directory, owner in ((workspace, "repo-a | "), (local, "")):
+            with self.subTest(workspace=bool(owner)):
+                self.assertIn("## Other machines", self.run_next(directory, "--list", "--backlog").stdout)
+                result = self.run_next(directory, "--status")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                output = result.stdout
+                self.assertIn("## In Progress (1 beads; not selectable)", output)
+                self.assertIn("## Blocked (0 beads; not selectable)", output)
+                self.assertIn("## Deferred (1 beads; not selectable)", output)
+                self.assertIn("_None._", output)
+                self.assertIn(f"| {owner}claimed | P2 |", output)
+                self.assertIn("2026-01-02T00:00:00Z ⏰ elapsed", output)
+                self.assertEqual("| Repo |" in output, bool(owner))
+                for absent in ("## Ready to Work", "| # |", "## Backlog", "## Other machines",
+                               "ready-task", "elsewhere", "backlog-task", "Pick a number"):
+                    self.assertNotIn(absent, output)
+                self.assertEqual(self.run_next(directory, "--status", "--list", "--backlog").stdout, output)
+                self.assertEqual(self.run_next(directory, "--status", "--json").stdout,
+                                 self.run_next(directory, "--json").stdout)
+                if owner:
+                    self.assertTrue(output.startswith("## ⚠️ Beads store unavailable (1)"), output)
+                    self.assertIn("**down**", output)
+        calls = self.recorded_calls()
+        self.assertTrue(all("--readonly" in call["arguments"] for call in calls))
+
     def test_full_listing_shows_empty_categories(self) -> None:
         workspace = self.create_workspace()
         local = self.base / "local"
@@ -460,6 +500,14 @@ class NextBdTest(WorkspaceFixture):
                          "_None._", "non-selectable", "never picker indexes",
                          "Backlog section", "--backlog", "Never list bead IDs in prose"):
             self.assertIn(required, listing)
+
+    def test_status_instructions_are_read_only_without_picker(self) -> None:
+        skill = (SKILL_DIR / "SKILL.md").read_text()
+        self.assertIn("/next status", skill.split("## What This Skill Does", 1)[0])
+        status = skill.split("## Status Mode", 1)[1].split("\n## ", 1)[0]
+        for required in ("next-bd --status", "in-progress, blocked, and deferred", "_None._",
+                         "Never mark", "no picker prompt"):
+            self.assertIn(required, status)
 
     def test_non_ready_cells_cannot_split_markdown_rows(self) -> None:
         local = self.base / "local"

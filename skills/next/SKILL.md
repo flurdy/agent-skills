@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.26.0"
+version: "1.27.0"
 author: "flurdy"
 ---
 
@@ -35,6 +35,7 @@ each workflow's boundaries and all required approvals. Never select a second bea
 /next                    # Show ready beads as a ranked table (same as `list`)
 /next list               # Explicitly render the full ranked table, then ask which to pick
 /next backlog            # Same, always including the P4 backlog table
+/next status             # Only in-progress, blocked and deferred tables; no picker
 /next safe               # Explicit source scope + advisory local Pi occupancy; separate unknowns
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next recover <repo>     # Check one unavailable store; confirm local startup, then retry once
@@ -253,6 +254,7 @@ When invoked:
    - `recover <repository>`: Follow [attended recovery](references/dolt-recovery.md);
      do not pass `recover` to `next-bd` or treat it as a bead selector.
    - `backlog`: Run `next-bd --list --backlog` and render it as in Listing Mode
+   - `status`: Follow **Status Mode** below; never pick or claim
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Follow **Lease-aware safe selection** below; do not equate `--avoid-busy` with source safety
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
@@ -623,6 +625,17 @@ value; customized-workspace `init` may refuse rather than overwrite it. There is
 CLI flag or update command. Install a supporting `/next` before setting the field: older consumers
 may ignore it and continue reporting missing local storage. Other workspace collectors are not
 changed by this `/next` extension.
+
+## Status Mode
+
+`/next status` inspects work that is not ready: run
+`~/.agents/skills/next/scripts/next-bd --status` and reproduce its output in your reply. It
+contains any leading unavailable-store notice, the machine line, the complete
+in-progress, blocked, and deferred tables (empty ones keep their heading and `_None._`,
+deferred rows keep the `⏰ elapsed` marker) and any source diagnostics. It has no ranked ready, Backlog or Other
+machines table, no numbers and no picker prompt. Never mark anything `in_progress` or treat a
+row as selectable; to start work, the user runs `/next` or names a bead. `--status` overrides
+`--list`; `--json` output is unchanged. Safe mode has no status variant.
 
 ## Listing Mode (default and `list`)
 

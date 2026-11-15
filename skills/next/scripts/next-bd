@@ -11,6 +11,7 @@ Options:
   --list         Include complete non-selectable in-progress, blocked, deferred tables,
                  plus a P4 backlog table when fewer than 3 beads are ready
   --backlog      Always include the P4 backlog table with --list
+  --status       Show only the in-progress, blocked and deferred tables (overrides --list)
   --in-progress  Include a compact in-progress summary (ignored with --list)
   --avoid-busy   Exclude ready beads whose labels are busy in their store (tracker-only)
   --safe         Show scope/occupancy-unavailable queues without certifying safety
@@ -23,6 +24,7 @@ EOF
 
 FULL_LIST=false
 SHOW_BACKLOG=false
+STATUS_ONLY=false
 BACKLOG_THRESHOLD=3
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
@@ -34,6 +36,7 @@ for arg in "$@"; do
   case "$arg" in
     --list)        FULL_LIST=true ;;
     --backlog)     SHOW_BACKLOG=true ;;
+    --status)      STATUS_ONLY=true ;;
     --in-progress) SHOW_IN_PROGRESS=true ;;
     --avoid-busy)  AVOID_BUSY=true ;;
     --json)        JSON_OUTPUT=true ;;
@@ -61,6 +64,7 @@ jq -r \
   --arg full_list "$FULL_LIST" \
   --arg show_ip "$SHOW_IN_PROGRESS" \
   --arg show_backlog "$SHOW_BACKLOG" \
+  --arg status_only "$STATUS_ONLY" \
   --argjson backlog_threshold "$BACKLOG_THRESHOLD" \
   --arg avoid_busy "$AVOID_BUSY" \
   --arg json_output "$JSON_OUTPUT" \
@@ -225,11 +229,14 @@ jq -r \
     (if ($diagnostics | length) > 0 then
       "\n\nSource diagnostics:\n" + ($diagnostics | map("- " + .) | join("\n"))
     else "" end) as $diagnostics_block |
+    (non_ready_table("In Progress"; "beads; not selectable"; $in_progress; $workspace; "") +
+     non_ready_table("Blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") +
+     non_ready_table("Deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until")) as $non_ready |
     unavailable_notice($unavailable) + machine_notice($payload.machine) +
-    if $full_list == "true" then
-      non_ready_table("In Progress"; "beads; not selectable"; $in_progress; $workspace; "") +
-      non_ready_table("Blocked"; "beads; not selectable"; $payload.blocked; $workspace; "Blocked by") +
-      non_ready_table("Deferred"; "beads; not selectable"; $payload.deferred; $workspace; "Defer until") +
+    if $status_only == "true" then
+      $non_ready + $diagnostics_block
+    elif $full_list == "true" then
+      $non_ready +
       (if $show_backlog == "true" or
          (($ranked | length) < $backlog_threshold and ($backlog | length) > 0) then
         non_ready_table("Backlog"; "P4 beads; not auto-pickable, start by ID"; $backlog; $workspace; "Updated")
