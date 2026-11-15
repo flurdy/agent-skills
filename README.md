@@ -6,8 +6,11 @@ templates in one source so workflows can be authored once and used across client
 
 ## Related repositories
 
-These companion repositories are installed and versioned independently; `make apply` does not
-install them:
+The integrations below are optional, installed and versioned independently; `make apply` does
+not install them. This list covers integrations directly used by these workflows, not a general
+catalog of Pi extensions or personally installed providers.
+
+### First-party companions
 
 - [AI Tools](https://github.com/flurdy/ai-tools) — launchers, statusline, and cross-client runtime
   glue for Pi, Claude Code, and Codex.
@@ -18,11 +21,12 @@ install them:
 - [Pi Session Mode](https://github.com/flurdy/pi-session-mode) — provides guarded plan/implement
   modes and scoped writer leases as an accidental-change guard, not a sandbox.
 
-Optional upstream runtime:
+### Third-party Pi integrations
 
 - [pi-subagents](https://github.com/nicobailon/pi-subagents) — an independently maintained Pi
   delegation runtime used by `delegate-work` for lifecycle and mechanics when installed; it is not
-  bundled with or owned by this project.
+  bundled with or owned by this project. See the [Pi runtime adapter](skills/delegate-work/references/runtime-adapters.md#pi)
+  for workflow-specific guidance and the upstream repository for installation and runtime details.
 
 ## What you get
 
