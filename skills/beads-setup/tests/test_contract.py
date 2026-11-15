@@ -31,6 +31,15 @@ class SetupContractTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, self.text)
 
+    def test_ancestor_classification_is_read_only_and_narrow(self):
+        self.assertIn("Bash(python3 ~/.agents/skills/beads-setup/scripts/ancestor_stores.py:*)", self.text)
+        self.assertIn("python3 ~/.agents/skills/beads-setup/scripts/ancestor_stores.py ROOT", self.text)
+        for phrase in ("registry-only", "never opens", "project-store", "redirect", "across the Git root",
+                       "BEADS_DIR", "Do not move, delete", "bd 1.3.4"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, self.text)
+        self.assertNotIn("any ancestor store bd might discover", self.text)
+
     def test_individual_mutations_are_gated_and_no_executor_is_added(self):
         self.assertIn("fresh confirmation immediately before each mutation", self.text)
         self.assertIn("not-visible", self.text)

@@ -1,4 +1,5 @@
 """Opt-in characterization of the installed bd in disposable repositories; no network or publication."""
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -8,18 +9,28 @@ import tempfile
 import unittest
 
 BD = shutil.which("bd")
+CLASSIFIER = Path(__file__).resolve().parents[1] / "scripts/ancestor_stores.py"
+_spec = importlib.util.spec_from_file_location("ancestor_stores", CLASSIFIER)
+ancestor_stores = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(ancestor_stores)
+
+
+def snapshot(path):
+    """Names, bytes and modification times beneath path, for an unchanged-state assertion."""
+    return {str(item.relative_to(path)): (item.stat().st_mtime_ns, item.read_bytes() if item.is_file() else None)
+            for item in sorted(path.rglob("*"))}
 
 
 @unittest.skipUnless(os.environ.get("BEADS_NATIVE_SETUP_TESTS") == "1", "opt in with BEADS_NATIVE_SETUP_TESTS=1")
 class NativeSetupTests(unittest.TestCase):
     def setUp(self):
         self.assertTrue(BD, "native gate requires an installed bd")
-        # Native init fixtures must have no ancestor Beads store to discover.
+        # Native init fixtures must have no discoverable ancestor store; registry-only ancestors are inert.
         self.temp = tempfile.TemporaryDirectory(prefix="native-setup-")
         self.addCleanup(self.temp.cleanup)
-        self.base = Path(self.temp.name)
-        self.assertFalse(any(os.path.lexists(parent / ".beads") for parent in self.base.parents),
-                         "fixture has an ancestor Beads store; refuse before invoking bd")
+        self.base = Path(os.path.realpath(self.temp.name))
+        report = ancestor_stores.classify(str(self.base))
+        self.assertEqual(report["status"], "clear", f"fixture ancestors could route bd: {report['entries']}")
         self.home = self.base / "home"
         self.home.mkdir()
         self.repo = self.base / "target"
@@ -51,6 +62,64 @@ class NativeSetupTests(unittest.TestCase):
     def inspect_bd(self, *args):
         return self.call("/usr/bin/env", "--chdir=" + str(self.repo), BD, "-C", str(self.repo),
                          "--sandbox", "--readonly", *args)
+
+    def where(self, directory, *prefix, flag=True):
+        target = ("-C", str(directory)) if flag else ()
+        result = self.call(*prefix, "/usr/bin/env", "--chdir=" + str(directory), BD, *target,
+                           "--sandbox", "--readonly", "where", "--json", check=False)
+        located = json.loads(result.stdout) if result.stdout.strip().startswith("{") else {}
+        return result.returncode, {**located, "stderr": result.stderr.strip()}
+
+    def init(self, directory, prefix, *remote):
+        return self.call("/usr/bin/env", "--chdir=" + str(directory), BD, "--sandbox", "init", "--prefix", prefix,
+                         *remote, "--non-interactive", "--skip-agents", "--skip-hooks", check=False)
+
+    def test_registry_only_ancestor_does_not_route_fresh_init(self):
+        ancestor = self.base / ".beads"
+        ancestor.mkdir()
+        for name in ("registry.json", "registry.lock", "machine-id"):
+            (ancestor / name).write_text("{}\n")
+        (ancestor / "eventsData").mkdir()
+        report = ancestor_stores.classify(str(self.repo))
+        self.assertEqual(report["status"], "clear")
+        self.assertIn({"path": str(ancestor), "kind": "registry-only"}, report["entries"])
+        before = snapshot(ancestor)
+        for flag in (True, False):
+            code, located = self.where(self.repo, flag=flag)
+            self.assertNotEqual(code, 0, f"registry-only ancestor bound bd: {located}")
+        result = self.init(self.repo, "fixture", "--remote", self.url)
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        code, located = self.where(self.repo)
+        self.assertEqual((code, located.get("path")), (0, str(self.repo / ".beads")))
+        self.assertEqual(self.inspect_bd("config", "get", "sync.remote").stdout.strip(), self.url)
+        self.assertEqual(snapshot(ancestor), before, "registry-only ancestor changed")
+
+    def test_real_ancestor_store_outside_independent_git_root_routes_bd(self):
+        outer = self.base / "outer"
+        self.seed(outer)
+        result = self.init(outer, "outer")
+        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+        inner = outer / "inner"
+        self.seed(inner)
+        self.assertEqual(self.call("git", "-C", str(inner), "rev-parse", "--show-toplevel").stdout.strip(), str(inner))
+        report = ancestor_stores.classify(str(inner))
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["entries"][0]["kind"], "project-store")
+        before = snapshot(outer / ".beads")
+        # -C lookups aimed at the fresh target bind the ancestor store across the Git-root boundary;
+        # the cwd-only lookup used by fresh init stops at the Git root.
+        code, located = self.where(inner)
+        self.assertEqual((code, located.get("path")), (0, str(outer / ".beads")), located)
+        code, located = self.where(inner, flag=False)
+        self.assertNotEqual(code, 0, located)
+        # An ambient override routes the cwd-only form, even for an unrelated store-free target.
+        code, located = self.where(self.repo, "/usr/bin/env", "BEADS_DIR=" + str(outer / ".beads"), flag=False)
+        self.assertEqual((code, located.get("path")), (0, str(outer / ".beads")), located)
+        after = snapshot(outer / ".beads")
+        changed = sorted(key for key in before.keys() | after.keys() if before.get(key) != after.get(key))
+        # Characterized on bd 1.3.4: even --readonly store-opening probes rewrite Dolt manifest/journal
+        # files, so preview classification lists names and never opens an ancestor store with bd.
+        self.assertTrue(all(key.startswith("embeddeddolt/") for key in changed), changed)
 
     def seed(self, path):
         path.mkdir()

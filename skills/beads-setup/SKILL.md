@@ -1,11 +1,11 @@
 ---
 name: beads-setup
 description: Preview and separately confirm a fresh repository Beads store with a dedicated private GitHub Dolt remote. Refuses existing state; keeps initialization, creation, and first publication individually gated.
-allowed-tools: "Read,AskUserQuestion,Bash(python3 ~/.agents/skills/beads-setup/scripts/github_state.py:*)"
+allowed-tools: "Read,AskUserQuestion,Bash(python3 ~/.agents/skills/beads-setup/scripts/github_state.py:*),Bash(python3 ~/.agents/skills/beads-setup/scripts/ancestor_stores.py:*)"
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.1"
+version: "0.3.0"
 author: "flurdy"
 ---
 
@@ -31,9 +31,9 @@ silent normalization. GitHub names are validated by the read-only helper; supply
 Requires Git, GitHub CLI (`gh`) authenticated to github.com, Python 3.10+, GNU `env --chdir`,
 bd, and a Dolt CLI for database identity/readback checks. There is no version allowlist: before
 execution, `BEADS_NATIVE_SETUP_TESTS=1 make test-beads-setup` (agent-skills repo) must pass against
-the installed bd and Dolt; a failure blocks execution. Characterized on bd 1.2.2 (Dolt 2.3.1) and
-bd 1.3.0 (Dolt 2.3.5). This first version supports fresh embedded stores only; configured
-server/shared modes stop for separate design. Record absolute executable paths and versions.
+the installed bd and Dolt; a failure blocks execution. Characterized on bd 1.2.2 (Dolt 2.3.1),
+bd 1.3.0 (Dolt 2.3.5) and bd 1.3.4 (Dolt 2.7.2). This first version supports fresh embedded
+stores only; configured server/shared modes stop for separate design. Record absolute executable paths and versions.
 Check `bd init --help`, `bd dolt push --help`, `bd help init-safety`, and `gh repo create --help`
 against the flags below. Help can initialize bd user caches: use retained verified evidence or
 separately authorized isolated probes, never invoke unverified store-opening commands as preview.
@@ -50,9 +50,24 @@ workspace topology. A missing store is not itself consent to initialize one.
 Refuse before any mutation:
 
 - Any `.beads` entry at ROOT, including empty directories, files, symlinks, dangling links or
-  redirects; any ancestor store bd might discover; conflicting workspace declarations or ambient
-  BEADS/BD location, server, database or configuration overrides. Do not clear overrides to evade
-  this check. Native init can discover ancestor stores even when HOME is isolated.
+  redirects; a blocking ancestor entry (below); conflicting workspace declarations or ambient
+  BEADS/BD location, server, database or configuration overrides such as `BEADS_DIR`. Do not clear
+  overrides to evade this check: bd 1.3.4 binds the cwd-only form used by fresh init to `BEADS_DIR`.
+- Classify ROOT and every ancestor `.beads` entry with the read-only helper; never judge by
+  existence alone and never open an ancestor store with bd (characterized: even `--readonly`
+  probes rewrite its Dolt files):
+
+  ```bash
+  python3 ~/.agents/skills/beads-setup/scripts/ancestor_stores.py ROOT
+  ```
+
+  It lists entry names only and never opens, follows or changes them. Exit 0 / `clear` permits
+  only `registry-only` ancestors, such as a home `~/.beads` holding registry, lock, machine-id and
+  event files: bd 1.3.4 ignores directories without project markers. Exit 2 / `blocked` stops on a
+  `target-entry`, a `project-store` (metadata.json, config.yaml, dolt/, embeddeddolt/ or any *.db),
+  a `redirect`, a symlink, a non-directory or an unreadable entry. Explain the hazard: a real
+  ancestor store binds `-C ROOT` store commands across the Git root, so setup could act on the
+  wrong store. Exit 1 is an invalid ROOT. Do not move, delete or override an ancestor to proceed.
 - A bare/detached/unborn repository, linked worktree, submodule, shared Git administration,
   out-of-root Git directory/common directory, or symlinked mutation path. Support the ordinary
   single worktree with a real ROOT/.git only; uncertainty stops rather than guessing authority.
@@ -136,7 +151,7 @@ Repeat the entire local preflight. Preview the initialized file set and Git boot
 `.beads/` templates, metadata, database, interactions file and ignore rules; root .gitignore
 additions; local `beads.role` configuration. Inspect the checked version's actual footprint.
 
-bd (checked: 1.2.2, 1.3.0) may auto-stage `.beads/`, existing instruction/Claude/Codex paths and .gitignore, then
+bd (checked: 1.2.2, 1.3.0, 1.3.4) may auto-stage `.beads/`, existing instruction/Claude/Codex paths and .gitignore, then
 commit with `--no-verify`. The suppression flags do **not** disable that commit. The clean index,
 authored-file inventory and no-active-hooks preconditions are therefore mandatory. Stop if the
 repository policy disallows this native commit; do not substitute bypasses or rewrite its history.
@@ -147,7 +162,7 @@ After fresh init confirmation, use the literal reviewed values of ENV, ROOT, BD,
 "$ENV" --chdir="$ROOT" BD_DISABLE_METRICS=1 BD_DISABLE_EVENT_FLUSH=1 "$BD" --sandbox init --prefix "$PREFIX" --remote "$REMOTE" --non-interactive --skip-agents --skip-hooks
 ```
 
-**Fresh-init exception:** omit `-C` here only. Native bd (checked: 1.2.2, 1.3.0) rejects `-C` before a store exists
+**Fresh-init exception:** omit `-C` here only. Native bd (checked: 1.2.2, 1.3.0, 1.3.4) rejects `-C` before a store exists
 with `no beads project found`. The independently bound process cwd is mandatory. Subsequent store
 commands bind both cwd and `-C`; neither a source lease nor `-C` alone proves cwd correctness.
 
@@ -240,7 +255,8 @@ stores/history. The Beads baseline owns routine synchronization. Offer handoffs 
 From agent-skills: `make test-beads-setup` runs contracts and mocked GET success/error/partial-state
 cases. `BEADS_NATIVE_SETUP_TESTS=1 make test-beads-setup` also characterizes the installed bd against isolated
 local fixtures (no live GitHub, real project initialization or remote publication). Fixture HOME and
-Git configuration are isolated; native init fixtures must be outside any ancestor Beads store.
-The native gate covers process cwd, the fresh `-C` refusal, explicit local Git-backed remote wiring,
+Git configuration are isolated; fixture ancestors must classify `clear`. The native gate covers
+registry-only ancestors, a real ancestor store outside an independent Git root, `BEADS_DIR`
+routing, process cwd, the fresh `-C` refusal, explicit local Git-backed remote wiring,
 source-remote preservation, auto-commit and authored-file preservation. It is not certification of
 GitHub SSH authentication or actual first publication. `make check` is the full repository gate.
