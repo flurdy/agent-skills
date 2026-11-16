@@ -5,7 +5,7 @@ allowed-tools: "Read,Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.a
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.3.1"
+version: "2.3.2"
 author: "flurdy"
 ---
 
@@ -321,6 +321,11 @@ invoke this procedure; it needs a separate explicit user request. A transition s
 fresh **Move to review** approval, and a Jira skip or failure never reopens the bead or undoes the commit.
 
 ### 7. Check for Follow-Up Work
+
+For a partially completed bead with an independent remainder, cache wait or manual action that does
+not qualify for §6, recommend `/triage --remaining <selector>` with the current evidence and unmet
+requirements. Do not finalize first or auto-run triage; this handoff cannot waive failed checks or
+expand the deferred-verification exception. Qualified future-rollout/job evidence stays in §6.
 
 After finalizing:
 

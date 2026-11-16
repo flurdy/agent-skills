@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/next/scripts/next-select re
 model-tier: premium
 model: opus
 effort: high
-version: "2.1.1"
+version: "2.1.2"
 author: "flurdy"
 ---
 
@@ -161,6 +161,11 @@ Ready to finalize requires met requirements, sufficient applicable coverage, com
 checks, and unchanged scope. Show skipped/unavailable/failed checks; do not substitute an all-green
 summary for missing evidence. Partial or stale proof still blocks finalization; only the specific
 tracking handoff below is allowed for future-event-only evidence.
+
+For a mostly complete bead with a potentially independent remainder, cache wait or manual action,
+report the exact requirement/evidence split and recommend `/triage --remaining <selector>` for
+tracking assessment. Keep the actual partial/failed/unavailable verdict; do not narrow acceptance or
+execute triage from verification. The future-rollout/job-only case below retains its existing owner.
 
 ### Future-event-only evidence
 

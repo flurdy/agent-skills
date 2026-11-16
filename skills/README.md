@@ -29,7 +29,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | thoughtbox | Retrieve repository-scoped Thoughtbox Inbox captures, prepare a hostile-text-safe handoff to `/triage`, and render separately confirmed scoped resolution commands without executing either workflow |
 | tracking-sweep | Portfolio-wide drift sweep across Jira, beads, and GitHub PRs — flags status drift, orphan work, parent-moved beads, and stale items. Read-only |
 | trello-beads | Integrate Trello boards with Beads for project management bridging |
-| triage | Create/refine beads from raw requests or Jira, or own explicitly requested blocked human decisions; approved implementation plans go to plan-to-backlog |
+| triage | Create/refine beads, own human decisions, or assess partially completed work with --remaining; propose independent follow-ups or dated snoozes with exact approvals; approved plans go to plan-to-backlog |
 
 ## Jira, Confluence and Trello
 

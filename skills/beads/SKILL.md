@@ -8,7 +8,7 @@ allowed-tools: "Read,Bash(python3 ~/.agents/skills/beads/scripts/integration_cle
 model-tier: economy
 model: haiku
 effort: high
-version: "0.11.1"
+version: "0.11.2"
 author: "flurdy"
 ---
 
@@ -154,6 +154,7 @@ Dispatch to the focused skill instead of reproducing its procedure.
 |---|---|
 | Rank or start ready work | `/next` |
 | Create from a raw prompt or Jira ticket, refine, or split a bead | `/triage` |
+| Assess a partially completed bead with a waiting remainder | `/triage --remaining <selector>`; assessment first, exact approvals before lifecycle writes |
 | Judge whether one existing bead should stay whole, be clarified, or split | `/refine` |
 | Materialize an explicitly approved cited plan | `/plan-to-backlog` |
 | Audit backlog quality, priority, labels, lifecycle, or duplicates | `/backlog-groom` |

@@ -1,11 +1,11 @@
 ---
 name: triage
-description: "Create or refine beads from raw requests, Jira, or explicit human-decision handoffs. Investigates relevance and duplicates; delegates approved implementation plans to plan-to-backlog."
-allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * dep:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Grep,Glob,Task,AskUserQuestion"
+description: "Create/refine beads from requests or Jira; assess partially completed beads waiting on verification, cache expiry or manual actions via --remaining. Propose independent follow-ups or dated snoozes with exact approval; never auto-close."
+allowed-tools: "Read,Bash(bd -C * close:*),Bash(bd -C * create:*),Bash(bd -C * dep:*),Bash(bd -C * defer:*),Bash(bd -C * list:*),Bash(bd -C * search:*),Bash(bd -C * show:*),Bash(bd -C * update:*),Bash(~/.agents/skills/next/scripts/next-select resolve:*),Bash(~/.agents/skills/next/scripts/next-select stores:*),Bash(~/.agents/skills/plan-to-backlog/scripts/sha256-stdin.sh:*),Grep,Glob,Task,AskUserQuestion"
 model-tier: standard
 model: opus
 effort: high
-version: "1.5.3"
+version: "1.6.0"
 author: "flurdy"
 ---
 
@@ -39,6 +39,16 @@ unstable design. For an explicit `--human-review` request about a complete but u
 recommendation, use the decision mode below; pending approval is its purpose, not a reason to
 bounce back to Architect.
 
+## Partially completed work
+
+For a mostly finished bead whose remainder needs its own disposition, use
+`/triage --remaining <selector>` and read [remaining-work triage](references/remaining-work.md).
+This mode assesses first, then separately confirms any independent extraction, original scope update,
+closure or dated snooze. It preserves the shared sizing and delivery gates; it routes future-event-only
+verification to verify-task/complete-task rather than duplicating their lifecycle. Loading the skill or
+recognizing this situation never auto-executes tracking changes. For a natural-language request about
+one identified partially completed bead, use this same mode instead of generic intake/refine.
+
 ## Explicit human-decision mode
 
 `/triage --human-review <source>` establishes or updates one blocked human review owner, not
@@ -57,6 +67,7 @@ Architect only renders this handoff; it never invokes triage. This mode never ed
 /triage skills-1fw split it              # Refine with additional instructions
 /triage shared:skills-1fw                # Repo-qualified, when the ID exists in several stores
 /triage --human-review <source>          # Explicit pending human decision, not implementation
+/triage --remaining <selector>           # Assess a mostly-done bead; exact approvals before writes
 ```
 
 ## What This Skill Does
@@ -87,7 +98,7 @@ Architect only renders this handoff; it never invokes triage. This mode never ed
    - Set reasonable priority (P2 default, adjust based on context)
    - Add dependencies if creating multiple related beads
 
-5. **Report Summary**
+6. **Report Summary**
    - List newly created beads
    - Show current open beads count
    - Highlight any duplicates or related work found
@@ -152,6 +163,9 @@ never turn them into an implementation invitation.
 When invoked:
 
 1. Parse the input to determine the source:
+   - **Explicit `--remaining`** (or an identified partially completed bead with a remaining-work
+     disposition request): use the remaining-work contract above, not generic intake/refine.
+     Require one selector and stop on failed resolution; never fall through to free-text creation.
    - **Explicit `--human-review`**: use the linked human-review contract, not intake/refine.
      It redirects approved implementation materialization without writing decision records first.
    - **Approved structured plan**: A cited architecture/implementation plan plus a request

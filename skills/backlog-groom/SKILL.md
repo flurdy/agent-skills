@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,AskUserQuestion,Bash(~/.agents/skills/next/script
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.2.3"
+version: "0.2.4"
 author: "flurdy"
 ---
 
@@ -155,6 +155,12 @@ Closed-only variants may be noted as historical cleanup, not counted as unfinish
 This pass is the whole of `/backlog-groom labels`; it follows the same automatic scope discovery.
 
 ### 4. Lifecycle & priority signals
+
+Within the selected inventory, flag beads whose notes/evidence describe completed work plus a small
+waiting remainder (verification, cache expiry or manual action). Recommend
+`/triage --remaining <repo>:<id>` for read-only assessment before any approved disposition. Do not infer
+completion from age, percentage done or status; do not split, close, defer or launch triage as a sweep
+side effect. This is a candidate signal, not evidence that the remainder is independent.
 
 ```bash
 bd -C <directory> stale --readonly --status=<one-status> --days 30 -n 0 --json
