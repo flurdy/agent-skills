@@ -3,7 +3,7 @@ name: develop
 description: "Load before authorized code changes: features, fixes, refactors, tests, and mechanical edits, including discussion-to-coding transitions. Read separately from edits. Skip read-only requests and implementation already owned by a specialist."
 model-tier: standard
 effort: high
-version: "1.0.2"
+version: "1.0.3"
 author: "flurdy"
 ---
 
@@ -39,11 +39,8 @@ below. Already-generated edits are not upgraded by a model switch.
 
 ## Routing limits
 
-Automatic loading is best-effort, not a pre-write enforcement mechanism. Metadata
-requests capability; it does not prove the active model changed. Respect runtime spend
-and manual-selection controls; do not edit routing configuration or launch another
-model to force a route.
-
-Pi currently protects against nested tier downgrades only after a routed run begins.
-The first standard-tier route can replace a stronger session model. This skill does
-not establish a capability floor; see [model routing](../../MODEL_ROUTING.md).
+Loading this skill requests a route; it neither proves a model switch nor enforces
+anything before writes, and it is not a capability floor. Respect runtime spend and
+manual-selection controls; do not edit routing configuration or launch another model
+to force a route. See [model routing](../../MODEL_ROUTING.md) for client behavior,
+including Pi's first-route downgrade limitation.
