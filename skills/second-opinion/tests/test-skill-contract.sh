@@ -29,6 +29,14 @@ grep -Fq 'Explicit `--effort <level>` is supported only for a direct Claude rout
 grep -Fq -- '--agent claude --model fable --effort xhigh' "$FABLE_PROMPT" || \
   fail "ask-fable does not request xhigh effort"
 
+for invariant in 'no agent → `peer`' '`quorum` with no panel → `premium`' '`consensus` with no panel → `extreme`' '"Focused quorum" and "focussed quorum"' 'Explicit flags take precedence' 'without silently selecting focused'; do
+  grep -Fq -- "$invariant" "$SKILL" || fail "missing panel selection contract: $invariant"
+done
+for prompt in ask-quorum ask-premium; do
+  grep -Fq -- '--agent quorum --panel premium' "$ROOT/prompts/$prompt.md" || \
+    fail "$prompt must select premium explicitly"
+done
+
 PR_CONTRACT="$ROOT/skills/second-opinion/references/pr-evidence.md"
 for invariant in 'gh-pr-snapshot.py' 'reviewReady' 'headSha' 'baseSha' 'stateKey' 'nodeId' '--verify-only' '--expected-head' '--expected-base' '--expected-state-key' 'pwd -P' 'checkout.available' 'already matches' 'full collection' 'stale/unvalidated' 'partial' 'same sanitized packet' 'not OS-level isolation' 'Do not retry'; do
   grep -Fq -- "$invariant" "$PR_CONTRACT" || fail "missing immutable PR invariant: $invariant"

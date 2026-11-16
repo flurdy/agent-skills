@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
 readonly OPENROUTER_HELPER="$SCRIPT_DIR/openrouter-panel.sh"
 readonly DEFAULT_CONFIG_PATH="${HOME}/.agents/second-opinion/config.json"
-readonly DEFAULT_PANEL="focused"
+readonly DEFAULT_PANEL="premium"
 readonly HARD_MAX_ROUTES=8
 readonly HARD_MAX_PARALLEL=4
 readonly HARD_MAX_PROMPT_BYTES=65536
@@ -38,8 +38,9 @@ Usage:
 Profiles live under version-1 config "profiles". A profile contains either legacy
 OpenRouter "models" or policy-neutral "routes", never both. Profiles and routes may
 be disabled; quorum counts enabled routes while optional consensusQuorum counts
-unique providers. Built-in focused is used when absent from config. Local response
-and error capture are bounded while streaming. OpenRouter effort is passed as
+unique providers. The default panel is premium and must be configured; it never falls
+back to focused. Explicit --panel focused has a built-in when absent from config.
+Local response and error capture are bounded while streaming. OpenRouter effort is passed as
 reasoning.effort; maxOutputTokens may lower the profile ceiling (up to 128,000).
 Routes denied for the current directory by ~/.agents/disabled-models.json still count
 towards thresholds but are never run; an invalid policy stops every command but evaluate.

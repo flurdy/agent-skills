@@ -52,7 +52,7 @@ def validate(request):
     prompt = request.get("prompt")
     require(isinstance(prompt, str) and 0 < len(prompt.encode("utf-8")) <= MAX_PROMPT_BYTES,
             "prompt must contain 1..65536 UTF-8 bytes")
-    text(request.get("panel", "focused"), r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", "invalid panel")
+    text(request.get("panel", "premium"), r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", "invalid panel")
     for field in ("routeModels", "routeEfforts"):
         values = request.get(field, {})
         require(isinstance(values, dict) and len(values) <= 8, "invalid route overrides")
@@ -127,7 +127,7 @@ def arguments(request, directory):
         for index, rows in enumerate(request["results"]):
             args += ["--results-file", save(directory, f"results-{index}.json", json.dumps(rows))]
         return args
-    args += ["--panel", request.get("panel", "focused"), "--prompt-file",
+    args += ["--panel", request.get("panel", "premium"), "--prompt-file",
              save(directory, "prompt", request["prompt"])]
     for field, flag in (("routeModels", "--route-model"), ("routeEfforts", "--route-effort")):
         for key, value in request.get(field, {}).items():

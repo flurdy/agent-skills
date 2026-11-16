@@ -80,6 +80,39 @@ print("fixture review", end="")
         self.assertEqual(evaluated.returncode, 0, evaluated.stderr)
         self.assertTrue(json.loads(evaluated.stdout)["quorumMet"])
 
+    def test_omitted_panel_selects_premium_without_launching_reviewers(self):
+        config = json.loads(self.config.read_text())
+        config["profiles"]["premium"] = config["profiles"]["fixture"]
+        self.config.write_text(json.dumps(config))
+        self.base.pop("panel")
+        result = self.call("check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        check = json.loads(result.stdout)
+        self.assertEqual(check["panel"], "premium")
+        explicit = self.call("check", panel="premium")
+        self.assertEqual(explicit.returncode, 0, explicit.stderr)
+        self.assertEqual(check, json.loads(explicit.stdout))
+        self.assertFalse(self.marker.exists())
+
+    def test_missing_or_disabled_premium_does_not_fall_back_to_focused(self):
+        self.base.pop("panel")
+        result = self.call("check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("panel not found: premium", result.stderr)
+        config = json.loads(self.config.read_text())
+        config["profiles"]["premium"] = {**config["profiles"]["fixture"], "enabled": False}
+        self.config.write_text(json.dumps(config))
+        result = self.call("check")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("panel is disabled: premium", result.stderr)
+        focused = self.call("check", panel="focused")
+        self.assertEqual(focused.returncode, 0, focused.stderr)
+        check = json.loads(focused.stdout)
+        self.assertEqual(check["panel"], "focused")
+        self.assertEqual([row["id"] for row in check["routes"]], ["claude", "codex"])
+        self.assertEqual(check["openrouter"]["requestCount"], 0)
+        self.assertFalse(self.marker.exists())
+
     def test_sampling_parity_with_coordinator(self):
         config = json.loads(self.config.read_text())
         config["profiles"]["fixture"]["routes"].append(

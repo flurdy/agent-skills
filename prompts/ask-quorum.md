@@ -1,8 +1,8 @@
 ---
-description: Ask the default multi-provider quorum for a repository-grounded second opinion
+description: Ask the premium multi-provider quorum for a repository-grounded second opinion
 argument-hint: "<question>"
 ---
-Use the `second-opinion` skill in `ask` mode with `--agent quorum` to answer this question:
+Use the `second-opinion` skill in `ask` mode with `--agent quorum --panel premium` to answer this question:
 
 $ARGUMENTS
 

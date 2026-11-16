@@ -5,7 +5,7 @@ allowed-tools: "Read,Edit(//tmp/**/second-opinion.*/**),Bash(claude -p * --tools
 model-tier: standard
 model: sonnet
 effort: high
-version: "3.11.0"
+version: "3.12.0"
 author: "flurdy"
 ---
 
@@ -34,7 +34,8 @@ unique-provider threshold. Agreement and vote count never establish correctness.
 /second-opinion ask "..." --agent codex --model <id>
 
 # Policy-neutral named panels
-/second-opinion review-pr --agent quorum                    # defaults to focused
+/second-opinion review-pr --agent quorum                    # defaults to premium
+/second-opinion ask "..." --agent quorum --panel focused    # explicit small panel
 /second-opinion validate-plan "..." --agent consensus       # defaults to extreme
 /second-opinion review-pr --agent consensus --panel large
 /second-opinion ask "..." --agent quorum --panel large \
@@ -134,7 +135,7 @@ Extract:
 Defaults and validation:
 
 - no agent → `peer`;
-- `quorum` with no panel → `focused`;
+- `quorum` with no panel → `premium`;
 - `consensus` with no panel → `extreme`;
 - reject unsupported agent names;
 - reject `--panel`, `--route-model`, or `--route-effort` for a direct single agent;
@@ -142,6 +143,13 @@ Defaults and validation:
 - reject generic `--model` for `quorum` or `consensus`;
 - reject `--sample`, `--sample-seed`, or `--sample-quorum` for a direct single agent, and the seed
   or quorum without `--sample`. Sampling is never inferred or defaulted.
+
+For natural-language requests, "quorum" means `--agent quorum --panel premium` unless another panel
+is explicitly requested. "Focused quorum" and "focussed quorum" mean `--agent quorum --panel focused`.
+A plain "second opinion" without a quorum or panel request remains `peer`; never widen it to a panel.
+Explicit flags take precedence. `/ask-quorum` uses premium; `/ask-premium` is its explicit equivalent.
+If premium is missing, disabled, or unavailable, report that without silently selecting focused.
+Panel selection never bypasses route availability, sanitization, or OpenRouter consent.
 
 If no mode is supplied, ask what to review. `consensus` must always be explicitly named; never infer
 it from task risk, panel size, or an API key.

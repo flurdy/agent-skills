@@ -233,6 +233,21 @@ jq -e '
   (.promptSha256 | test("^[a-f0-9]{64}$"))
 ' <<< "$focused_json" >/dev/null || fail "focused built-in was not normalized"
 
+expect_failure 'panel not found: premium' "${RUN_ENV[@]}" "$HELPER" check \
+  --config "$CONFIG" --prompt-file "$PROMPT"
+
+PREMIUM_CONFIG="$TMP_DIR/premium.json"
+jq '.profiles.premium = .profiles.mixed' "$CONFIG" > "$PREMIUM_CONFIG"
+default_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$PREMIUM_CONFIG" --prompt-file "$PROMPT")"
+explicit_json="$("${RUN_ENV[@]}" "$HELPER" check --config "$PREMIUM_CONFIG" --panel premium --prompt-file "$PROMPT")"
+[[ "$default_json" == "$explicit_json" ]] || fail "omitted panel differs from explicit premium"
+jq -e '.panel == "premium" and .source == "config" and (.routes | length) == 4 and
+  .openrouter.requestCount == 2' <<< "$default_json" >/dev/null || fail "default panel is not premium"
+jq '.profiles.premium.enabled = false' "$PREMIUM_CONFIG" > "$TMP_DIR/disabled-premium.json"
+expect_failure 'panel is disabled: premium' "${RUN_ENV[@]}" "$HELPER" check \
+  --config "$TMP_DIR/disabled-premium.json" --prompt-file "$PROMPT"
+[[ ! -s "$AGENT_LOG" && ! -s "$CURL_LOG" ]] || fail "default checks launched a reviewer"
+
 expect_failure 'panel not found: local-legacy' "${RUN_ENV[@]}" "$HELPER" check \
   --config "$CONFIG" --panel local-legacy --prompt-file "$PROMPT"
 

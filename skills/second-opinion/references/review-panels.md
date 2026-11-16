@@ -175,7 +175,12 @@ basis (`configured` or `confirmation-required`) are included in the check and ro
 values are included in the panel and OpenRouter subset digests. The OpenRouter subset digest also binds
 the fixed completion contract, so a policy or contract change invalidates a prior check.
 
-### Built-in panel
+### Default and built-in panels
+
+Unqualified quorum requests and omitted coordinator/transport panel fields select `premium`.
+Premium is user-configured: missing or disabled configuration fails without a focused fallback.
+"Focused quorum" and "focussed quorum" explicitly select `focused`; a plain second opinion remains
+one independent `peer`. `consensus` continues to default to `extreme` at the skill layer.
 
 `focused` provides local Claude + Codex with route quorum and provider consensus threshold 2. Local
 config may override it.

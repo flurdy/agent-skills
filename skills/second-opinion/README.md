@@ -82,7 +82,11 @@ Useful commands:
   --route-model claude-fable=opus --route-effort claude-fable=max
 ```
 
-`focused` is the local Claude-and-Codex built-in and may be overridden by an explicit local profile.
+Unqualified `quorum` requests and `/ask-quorum` default to the configured `premium` panel, just like
+`/ask-premium`. Say "focused quorum" (or "focussed quorum"), or pass `--panel focused`, for the small
+local Claude-and-Codex built-in; a local profile may override it. Premium must be configured and is
+never silently replaced by focused. A plain "second opinion" still defaults to one independent
+`peer`; `consensus` still defaults to `extreme`.
 Direct `peer` remains dynamic and is not a panel route. Timeouts default to 10 minutes and can be set
 from 1 to 30 minutes with `--timeout <minutes>`.
 
