@@ -21,6 +21,19 @@ REGISTRATION_NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 DEFER_UNTIL = re.compile(
     r"^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$"
 )
+RELATIONS = ("parent", "blocked by", "unblocks", "child", "sibling", "related",
+             "discovered from", "discovered here")
+EDGE_RELATIONS = {
+    ("down", "blocks"): "blocked by",
+    ("up", "blocks"): "unblocks",
+    ("up", "parent-child"): "child",
+    ("down", "relates-to"): "related",
+    ("up", "relates-to"): "related",
+    ("down", "related"): "related",
+    ("up", "related"): "related",
+    ("down", "discovered-from"): "discovered from",
+    ("up", "discovered-from"): "discovered here",
+}
 MANAGED_DIRECTORIES = (
     "docs",
     "docs/prds",
@@ -494,6 +507,86 @@ def machine_eligibility(issue: dict[str, Any], machine: dict[str, Any]) -> dict[
         state, reason = "mismatch", "requires " + ", ".join(required)
     return {"eligible": state in {"unrestricted", "match"}, "state": state,
             "required": required, "reason": reason}
+
+
+def related_view(
+    source: Source, issue_ids: list[str], workspace: bool
+) -> tuple[list[dict[str, Any]], str | None]:
+    """One-hop graph context for focus issues in one store; closed rows omitted except parents."""
+    now = datetime.now(timezone.utc)
+    ready, error = load_issues(source, ["list", "--ready", "--flat", "--limit=0"])
+    blocked, blocked_error = load_issues(source, ["blocked"])
+    if error or blocked_error:
+        return [], f"ready: {error}" if error else f"blocked: {blocked_error}"
+    ready_ids = {row["id"] for row in ready}
+    blocked_by = {row["id"]: row.get("blocked_by") or [] for row in blocked}
+
+    def described(row: dict[str, Any]) -> dict[str, Any]:
+        status = row.get("status")
+        state = (status if status in {"closed", "in_progress", "deferred"}
+                 else "blocked" if row["id"] in blocked_by
+                 else "ready" if row["id"] in ready_ids else status or "open")
+        extra: dict[str, Any] = {"state": state}
+        if state == "blocked":
+            extra["blocked_by"] = blocked_by[row["id"]]
+        if state == "deferred":
+            extra["defer_elapsed"] = defer_elapsed(row.get("defer_until"), now)
+        return {**row, **extra}
+
+    views = []
+    for issue_id in issue_ids:
+        error = None
+        edges: dict[str, list[dict[str, Any]]] = {}
+        for direction in ("down", "up"):
+            if error is None:
+                edges[direction], error = load_issues(
+                    source, ["dep", "list", issue_id, f"--direction={direction}"])
+        parent = next((row for row in edges.get("down", [])
+                       if row.get("dependency_type") == "parent-child"), None)
+        children: list[dict[str, Any]] = []
+        if error is None and parent is not None:
+            children, error = load_issues(source, [
+                "dep", "list", parent["id"], "--direction=up", "--type=parent-child"])
+        if error is not None:
+            return [], f"{issue_id}: {error}"
+
+        links = [(row, EDGE_RELATIONS.get((direction, row.get("dependency_type"))))
+                 for direction, rows in edges.items() for row in rows]
+        links += [(parent, "parent")] if parent is not None else []
+        links += [(child, "sibling") for child in children]
+        relations: dict[str, tuple[set[str], dict[str, Any]]] = {}
+        for row, relation in links:
+            if relation is not None and row["id"] != issue_id:
+                relations.setdefault(row["id"], (set(), row))[0].add(relation)
+
+        wanted = [issue_id, *(row_id for row_id, (names, row) in relations.items()
+                              if row.get("status") != "closed" or "parent" in names)]
+        # Dependency rows omit parent and may omit defer dates; show records are authoritative.
+        shown, error = load_issues(source, ["show", *(f"--id={row_id}" for row_id in wanted)])
+        records = {row["id"]: row for row in shown}
+        if error is None and set(records) != set(wanted):
+            error = "bd show did not return every related issue"
+        if error is not None:
+            return [], f"{issue_id}: {error}"
+        related = []
+        for row_id in wanted[1:]:
+            names = relations[row_id][0]
+            related.append({**described(records[row_id]),
+                            "relations": sorted(names, key=RELATIONS.index)})
+        related.sort(key=lambda row: (RELATIONS.index(row["relations"][0]),
+                                      99 if row.get("priority") is None else row["priority"],
+                                      row.get("created_at") or "",
+                                      row["id"]))
+        progress = None
+        if parent is not None:
+            progress = {"closed": sum(child.get("status") == "closed" for child in children),
+                        "total": len(children)}
+        views.append({
+            **owned_issues(source, [described(records[issue_id])], workspace)[0],
+            "parent_progress": progress,
+            "related": owned_issues(source, related, workspace),
+        })
+    return views, None
 
 
 def collect(root: Path, source_scope: bool = False) -> dict[str, Any]:

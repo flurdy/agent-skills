@@ -12,6 +12,10 @@ Options:
                  plus a P4 backlog table when fewer than 3 beads are ready
   --backlog      Always include the P4 backlog table with --list
   --status       Show only the in-progress, blocked and deferred tables (overrides --list)
+  --related[=BEAD]
+                 Show beads one hop from BEAD (ID or repo:id), or from the in-progress
+                 beads this harness session claimed: parent progress, blockers, unblocked
+                 work, siblings, children and links. Overrides --list/--status
   --in-progress  Include a compact in-progress summary (ignored with --list)
   --avoid-busy   Exclude ready beads whose labels are busy in their store (tracker-only)
   --safe         Show scope/occupancy-unavailable queues without certifying safety
@@ -25,6 +29,8 @@ EOF
 FULL_LIST=false
 SHOW_BACKLOG=false
 STATUS_ONLY=false
+RELATED=false
+RELATED_SELECTOR=""
 BACKLOG_THRESHOLD=3
 SHOW_IN_PROGRESS=false
 AVOID_BUSY=false
@@ -37,6 +43,8 @@ for arg in "$@"; do
     --list)        FULL_LIST=true ;;
     --backlog)     SHOW_BACKLOG=true ;;
     --status)      STATUS_ONLY=true ;;
+    --related)     RELATED=true ;;
+    --related=*)   RELATED=true; RELATED_SELECTOR=${arg#--related=} ;;
     --in-progress) SHOW_IN_PROGRESS=true ;;
     --avoid-busy)  AVOID_BUSY=true ;;
     --json)        JSON_OUTPUT=true ;;
@@ -53,7 +61,16 @@ if "$SAFE_OUTPUT"; then
   collector_args+=(--source-scope)
   AVOID_BUSY=false
 fi
-payload=$("$SCRIPT_DIR/collect.py" "${collector_args[@]}")
+exit_status=0
+if "$JSON_OUTPUT"; then
+  RELATED=false
+fi
+if "$RELATED"; then
+  payload=$("$SCRIPT_DIR/next-select" related ${RELATED_SELECTOR:+"$RELATED_SELECTOR"}) || exit_status=$?
+  [[ -n $payload ]] || exit "$exit_status"
+else
+  payload=$("$SCRIPT_DIR/collect.py" "${collector_args[@]}")
+fi
 
 if "$JSON_OUTPUT"; then
   jq -r '.diagnostics[] | "next-bd: \(.)"' <<< "$payload" >&2
@@ -65,6 +82,7 @@ jq -r \
   --arg show_ip "$SHOW_IN_PROGRESS" \
   --arg show_backlog "$SHOW_BACKLOG" \
   --arg status_only "$STATUS_ONLY" \
+  --arg related "$RELATED" \
   --argjson backlog_threshold "$BACKLOG_THRESHOLD" \
   --arg avoid_busy "$AVOID_BUSY" \
   --arg json_output "$JSON_OUTPUT" \
@@ -144,7 +162,55 @@ jq -r \
            else [] end)) | row
       ) | join("\n"))
     end);
+  def related_status:
+    if .state == "blocked" then "blocked by " + (.blocked_by // [] | if length == 0 then "—" else join(", ") end)
+    elif .state == "deferred" then "deferred" + (if .defer_until then " until \(.defer_until)" else "" end) +
+      (if .defer_elapsed == true then " ⏰ elapsed" else "" end)
+    else .state // "—" end;
+  def relation_cell($progress):
+    .relations | map(if . == "parent" and $progress != null
+      then "parent (\($progress.closed)/\($progress.total) children closed)" else . end) | join(", ");
+  def related_section($workspace):
+    .parent_progress as $progress |
+    (["Relation"] + issue_headers($workspace) + ["Status"]) as $headers |
+    "\n\n## Related to \((if $workspace then .selector else .id end) | cell) (\(.related | length) beads)\n\n" +
+    "Focus: \(if .priority == null then "—" else "P\(.priority)" end) \(.issue_type | cell) · " +
+    "\(related_status | cell) · \(.title | cell)\n" +
+    elapsed_note(.related) +
+    (if (.related | length) == 0 then "\n_None._" else
+      "\n" + ($headers | row) + "\n" + ($headers | map("---") | row) + "\n" +
+      (.related | map([relation_cell($progress)] + issue_fields($workspace) + [related_status] | row) | join("\n"))
+    end);
+  def name_one: " Name one: `/next related <bead>` or `/next related <repo>:<id>`.";
+  def related_failure:
+    "## Related work unknown\n\n" +
+    if .status == "no-session" then
+      "No harness session ID is available, so this session\u0027s claimed beads cannot be identified." + name_one
+    elif .status == "none" then
+      "No in-progress bead carries this session\u0027s claim attribution (session `\(.session_id | cell)`)." + name_one
+    elif .status == "ambiguous" then
+      "`\(.id | cell)` exists in several stores; name one: " + (.matches | map("`\(.selector | cell)`") | join(", ")) + "."
+    elif .status == "not-found" then
+      "No queried store owns `\(.selector | cell)`." +
+      (if .owner_selector then " Its repository is workspace-owned; try `\(.owner_selector | cell)` (owner hint, not proof)." else "" end)
+    else
+      "Ownership or session claims could not be checked" + (if .selector then " for `\(.selector | cell)`" else "" end) +
+      "; nothing was assumed." + ((.failures // []) | map("\n- **\(.repository | text)** — \((.hint // .error) | text)") | join(""))
+    end;
+  def related_view:
+    .workspace as $workspace |
+    unavailable_notice(.unavailable_stores // []) +
+    (if .status == "ok" then
+      (if .focus_source == "session"
+        then "Focus: in-progress beads claimed by this session (claim attribution, not liveness)."
+        else "Focus: explicit selector." end) +
+      (.focus | map(related_section($workspace)) | join("")) +
+      "\n\nRead-only context, one hop; not selectable work. Closed beads are omitted except the parent. " +
+      "Start work with `/next` or a named bead."
+    else related_failure end) +
+    (if (.diagnostics // [] | length) > 0 then "\n\nSource diagnostics:\n" + (.diagnostics | map("- " + cell) | join("\n")) else "" end);
 
+  if $related == "true" then related_view else
   . as $payload |
   ($payload.workspace) as $workspace |
   ($payload.blocked | map("\(.repository // "")\u0000\(.id)")) as $blocked_keys |
@@ -255,4 +321,6 @@ jq -r \
       $diagnostics_block + other_table($other_machines; $workspace)
     else "\n\n" + $ready_table + $diagnostics_block + other_table($other_machines; $workspace) end
   end
+  end
 ' <<< "$payload"
+exit "$exit_status"

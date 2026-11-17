@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Resolve a /next selection to its owning Beads store and act only there.
 
-`stores` lists the usable stores read-only so consumers can route new work."""
+`stores` lists the usable stores read-only so consumers can route new work.
+`related` reports one-hop graph context for a bead or this session's claims, read-only."""
 
 from __future__ import annotations
 
@@ -335,45 +336,42 @@ def claim_lock(directory: Path, issue_id: str) -> Iterator[None]:
         lock.close()
 
 
-def record_claim(directory: Path, issue_id: str, machine_note: str = "") -> int:
-    session_id = harness_session_id()
-    marker = claim_marker(directory, session_id)
+def claimed(directory: Path, issue_id: str, marker: str) -> tuple[bool, str | None]:
+    """Whether the issue's comments carry this claim marker; error when unreadable."""
     try:
         existing = subprocess.run(
-            [
-                "bd",
-                "-C",
-                str(directory),
-                "comments",
-                issue_id,
-                "--json",
-                "--readonly",
-            ],
+            ["bd", "-C", str(directory), "comments", issue_id, "--json", "--readonly"],
             capture_output=True,
             check=False,
             text=True,
             timeout=COMMAND_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
-        print(f"next-select: claim lookup failed: {error}", file=sys.stderr)
-        return 1
+        return False, f"claim lookup failed: {error}"
     if existing.returncode != 0:
-        sys.stderr.write(existing.stderr)
-        return existing.returncode
+        return False, existing.stderr.strip() or f"claim lookup exited {existing.returncode}"
     try:
         comments = json.loads(existing.stdout)
     except json.JSONDecodeError as error:
-        print(f"next-select: invalid comment JSON: {error}", file=sys.stderr)
-        return 1
+        return False, f"invalid comment JSON: {error}"
     if not isinstance(comments, list):
-        print("next-select: invalid comment JSON: expected a list", file=sys.stderr)
-        return 1
-    if any(
+        return False, "invalid comment JSON: expected a list"
+    return any(
         isinstance(comment, dict)
         and isinstance(comment.get("text"), str)
         and marker in comment["text"]
         for comment in comments
-    ):
+    ), None
+
+
+def record_claim(directory: Path, issue_id: str, machine_note: str = "") -> int:
+    session_id = harness_session_id()
+    marker = claim_marker(directory, session_id)
+    already, error = claimed(directory, issue_id, marker)
+    if error is not None:
+        print(f"next-select: {error}", file=sys.stderr)
+        return 1
+    if already:
         return 0
 
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace(
@@ -454,9 +452,70 @@ def run_start(directory: Path, issue_id: str, allow_other_machine: bool = False)
         return 1
 
 
+def session_focus(
+    collector: Any, sources: list[Any], session_id: str
+) -> tuple[dict[Any, list[str]], list[tuple[Any, str]]]:
+    """In-progress issues whose claim attribution names this session, per owning store."""
+    focus: dict[Any, list[str]] = {}
+    failures = []
+    for source in sources:
+        error = collector.store_error(source)
+        if source.store == "workspace" and error is None:
+            continue
+        issues: list[dict[str, Any]] = []
+        if error is None:
+            issues, error = collector.load_issues(
+                source, ["list", "--status=in_progress", "--flat", "--limit=0"])
+        marker = claim_marker(source.directory, session_id)
+        for issue in issues if error is None else []:
+            owned, error = claimed(source.directory, issue["id"], marker)
+            if error is not None:
+                error = f"{issue['id']}: {error}"
+                break
+            if owned:
+                focus.setdefault(source, []).append(issue["id"])
+        if error is not None:
+            focus.pop(source, None)
+            failures.append((source, error))
+    return focus, failures
+
+
+def related(selector: str) -> tuple[dict[str, Any], int]:
+    collector = load_collector()
+    workspace, sources = usable_sources(collector)
+    payload: dict[str, Any] = {"workspace": workspace, "focus": [],
+                               "diagnostics": [], "unavailable_stores": []}
+    if selector:
+        resolved, code = resolve(selector, [], "")
+        if code != 0:
+            return {**payload, **resolved}, code
+        focus = {source_by_name(sources, resolved["repository"]): [resolved["id"]]}
+        failures: list[tuple[Any, str]] = []
+        payload["focus_source"] = "selector"
+    else:
+        session_id = harness_session_id()
+        if session_id == "unavailable":
+            return {**payload, "status": "no-session"}, NOT_FOUND_EXIT
+        focus, failures = session_focus(collector, sources, session_id)
+        payload.update(focus_source="session", session_id=session_id)
+    for source, ids in focus.items():
+        views, error = collector.related_view(source, ids, workspace)
+        if error is not None:
+            failures.append((source, error))
+        payload["focus"].extend(views)
+    for source, error in failures:
+        payload["diagnostics"].append(f"{source.name}: {error}")
+        payload["unavailable_stores"].append(collector.unavailable_store(source, error))
+    if payload["focus"]:
+        return {**payload, "status": "ok"}, 0
+    if failures:
+        return {**payload, "status": "unavailable"}, UNAVAILABLE_EXIT
+    return {**payload, "status": "none"}, NOT_FOUND_EXIT
+
+
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("stores", "resolve", "handoff", "start"))
+    parser.add_argument("command", choices=("stores", "resolve", "handoff", "start", "related"))
     parser.add_argument("selector", nargs="?", default="")
     parser.add_argument("--avoid-busy", action="store_true")
     parser.add_argument("--type", default="")
@@ -467,8 +526,12 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     arguments = parser.parse_args(argv)
     if arguments.command == "stores" and arguments.selector:
         parser.error("stores takes no selector")
-    if arguments.command != "stores" and not arguments.selector:
+    if arguments.command not in ("stores", "related") and not arguments.selector:
         parser.error(f"{arguments.command} requires a selector")
+    if arguments.command == "related" and (
+        arguments.selector.isdigit() or arguments.avoid_busy or arguments.type or arguments.expect_id
+    ):
+        parser.error("related takes only an optional bead ID or repo:id selector")
     if arguments.allow_other_machine and (arguments.command != "start" or arguments.selector.isdigit()):
         parser.error("--allow-other-machine requires start with a direct bead ID")
     return arguments
@@ -481,10 +544,14 @@ def main(argv: list[str]) -> int:
     except ValueError as error:
         print(f"next-select: {error}", file=sys.stderr)
         return 2
-    if arguments.command == "stores":
-        json.dump(store_listing(load_collector()), sys.stdout, separators=(",", ":"))
+    if arguments.command in ("stores", "related"):
+        if arguments.command == "stores":
+            payload, code = store_listing(load_collector()), 0
+        else:
+            payload, code = related(arguments.selector)
+        json.dump(payload, sys.stdout, separators=(",", ":"))
         sys.stdout.write("\n")
-        return 0
+        return code
     options = []
     if arguments.avoid_busy:
         options.append("--avoid-busy")

@@ -42,6 +42,8 @@ elif command == 'comments':
     key = 'comments-add' if arguments[1] == 'add' else 'comments'
 elif command == 'blocked':
     key = 'blocked'
+elif command == 'dep':
+    key = 'dep'
 elif '--id' in arguments:
     key = 'probe'
 elif '--ready' in arguments:
@@ -72,16 +74,26 @@ if delay:
     time.sleep(delay)
 
 issues = [i for k in ('ready', 'blocked', 'in_progress', 'deferred', 'other') for i in payload.get(k, [])]
+statuses = {'in_progress': 'in_progress', 'deferred': 'deferred', 'other': 'closed'}
+by_id = {issue['id']: {'status': statuses.get(bucket, 'open'), **issue}
+         for bucket in ('ready', 'blocked', 'in_progress', 'deferred', 'other')
+         for issue in payload.get(bucket, [])}
 if key == 'show':
-    selector = arguments[1]
-    matches = [
-        issue for issue in issues
-        if issue['id'] == selector or issue['id'].endswith('-' + selector)
-    ]
-    if not matches:
-        print(f"issue not found: {arguments[1]}", file=sys.stderr)
-        raise SystemExit(1)
-    print(json.dumps(matches[:1]))
+    matches = []
+    for argument in arguments[1:]:
+        if argument.startswith('--id='):
+            if argument[5:] not in by_id:
+                print(f"issue not found: {argument[5:]}", file=sys.stderr)
+                raise SystemExit(1)
+            matches.append(by_id[argument[5:]])
+        elif not argument.startswith('--'):
+            found = [issue for issue in issues
+                     if issue['id'] == argument or issue['id'].endswith('-' + argument)]
+            if not found:
+                print(f"issue not found: {argument}", file=sys.stderr)
+                raise SystemExit(1)
+            matches.append(found[0])
+    print(json.dumps(matches))
     raise SystemExit(0)
 if key == 'update':
     issue_id = arguments[1]
@@ -96,7 +108,24 @@ if key == 'update':
     (directory / '.beads' / 'fixture.json').write_text(json.dumps(payload))
     raise SystemExit(0)
 if key == 'comments':
-    print(json.dumps(payload.get('comments', [])))
+    print(json.dumps([comment for comment in payload.get('comments', [])
+                      if comment.get('issue_id', arguments[1]) == arguments[1]]))
+    raise SystemExit(0)
+if key == 'dep':
+    issue_id = arguments[2]
+    options = dict(argument[2:].split('=', 1) for argument in arguments if argument.startswith('--') and '=' in argument)
+    if issue_id not in by_id:
+        print(json.dumps({'error': f'no issue found matching {issue_id}'}))
+        raise SystemExit(1)
+    rows = []
+    for edge in payload.get('deps', []):
+        if options.get('type', edge['type']) != edge['type']:
+            continue
+        near, far = ('to', 'from') if options.get('direction') == 'up' else ('from', 'to')
+        if edge[near] == issue_id and edge[far] in by_id:
+            row = {k: v for k, v in by_id[edge[far]].items() if k not in ('parent', 'defer_until')}
+            rows.append({**row, 'dependency_type': edge['type']})
+    print(json.dumps(rows))
     raise SystemExit(0)
 if key == 'comments-add':
     payload.setdefault('comments', []).append({
@@ -178,6 +207,7 @@ class WorkspaceFixture(unittest.TestCase):
         deferred: list[dict[str, Any]] | None = None,
         other: list[dict[str, Any]] | None = None,
         comments: list[dict[str, Any]] | None = None,
+        deps: list[dict[str, str]] | None = None,
         faults: dict[str, str] | None = None,
         delays: dict[str, float] | None = None,
     ) -> None:
@@ -198,6 +228,7 @@ class WorkspaceFixture(unittest.TestCase):
                     "deferred": deferred or [],
                     "other": other or [],
                     "comments": comments or [],
+                    "deps": deps or [],
                     "faults": faults or {},
                     "delays": delays or {},
                 }

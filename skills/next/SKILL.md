@@ -6,7 +6,7 @@ description: >
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
 effort: high
-version: "1.27.0"
+version: "1.28.0"
 author: "flurdy"
 ---
 
@@ -36,6 +36,7 @@ each workflow's boundaries and all required approvals. Never select a second bea
 /next list               # Explicitly render the full ranked table, then ask which to pick
 /next backlog            # Same, always including the P4 backlog table
 /next status             # Only in-progress, blocked and deferred tables; no picker
+/next related [<bead>]   # Beads one hop from a bead or this session's claimed work; no picker
 /next safe               # Explicit source scope + advisory local Pi occupancy; separate unknowns
 /next sprint             # Same, enriched with Jira sprint and sorted by sprint bucket
 /next recover <repo>     # Check one unavailable store; confirm local startup, then retry once
@@ -255,6 +256,7 @@ When invoked:
      do not pass `recover` to `next-bd` or treat it as a bead selector.
    - `backlog`: Run `next-bd --list --backlog` and render it as in Listing Mode
    - `status`: Follow **Status Mode** below; never pick or claim
+   - `related [<bead-id> | <repo>:<bead-id>]`: Follow **Related Mode** below; never pick or claim
    - (none) or `list`: Render the full ranked table (see **Listing Mode** below), then ask user to pick. These are identical — `list` is just an explicit way to ask for the table when a bare `/next` has previously been over-interpreted as "auto-pick" or "summarise". Never auto-pick in this mode.
    - `safe`: Follow **Lease-aware safe selection** below; do not equate `--avoid-busy` with source safety
    - `sprint`: Run sprint enrichment (see Sprint Mode below) and ask user to pick
@@ -636,6 +638,34 @@ deferred rows keep the `⏰ elapsed` marker) and any source diagnostics. It has 
 machines table, no numbers and no picker prompt. Never mark anything `in_progress` or treat a
 row as selectable; to start work, the user runs `/next` or names a bead. `--status` overrides
 `--list`; `--json` output is unchanged. Safe mode has no status variant.
+
+## Related Mode
+
+`/next related [<bead>]` answers "what surrounds the work I am on?" Run
+`~/.agents/skills/next/scripts/next-bd --related` (session focus) or
+`next-bd --related=<bead-id|repo:id>` and reproduce its output in your reply.
+
+**Focus.** An explicit selector resolves through the shared `next-select` resolver, including
+workspace-owned members (`workspace:<id>`); never infer the store yourself. Without a selector,
+the focus is every in-progress bead whose `agent-claim:v1` comment names this harness session
+and its owning store. That is claim attribution, not liveness. When no session ID exists, none
+match, the ID is ambiguous or ownership cannot be checked, the output says so and renders no
+table: ask the user to name a bead rather than guessing. An unavailable store keeps its leading
+notice; focus found in healthy stores is still shown.
+
+**Content.** One section per focus bead, one hop, in the owning store only: parent (with closed
+child count), open blockers, work it unblocks, children, open siblings, `related`/`relates-to`
+links, and `discovered-from` in both directions. Rows keep Repo (workspace mode) and Parent,
+are ordered by relation then priority, age and ID, and show status (`ready`, `blocked by …`,
+`deferred until … ⏰ elapsed`, `in_progress`, `open`). Closed beads are omitted except the
+parent. Shared service labels are not related work; `/next safe` owns that overlap hint.
+
+Read-only: no ranked ready table, no numbering and no picker prompt. Never mark anything
+`in_progress` or treat a row as selectable; to start one, the user runs `/next` or names a bead.
+`--related` overrides `--list`/`--status`; `--json` output is unchanged. Exit status follows
+`next-select`: 0 shown, 3 ambiguous, 4 no session/claim or not found, 5 unavailable. It needs
+`bd dep list --direction`, `bd blocked` and multi-ID `bd show --id=…`; a failed read reports the
+store as unavailable rather than showing partial relations.
 
 ## Listing Mode (default and `list`)
 
