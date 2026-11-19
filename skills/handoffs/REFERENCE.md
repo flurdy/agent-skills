@@ -126,7 +126,7 @@ Delimited sections:
   `legacy`); status is `ok`, `absent`, `unsafe`, `unreadable` or `vanished`.
 - `---HANDOFFS---` — one pipe-delimited line per handoff, newest first (see line format below).
 - `---MATCHED-HANDOFFS---` — emitted with `--bead` / `--ticket`: exact-token, case-insensitive
-  current-repo matches, excluding superseded/completed/inactive rows under the available evidence.
+  current matches (`{current-match}` non-empty, so session-directory rows included), excluding superseded/completed/inactive rows under the available evidence.
   Fields: `{filename}|{date}|{time}|{slug}|{branch}|{exists}|{pr-state}|{pr-number}|{pr-url}|{source}|{path}`;
   load the matched handoff from `{path}`.
   Offline eligibility is not proof of live session ownership or remote branch state. An empty match
@@ -134,9 +134,9 @@ Delimited sections:
 - `---CURRENT-REPO-LATEST---` — a single `{slug}|{branch}|{date}` line for the newest current-repo handoff, or empty. (Consumed by `/landscape`; the picker and tidy render the full table instead and can ignore it.)
 - `---CURRENT-REPO-LIVE---` — one `{slug}|{branch}|{date}|{time}` line per recent active current-repo handoff; completed, stale, and superseded rows are excluded. (Consumed by `/landscape`; ignore here.)
 - `---SUMMARY---` — `total=N`, `current_repo_total=N`, `current_repo_recent=N`, `current_repo_recent_live=N`, `current_repo_pruned=N`, `current_repo_superseded=N`, `current_repo_stale=N`, `current_repo_age_review=N`, `other_repos=N`, `pruned_total=N`, `superseded_total=N`, `unresolved=N`, `workspace_members=N`, `workspace_member_handoffs=N`, `workspace_member_stale=N`, `workspace_member_age_review=N`, `workspace_classified=N`, `legacy_total=N`, `source_collisions=N`.
-- `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
+- `---OTHER-REPOS---` — one line per distinct non-current repo: `{repo-key}|{count}|{display}`, sorted by count desc. Rows current through their session directory are not counted here. **Workspace members are still counted here** — the section is deliberately unfiltered so existing parsers see no change; a caller rendering the workspace sections below should subtract them (see §Workspace-members).
 - `---WORKSPACE-MEMBER-REPOS---` — one line per member repo of the multi-repo workspace the cwd belongs to: `{repo-key}|{display}|{path}|{handoff-count}`, in `.mgit.conf` order. Empty when the cwd isn't in a workspace. The current repo is excluded.
-- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **same 24 fields** as `---HANDOFFS---` plus `{member-display}|{member-path}` appended (26 total; the member path is always the final field), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
+- `---WORKSPACE-MEMBER-HANDOFFS---` — one line per handoff owned by a member, newest first. The **first 24 fields** of `---HANDOFFS---` (no `{current-match}`) plus `{member-display}|{member-path}` appended (26 total; the member path is always the final field), so an existing parser can be reused unchanged. Suppressed by `--summary-only`.
 - `---SOURCE-COLLISIONS---` — one `{filename}|identical` or `{filename}|different` line per
   filename present in both locations (content compared byte-for-byte). Each copy is its own row,
   identified by `{source}`/`{path}`; the two never supersede each other, and neither is preferred,
@@ -147,14 +147,19 @@ with a space when it builds a record. Handoff text is author-controlled, and the
 records are read by position, so an unescaped delimiter would shift every later
 field and change what a row appears to say. Parsers can rely on the field count.
 
-**`---HANDOFFS---` line — 24 pipe-delimited fields, in order:**
+**`---HANDOFFS---` line — 25 pipe-delimited fields, in order:**
 
 ```
-{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}|{needs-age-review}|{source}|{path}
+{filename}|{date}|{slug}|{cwd}|{branch}|{repo-key}|{exists}|{superseded-by}|{supersede-reason}|{branch-state}|{pr-state}|{pr-number}|{pr-url}|{archive-class}|{time}|{beads-field}|{jira-field}|{beads-done}|{deliverable-field}|{beads-progress}|{needs-review}|{needs-age-review}|{source}|{path}|{current-match}
 ```
 
 `{source}` (field 23) is `canonical` or `legacy`; `{path}` (field 24) is the exact file the row was
 read from. `{filename}` alone is ambiguous when both locations hold the same name.
+
+`{current-match}` (field 25) says why a row is current: `repo` (its `repo-key` is the current
+identity), `session` (its `Session dir:` matches; see Repo identity), or empty (not current). A row
+is a **current row** when this field is non-empty; an older `list.sh` without it means
+`repo-key == CURRENT-REPO`.
 
 `{time}` (field 15) is the `HH:MM` the handoff was written — from the `# Resume:` header
 (wrap-up v0.8.0+), falling back to the file's mtime; `?` only when neither is available. Fields after
@@ -169,6 +174,13 @@ read from. `{filename}` alone is ambiguous when both locations hold the same nam
 - **Directory fallback:** when no repo is found above the recorded cwd but the directory still exists, the handoff keys to `dir:{realpath}` (display = basename). This is what makes handoffs written from a non-git workspace root pickable when `/handoffs` runs from that same directory. Exact match only — no walk-up, so a pruned non-repo path never keys to a surviving parent.
 - `repo-key` is `UNRESOLVED` only when the `Repo root:` field, the cwd walk-up, and the directory fallback all fail (path invalid or gone).
 - `exists=Y` means the recorded cwd still exists on disk; `exists=N` means it was pruned (still pickable — resume in your current checkout or a fresh worktree).
+- **Session directory:** wrap-up writes `**Session dir:**` when the session ran outside the repo it
+  records. If that directory exists and resolves (repo first, then `dir:`) to the current identity,
+  the row is current with `current-match=session`; `repo-key` is unchanged. Repo identity wins, and
+  workspace-member rows keep member routing. Session rows are **never classified** from the session
+  directory: `branch-state`/`pr-state` stay `unknown`, `archive-class` and both assisted flags stay
+  empty, and they are excluded from `current_repo_superseded`/`current_repo_stale`, so neither
+  `/handoffs` nor `/handoffs-tidy` offers them for archive. Tidy them from their own repo.
 
 ### Supersede (`superseded-by`, `supersede-reason`)
 
@@ -381,6 +393,8 @@ presentation rules above still apply.
 then an optional label from the recorded cwd basename:
 
 - `here` when the cwd matches pwd.
+- `session` when `current-match=session`: the handoff belongs to another repo and was written from
+  this directory. It takes precedence over the other labels.
 - No label when the basename names the repo's main checkout (current-repo root or `{member-path}`
   basename) or appears case-insensitively in the branch name (a branch-derived worktree).
 - `worktrees root` when the cwd ends in `/` under `worktrees/`; `—` alone when the cwd is empty.

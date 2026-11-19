@@ -116,6 +116,7 @@ print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
         header_time: bool = True,
         repo: Path | None = None,
         directory: Path | None = None,
+        session_dir: Path | None = None,
     ) -> str:
         date = self.today - dt.timedelta(days=age_days)
         handoff_repo = repo or self.repo
@@ -127,7 +128,8 @@ print(value.isoweekday() if rest[-1] == "+%u" else value.isoformat())
             f"{resume_header}\n\n"
             f"**Where to pick up:** `{handoff_repo}` on branch `{branch}`\n"
             f"**Repo root:** `{handoff_repo}`\n"
-            f"**Beads:** {beads}\n"
+            + (f"**Session dir:** `{session_dir}`\n" if session_dir else "")
+            + f"**Beads:** {beads}\n"
             f"**Jira:** {jira}\n"
             f"**PRs:** {prs}\n",
             encoding="utf-8",
@@ -185,7 +187,7 @@ class StorageLocationTests(unittest.TestCase):
             filename = fixture.add_handoff(0, "ready")
             output = fixture.run()
             fields = section(output, "HANDOFFS")[0].split("|")
-            self.assertEqual(fields[22:], ["canonical", str(fixture.handoffs / filename)])
+            self.assertEqual(fields[22:24], ["canonical", str(fixture.handoffs / filename)])
             self.assertEqual(
                 section(output, "SOURCES"),
                 [f"canonical|{fixture.handoffs}|ok|1", f"legacy|{fixture.legacy}|absent|0"],
@@ -203,7 +205,7 @@ class StorageLocationTests(unittest.TestCase):
             self.assertEqual(section(result.stdout, "STORAGE"), ["legacy"])
             fields = section(result.stdout, "HANDOFFS")[0].split("|")
             self.assertEqual(fields[0], filename)
-            self.assertEqual(fields[22:], ["legacy", str(fixture.legacy / filename)])
+            self.assertEqual(fields[22:24], ["legacy", str(fixture.legacy / filename)])
             matched = section(result.stdout, "MATCHED-HANDOFFS")
             self.assertEqual(len(matched), 1)
             self.assertEqual(matched[0].split("|")[9:], ["legacy", str(fixture.legacy / filename)])
@@ -707,7 +709,7 @@ class AgeReviewClassificationTests(unittest.TestCase):
             output = fixture.run("--stale-days", "30")
             fields = section(output, "HANDOFFS")[0].split("|")
 
-            self.assertEqual(len(fields), 24)
+            self.assertEqual(len(fields), 25)
             self.assertEqual(fields[13], "")
             self.assertEqual(fields[20], "")
             self.assertEqual(fields[21], "Y")
@@ -871,7 +873,7 @@ class AgeReviewClassificationTests(unittest.TestCase):
 
         self.assertIn("This is a workspace-member handoff for `{member-display}`.", handoffs)
         self.assertIn("**Switch first:** `cd {member-path}`", handoffs)
-        self.assertIn("cannot pick handoffs from unrelated repos", handoffs)
+        self.assertIn("never runs repo-scoped commands for another repo from here", handoffs)
         self.assertNotIn(
             "This handoff belongs to `{member-display}`, not the repo you're in.",
             handoffs,
@@ -921,6 +923,18 @@ class ListingOutputContractTests(unittest.TestCase):
         picker = handoffs.split("### 4. Pick a handoff", 1)[1].split("### 4b.", 1)[0]
         self.assertIn("tables already rendered above", picker)
         self.assertIn("With more than four remaining displayed rows", picker)
+
+    def test_named_other_repo_handoffs_load_read_only_behind_a_cd(self) -> None:
+        handoffs = HANDOFFS_SKILL.read_text(encoding="utf-8")
+        named = handoffs.split("### 4c.", 1)[1].split("### 5.", 1)[0]
+
+        for required in (
+            "never offers unrelated-repo rows", "relative date", "---AS-OF-DATE---",
+            "With several, ask which", "never fall back to a guessed path", "read-only",
+            "**Switch first:** `cd {cwd}`", "Do not run repo-scoped commands", "`session` row",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, named)
 
     def test_archive_previews_are_required_in_both_consumers(self) -> None:
         tidy = TIDY_SKILL.read_text(encoding="utf-8")
@@ -984,11 +998,82 @@ class DirectoryIdentityTests(unittest.TestCase):
         self.assertEqual(rows[0].split("|")[5], "UNRESOLVED")
 
 
+class SessionDirectoryMatchTests(unittest.TestCase):
+    """A handoff written from one directory about another repo is current from
+    either place; field 25 says which identity matched."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.fixture = HandoffListFixture(self.root)
+        self.session = self.root / "launch"
+        self.session.mkdir()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def rows(self, output: str) -> dict[str, list[str]]:
+        return {line.split("|")[0]: line.split("|") for line in section(output, "HANDOFFS")}
+
+    def test_session_directory_makes_the_row_current_without_changing_its_repo(self) -> None:
+        name = self.fixture.add_handoff(0, "elsewhere", session_dir=self.session)
+        output = self.fixture.run(cwd=self.session)
+
+        row = self.rows(output)[name]
+        self.assertEqual(row[24], "session")
+        self.assertNotEqual(row[5], f"dir:{self.session.resolve()}")
+        summary = dict(line.split("=", 1) for line in section(output, "SUMMARY"))
+        self.assertEqual(summary["current_repo_total"], "1")
+        self.assertEqual(summary["current_repo_recent_live"], "1")
+        self.assertEqual(section(output, "OTHER-REPOS"), [])
+
+    def test_session_rows_are_never_classified_against_the_session_directory(self) -> None:
+        name = self.fixture.add_handoff(30, "elsewhere", branch="gone-branch", session_dir=self.session)
+        row = self.rows(self.fixture.run(cwd=self.session))[name]
+
+        self.assertEqual(row[9], "unknown")
+        self.assertEqual(row[13], "")
+        self.assertEqual(row[21], "")
+
+    def test_repo_identity_still_matches_from_the_repo(self) -> None:
+        name = self.fixture.add_handoff(0, "elsewhere", session_dir=self.session)
+        self.assertEqual(self.rows(self.fixture.run())[name][24], "repo")
+
+    def test_unrelated_directory_sees_neither_match(self) -> None:
+        unrelated = self.root / "unrelated"
+        unrelated.mkdir()
+        name = self.fixture.add_handoff(0, "elsewhere", session_dir=self.session)
+        output = self.fixture.run(cwd=unrelated)
+
+        self.assertEqual(self.rows(output)[name][24], "")
+        self.assertIn("repo", [line.split("|")[2] for line in section(output, "OTHER-REPOS")])
+
+    def test_handoffs_without_the_field_match_as_before(self) -> None:
+        name = self.fixture.add_handoff(0, "ordinary")
+        self.assertEqual(self.rows(self.fixture.run())[name][24], "repo")
+        self.assertEqual(self.rows(self.fixture.run(cwd=self.session))[name][24], "")
+
+    def test_superseded_session_rows_are_not_live(self) -> None:
+        self.fixture.add_handoff(1, "thread", session_dir=self.session)
+        self.fixture.add_handoff(0, "thread", session_dir=self.session)
+        summary = dict(line.split("=", 1) for line in section(self.fixture.run(cwd=self.session), "SUMMARY"))
+
+        self.assertEqual(summary["current_repo_total"], "2")
+        self.assertEqual(summary["current_repo_superseded"], "0")
+        self.assertEqual(summary["current_repo_recent_live"], "1")
+
+    def test_bead_filter_matches_session_rows(self) -> None:
+        name = self.fixture.add_handoff(0, "elsewhere", beads="`abc-123`", session_dir=self.session)
+        matched = section(self.fixture.run("--bead", "abc-123", cwd=self.session), "MATCHED-HANDOFFS")
+
+        self.assertEqual([line.split("|")[0] for line in matched], [name])
+
+
 class RecordEncodingTests(unittest.TestCase):
     """Records are pipe-delimited and REFERENCE.md parses them by field position,
     so free text carrying a delimiter must not shift what a later field means."""
 
-    HANDOFF_FIELDS = 24
+    HANDOFF_FIELDS = 25
 
     def test_pipe_in_branch_cannot_shift_record_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

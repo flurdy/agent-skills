@@ -690,6 +690,7 @@ R_JIRA=()       # raw `**Jira:**` field content (parsed under --bead/--ticket or
 R_PRS=()        # raw `**PRs:**` field content (parsed under --check-branches; PR-number fallback)
 R_SOURCE=()     # canonical | legacy — the location the file was read from
 R_PATH=()       # exact path of the file; consumers load this, never dir+filename
+R_MATCH=()      # repo | session | empty — why the row is current
 LEGACY_TOTAL=0
 # Same filename present in both locations: `{filename}|identical|different`.
 # Such rows stay separate and never supersede each other.
@@ -852,7 +853,26 @@ if [ "${#ENTRY_LINES[@]}" -gt 0 ]; then
         [ "$EXISTS" = "N" ] && PRUNED_TOTAL=$((PRUNED_TOTAL+1))
         [ "$REPO_KEY" = "UNRESOLVED" ] && UNRESOLVED_COUNT=$((UNRESOLVED_COUNT+1))
 
-        if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "$REPO_KEY" = "$CURRENT_REPO_KEY" ]; then
+        # Which identity makes this row current: `repo`, or `session` when the
+        # wrap-up ran from this directory about another repo (`Session dir:`).
+        # The repo key is unchanged, so liveness and supersede stay with the
+        # owning repo. Workspace-member rows keep their member routing, and only
+        # an existing session directory can match.
+        MATCH=""
+        if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
+            if [ "$REPO_KEY" = "$CURRENT_REPO_KEY" ]; then
+                MATCH="repo"
+            elif ! ws_index_for_key "$REPO_KEY" >/dev/null; then
+                SESSION_DIR=$(grep -m1 '^\*\*Session dir:\*\*' "$F" 2>/dev/null | sed -n 's/.*\*\*Session dir:\*\* `\([^`]*\)`.*/\1/p' || true)
+                if [ -n "$SESSION_DIR" ] && [ -d "$SESSION_DIR" ]; then
+                    INFO=$(resolve_repo_info "$SESSION_DIR" 2>/dev/null || resolve_dir_info "$SESSION_DIR" 2>/dev/null || true)
+                    [ "${INFO%%|*}" = "$CURRENT_REPO_KEY" ] && MATCH="session"
+                fi
+            fi
+        fi
+        R_MATCH+=("$MATCH")
+
+        if [ -n "$MATCH" ]; then
             CUR_TOTAL=$((CUR_TOTAL+1))
             [ "$EXISTS" = "N" ] && CUR_PRUNED=$((CUR_PRUNED+1))
             if [[ "$DATE" > "$CUTOFF" ]] || [ "$DATE" = "$CUTOFF" ]; then
@@ -965,7 +985,8 @@ while [ "$i" -lt "$N" ]; do
         R_SUPBY+=("${R_FILE[$best_idx]}")
         R_SUPREASON+=("$best_reason")
         SUPERSEDED_TOTAL=$((SUPERSEDED_TOTAL+1))
-        if [ "$CURRENT_REPO_KEY" != "NONE" ] && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+        # Archive counters stay repo-only: session rows are never archive candidates.
+        if [ "${R_MATCH[$i]}" = "repo" ]; then
             CUR_SUPERSEDED=$((CUR_SUPERSEDED+1))
         fi
     else
@@ -1037,7 +1058,13 @@ while [ "$i" -lt "$N" ]; do
     R_BEADSPROGRESS+=("")
     R_NEEDSREVIEW+=("")
     R_NEEDSAGEREVIEW+=("")
-    R_INACTIVE+=("")
+    # Session-matched rows are never classified here (their repo is elsewhere),
+    # so supersede is their only inactivity signal.
+    if [ "${R_MATCH[$i]}" = "session" ] && [ -n "${R_SUPBY[$i]}" ]; then
+        R_INACTIVE+=("superseded")
+    else
+        R_INACTIVE+=("")
+    fi
     i=$((i+1))
 done
 
@@ -1220,7 +1247,7 @@ CUR_LIVE_LINES=()
 if [ "$CURRENT_REPO_KEY" != "NONE" ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        if [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ]; then
+        if [ -n "${R_MATCH[$i]}" ]; then
             if [ -z "$LATEST_DATE" ]; then
                 LATEST_SLUG="${R_SLUG[$i]}"
                 LATEST_BRANCH="${R_BRANCH[$i]}"
@@ -1252,7 +1279,7 @@ echo "---HANDOFFS---"
 if [ "$SUMMARY_ONLY" -eq 0 ]; then
     i=0
     while [ "$i" -lt "$N" ]; do
-        emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}" "${R_SOURCE[$i]}" "${R_PATH[$i]}"
+        emit_record "${R_FILE[$i]}" "${R_DATE[$i]}" "${R_SLUG[$i]}" "${R_CWD[$i]}" "${R_BRANCH[$i]}" "${R_REPO[$i]}" "${R_EXISTS[$i]}" "${R_SUPBY[$i]}" "${R_SUPREASON[$i]}" "${R_STATE[$i]}" "${R_PRSTATE[$i]}" "${R_PRNUM[$i]}" "${R_PRURL[$i]}" "${R_ARCHCLASS[$i]}" "${R_TIME[$i]}" "${R_BEADS[$i]}" "${R_JIRA[$i]}" "${R_BEADSDONE[$i]}" "${R_DELIV[$i]}" "${R_BEADSPROGRESS[$i]}" "${R_NEEDSREVIEW[$i]}" "${R_NEEDSAGEREVIEW[$i]}" "${R_SOURCE[$i]}" "${R_PATH[$i]}" "${R_MATCH[$i]}"
         i=$((i+1))
     done
 fi
@@ -1356,9 +1383,7 @@ if [ -n "$MATCH_FILTER" ]; then
     echo "---MATCHED-HANDOFFS---"
     i=0
     while [ "$i" -lt "$N" ]; do
-        if [ "$CURRENT_REPO_KEY" != "NONE" ] \
-            && [ "${R_REPO[$i]}" = "$CURRENT_REPO_KEY" ] \
-            && [ -z "${R_INACTIVE[$i]}" ]; then
+        if [ -n "${R_MATCH[$i]}" ] && [ -z "${R_INACTIVE[$i]}" ]; then
             matched=0
             if [ -n "$MATCH_BEAD" ] && field_has_token "${R_BEADS[$i]}" "$MATCH_BEAD"; then matched=1; fi
             if [ -n "$MATCH_TICKET" ] && field_has_token "${R_JIRA[$i]}" "$MATCH_TICKET"; then matched=1; fi

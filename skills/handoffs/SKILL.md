@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.26.1"
+version: "0.27.0"
 author: "flurdy"
 ---
 
@@ -25,16 +25,16 @@ Browse handoff files written by `/wrap-up` (in `~/.agents/handoffs/`) and pick o
 
 1. List handoffs across all repos, with per-repo counts.
 2. **Fully detail** handoffs in the current repo as a pickable table, flagging which are superseded by a newer handoff, done (PR merged, all beads closed, or Jira ticket Done), or stale (branch gone / PR closed).
-3. **Summarise** handoffs in other repos (count per repo, not full listing).
+3. **Summarise** handoffs in other repos (count per repo, not full listing); load one only when you name it (§4c).
 4. Optionally archive confirmed superseded, done, stale, or assisted-review handoffs to keep the picker focused, including safe and old signal-less workspace-member rows through separate confirmation flows.
-5. Prompt you to pick one — only handoffs for the current repo and workspace members are pickable.
+5. Prompt you to pick one — only current-repo (including session-directory) and workspace-member handoffs are offered.
 6. On pick, render the resume block inline and surface the `cd` if the recorded worktree differs from pwd.
 
 ## Important — what this skill cannot do
 
 - It **cannot resume** for you. It surfaces the resume block; you read it and act on the next step.
 - It **cannot rename the session** for you. On load it prints the active client's paste-ready command (§5): `/name {slug}` in Pi and `/rename {slug}` in Claude Code. Only you typing it triggers a rename.
-- It **cannot pick handoffs from unrelated repos**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. To resume a handoff in an unrelated repo, `cd` there and run `/handoffs` again. **Exception:** repos in the same multi-repo workspace are listed and pickable (§2b/§4b), because from a workspace root they'd otherwise be invisible; picking one requires an explicit `cd` before any repo-scoped command runs.
+- It **never runs repo-scoped commands for another repo from here**. That is a deliberate guard — running commands against the wrong repo is the failure mode it prevents. Unrelated repos are only summarised and never offered in the picker; naming one of their handoffs loads it read-only behind a mandatory `cd` (§4c). Repos in the same multi-repo workspace are listed and pickable (§2b/§4b) under the same rule, because from a workspace root they'd otherwise be invisible.
 - It **never deletes** handoff files. The opt-in archive steps (§3b–§3f) only *move* explicitly confirmed candidates into `~/.agents/handoffs/archive/` — they stay on disk and greppable.
 
 ## Output contract — tables before prompts
@@ -72,7 +72,7 @@ Missing Python or `retention.py` fails clearly; optional `gh`, `bd`, and Jira ac
 No retention metadata is written.
 
 `--check-branches` adds branch-liveness + PR classification for current-repo and workspace-member handoffs. The full flag
-semantics, the 24-field `---HANDOFFS---` line format, and every field's meaning (supersede,
+semantics, the 25-field `---HANDOFFS---` line format, and every field's meaning (supersede,
 branch-state, pr-state, archive-class, beads-done, deliverable-field, beads-progress, needs-review,
 needs-age-review)
 are specified once in
@@ -82,8 +82,8 @@ off the same definitions, including §Age-review, so the two never drift on clas
 The sections you parse here: `---CURRENT-REPO---` / `---CURRENT-REPO-DISPLAY---` /
 `---CURRENT-REPO-KIND---` (identity + label + `repo`/`dir`/`NONE` — outside a git repo the directory
 itself is the identity, so handoffs written from it still match), `---STORAGE---` / `---SOURCES---` (which
-locations were read; see §2a), `---HANDOFFS---` (one row per handoff, newest first; fields 23–24 are
-`{source}|{path}`), `---SUMMARY---`
+locations were read; see §2a), `---HANDOFFS---` (one row per handoff, newest first; fields 23–25 are
+`{source}|{path}|{current-match}`; a non-empty `{current-match}` marks a current row), `---SUMMARY---`
 (the counts, incl. `current_repo_total`, `current_repo_superseded`, `current_repo_stale`,
 `current_repo_age_review`, `workspace_member_age_review`, `unresolved`), and `---OTHER-REPOS---` (`{repo-key}|{count}|{display}`, count desc). The
 `---CURRENT-REPO-LATEST---` / `---CURRENT-REPO-LIVE---` sections are for `/landscape`; this skill
@@ -134,6 +134,7 @@ Keep cells compact per **REFERENCE §Cells** (width budget, caps, ellipsis) so t
 - **Slug**: from the filename (e.g. `ab-1107-cta-event`).
 - **Branch**: from the parsed line, capped per REFERENCE §Cells; `?` if unknown.
 - **Where**: worktree indicator plus optional location label per REFERENCE §Cells — e.g. `✅ here`, `✅` (main checkout or branch-derived worktree), `pruned` (missing worktree). The plain-text label reads as "pruned" and the footnote legend below spells it out; everything in the current-repo table is pickable by definition (handoffs that couldn't be matched to a repo never reach this table), so no separate Pickable column.
+  - `session` marks a `current-match=session` row: written from this directory about another repo. Its Status stays `🟢 live` or superseded and its Archive `—`; add once under the table `_session = written from here about another repo; loading it leads with a `cd` there (§4c)._`
   - Use natively wide emoji or plain text in prescribed cells, with no U+FE0F/U+FE0E sequences. Pi and xterm.js disagree on variation-selector widths; do not add selectors to these glyphs.
 - **Status**: classify the row per **REFERENCE §Status** (the 9-step precedence: supersede → open PR → merged PR → beads-done → Jira-Done → closed PR → merged → gone → live). Emit the glyphs exactly as written there.
 - **Archive**: render the candidate flag per **REFERENCE §Archive-glyph** — `safe` → `📦 safe`, `keep` → `🔶 keep?`, empty → `—`. Retained non-superseded rows stay `—` even when Status says merged/done/stale; a §1a Jira-Done promotion counts as `safe` only after REFERENCE §Retention passes. Unknown completion timing stays retained.
@@ -322,6 +323,29 @@ Do not run repo-scoped commands (worktree creation, `git checkout`, `bd`) for a 
 the current directory; the §5 `exists=N` worktree flow assumes you're inside the handoff's own repo,
 so defer it until the user has switched. Re-running `/handoffs` from `{member-path}` gives the full
 current-repo experience for that repo, including the archive flow.
+
+### 4c. Loading a named other-repo or session handoff
+
+The listing never offers unrelated-repo rows, but the user may name one: a slug, a filename, or a
+relative date such as "yesterday". Resolve it against the `---HANDOFFS---` rows already listed
+(never by `ls`/`grep`), using exact filename, then exact slug; resolve relative dates against
+`---AS-OF-DATE---` and the row `{date}`. With one match, load it per §5. With several, ask which
+(`AskUserQuestion` for 2–4, otherwise list them by filename) and load nothing until answered. With
+none, say so; never fall back to a guessed path.
+
+Load it **read-only** and lead with the switch, for this and for any picked `session` row:
+
+```markdown
+⚠️ **This handoff belongs to another repo (`{repo display or cwd basename}`).**
+**Switch first:** `cd {cwd}`
+
+Everything in the resume block below — branches, beads, commands — refers to that repo.
+```
+
+When `exists=N`, replace the `cd` line with `_Recorded location `{cwd}` no longer exists; open that
+repo and run `/handoffs` there._` Do not run repo-scoped commands (worktree recreation,
+`git checkout`, `bd`) or archive flows for it from the current directory; the §5 `exists=N`
+worktree flow waits until the user has switched. Loading is context, not authority to act.
 
 ### 5. Load the picked handoff
 

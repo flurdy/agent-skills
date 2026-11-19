@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/handoffs/scripts/list.sh:*), Bash(~/.agent
 model-tier: standard
 model: sonnet
 effort: medium
-version: "0.10.0"
+version: "0.10.1"
 author: "flurdy"
 ---
 
@@ -81,7 +81,8 @@ Listing writes no retention state.
 `--check-branches` is what makes this command capable: it fills `branch-state` and (when `gh` is
 present) `pr-state`, so the script can mark merged PRs, landed branches, and closed PRs. Bead-closure
 (`beads-done`, keyed off the `**Deliverable:**` field when present) and supersede are computed
-regardless. See REFERENCE §Run and §Fields for the flag semantics and the 24-field line format.
+regardless. See REFERENCE §Run and §Fields for the flag semantics and the 25-field line format. Rows with
+`current-match=session` are never classified or offered here; tidy them from their own repo.
 Degrades cleanly offline (REFERENCE §Run / the failure modes below).
 
 Parse the `---HANDOFFS---` lines and the `---SUMMARY---` counts. For each current-repo row, derive its

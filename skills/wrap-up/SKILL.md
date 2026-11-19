@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.17.2"
+version: "0.18.0"
 author: "flurdy"
 ---
 
@@ -410,6 +410,7 @@ Then:
 
 **Where to pick up:** `{cwd}` on branch `{branch}`{worktree-note}
 **Repo root:** `{repo-root}`
+**Session dir:** `{session-dir}`
 **Jira:** {jira-field}
 **Beads:** {beads-field}
 **Deliverable:** {deliverable-field}
@@ -448,6 +449,7 @@ Guidance for the model when filling this in:
 - `{worktree-note}` is ` (worktree at {path})` for linked worktrees, else empty.
 - `{cwd}` should be an **absolute path** when possible — not a relative path like `packages/web/`. The `/handoffs` skill matches handoffs to repos via the recorded location, and relative paths can't be resolved later.
 - `{repo-root}` is the value captured in §0 (canonical repo root — parent dir of the realpath of `--git-common-dir`). Omit the line entirely (don't render an empty value) if the session wasn't in a git repo.
+- `{session-dir}` is §0's absolute `---CWD---`. Render the line **only** when the handoff records work in another repository or directory than the session ran in: §0's `---REPO-ROOT---` is empty or differs from the recorded `{repo-root}` (for example, a session launched in `~/Code` about `~/Code/client`). Same-repo worktree switches never add it. `/handoffs` then lists the handoff as current from either place and leads with a `cd` to `{cwd}`. It is optional to the save helper; older handoffs without it keep matching by repo.
 
 #### Header fields: Jira / Beads / PRs
 
