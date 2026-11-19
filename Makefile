@@ -125,7 +125,7 @@ TEST_TARGETS := test-validate-skills test-assemble test-session-boundaries test-
   test-architect test-do-i-need-this test-pedantic-review test-verify-task test-sanity-check test-skills-review test-reassess test-pair-programming test-peer-session test-workspace-sync test-dependabot-remediation test-plan-to-backlog test-triage test-beads test-beads-setup test-beads-migrate test-next test-handoffs \
   test-pi-spend test-prompt-patterns test-pickup test-review-pr test-thoughtbox test-pr-status test-pr-reviewers test-review-requests test-pr-feedback \
   test-git-pr-lifecycle test-rebase test-total-review test-ready-to-merge test-ready-to-release test-release-ci test-release-order test-release-state test-release-status \
-  test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check
+  test-today test-wrap-up test-watch-protocols test-watch-telemetry test-model-update-check test-vulnerability-triage
 
 test: $(TEST_TARGETS)
 
@@ -231,6 +231,10 @@ test-peer-session:
 
 test-workspace-sync:
 	@python3 -B -m unittest discover -s skills/workspace-sync/tests
+
+.PHONY: test-vulnerability-triage
+test-vulnerability-triage:
+	@python3 -B -m unittest discover -s skills/vulnerability-triage/tests -p 'test_*.py'
 
 .PHONY: test-dependabot-remediation
 test-dependabot-remediation:

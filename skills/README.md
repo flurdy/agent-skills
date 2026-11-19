@@ -69,6 +69,7 @@ under a second topic with the same description. Rows are alphabetical within eac
 | pedantic-review | Read-only craft and test-design review; requirements, coverage sufficiency, execution, and fixes stay with their separate owners |
 | total-review | Portable pre-PR gauntlet with revision-bound artifact hygiene and review evidence, explicit missing coverage, optional independent reviewers, and at most two fix/review passes |
 | verify-task | Verify explicit requirements and coverage against a fixed scope using discovered repository-native gates; report missing, failed, or stale evidence without repairs |
+| vulnerability-triage | On-demand read-only exposure triage for CVEs and supply-chain incidents in explicit repositories and optional Kubernetes scope; evidence-linked findings and deduplicated follow-up proposals without automatic writes |
 
 ## Git and publication
 
