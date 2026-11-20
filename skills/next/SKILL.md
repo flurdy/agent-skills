@@ -5,8 +5,9 @@ description: >
   List read-only, or claim one selected bead, show its details, and continue into its work.
 allowed-tools: "Read,Bash(bd list:*),Bash(bd ready:*),Bash(bd show:*),Bash(bd -C * --sandbox dolt start),Bash(~/.agents/skills/next/scripts/next-bd:*),Bash(~/.agents/skills/next/scripts/next-select:*),Bash(~/.agents/skills/handoffs/scripts/list.sh:*),AskUserQuestion,mcp__jira__jira_get,next_safe"
 model-tier: economy
+model: sonnet
 effort: high
-version: "1.28.0"
+version: "1.29.0"
 author: "flurdy"
 ---
 
@@ -300,7 +301,9 @@ selection. For an unresolved bug, use [diagnose-bug](../diagnose-bug/SKILL.md); 
 planning, use [architect](../architect/SKILL.md). Preserve their own diagnosis, planning and approval
 boundaries. Do not implement directly under the listing skill's economy route. Model metadata is
 best-effort routing, not evidence of an actual model change; never force a route or waive billing
-consent. This skill intentionally has no Claude `model:` pin, which would persist into the work.
+consent. On Claude Code the `model: sonnet` pin lasts for the rest of the invoking turn only: a
+pick made by reply starts on the session model, while `task`, `quick`, `bug` and direct-ID starts
+continue on Sonnet in that turn unless a pinned specialist skill takes over.
 
 The tracker claim grants no additional authority. Preserve native guard decisions, lease contention,
 exact-file grants, metered-route consent and fresh remote/destructive approvals. Where supported,
