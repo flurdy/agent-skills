@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 from time import monotonic
 from typing import Any
@@ -26,6 +27,8 @@ HEAD_A = "a" * 40
 HEAD_B = "b" * 40
 BASE = "c" * 40
 BASE_B = "d" * 40
+ENTERPRISE = "ghe.example.com"
+ENTERPRISE_HOSTS = frozenset({"github.com", ENTERPRISE})
 
 
 def metadata(
@@ -71,6 +74,21 @@ def metadata(
             }
         }
     }
+
+
+def review_request(number: int, repository: str, host: str = "github.com") -> dict[str, Any]:
+    return {
+        "number": number,
+        "repository": {"nameWithOwner": repository},
+        "url": f"https://{host}/{repository}/pull/{number}",
+    }
+
+
+def enterprise_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    payload["data"]["repository"]["pullRequest"]["url"] = (
+        f"https://{ENTERPRISE}/acme/widgets/pull/42"
+    )
+    return payload
 
 
 def final_metadata(
@@ -126,7 +144,9 @@ class FakeRunner:
         git_dirty: bool = False,
         repository_view: Exception | None = None,
         review_requests: list[dict[str, Any]] | Exception | None = None,
+        host: str = "github.com",
     ) -> None:
+        self.host = host
         self.initial = initial if initial is not None else metadata()
         self.final = final if final is not None else final_metadata()
         self.feedback = feedback if feedback is not None else {
@@ -172,7 +192,12 @@ class FakeRunner:
         if args[:3] == ["gh", "repo", "view"]:
             if self.repository_view is not None:
                 raise self.repository_view
-            return json.dumps({"nameWithOwner": self.repository})
+            return json.dumps(
+                {
+                    "nameWithOwner": self.repository,
+                    "url": f"https://{self.host}/{self.repository}",
+                }
+            )
         if args[:3] == ["gh", "search", "prs"]:
             if isinstance(self.review_requests, Exception):
                 raise self.review_requests
@@ -181,7 +206,7 @@ class FakeRunner:
             return json.dumps(
                 {
                     "number": self.current_number,
-                    "url": f"https://github.com/{self.repository}/pull/{self.current_number}",
+                    "url": f"https://{self.host}/{self.repository}/pull/{self.current_number}",
                 }
             )
         if args[:3] == ["gh", "api", "graphql"]:
@@ -219,6 +244,12 @@ class FakeRunner:
 
 
 class SnapshotContractTest(unittest.TestCase):
+    def setUp(self) -> None:
+        environment = mock.patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("GH_HOST", None)
+
     def test_subprocess_runner_enforces_output_and_time_bounds(self) -> None:
         runner = SNAPSHOT.SubprocessRunner()
         with self.assertRaisesRegex(SNAPSHOT.CommandError, "output exceeded"):
@@ -331,8 +362,8 @@ class SnapshotContractTest(unittest.TestCase):
         runner = FakeRunner(
             repository_view=SNAPSHOT.CommandError("no known GitHub host"),
             review_requests=[
-                {"number": 42, "repository": {"nameWithOwner": "acme/widgets"}},
-                {"number": 7, "repository": {"nameWithOwner": "acme/other"}},
+                review_request(42, "acme/widgets"),
+                review_request(7, "acme/other"),
             ],
         )
 
@@ -346,8 +377,8 @@ class SnapshotContractTest(unittest.TestCase):
         runner = FakeRunner(
             repository_view=SNAPSHOT.CommandError("no known GitHub host"),
             review_requests=[
-                {"number": 42, "repository": {"nameWithOwner": "acme/widgets"}},
-                {"number": 42, "repository": {"nameWithOwner": "acme/gadgets"}},
+                review_request(42, "acme/widgets"),
+                review_request(42, "acme/gadgets"),
             ],
         )
 
@@ -429,6 +460,108 @@ class SnapshotContractTest(unittest.TestCase):
                         [args[3:] for args in runner.command_args() if args[0] == "git"],
                     )
                     self.assertFalse(any(args[0] == "ssh" for args in runner.command_args()))
+
+    def enterprise_runner(self, **overrides: Any) -> FakeRunner:
+        return FakeRunner(
+            host=ENTERPRISE,
+            initial=enterprise_metadata(metadata()),
+            final=enterprise_metadata(final_metadata()),
+            **overrides,
+        )
+
+    def test_enterprise_targets_pin_every_github_call_to_their_host(self) -> None:
+        for selector in (
+            f"https://{ENTERPRISE}/acme/widgets/pull/42",
+            f"{ENTERPRISE}/acme/widgets#42",
+            "42",
+            None,
+        ):
+            with self.subTest(selector=selector):
+                runner = self.enterprise_runner(
+                    git_repository="acme/widgets",
+                    git_remote=f"git@{ENTERPRISE}:acme/widgets.git\n",
+                )
+
+                result = SNAPSHOT.collect_snapshot(
+                    selector, runner=runner, cwd=Path("/checkout"), hosts=ENTERPRISE_HOSTS
+                )
+
+                self.assertEqual("complete", result["status"], result["errors"])
+                self.assertEqual(ENTERPRISE, result["target"]["host"])
+                self.assertTrue(result["checkout"]["available"], result["checkout"])
+                commands = runner.command_args()
+                api_calls = [command for command in commands if command[:2] == ["gh", "api"]]
+                self.assertEqual(3, len(api_calls))
+                for command in api_calls:
+                    self.assertEqual(["--hostname", ENTERPRISE], command[3:5])
+                feedback = next(c for c in commands if c[0].endswith("gh-pr-feedback.py"))
+                self.assertEqual(["--host", ENTERPRISE], feedback[-2:])
+
+    def test_github_com_targets_pin_github_com(self) -> None:
+        runner = FakeRunner()
+
+        SNAPSHOT.collect_snapshot("acme/widgets#42", runner=runner, cwd=Path("/workspace"))
+
+        api_calls = [c for c in runner.command_args() if c[:2] == ["gh", "api"]]
+        self.assertTrue(api_calls)
+        for command in api_calls:
+            self.assertEqual(["--hostname", "github.com"], command[3:5])
+
+    def test_unqualified_targets_use_a_known_gh_host(self) -> None:
+        os.environ["GH_HOST"] = ENTERPRISE
+        runner = self.enterprise_runner()
+
+        result = SNAPSHOT.collect_snapshot(
+            "acme/widgets#42", runner=runner, cwd=Path("/workspace"), hosts=ENTERPRISE_HOSTS
+        )
+
+        self.assertEqual("complete", result["status"], result["errors"])
+        self.assertEqual(ENTERPRISE, result["target"]["host"])
+
+    def test_unknown_hosts_fail_before_any_github_call(self) -> None:
+        for selector in (
+            f"https://{ENTERPRISE}/acme/widgets/pull/42",
+            f"{ENTERPRISE}/acme/widgets#42",
+        ):
+            with self.subTest(selector=selector):
+                runner = self.enterprise_runner()
+
+                result = SNAPSHOT.collect_snapshot(
+                    selector, runner=runner, cwd=Path("/workspace"), hosts=frozenset()
+                )
+
+                self.assertEqual("failed", result["status"])
+                self.assertIn("not a known GitHub host", result["errors"][0]["message"])
+                self.assertEqual([], runner.command_args())
+
+    def test_review_requests_keep_their_host(self) -> None:
+        runner = self.enterprise_runner(
+            repository_view=SNAPSHOT.CommandError("no known GitHub host"),
+            review_requests=[review_request(42, "acme/widgets", ENTERPRISE)],
+        )
+
+        result = SNAPSHOT.collect_snapshot(
+            "42", runner=runner, cwd=Path("/workspace"), hosts=ENTERPRISE_HOSTS
+        )
+
+        self.assertEqual("complete", result["status"], result["errors"])
+        self.assertEqual(ENTERPRISE, result["target"]["host"])
+
+    def test_same_named_repository_on_another_host_is_not_a_checkout(self) -> None:
+        runner = self.enterprise_runner(
+            git_repository="acme/widgets",
+            git_remote="git@github.com:acme/widgets.git\n",
+        )
+
+        result = SNAPSHOT.collect_snapshot(
+            f"{ENTERPRISE}/acme/widgets#42",
+            runner=runner,
+            cwd=Path("/checkout"),
+            hosts=ENTERPRISE_HOSTS,
+        )
+
+        self.assertFalse(result["checkout"]["available"])
+        self.assertIn("repository mismatch", result["checkout"]["reason"])
 
     def test_checkout_rejects_untrusted_remotes_without_losing_remote_evidence(self) -> None:
         for remote in (
@@ -553,6 +686,7 @@ class SnapshotContractTest(unittest.TestCase):
             result = SNAPSHOT.verify_checkout(
                 repository,
                 {
+                    "host": "github.com",
                     "repository": "acme/widgets",
                     "owner": "acme",
                     "repo": "widgets",
@@ -563,6 +697,7 @@ class SnapshotContractTest(unittest.TestCase):
                 cwd=repository,
                 deadline=monotonic() + 5,
                 max_output_bytes=10_000,
+                hosts=frozenset({"github.com"}),
             )
 
         self.assertFalse(result["available"])

@@ -15,18 +15,17 @@
 # caller cannot distinguish from "no open PRs". The member repos do have remotes, so
 # ask them instead.
 #
-# Members need not agree: a workspace can mix orgs, and can hold repos on non-GitHub
-# remotes entirely. Non-GitHub remotes are skipped and the most common org wins.
+# Members need not agree: a workspace can mix orgs, and can hold repos on other hosts
+# entirely. Those remotes are skipped and the most common org wins.
 #
 # `workspace_repos` exposes the same walk as `org/repo` pairs so list scripts can query
 # member repos directly: `gh search prs` reads GitHub's search index, which can lag a
 # freshly opened PR by minutes, whereas `gh pr list --repo` is authoritative.
 
-repo_from_url() {   # $1 = remote URL; prints org/repo, or fails for non-GitHub remotes
-  case "$1" in
-    *github.com[:/]*) printf '%s\n' "$1" | sed -E 's#.*github\.com[:/]##; s#\.git$##; s#/+$##' ;;
-    *) return 1 ;;
-  esac
+# Remotes on any other host are skipped. The default host is $GH_HOST when gh knows
+# it, else github.com; every gh call in these scripts follows the same default.
+repo_from_url() {   # $1 = remote URL; prints org/repo, or fails for other remotes
+  python3 "$(dirname "${BASH_SOURCE[0]}")/github_remote.py" "$1"
 }
 
 org_from_url() {   # $1 = remote URL; prints the org, or fails for non-GitHub remotes

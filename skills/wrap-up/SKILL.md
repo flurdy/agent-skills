@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/wrap-up/scripts/header.sh:*), Bash(~/.agen
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.18.0"
+version: "0.19.0"
 author: "flurdy"
 ---
 

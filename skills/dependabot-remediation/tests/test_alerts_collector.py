@@ -89,13 +89,14 @@ class CollectorTests(unittest.TestCase):
         fake.chmod(0o755)
         self.log = self.work / "gh.jsonl"
 
-    def run_collector(self, *args, responses=None, cwd=None):
+    def run_collector(self, *args, responses=None, cwd=None, extra_env=None):
         self.log.unlink(missing_ok=True)
         env = {
             "PATH": str(self.bin),
             "HOME": str(self.work),
             "GH_TEST_LOG": str(self.log),
             "GH_TEST_RESPONSES": json.dumps(responses or {}),
+            **(extra_env or {}),
         }
         result = subprocess.run(
             [sys.executable, "-I", str(SCRIPT), *args], cwd=cwd or self.work, env=env,
@@ -188,6 +189,49 @@ class CollectorTests(unittest.TestCase):
         result, report, calls = self.run_collector("--repo", REPO, "--state", "all", "--no-head", responses=responses)
         self.assertEqual((result.returncode, report["status"]), (0, "complete"))
         self.assertEqual(self.paths(calls), [first, second])
+
+    def test_enterprise_origin_pins_its_host_and_api_pagination(self):
+        host = "ghe.example.com"
+        config = self.work / "gh"
+        config.mkdir()
+        (config / "hosts.yml").write_text(f"{host}:\n    git_protocol: ssh\n")
+        checkout = self.work / "checkout"
+        checkout.mkdir()
+        git = ["git", "-C", str(checkout)]
+        subprocess.run([*git, "init", "-q"], check=True, env={"PATH": str(self.bin), "HOME": str(self.work)})
+        subprocess.run([*git, "remote", "add", "origin", f"git@{host}:{REPO}.git"], check=True)
+        for link, pages in (
+            (f"https://{host}/api/v3/{SECOND}", [FIRST, SECOND]),
+            (f"https://api.{host}/{SECOND}", [FIRST, SECOND]),
+            (f"https://api.github.com/{SECOND}", [FIRST]),
+            (f"https://{host}/{SECOND}", [FIRST]),
+        ):
+            with self.subTest(link=link):
+                responses = {
+                    FIRST: {"stdout": json.dumps([raw_alert(1)] * 100), "headers": [f'Link: <{link}>; rel="next"']},
+                    SECOND: {"stdout": "[]"},
+                }
+                result, report, calls = self.run_collector(
+                    "--no-head", responses=responses, cwd=checkout, extra_env={"GH_CONFIG_DIR": str(config)},
+                )
+                self.assertEqual((report["host"], report["repository"]), (host, REPO))
+                self.assertEqual(self.paths(calls), pages)
+                for call in calls:
+                    self.assertEqual(call[:3], ["api", "--hostname", host])
+
+        result, report, calls = self.run_collector("--no-head", responses={FIRST: {"stdout": "[]"}}, cwd=checkout)
+        self.assertEqual((result.returncode, report, calls), (64, None, []))
+
+    def test_repo_argument_uses_a_known_gh_host(self):
+        responses = {FIRST: {"stdout": "[]"}}
+        known = {"GH_HOST": "ghe.example.com", "GH_ENTERPRISE_TOKEN": "set"}
+        for extra_env, host in ((known, "ghe.example.com"), ({"GH_HOST": "unknown.example.com"}, "github.com")):
+            with self.subTest(extra_env=extra_env):
+                result, report, calls = self.run_collector(
+                    "--repo", REPO, "--no-head", responses=responses, extra_env=extra_env,
+                )
+                self.assertEqual((result.returncode, report["host"]), (0, host), result.stderr)
+                self.assertEqual(calls[0][:3], ["api", "--hostname", host])
 
     def test_invalid_pagination_never_makes_an_unsafe_request(self):
         urls = [

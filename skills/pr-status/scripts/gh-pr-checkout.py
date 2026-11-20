@@ -16,7 +16,14 @@ from time import monotonic, sleep
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from github_remote import REPOSITORY_PATTERN, github_repository
+from github_remote import (
+    DEFAULT_HOST,
+    REPOSITORY_PATTERN,
+    default_github_host,
+    github_remote,
+    known_github_hosts,
+    normalize_host,
+)
 
 SCHEMA_VERSION = "gh-pr-checkout/v1"
 DEFAULT_TIMEOUT_SECONDS = 15.0
@@ -212,8 +219,25 @@ def worktree_paths(
     return sorted(paths)[:MAX_CANDIDATES], errors
 
 
+def checked_host(
+    host: str | None, hosts: frozenset[str] | None
+) -> tuple[str, frozenset[str]]:
+    known = known_github_hosts() if hosts is None else frozenset(hosts) | {DEFAULT_HOST}
+    if host is None:
+        return default_github_host(hosts=known), known
+    normalized = normalize_host(host)
+    if normalized not in known:
+        raise ValueError(f"host is not a known GitHub host: {host}")
+    return normalized, known
+
+
+def repository_on_host(remote_url: str, host: str, hosts: frozenset[str]) -> str | None:
+    remote = github_remote(remote_url, hosts)
+    return remote.repository if remote and remote.host == host else None
+
+
 def inspect_repository(
-    runner: CommandRunner, path: str
+    runner: CommandRunner, path: str, host: str, hosts: frozenset[str]
 ) -> tuple[str | None, list[dict[str, str]]]:
     try:
         result = runner.run(["git", "-C", path, "remote", "get-url", "origin"])
@@ -221,11 +245,11 @@ def inspect_repository(
         return None, [error_record("remote", str(error), path)]
     if result.returncode != 0:
         return None, []
-    return github_repository(result.stdout.strip()), []
+    return repository_on_host(result.stdout.strip(), host, hosts), []
 
 
 def inspect_candidate(
-    runner: CommandRunner, path: str
+    runner: CommandRunner, path: str, host: str, hosts: frozenset[str]
 ) -> tuple[dict[str, Any] | None, list[dict[str, str]]]:
     commands = {
         "remote": ["git", "-C", path, "remote", "get-url", "origin"],
@@ -252,7 +276,7 @@ def inspect_candidate(
             errors.append(error_record(source, message, path))
             return None, errors
         values[source] = result.stdout
-    repository = github_repository(values["remote"].strip())
+    repository = repository_on_host(values["remote"].strip(), host, hosts)
     if not repository:
         return None, errors
     return (
@@ -283,7 +307,10 @@ def resolve_repository_scope(
     cwd: str | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+    host: str | None = None,
+    hosts: frozenset[str] | None = None,
 ) -> dict[str, Any]:
+    host, hosts = checked_host(host, hosts)
     runner = CommandRunner(timeout=timeout, max_output_bytes=max_output_bytes)
     errors = []
     if candidate_paths is None:
@@ -304,7 +331,7 @@ def resolve_repository_scope(
 
     repositories = set()
     for path in seeds:
-        repository, candidate_errors = inspect_repository(runner, path)
+        repository, candidate_errors = inspect_repository(runner, path, host, hosts)
         errors.extend(candidate_errors)
         if repository:
             repositories.add(repository)
@@ -316,6 +343,7 @@ def resolve_repository_scope(
     return {
         "schemaVersion": SCHEMA_VERSION,
         "status": status,
+        "host": host,
         "repositories": sorted(repositories, key=str.casefold),
         "candidatesChecked": len(seeds),
         "errors": errors,
@@ -335,11 +363,14 @@ def resolve_checkout(
     cwd: str | None = None,
     timeout: float = DEFAULT_TIMEOUT_SECONDS,
     max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+    host: str | None = None,
+    hosts: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     if not REPOSITORY_PATTERN.fullmatch(repository):
         raise ValueError("repository must look like owner/repo")
     if not SHA_PATTERN.fullmatch(head_sha):
         raise ValueError("head SHA must contain 40 to 64 hexadecimal characters")
+    host, hosts = checked_host(host, hosts)
 
     runner = CommandRunner(timeout=timeout, max_output_bytes=max_output_bytes)
     errors = []
@@ -355,7 +386,7 @@ def resolve_checkout(
 
     records = []
     for path in paths:
-        record, candidate_errors = inspect_candidate(runner, path)
+        record, candidate_errors = inspect_candidate(runner, path, host, hosts)
         errors.extend(candidate_errors)
         if record:
             records.append(record)
@@ -399,7 +430,7 @@ def resolve_checkout(
     return {
         "schemaVersion": SCHEMA_VERSION,
         "status": status,
-        "target": {"repository": repository, "headSha": head_sha},
+        "target": {"host": host, "repository": repository, "headSha": head_sha},
         "checkout": checkout,
         "candidatesChecked": len(paths),
         "errors": errors,
@@ -416,6 +447,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("repository", nargs="?")
     parser.add_argument("head_sha", nargs="?")
     parser.add_argument("--scope", action="store_true")
+    parser.add_argument(
+        "--host",
+        help="GitHub host known to gh (default: GH_HOST when known, else github.com)",
+    )
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--pretty", action="store_true")
     return parser.parse_args(argv)
@@ -431,6 +466,7 @@ def main(argv: list[str]) -> int:
             result = resolve_repository_scope(
                 timeout=timeout,
                 max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
+                host=arguments.host,
             )
         else:
             if not arguments.repository or not arguments.head_sha:
@@ -440,6 +476,7 @@ def main(argv: list[str]) -> int:
                 arguments.head_sha,
                 timeout=timeout,
                 max_output_bytes=DEFAULT_MAX_OUTPUT_BYTES,
+                host=arguments.host,
             )
         exit_code = 0 if result["status"] != "failed" else 1
     except (RuntimeError, TimeoutError, ValueError) as error:
@@ -447,6 +484,7 @@ def main(argv: list[str]) -> int:
             "schemaVersion": SCHEMA_VERSION,
             "status": "failed",
             "target": {
+                "host": arguments.host,
                 "repository": arguments.repository,
                 "headSha": arguments.head_sha,
             },

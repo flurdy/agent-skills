@@ -55,9 +55,11 @@ def classify_failure(stderr: str, returncode: int) -> str:
     return "request-failed"
 
 
-def run_gh(path: str, timeout: float, *, include: bool = False) -> tuple[str | None, str | None, str | None]:
+def run_gh(
+    host: str, path: str, timeout: float, *, include: bool = False
+) -> tuple[str | None, str | None, str | None]:
     """Return (stdout, reason, detail); reason is None on transport success."""
-    command = ["gh", "api", "--hostname", "github.com", "--method", "GET", path]
+    command = ["gh", "api", "--hostname", host, "--method", "GET", path]
     if include:
         command.append("--include")
     try:
@@ -78,7 +80,18 @@ def parse_json(payload: str):
         return None, "malformed-response"
 
 
-def repository_from_origin() -> tuple[str, str]:
+def github_remote_module():
+    helper = Path(__file__).resolve().parents[2] / "pr-status" / "scripts"
+    if not (helper / "github_remote.py").is_file():
+        raise Usage("shared GitHub remote parser unavailable")
+    sys.path.insert(0, str(helper))
+    import github_remote
+
+    return github_remote
+
+
+def repository_from_origin() -> tuple[str, str, str]:
+    """Return (host, repository, source) for an origin on a GitHub host known to gh."""
     try:
         result = subprocess.run(
             ["git", "remote", "get-url", "origin"], capture_output=True, text=True, timeout=5, check=False,
@@ -89,16 +102,18 @@ def repository_from_origin() -> tuple[str, str]:
         raise Usage("git remote lookup timed out; pass --repo OWNER/REPO") from None
     if result.returncode != 0 or not result.stdout.strip():
         raise Usage("no origin remote; pass --repo OWNER/REPO")
-    helper = Path(__file__).resolve().parents[2] / "pr-status" / "scripts"
-    if not (helper / "github_remote.py").is_file():
-        raise Usage("shared GitHub remote parser unavailable; pass --repo OWNER/REPO")
-    sys.path.insert(0, str(helper))
-    from github_remote import github_repository
+    github_remote = github_remote_module()
+    remote = github_remote.github_remote(result.stdout, github_remote.known_github_hosts())
+    if not remote:
+        raise Usage("origin is not on a GitHub host known to gh; pass --repo OWNER/REPO")
+    return remote.host, remote.repository, "origin-remote"
 
-    repository = github_repository(result.stdout)
-    if not repository:
-        raise Usage("origin is not a github.com repository; pass --repo OWNER/REPO")
-    return repository, "origin-remote"
+
+def api_locations(host: str) -> set[tuple[str, str]]:
+    """(netloc, path prefix) pairs where the host's REST API may live."""
+    if host == "github.com":
+        return {("api.github.com", "")}
+    return {(host, "/api/v3"), (f"api.{host}", "")}
 
 
 def normalize_alert(repository: str, raw: dict) -> dict:
@@ -152,7 +167,7 @@ def list_response(stdout: str) -> tuple[list, list[str]]:
     return payload, links
 
 
-def next_cursor(links: list[str], repository: str) -> str | None:
+def next_cursor(links: list[str], repository: str, host: str = "github.com") -> str | None:
     """Only extract a cursor from the exact repository's GitHub API list endpoint."""
     cursor = None
     for header in links:
@@ -166,8 +181,10 @@ def next_cursor(links: list[str], repository: str) -> str | None:
                 raise ValueError("malformed-pagination")
             try:
                 url = urlsplit(match[1])
-                if (url.scheme != "https" or url.netloc != "api.github.com"
-                        or url.path != f"/repos/{repository}/dependabot/alerts" or url.fragment
+                endpoint = f"/repos/{repository}/dependabot/alerts"
+                if (url.scheme != "https" or url.fragment
+                        or (url.netloc, url.path.removesuffix(endpoint)) not in api_locations(host)
+                        or not url.path.endswith(endpoint)
                         or re.search(r"%(?![A-Fa-f0-9]{2})", url.query)):
                     raise ValueError
                 query = parse_qs(url.query, keep_blank_values=True, strict_parsing=True, errors="strict")
@@ -182,21 +199,25 @@ def next_cursor(links: list[str], repository: str) -> str | None:
     return cursor
 
 
-def collect_pages(repository: str, state: str, max_pages: int, timeout: float, report: dict) -> list[dict]:
+def collect_pages(
+    host: str, repository: str, state: str, max_pages: int, timeout: float, report: dict
+) -> list[dict]:
     alerts: list[dict] = []
     parameters = {"state": state} if state != "all" else {}
     parameters["per_page"] = PER_PAGE
     seen_cursors: set[str] = set()
     for page in range(1, max_pages + 1):
         query = urlencode(parameters)
-        stdout, reason, detail = run_gh(f"repos/{repository}/dependabot/alerts?{query}", timeout, include=True)
+        stdout, reason, detail = run_gh(
+            host, f"repos/{repository}/dependabot/alerts?{query}", timeout, include=True
+        )
         report["pages"] = page
         if reason:
             report.update(status="unavailable", reason=reason, detail=detail)
             return []
         try:
             payload, links = list_response(stdout or "")
-            cursor = next_cursor(links, repository)
+            cursor = next_cursor(links, repository, host)
             if cursor in seen_cursors:
                 raise ValueError("malformed-pagination")
         except ValueError as error:
@@ -212,12 +233,14 @@ def collect_pages(repository: str, state: str, max_pages: int, timeout: float, r
     return alerts
 
 
-def collect_numbers(repository: str, numbers: list[int], timeout: float, report: dict) -> list[dict]:
+def collect_numbers(
+    host: str, repository: str, numbers: list[int], timeout: float, report: dict
+) -> list[dict]:
     alerts: list[dict] = []
     missing: list[int] = []
     unavailable: list[int] = []
     for number in numbers:
-        stdout, reason, detail = run_gh(f"repos/{repository}/dependabot/alerts/{number}", timeout)
+        stdout, reason, detail = run_gh(host, f"repos/{repository}/dependabot/alerts/{number}", timeout)
         if reason == "not-found":
             missing.append(number)
             continue
@@ -238,16 +261,16 @@ def collect_numbers(repository: str, numbers: list[int], timeout: float, report:
     return alerts
 
 
-def default_branch_head(repository: str, timeout: float) -> dict:
+def default_branch_head(host: str, repository: str, timeout: float) -> dict:
     head: dict = {"name": None, "headSha": None, "status": "unavailable", "reason": None}
-    stdout, reason, _ = run_gh(f"repos/{repository}", timeout)
+    stdout, reason, _ = run_gh(host, f"repos/{repository}", timeout)
     payload, parse_reason = parse_json(stdout or "") if stdout is not None else (None, None)
     name = payload.get("default_branch") if isinstance(payload, dict) else None
     if reason or parse_reason or not isinstance(name, str) or not name:
         head["reason"] = reason or parse_reason or "malformed-response"
         return head
     head["name"] = name
-    stdout, reason, _ = run_gh(f"repos/{repository}/commits/{quote(name, safe='')}", timeout)
+    stdout, reason, _ = run_gh(host, f"repos/{repository}/commits/{quote(name, safe='')}", timeout)
     payload, parse_reason = parse_json(stdout or "") if stdout is not None else (None, None)
     sha = payload.get("sha") if isinstance(payload, dict) else None
     if reason or parse_reason or not isinstance(sha, str):
@@ -259,7 +282,9 @@ def default_branch_head(repository: str, timeout: float) -> dict:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--repo", help="OWNER/REPO on github.com; defaults to the origin remote")
+    parser.add_argument(
+        "--repo", help="OWNER/REPO on the default GitHub host; defaults to the origin remote"
+    )
     parser.add_argument("--state", choices=("open", "all"), default="open")
     parser.add_argument("--alert", action="append", type=int, default=[], help="re-read one alert number (repeatable)")
     parser.add_argument("--max-pages", type=int, default=10, help="page cap at 100 alerts per page (1-50)")
@@ -281,9 +306,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
-    repository, source = (args.repo, "argument") if args.repo else repository_from_origin()
+    if args.repo:
+        host, repository, source = github_remote_module().default_github_host(), args.repo, "argument"
+    else:
+        host, repository, source = repository_from_origin()
     report: dict = {
         "schemaVersion": SCHEMA_VERSION,
+        "host": host,
         "repository": repository,
         "repositorySource": source,
         "state": args.state,
@@ -299,11 +328,11 @@ def main(argv: list[str]) -> int:
         "alerts": [],
     }
     if args.alert:
-        report["alerts"] = collect_numbers(repository, report["requested"], args.timeout, report)
+        report["alerts"] = collect_numbers(host, repository, report["requested"], args.timeout, report)
     else:
-        report["alerts"] = collect_pages(repository, args.state, args.max_pages, args.timeout, report)
+        report["alerts"] = collect_pages(host, repository, args.state, args.max_pages, args.timeout, report)
     if not args.no_head:
-        report["defaultBranch"] = default_branch_head(repository, args.timeout)
+        report["defaultBranch"] = default_branch_head(host, repository, args.timeout)
     json.dump(report, sys.stdout, indent=2, sort_keys=False)
     sys.stdout.write("\n")
     return {"complete": EXIT_COMPLETE, "partial": EXIT_PARTIAL}.get(report["status"], EXIT_UNAVAILABLE)

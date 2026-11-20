@@ -8,7 +8,7 @@ allowed-tools: "Read,Skill,AskUserQuestion,Bash(~/.agents/skills/ready-to-releas
 model-tier: standard
 model: sonnet
 effort: high
-version: "2.5.0"
+version: "2.6.0"
 author: "flurdy"
 ---
 

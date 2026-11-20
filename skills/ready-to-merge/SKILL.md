@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(git:*),Bash(gh pr list:*),Bash(gh pr view:*)
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.4.1"
+version: "0.5.0"
 author: "flurdy"
 ---
 
@@ -342,8 +342,8 @@ gh pr list --repo "{owner}/{repo}" --base "{head-branch}" --state open --json nu
 Require PR state `MERGED`, the same selected PR identity, `headRefName`, `headRefOid` and
 `headRepository` as the reviewed snapshot, and repository identity matching `{owner}/{repo}`.
 Skip cleanup for a fork or unknown head repository; never redirect deletion into a fork.
-The helpers support github.com only: skip non-public-GitHub targets or a host mismatch rather
-than changing hosts. Require a known `defaultBranchRef.name`; never delete the default branch,
+The helpers target the default host ([GitHub hosts](../pr-status/SKILL.md#github-hosts)) and refuse a `GH_HOST` gh does not know. Skip
+cleanup when the PR's host differs rather than changing hosts. Require a known `defaultBranchRef.name`; never delete the default branch,
 the PR's base branch, `main` or `master`. If dependent PRs remain, skip cleanup and report them.
 Missing or changed metadata is not deletion evidence.
 

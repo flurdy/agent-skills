@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/circleci-status/scripts/status.sh:*), Bash
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.0.2"
+version: "1.0.3"
 author: "flurdy"
 ---
 
@@ -91,6 +91,7 @@ Then include the tail or relevant failure portion of `---LOGS---`. Keep output c
 
 ## Failure handling
 
-- `NO_GIT_REPO`: say this must be run inside a GitHub-backed git repo.
+- `NO_GIT_REPO`: say this must be run inside a github.com-backed git repo. GitHub Enterprise
+  remotes are unsupported: CircleCI's `gh/` project slug covers github.com only.
 - `NO_TOKEN`: show GitHub status if available, and explain how to configure the project keyring lookup.
 - CircleCI API errors: report the error and fall back to GitHub commit/check status when present.

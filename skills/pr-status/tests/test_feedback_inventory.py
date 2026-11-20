@@ -143,6 +143,22 @@ class FeedbackInventoryTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     feedback.parse_args(["acme", "widgets", "42", *flags])
 
+    def test_host_pins_gh_api_to_a_known_enterprise_host(self) -> None:
+        completed = mock.Mock(returncode=0, stdout="{}", stderr="")
+        with mock.patch.object(
+            feedback, "known_github_hosts", return_value={"github.com", "ghe.example.com"}
+        ):
+            host = feedback.parse_args(["acme", "widgets", "42", "--host", "GHE.example.com"]).host
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                feedback.parse_args(["acme", "widgets", "42", "--host", "evil.example"])
+        with mock.patch.object(feedback.subprocess, "run", return_value=completed) as run:
+            feedback.GhClient(host)._run(["graphql"])
+            feedback.GhClient()._run(["graphql"])
+        self.assertEqual(
+            [["gh", "api", "--hostname", "ghe.example.com", "graphql"], ["gh", "api", "graphql"]],
+            [call.args[0] for call in run.call_args_list],
+        )
+
     def test_default_cli_keeps_full_inventory_contract(self) -> None:
         fixture = load_fixture("all-sources.json")
         expected = feedback.collect_inventory(FixtureClient(fixture), "acme", "widgets", [42])

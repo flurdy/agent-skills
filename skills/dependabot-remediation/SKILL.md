@@ -6,7 +6,7 @@ disable-model-invocation: true
 model-tier: standard
 model: sonnet
 effort: high
-version: "0.3.1"
+version: "0.4.0"
 author: "flurdy"
 ---
 
@@ -100,7 +100,8 @@ watcher, PR triage or any follow-on maintenance; a new request starts another bo
   repository. The collector exits `127` when `gh`/`git` are missing, `64` for usage errors,
   `0` complete, `2` partial, `3` unavailable, and never retries.
 - Origin parsing reuses `pr-status/scripts/github_remote.py` when installed; otherwise pass
-  `--repo OWNER/REPO`. Only `github.com` is supported.
+  `--repo OWNER/REPO`. The origin's host, or with `--repo` the default host, is used and reported
+  as `host`; see [GitHub hosts](../pr-status/SKILL.md#github-hosts).
 - Beads is optional for discovery and required for tracked remediation. Without a proven store,
   stop after the plan; never initialize one.
 - Dependency tooling is whatever the repository documents (`npm`, `pip`, `bundle`, `mvn`, …).

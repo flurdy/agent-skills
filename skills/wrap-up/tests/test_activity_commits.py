@@ -19,6 +19,8 @@ class CommitCoverageTests(unittest.TestCase):
         self.repo = self.root / "repo"
         self.repo.mkdir()
         self.env = dict(os.environ, TZ="UTC", GIT_CONFIG_NOSYSTEM="1", HOME=str(self.root))
+        for variable in ("GH_HOST", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
+            self.env.pop(variable, None)
         self.git("init", "-q", "-b", "main")
         self.git("config", "user.name", "Tester")
         self.git("config", "user.email", "work@example.com")
@@ -114,6 +116,13 @@ else:
         self.assertNotIn("lookalike excluded", output)
         self.assertNotIn("unrelated excluded", output)
         self.assertNotIn("unverified excluded", output)
+
+    def test_noreply_follows_the_default_github_host(self):
+        self.commit("enterprise noreply", "2026-10-26T09:00:00Z", "42+tester@users.noreply.ghe.example.com")
+        self.commit("public noreply", "2026-10-26T10:00:00Z", "42+tester@users.noreply.github.com")
+        output = self.collect(env=dict(self.env, GH_HOST="ghe.example.com", GH_ENTERPRISE_TOKEN="set"))
+        self.assertIn("enterprise noreply", output)
+        self.assertNotIn("public noreply", output)
 
     def test_inclusive_start_exclusive_end_and_nonmonotonic_history(self):
         self.commit("start included", "2026-10-26T00:00:00Z")

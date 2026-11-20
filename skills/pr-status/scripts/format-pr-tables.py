@@ -12,6 +12,10 @@ import re
 import sys
 import unicodedata
 from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from github_remote import default_github_host  # noqa: E402
 
 OPEN_COLUMNS = ["PR", "Ticket", "Jira 💬", "Title", "Branch", "Target", "Ready", "Push", "Sync", "CI",
                 "Approved", "Threads", "LGTM"]
@@ -161,7 +165,8 @@ def lgtm(row):
 
 
 def url(row):
-    return f"https://github.com/{row.get('owner')}/{row.get('repo')}/pull/{row.get('number')}"
+    host = default_github_host()
+    return f"https://{host}/{row.get('owner')}/{row.get('repo')}/pull/{row.get('number')}"
 
 
 def open_row(now, row):

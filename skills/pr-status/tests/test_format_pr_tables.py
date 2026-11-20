@@ -1,6 +1,7 @@
 """Deterministic dashboard formatting: layout, truncation, escaping and Sync presentation."""
 
 import json
+import os
 import subprocess
 import sys
 import unicodedata
@@ -51,10 +52,14 @@ def closed_pr(number, **overrides):
     return row
 
 
-def render(open_rows=(), closed_rows=()):
+GITHUB_HOST_VARIABLES = ("GH_HOST", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")
+DEFAULT_ENV = {k: v for k, v in os.environ.items() if k not in GITHUB_HOST_VARIABLES}
+
+
+def render(open_rows=(), closed_rows=(), env=None):
     payload = {"now": NOW, "open": list(open_rows), "closed": list(closed_rows)}
     result = subprocess.run([sys.executable, "-I", str(FORMAT)], input=json.dumps(payload),
-                            capture_output=True, text=True, timeout=10)
+                            capture_output=True, text=True, timeout=10, env=env or DEFAULT_ENV)
     assert result.returncode == 0, result.stderr
     return result.stdout
 
@@ -110,6 +115,11 @@ class LayoutTests(unittest.TestCase):
             if line.startswith("|"):
                 self.assertNotIn("http", line)
         self.assertIn(f"[#7433]({URL.format(7433)})", out)
+
+    def test_links_use_the_default_github_host(self):
+        environment = {**DEFAULT_ENV, "GH_HOST": "ghe.example.com", "GH_ENTERPRISE_TOKEN": "set"}
+        out = render([open_pr(7433)], env=environment)
+        self.assertIn("[#7433](https://ghe.example.com/acme/widgets/pull/7433)", out)
 
     def test_stacked_target_is_capped_with_marker_and_full_name_available(self):
         parent = "feat/ABC-101-restructure-the-document-upload-flow"

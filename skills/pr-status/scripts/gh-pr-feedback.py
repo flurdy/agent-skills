@@ -22,7 +22,11 @@ import json
 import re
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from github_remote import known_github_hosts, normalize_host  # noqa: E402
 
 
 MAX_BODY_CHARS = 65_536
@@ -153,9 +157,12 @@ CHANGE_CUES = (
 
 
 class GhClient:
+    def __init__(self, host: str | None = None) -> None:
+        self.host_args = ["--hostname", host] if host else []
+
     def _run(self, args: list[str]) -> object:
         completed = subprocess.run(
-            ["gh", "api", *args],
+            ["gh", "api", *self.host_args, *args],
             check=False,
             capture_output=True,
             text=True,
@@ -1020,7 +1027,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--compact", action="store_true", help="emit body-free polling records")
     parser.add_argument("--if-fingerprint", help="omit records when a complete compact poll matches this SHA-256")
     parser.add_argument("--pretty", action="store_true")
+    parser.add_argument("--host", help="GitHub host known to gh (default: gh's default host)")
     arguments = parser.parse_args(argv)
+    if arguments.host is not None:
+        host = normalize_host(arguments.host)
+        if host not in known_github_hosts():
+            parser.error("--host must be a GitHub host known to gh")
+        arguments.host = host
     if arguments.if_fingerprint is not None:
         if not arguments.compact or not re.fullmatch(r"[0-9a-f]{64}", arguments.if_fingerprint):
             parser.error("--if-fingerprint requires --compact and a lowercase SHA-256 digest")
@@ -1044,7 +1057,7 @@ def main(argv: list[str]) -> int:
         max_source_items=args.max_source_items,
         max_records_per_pr=args.max_records_per_pr,
     )
-    result = collect_inventory(GhClient(), args.owner, args.repo, args.numbers, config)
+    result = collect_inventory(GhClient(args.host), args.owner, args.repo, args.numbers, config)
     if args.identity is not None:
         result = select_inventory_record(result, args.identity, args.expected_update_key)
     if args.compact:

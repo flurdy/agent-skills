@@ -5,7 +5,7 @@ allowed-tools: "Bash(python3 ~/.agents/skills/pr-reviewers/scripts/pr-reviewers.
 model-tier: economy
 model: haiku
 effort: medium
-version: "1.1.0"
+version: "1.2.0"
 author: "flurdy"
 ---
 
@@ -25,7 +25,7 @@ not a code-ownership, availability, permission, or approval assessment.
 ```
 
 Requires Python 3.10+, Git for current-checkout discovery, and authenticated GitHub CLI (`gh`).
-GitHub.com only. Missing prerequisites, authentication, or repository access are errors, not
+Uses the default GitHub host ([GitHub hosts](../pr-status/SKILL.md#github-hosts)). Missing prerequisites, authentication, or repository access are errors, not
 empty history. Do not install tooling, change authentication, or switch checkout to repair them.
 
 ## Boundaries
@@ -57,7 +57,7 @@ python3 ~/.agents/skills/pr-reviewers/scripts/pr-reviewers.py --repo owner/repo 
 ```
 
 These are alternatives, not four calls. Bare invocation uses `gh repo view` in the current
-checkout; the helper ignores `GH_REPO` and fixes the host to GitHub.com. Always show the resolved
+checkout; the helper ignores `GH_REPO` and pins the default host. Always show the resolved
 repository and viewer. Explicit `--repo` overrides discovery, not the authenticated user.
 Reject unknown arguments; do not replace failures with ad-hoc `gh` calls.
 

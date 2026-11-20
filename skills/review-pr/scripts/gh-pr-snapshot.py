@@ -15,10 +15,18 @@ import sys
 from pathlib import Path
 from time import monotonic
 from typing import Any
+from urllib.parse import urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "pr-status" / "scripts"))
-from github_remote import github_repository
+from github_remote import (
+    DEFAULT_HOST,
+    GitHubRemote,
+    default_github_host,
+    github_remote,
+    known_github_hosts,
+    normalize_host,
+)
 
 FEEDBACK_COLLECTOR = (
     SCRIPT_DIR.parent.parent / "pr-status" / "scripts" / "gh-pr-feedback.py"
@@ -30,10 +38,10 @@ DEFAULT_PATCH_CHARS = 20_000
 DEFAULT_MAX_FILES = 100
 
 QUALIFIED_SELECTOR = re.compile(
-    r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)#(?P<number>[1-9][0-9]*)$"
+    r"^(?:(?P<host>[A-Za-z0-9.-]+)/)?(?P<owner>[A-Za-z0-9_.-]+)/(?P<repo>[A-Za-z0-9_.-]+)#(?P<number>[1-9][0-9]*)$"
 )
 PR_URL = re.compile(
-    r"^https://github\.com/(?P<owner>[A-Za-z0-9_.-]+)/"
+    r"^https://(?P<host>[A-Za-z0-9.-]+)/(?P<owner>[A-Za-z0-9_.-]+)/"
     r"(?P<repo>[A-Za-z0-9_.-]+)/pull/(?P<number>[1-9][0-9]*)/?$"
 )
 OBJECT_ID = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -234,6 +242,20 @@ def repository_parts(value: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def known_host(value: str | None, hosts: frozenset[str]) -> str:
+    host = default_github_host(hosts=hosts) if value is None else normalize_host(value)
+    if host not in hosts:
+        raise CommandError(f"host is not a known GitHub host: {value}")
+    return host
+
+
+def url_host(url: Any) -> str | None:
+    try:
+        return urlparse(url).hostname if isinstance(url, str) else None
+    except ValueError:
+        return None
+
+
 def resolve_target(
     selector: str | None,
     *,
@@ -241,12 +263,14 @@ def resolve_target(
     cwd: Path,
     deadline: float,
     max_output_bytes: int,
+    hosts: frozenset[str],
 ) -> dict[str, Any]:
     source = "qualified"
     if selector:
         match = QUALIFIED_SELECTOR.fullmatch(selector) or PR_URL.fullmatch(selector)
         if match is not None:
             return {
+                "host": known_host(match.group("host"), hosts),
                 "owner": match.group("owner"),
                 "repo": match.group("repo"),
                 "number": int(match.group("number")),
@@ -274,6 +298,7 @@ def resolve_target(
         if match is None or current.get("number") != int(match.group("number")):
             raise CommandError("current branch returned an invalid pull request URL")
         return {
+            "host": known_host(match.group("host"), hosts),
             "owner": match.group("owner"),
             "repo": match.group("repo"),
             "number": int(match.group("number")),
@@ -283,7 +308,7 @@ def resolve_target(
     try:
         repository = parse_json(
             runner.run(
-                ["gh", "repo", "view", "--json", "nameWithOwner"],
+                ["gh", "repo", "view", "--json", "nameWithOwner,url"],
                 cwd=cwd,
                 deadline=deadline,
                 max_output_bytes=max_output_bytes,
@@ -295,6 +320,7 @@ def resolve_target(
         ):
             raise CommandError("current checkout did not resolve a GitHub repository")
         owner, repo = repository_parts(repository["nameWithOwner"])
+        host = known_host(url_host(repository.get("url")) or "", hosts)
     except CommandError as error:
         return resolve_number_elsewhere(
             number,
@@ -303,8 +329,10 @@ def resolve_target(
             cwd=cwd,
             deadline=deadline,
             max_output_bytes=max_output_bytes,
+            hosts=hosts,
         )
     return {
+        "host": host,
         "owner": owner,
         "repo": repo,
         "number": number,
@@ -320,6 +348,7 @@ def resolve_number_elsewhere(
     cwd: Path,
     deadline: float,
     max_output_bytes: int,
+    hosts: frozenset[str],
 ) -> dict[str, Any]:
     routes = (
         ("review-request-number", review_request_repositories),
@@ -332,15 +361,17 @@ def resolve_number_elsewhere(
             cwd=cwd,
             deadline=deadline,
             max_output_bytes=max_output_bytes,
+            hosts=hosts,
         )
         if len(repositories) > 1:
             raise AmbiguousTargetError(
                 f"PR {number} matched several repositories: "
-                + ", ".join(f"{repository}#{number}" for repository in repositories)
+                + ", ".join(f"{remote.qualified}#{number}" for remote in repositories)
             )
         if repositories:
-            owner, repo = repository_parts(repositories[0])
+            owner, repo = repository_parts(repositories[0].repository)
             return {
+                "host": repositories[0].host,
                 "owner": owner,
                 "repo": repo,
                 "number": number,
@@ -356,7 +387,8 @@ def review_request_repositories(
     cwd: Path,
     deadline: float,
     max_output_bytes: int,
-) -> list[str]:
+    hosts: frozenset[str],
+) -> list[GitHubRemote]:
     try:
         requests = parse_json(
             runner.run(
@@ -367,7 +399,7 @@ def review_request_repositories(
                     "--review-requested=@me",
                     "--state=open",
                     "--json",
-                    "number,repository",
+                    "number,repository,url",
                     "--limit",
                     "100",
                 ],
@@ -383,13 +415,18 @@ def review_request_repositories(
         return []
     return sorted(
         {
-            item["repository"]["nameWithOwner"]
+            GitHubRemote(
+                normalize_host(url_host(item.get("url")) or ""),
+                item["repository"]["nameWithOwner"],
+            )
             for item in requests
             if isinstance(item, dict)
             and item.get("number") == number
             and isinstance(item.get("repository"), dict)
             and isinstance(item["repository"].get("nameWithOwner"), str)
-        }
+            and normalize_host(url_host(item.get("url")) or "") in hosts
+        },
+        key=lambda remote: remote.qualified.casefold(),
     )
 
 
@@ -400,7 +437,8 @@ def workspace_primary_repositories(
     cwd: Path,
     deadline: float,
     max_output_bytes: int,
-) -> list[str]:
+    hosts: frozenset[str],
+) -> list[GitHubRemote]:
     del number
     manifest = next(
         (
@@ -443,10 +481,10 @@ def workspace_primary_repositories(
             )
         except CommandError:
             continue
-        repository = github_repository(remote)
+        repository = github_remote(remote, hosts)
         if repository is not None:
             repositories.add(repository)
-    return sorted(repositories)
+    return sorted(repositories, key=lambda remote: remote.qualified.casefold())
 
 
 def graphql_pull_request(
@@ -464,6 +502,8 @@ def graphql_pull_request(
                 "gh",
                 "api",
                 "graphql",
+                "--hostname",
+                target["host"],
                 "-f",
                 f"query={query}",
                 "-f",
@@ -514,6 +554,7 @@ def verify_checkout(
     cwd: Path,
     deadline: float,
     max_output_bytes: int,
+    hosts: frozenset[str],
 ) -> dict[str, Any]:
     def git(*arguments: str) -> str:
         return runner.run(
@@ -525,12 +566,16 @@ def verify_checkout(
 
     try:
         root = Path(git("rev-parse", "--show-toplevel")).resolve()
-        remote = github_repository(git("remote", "get-url", "origin"))
+        remote = github_remote(git("remote", "get-url", "origin"), hosts)
         expected_repositories = {
             target["repository"].casefold(),
             str(target.get("headRepository") or "").casefold(),
         }
-        if remote is None or remote.casefold() not in expected_repositories:
+        if (
+            remote is None
+            or remote.host != target["host"]
+            or remote.repository.casefold() not in expected_repositories
+        ):
             return {
                 "available": False,
                 "path": str(root),
@@ -596,6 +641,7 @@ def initial_target(
         url_match.group("owner").casefold() != resolved["owner"].casefold()
         or url_match.group("repo").casefold() != resolved["repo"].casefold()
         or int(url_match.group("number")) != resolved["number"]
+        or normalize_host(url_match.group("host")) != resolved["host"]
     ):
         raise CommandError("pull request metadata returned the wrong repository")
     head_sha = valid_object_id(pull_request.get("headRefOid"))
@@ -606,6 +652,7 @@ def initial_target(
     author = pull_request.get("author")
     checks = checks_for_pull_request(pull_request, head_sha)
     target = {
+        "host": resolved["host"],
         "repository": f"{resolved['owner']}/{resolved['repo']}",
         "owner": resolved["owner"],
         "repo": resolved["repo"],
@@ -730,6 +777,8 @@ def collect_files(
                 "api",
                 f"repos/{resolved['owner']}/{resolved['repo']}/pulls/"
                 f"{resolved['number']}/files?per_page={max_files}&page=1",
+                "--hostname",
+                resolved["host"],
             ],
             cwd=cwd,
             deadline=deadline,
@@ -818,6 +867,8 @@ def collect_feedback(
                 "200",
                 "--max-records-per-pr",
                 "500",
+                "--host",
+                resolved["host"],
             ],
             cwd=cwd,
             deadline=deadline,
@@ -875,8 +926,10 @@ def collect_snapshot(
     body_limit: int = DEFAULT_BODY_CHARS,
     patch_limit: int = DEFAULT_PATCH_CHARS,
     max_output_bytes: int = DEFAULT_OUTPUT_BYTES,
+    hosts: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     runner = runner or SubprocessRunner()
+    hosts = known_github_hosts() if hosts is None else frozenset(hosts) | {DEFAULT_HOST}
     cwd = (cwd or Path.cwd()).resolve()
     max_files = max(1, min(100, max_files))
     body_limit = max(1, body_limit)
@@ -899,6 +952,7 @@ def collect_snapshot(
             cwd=cwd,
             deadline=deadline,
             max_output_bytes=max_output_bytes,
+            hosts=hosts,
         )
     except AmbiguousTargetError as error:
         result["errors"].append(error_record("target", str(error), "ambiguous"))
@@ -908,6 +962,7 @@ def collect_snapshot(
         return result
 
     result["target"] = {
+        "host": resolved["host"],
         "repository": f"{resolved['owner']}/{resolved['repo']}",
         "owner": resolved["owner"],
         "repo": resolved["repo"],
@@ -976,6 +1031,7 @@ def collect_snapshot(
             cwd=cwd,
             deadline=deadline,
             max_output_bytes=max_output_bytes,
+            hosts=hosts,
         )
         if body_truncated:
             result["errors"].append(

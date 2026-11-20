@@ -5,7 +5,7 @@ allowed-tools: "Read,Grep,Glob,Bash(~/.agents/skills/review-pr/scripts/gh-pr-sna
 model-tier: premium
 model: opus
 effort: xhigh
-version: "2.5.0"
+version: "2.6.0"
 author: "flurdy"
 ---
 
@@ -21,11 +21,12 @@ other external action. No GitHub review is ever submitted by this skill.
 /review-pr                                      # current branch
 /review-pr 123                                  # current-repository shorthand
 /review-pr owner/repo#123                       # repository-qualified
+/review-pr ghe.example.com/owner/repo#123       # host-qualified (GitHub Enterprise)
 /review-pr https://github.com/owner/repo/pull/123  # PR URL
 /review-pr owner/repo#123 --automation --premium-established --expected-head SHA
 ```
 
-Accept a PR URL, `owner/repo#number`, a numeric current-repository shorthand, or no selector. A
+Accept a PR URL, `[host/]owner/repo#number`, a numeric current-repository shorthand, or no selector. A
 qualified selector never derives repository identity from the current working directory.
 
 Optional controls:
@@ -104,11 +105,9 @@ A matching checkout is optional. Local repository reads are permitted only when
 matches the selected repository, the working tree is clean, and local HEAD exactly matches the PR
 head SHA. Anchor every `Read`, `Grep`, or `Glob` path under `checkout.path`.
 
-Remote identity uses the shared [GitHub parser](../pr-status/scripts/github_remote.py).
-SSH origins support `github.com` and single-label aliases such as `work.github.com`, in scp-style
-or `ssh://` form. HTTP(S) requires literal `github.com`. This is a naming convention, not SSH
-configuration or DNS verification; arbitrary aliases and nested subdomains remain unsupported.
-Alias recognition never replaces the repository, exact-HEAD, or clean-tree checks.
+Remote identity and host rules follow [GitHub hosts](../pr-status/SKILL.md#github-hosts). A PR URL or `host/owner/repo#number` names its
+host; other selectors use the default host. The checkout's origin must be on the PR's host. Host
+or alias recognition never replaces the repository, exact-HEAD, or clean-tree checks.
 
 When verification fails, state **Local repository search unavailable** with the collector's reason.
 Use only the bounded remote patches and metadata. Never search the workspace root or unrelated cwd,

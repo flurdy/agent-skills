@@ -1,8 +1,23 @@
 """Validated branch targets shared by the fixed-method entry points."""
+import os
+from pathlib import Path
 import re
 import subprocess
 import sys
 from urllib.parse import quote
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pr-status" / "scripts"))
+from github_remote import default_github_host, normalize_host  # noqa: E402
+
+
+def target_host():
+    """GH_HOST when gh knows it, else github.com; an unknown GH_HOST is refused."""
+    host = default_github_host()
+    requested = os.environ.get("GH_HOST", "")
+    if requested and normalize_host(requested) != host:
+        print("GH_HOST is not a GitHub host known to gh", file=sys.stderr)
+        raise SystemExit(2)
+    return host
 
 
 def branch_target():
@@ -31,8 +46,9 @@ def branch_target():
 
 
 def gh_api(*args):
+    host = target_host()
     try:
-        result = subprocess.run(["gh", "api", "--hostname", "github.com", *args], check=False)
+        result = subprocess.run(["gh", "api", "--hostname", host, *args], check=False)
     except FileNotFoundError:
         print("gh is required", file=sys.stderr)
         raise SystemExit(127) from None

@@ -38,7 +38,8 @@ for invariant in \
   '404 does not prove auto-deletion' \
   'does not provide atomic compare-and-delete' \
   'standalone tool call' \
-  'github.com only'; do
+  'refuse a `GH_HOST` gh does not know' \
+  "cleanup when the PR's host differs rather than changing hosts"; do
   grep -Fq -- "$invariant" "$skill_file" || { echo "missing cleanup invariant: $invariant" >&2; exit 1; }
 done
 

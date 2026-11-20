@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Delete one remote public-GitHub branch after caller confirmation; never retry."""
+"""Delete one remote branch on the default GitHub host after caller confirmation; never retry."""
 import sys
 
 from github_branch import branch_target, gh_api

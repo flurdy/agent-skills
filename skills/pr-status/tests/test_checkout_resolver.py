@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,8 @@ SPEC = importlib.util.spec_from_file_location("gh_pr_checkout", SCRIPT)
 assert SPEC and SPEC.loader
 CHECKOUT = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(CHECKOUT)
+github_repository = sys.modules["github_remote"].github_repository
+ENTERPRISE = "ghe.example.com"
 
 
 def git(path: Path, *arguments: str) -> str:
@@ -30,6 +33,10 @@ def git(path: Path, *arguments: str) -> str:
 
 class CheckoutResolverTest(unittest.TestCase):
     def setUp(self) -> None:
+        environment = mock.patch.dict(os.environ)
+        environment.start()
+        self.addCleanup(environment.stop)
+        os.environ.pop("GH_HOST", None)
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name) / "widgets"
@@ -79,15 +86,15 @@ class CheckoutResolverTest(unittest.TestCase):
 
         self.assertEqual(
             {"acme/widgets"},
-            {CHECKOUT.github_repository(remote) for remote in accepted},
+            {github_repository(remote) for remote in accepted},
         )
         self.assertEqual(
             {None},
-            {CHECKOUT.github_repository(remote) for remote in rejected},
+            {github_repository(remote) for remote in rejected},
         )
 
     def test_remote_parser_rejects_malformed_urls(self) -> None:
-        self.assertIsNone(CHECKOUT.github_repository("https://[invalid/acme/widgets.git"))
+        self.assertIsNone(github_repository("https://[invalid/acme/widgets.git"))
 
     def test_output_limit_terminates_the_process_group(self) -> None:
         marker = Path(self.temporary.name) / "output-child-survived"
@@ -187,6 +194,45 @@ class CheckoutResolverTest(unittest.TestCase):
         self.assertEqual(["acme/widgets"], result["repositories"])
         self.assertEqual("scope-candidates", result["errors"][0]["source"])
 
+    def test_enterprise_checkout_matches_only_its_known_host(self) -> None:
+        git(self.root, "remote", "set-url", "origin", f"git@{ENTERPRISE}:acme/widgets.git")
+
+        enterprise = self.resolve(host=ENTERPRISE, hosts=frozenset({ENTERPRISE}))
+        default_host = self.resolve(hosts=frozenset({ENTERPRISE}))
+
+        self.assertEqual("verified", enterprise["status"])
+        self.assertEqual(ENTERPRISE, enterprise["target"]["host"])
+        self.assertEqual("repository-not-found", default_host["checkout"]["reason"])
+        with self.assertRaisesRegex(ValueError, "not a known GitHub host"):
+            self.resolve(host=ENTERPRISE, hosts=frozenset())
+
+    def test_known_gh_host_becomes_the_default_host(self) -> None:
+        git(self.root, "remote", "set-url", "origin", f"git@{ENTERPRISE}:acme/widgets.git")
+        hosts = frozenset({ENTERPRISE})
+
+        os.environ["GH_HOST"] = ENTERPRISE
+        known = self.resolve(hosts=hosts)
+        os.environ["GH_HOST"] = "unknown.example.com"
+        unknown = self.resolve(hosts=hosts)
+
+        self.assertEqual((ENTERPRISE, "verified"), (known["target"]["host"], known["status"]))
+        self.assertEqual("github.com", unknown["target"]["host"])
+        self.assertEqual("repository-not-found", unknown["checkout"]["reason"])
+
+    def test_repository_scope_lists_only_the_requested_host(self) -> None:
+        git(self.root, "remote", "set-url", "origin", f"https://{ENTERPRISE}/acme/widgets.git")
+        hosts = frozenset({ENTERPRISE})
+
+        enterprise = CHECKOUT.resolve_repository_scope(
+            candidate_paths=[str(self.root)], timeout=10.0, host=ENTERPRISE, hosts=hosts
+        )
+        default_host = CHECKOUT.resolve_repository_scope(
+            candidate_paths=[str(self.root)], timeout=10.0, hosts=hosts
+        )
+
+        self.assertEqual((ENTERPRISE, ["acme/widgets"]), (enterprise["host"], enterprise["repositories"]))
+        self.assertEqual(("github.com", []), (default_host["host"], default_host["repositories"]))
+
     def test_rejects_wrong_repository_and_wrong_head(self) -> None:
         wrong_repository = self.resolve(repository="other/widgets")
         wrong_head = self.resolve(head_sha="f" * 40)
@@ -283,6 +329,27 @@ class CheckoutResolverTest(unittest.TestCase):
         self.assertEqual("gh-pr-checkout/v1", result["schemaVersion"])
         self.assertEqual("verified", result["status"])
         self.assertEqual(["acme/widgets"], result["repositories"])
+
+    def test_cli_host_uses_the_gh_hosts_file(self) -> None:
+        git(self.root, "remote", "set-url", "origin", f"git@{ENTERPRISE}:acme/widgets.git")
+        config = Path(self.temporary.name) / "gh"
+        config.mkdir()
+        (config / "hosts.yml").write_text(f"{ENTERPRISE}:\n    git_protocol: ssh\n")
+
+        def run(env_dir: Path) -> dict[str, Any]:
+            completed = subprocess.run(
+                [str(SCRIPT), "acme/widgets", self.head, "--host", ENTERPRISE],
+                cwd=self.root,
+                capture_output=True,
+                text=True,
+                env={**os.environ, "GH_CONFIG_DIR": str(env_dir)},
+            )
+            return json.loads(completed.stdout)
+
+        self.assertEqual("verified", run(config)["status"])
+        unknown = run(Path(self.temporary.name) / "absent")
+        self.assertEqual("failed", unknown["status"])
+        self.assertIn("not a known GitHub host", unknown["errors"][0]["message"])
 
     def test_cli_has_no_candidate_or_output_limit_escape_hatches(self) -> None:
         help_text = subprocess.run(

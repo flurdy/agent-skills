@@ -9,7 +9,11 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pr-status" / "scripts"))
+from github_remote import default_github_host  # noqa: E402
 
 LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?")
 REPO = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9_.-]{1,100}")
@@ -35,7 +39,7 @@ class CollectionError(Exception):
 def repository_name(value):
     if (not isinstance(value, str) or not REPO.fullmatch(value)
             or value.split("/")[1] in {".", ".."}):
-        raise CollectionError("Expected one GitHub.com owner/repo")
+        raise CollectionError("Expected one GitHub owner/repo")
     return value
 
 
@@ -134,7 +138,8 @@ def history(prs, repo, viewer, number, errors):
         yield pr_number, reviews
 
 
-def recommend(response, repo, viewer, number=None, workspace=None, has_access=None):
+def recommend(response, repo, viewer, number=None, workspace=None, has_access=None,
+              host="github.com"):
     if not isinstance(response, dict) or response.get("errors"):
         raise CollectionError("GitHub GraphQL response failed; no ranking produced")
     data = response.get("data")
@@ -149,7 +154,8 @@ def recommend(response, repo, viewer, number=None, workspace=None, has_access=No
         raise CollectionError("Invalid history count")
     result = {
         "schemaVersion": 1, "status": "complete", "repository": repo, "viewer": viewer,
-        "target": f"https://github.com/{repo}/pull/{number}" if number else None,
+        "host": host,
+        "target": f"https://{host}/{repo}/pull/{number}" if number else None,
         "sample": {"prs": len(prs), "limit": SAMPLE_SIZE, "matchingPRs": total,
                    "moreHistory": more},
         "workspace": None, "candidates": [], "errors": [],
@@ -206,8 +212,8 @@ def recommend(response, repo, viewer, number=None, workspace=None, has_access=No
     for row in candidates.values():
         own = sorted(row["own"].items(), key=lambda pair: (pair[1], pair[0]), reverse=True)
         sibling = sorted(row["sibling"].items(), key=lambda pair: (pair[1], pair[0]), reverse=True)
-        examples = [f"https://github.com/{repo}/pull/{n}" for n, _ in own]
-        examples += [f"https://github.com/{name}/pull/{n}" for (name, n), _ in sibling]
+        examples = [f"https://{host}/{repo}/pull/{n}" for n, _ in own]
+        examples += [f"https://{host}/{name}/pull/{n}" for (name, n), _ in sibling]
         rows.append({
             "login": row["login"], "reviewedPRs": len(own), "siblingPRs": len(sibling),
             "lastReviewed": max(date for _, date in own + sibling),
@@ -243,8 +249,9 @@ def recommend(response, repo, viewer, number=None, workspace=None, has_access=No
 
 
 class GhClient:
-    def __init__(self):
+    def __init__(self, host=None):
         self.deadline = time.monotonic() + 90
+        self.host = host or default_github_host()
 
     def execute(self, argv, cwd=None):
         remaining = self.deadline - time.monotonic()
@@ -253,7 +260,7 @@ class GhClient:
         env = os.environ.copy()
         env.pop("GH_REPO", None)
         env.pop("GH_DEBUG", None)
-        env.update(GH_HOST="github.com", GH_PAGER="cat", PAGER="cat", NO_COLOR="1",
+        env.update(GH_HOST=self.host, GH_PAGER="cat", PAGER="cat", NO_COLOR="1",
                    GH_PROMPT_DISABLED="1")
         try:
             completed = subprocess.run(argv, capture_output=True, text=True, timeout=remaining,
@@ -276,7 +283,7 @@ class GhClient:
             raise CollectionError("GitHub returned invalid JSON") from error
 
     def has_access(self, repo, login):
-        completed = self.execute(["gh", "api", "--hostname", "github.com",
+        completed = self.execute(["gh", "api", "--hostname", self.host,
                                   f"repos/{repo}/collaborators/{login}/permission"])
         try:
             body = json.loads(completed.stdout)
@@ -295,8 +302,8 @@ class GhClient:
         if not isinstance(identity, dict):
             raise CollectionError("Repository unavailable")
         repo = repository_name(identity.get("nameWithOwner"))
-        if identity.get("url") != f"https://github.com/{repo}":
-            raise CollectionError("Only GitHub.com repositories are supported")
+        if str(identity.get("url", "")).casefold() != f"https://{self.host}/{repo}".casefold():
+            raise CollectionError("Repository is not on the default GitHub host")
         return repo
 
     def checkout_root(self):
@@ -340,7 +347,7 @@ class GhClient:
         discovered = repo is None
         repo = self.checkout_repository() if discovered else repository_name(repo)
         workspace = self.siblings(repo, workspace_root, discovered)
-        user = self.run(["api", "--hostname", "github.com", "user"])
+        user = self.run(["api", "--hostname", self.host, "user"])
         viewer = user.get("login") if isinstance(user, dict) else None
         if not isinstance(viewer, str) or not LOGIN.fullmatch(viewer):
             raise CollectionError("Authenticated user unavailable")
@@ -368,7 +375,7 @@ class GhClient:
                       " nodes { ... on PullRequest { " + PR_FIELDS + " } } }")
         query += " }"
         owner, name = repo.split("/")
-        args = ["api", "--hostname", "github.com", "graphql", "-f", f"query={query}",
+        args = ["api", "--hostname", self.host, "graphql", "-f", f"query={query}",
                 "-f", f"owner={owner}", "-f", f"name={name}", "-f",
                 f"search=repo:{repo} is:pr is:closed author:{viewer} sort:updated-desc"]
         for index, sibling in enumerate(siblings):
@@ -377,7 +384,7 @@ class GhClient:
         if number:
             args.extend(["-F", f"number={number}"])
         return recommend(self.run(args), repo, viewer, number, workspace,
-                         lambda login: self.has_access(repo, login))
+                         lambda login: self.has_access(repo, login), self.host)
 
 
 def positive_number(value):
@@ -388,7 +395,8 @@ def positive_number(value):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", help="One GitHub.com owner/repo; defaults to the current checkout")
+    parser.add_argument("--repo", help="One owner/repo on the default GitHub host; "
+                                       "defaults to the current checkout")
     parser.add_argument("--pr", type=positive_number, help="Your open PR; omit for repository-level advice")
     parser.add_argument("--workspace", type=Path, metavar="ROOT",
                         help="Workspace root holding workspace.json or .mgit.conf; "

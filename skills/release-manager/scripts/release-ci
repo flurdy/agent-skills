@@ -12,6 +12,9 @@ import subprocess
 import sys
 from urllib.parse import quote, urlparse
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pr-status" / "scripts"))
+from github_remote import default_github_host  # noqa: E402
+
 
 PROVIDERS = {"circleci", "github-actions", "cloud-build", "none"}
 SERVICE_NAME = re.compile(r"[A-Za-z0-9._-]+")
@@ -215,7 +218,7 @@ def repository(root: Path, service: str, git: str) -> Repository:
         expected_revision=upstream,
         identity=identity,
         host=host,
-        github_slug=identity if host == "github.com" else None,
+        github_slug=identity if host == default_github_host() else None,
     )
 
 
@@ -448,6 +451,8 @@ def github_action_runs(
             [
                 command,
                 "api",
+                "--hostname",
+                repo.host,
                 "--method",
                 "GET",
                 f"repos/{repo.github_slug}/actions/runs",

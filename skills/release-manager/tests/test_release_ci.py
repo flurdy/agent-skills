@@ -1,3 +1,4 @@
+import json
 import os
 from pathlib import Path
 import stat
@@ -63,6 +64,8 @@ class ReleaseCiTest(unittest.TestCase):
 
     def run_ci(self, *services, env=None):
         command_env = os.environ.copy()
+        for variable in ("GH_HOST", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"):
+            command_env.pop(variable, None)
         command_env.update(
             {
                 "PATH": f"{self.bin_dir}:{command_env['PATH']}",
@@ -299,6 +302,31 @@ class ReleaseCiTest(unittest.TestCase):
         mismatched_ref = self.run_ci("api", env={"TEST_GITHUB_REF": "other"})
         self.assertEqual("unknown", rows(mismatched_ref.stdout)[0][1])
         self.assertEqual("ref-mismatch", rows(mismatched_ref.stdout)[0][6])
+
+    def test_github_actions_uses_the_known_default_github_host(self):
+        self.create_service("api", remote="git@ghe.example.com:acme/api.git")
+        self.write_manifest("github-actions")
+        log = self.root / "gh-args.json"
+        self.write_command(
+            "gh",
+            f"""
+            #!/usr/bin/env python3
+            import json, sys
+            open({str(log)!r}, "w").write(json.dumps(sys.argv[1:]))
+            print(json.dumps({{"total_count": 0, "workflow_runs": []}}))
+            """,
+        )
+
+        unknown = self.run_ci("api", env={"GH_HOST": "", "GH_CONFIG_DIR": str(self.root)})
+        self.assertEqual("unsupported-origin", rows(unknown.stdout)[0][6])
+        self.assertFalse(log.exists())
+
+        self.run_ci(
+            "api",
+            env={"GH_HOST": "ghe.example.com", "GH_ENTERPRISE_TOKEN": "set",
+                 "GH_CONFIG_DIR": str(self.root)},
+        )
+        self.assertEqual(["api", "--hostname", "ghe.example.com"], json.loads(log.read_text())[:3])
 
     def test_cloud_build_maps_an_exact_repository_build(self):
         sha = self.create_service(

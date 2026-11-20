@@ -69,6 +69,21 @@ class BranchWrapperTests(unittest.TestCase):
         ]])
         self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
+    def test_known_gh_host_is_pinned_and_unknown_gh_host_never_reaches_gh(self):
+        config = self.work / "gh"
+        config.mkdir()
+        (config / "hosts.yml").write_text("ghe.example.com:\n    git_protocol: ssh\n")
+        for script in ("gh-branch-view.py", "gh-branch-delete.py"):
+            with self.subTest(script=script):
+                result, commands = self.invoke(
+                    script, GH_HOST="ghe.example.com", GH_CONFIG_DIR=str(config)
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(commands[0][:3], ["api", "--hostname", "ghe.example.com"])
+                result, commands = self.invoke(script, GH_HOST="unknown.example.com")
+                self.assertEqual((result.returncode, commands), (2, []))
+                self.assertIn("not a GitHub host known to gh", result.stderr)
+
     def test_valid_ref_characters_cannot_become_url_or_gh_placeholders(self):
         for script in ("gh-branch-view.py", "gh-branch-delete.py"):
             with self.subTest(script=script):

@@ -310,6 +310,8 @@ class CollectionTests(unittest.TestCase):
         results = [completed(r) for r in responses]
         with patch.object(reviewers.subprocess, "run", side_effect=results) as run:
             with patch.dict(os.environ, {"GH_REPO": "wrong/repo", "GH_HOST": "wrong.test"}):
+                for variable in ("GH_HOST", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN")[1:]:
+                    os.environ.pop(variable, None)
                 output = io.StringIO()
                 with patch("sys.stdout", output):
                     code = reviewers.main(args)
@@ -395,6 +397,35 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(calls[5].args[0], ["gh", "api", "--hostname", "github.com",
                                             "repos/acme/widgets/collaborators/bob/permission"])
         self.assertEqual(calls[6].args[0][-1], "repos/acme/widgets/collaborators/carol/permission")
+
+    def test_known_gh_host_targets_every_call_and_url(self):
+        host = "ghe.example.com"
+        checkout = self.lone_checkout()
+        responses = [completed(r) for r in (
+            {"nameWithOwner": "acme/widgets", "url": f"https://{host}/acme/widgets"},
+            str(checkout), {"login": "me"}, packet(pr(1, review())),
+        )]
+        environment = {"GH_HOST": host, "GH_ENTERPRISE_TOKEN": "set", "GH_CONFIG_DIR": str(checkout)}
+        with patch.object(reviewers.subprocess, "run", side_effect=responses) as run:
+            with patch.dict(os.environ, environment):
+                output = io.StringIO()
+                with patch("sys.stdout", output):
+                    code = reviewers.main([])
+        result = json.loads(output.getvalue())
+        self.assertEqual(code, 0, result)
+        self.assertEqual(result["host"], host)
+        self.assertEqual(result["candidates"][0]["examples"][0], f"https://{host}/acme/widgets/pull/1")
+        for call in run.call_args_list:
+            self.assertEqual(call.kwargs["env"]["GH_HOST"], host)
+        self.assertEqual(run.call_args_list[-1].args[0][1:4], ["api", "--hostname", host])
+
+    def test_checkout_on_another_host_is_rejected(self):
+        self.lone_checkout()
+        code, result, _ = self.run_with_responses([], [
+            {"nameWithOwner": "acme/widgets", "url": "https://ghe.example.com/acme/widgets"},
+        ])
+        self.assertEqual(code, 1, result)
+        self.assertEqual(result["errors"], ["Repository is not on the default GitHub host"])
 
     def test_access_outcomes_map_permission_responses_without_leaking_bodies(self):
         client = reviewers.GhClient()

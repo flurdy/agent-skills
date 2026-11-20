@@ -5,7 +5,7 @@ allowed-tools: "Bash(~/.agents/skills/pr-status/scripts/gh-pr-list-open.sh:*), B
 model-tier: standard
 model: sonnet
 effort: high
-version: "1.20.0"
+version: "1.21.0"
 author: "flurdy"
 ---
 
@@ -23,12 +23,35 @@ The GitHub org is auto-detected from the current repo's `origin` remote, falling
 /pr-status
 ```
 
-## Checkout helper
+## GitHub hosts
 
-`gh-pr-checkout.py` and the review-pr snapshot collector share
-[`scripts/github_remote.py`](scripts/github_remote.py) for remote identity parsing. Both accept
-single-label `*.github.com` aliases only for SSH, not HTTP(S); they do not resolve arbitrary SSH
-configuration aliases. Repository, exact-head, and clean-tree checks still govern local reads.
+github.com needs no configuration. For a GitHub Enterprise workspace, set `GH_HOST` for that tree,
+for example in its `.envrc` with direnv:
+
+```bash
+export GH_HOST=ghe.example.com
+```
+
+- A child `.envrc` replaces its parent's; add `source_up` to inherit `GH_HOST`.
+- Agent sessions read direnv only at launch, so start them inside the tree.
+- Keep real hostnames in the private workspace, never in this repository.
+
+[`scripts/github_remote.py`](scripts/github_remote.py) owns the host rules for every PR skill:
+
+- A host named by a PR URL or git remote wins. Otherwise the default host is `GH_HOST` when gh
+  knows it, else github.com.
+- gh knows github.com, each top-level host in its local `hosts.yml` (honouring `GH_CONFIG_DIR` and
+  `XDG_CONFIG_HOME`), and `GH_HOST` while `GH_ENTERPRISE_TOKEN` or `GITHUB_ENTERPRISE_TOKEN` is
+  set. Discovery makes no network call.
+- Enterprise hosts match exactly. Single-label `*.github.com` aliases stay SSH-only shorthand for
+  github.com; arbitrary SSH configuration aliases are unsupported.
+- Plain `gh` wrappers follow `GH_HOST` themselves. Helpers that match remotes or build URLs pin
+  `--hostname` to the resolved host, and an explicitly named unknown host fails closed.
+- github.com only: `circleci-status` (CircleCI's `gh/` project slug) and `beads-setup` (its Dolt
+  remote).
+
+`gh-pr-checkout.py` accepts `--host`; without it the default host applies. A checkout matches only
+on the same host, and repository, exact-head and clean-tree checks still govern local reads.
 
 ## Shared inline-comment reader
 
@@ -239,7 +262,7 @@ contract below, which is also the reason the output is portable across harnesses
 | PR | Repo | Ticket | Jira 💬 | Title | Status | CI | Ready | Wait | Closed |
 |----|------|--------|---------|-------|--------|----|-------|------|--------|
 
-- **PR**: plain `#123`; the link `[#123](https://github.com/{owner}/{repo}/pull/123)` goes on the `Links:` line
+- **PR**: plain `#123`; the link `[#123](https://{host}/{owner}/{repo}/pull/123)` (default host) goes on the `Links:` line
 - **Repo**: repository name
 - **Ticket**: Jira ID matched by `/[A-Z]+-\d+/` against the PR title, or `—`
 - **Status**: 🔀 merged / 🚫 closed unmerged — emoji only

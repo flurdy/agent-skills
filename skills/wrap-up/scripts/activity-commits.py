@@ -6,6 +6,10 @@ from datetime import datetime
 import json
 from pathlib import Path
 import subprocess
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "pr-status" / "scripts"))
+from github_remote import default_github_host  # noqa: E402
 
 
 FAILURES = (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError)
@@ -39,9 +43,9 @@ def github_emails():
         if not isinstance(account, dict) or not account.get("login") or not account.get("id"):
             raise ValueError("invalid GitHub identity")
         login = account["login"]
+        noreply = f"users.noreply.{default_github_host()}"
         emails.extend([
-            account.get("email"), f"{login}@users.noreply.github.com",
-            f"{account['id']}+{login}@users.noreply.github.com",
+            account.get("email"), f"{login}@{noreply}", f"{account['id']}+{login}@{noreply}",
         ])
     except FAILURES:
         diagnostics.append("GitHub author identities unavailable; using configured local emails only.")
