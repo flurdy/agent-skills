@@ -2,7 +2,7 @@
 
 Shared slash-command templates for Pi and Claude Code, installed by `make apply`:
 
-- [`/about <id-or-name>`](about.md) — orient on an issue, pull request, branch, worktree, Git ref, or stash
+- [`/about`](about.md) — orient on an issue or Git item, or explain a named skill or prompt without running it
 - [`/ask-astra <question>`](ask-astra.md) — ask Codex Astra for a repository-grounded review or second opinion
 - [`/ask-claude <question>`](ask-claude.md) — ask Claude for a repository-grounded second opinion
 - [`/ask-fable <question>`](ask-fable.md) — ask Claude Fable for a repository-grounded second opinion
@@ -22,6 +22,16 @@ Shared slash-command templates for Pi and Claude Code, installed by `make apply`
 
 Codex uses `/today --previous-workday` directly because repository prompt templates are not installed there.
 See [installation and configuration](../docs/installation.md#prompt-templates) for client setup.
+
+## Explain a skill or prompt
+
+- `/about skill next` explains when to use the `next` skill and what it can do.
+- `/about prompt plain` explains what the `plain` prompt accepts and returns.
+
+Use the exact name without a slash. The explicit `skill` and `prompt` forms read the matching
+source without invoking it. If there is no readable match or more than one distinct source, the
+response reports that instead of guessing. Ordinary `/about <id-or-name>` still orients on
+an issue, pull request, branch, worktree, Git ref, or stash.
 
 ## Message drafting
 
